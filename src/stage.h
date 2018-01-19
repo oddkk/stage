@@ -5,7 +5,10 @@
 /* #include "device.h" */
 /* #include "channel.h" */
 #include "arena.h"
+#include "atom.h"
 #include "idlookuptable.h"
+#include "scoped_hash.h"
+#include "dependency_matrix.h"
 
 typedef unsigned int device_type_id;
 typedef unsigned int device_id;
@@ -44,6 +47,18 @@ struct stage {
 	struct channel *channels;
 	size_t num_channels;
 	size_t cap_channels;
+
+	struct dependency_matrix channel_deps;
+
+	struct scoped_hash root_scope;
+
+	struct atom_table atom_table;
 };
+
+int stage_init(struct stage *stage);
+
+struct device *get_device(struct stage *stage, device_id);
+struct device_type *get_device_type(struct stage *stage, device_type_id);
+struct type *get_type(struct stage *stage, type_id);
 
 #endif

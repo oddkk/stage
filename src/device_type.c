@@ -3,29 +3,30 @@
 #include "utils.h"
 #include "stage.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
-struct device_attribute_def *device_type_add_attribute(struct device_type
-						       *dev_type,
-						       struct string name,
-						       type_id type,
-						       struct value def)
+struct device_attribute_def *device_type_add_attribute(struct stage *stage,
+													   struct device_type
+													   *dev_type,
+													   struct string name,
+													   type_id type,
+													   struct value def)
 {
-	int error;
+	int err;
 	struct device_attribute_def attr;
 
 	attr.id = dev_type->num_attributes;
-	attr.name = name;
+	attr.name = atom_create(&stage->atom_table, name);;
 	attr.type = type;
 	attr.def = def;
 
-	error = id_lookup_table_insert(&dev_type->attribute_ids, name, attr.id);
+	err = scoped_hash_insert(dev_type->scope, attr.name, SCOPE_ENTRY_DEVICE_ATTRIBUTE, attr.id, NULL, NULL);
 
-	if (error) {
+	if (err) {
 		print_error("device type add attribute",
 			    "Failed to add attribute '%.*s' to device type '%.*s' because "
-			    "this attribute already exists.", LIT(name),
-			    LIT(dev_type->name));
+			    "this attribute already exists.", LIT(name), ALIT(dev_type->name));
 		return NULL;
 	}
 
@@ -34,22 +35,23 @@ struct device_attribute_def *device_type_add_attribute(struct device_type
 	return &dev_type->attributes[attr.id];
 }
 
-struct device_input_def *device_type_add_input(struct device_type *dev_type,
-					       struct string name, type_id type)
+struct device_channel_def *device_type_add_input(struct stage *stage,
+											   struct device_type *dev_type,
+											   struct string name, type_id type)
 {
-	int error;
-	struct device_input_def input;
-	input.id = dev_type->num_attributes;
-	input.name = name;
+	int err;
+	struct device_channel_def input;
+	input.id = dev_type->num_inputs;
+	input.name = atom_create(&stage->atom_table, name);
 	input.type = type;
 
-	error = id_lookup_table_insert(&dev_type->input_ids, name, input.id);
+	err = scoped_hash_insert(dev_type->scope, input.name, SCOPE_ENTRY_DEVICE_INPUT, input.id, NULL, NULL);
 
-	if (error) {
+	if (err) {
 		print_error("device type add input",
 			    "Failed to add input '%.*s' to device type '%.*s' because "
 			    "this input already exists.", LIT(name),
-			    LIT(dev_type->name));
+			    ALIT(dev_type->name));
 		return NULL;
 	}
 
@@ -58,23 +60,23 @@ struct device_input_def *device_type_add_input(struct device_type *dev_type,
 	return &dev_type->inputs[input.id];
 }
 
-struct device_output_def *device_type_add_output(struct device_type *dev_type,
-						 struct string name,
-						 type_id type)
+struct device_channel_def *device_type_add_output(struct stage *stage, struct device_type *dev_type,
+												 struct string name,
+												 type_id type)
 {
-	int error;
-	struct device_output_def output;
-	output.id = dev_type->num_attributes;
-	output.name = name;
+	int err;
+	struct device_channel_def output;
+	output.id = dev_type->num_outputs;
+	output.name = atom_create(&stage->atom_table, name);
 	output.type = type;
 
-	error = id_lookup_table_insert(&dev_type->output_ids, name, output.id);
+	err = scoped_hash_insert(dev_type->scope, output.name, SCOPE_ENTRY_DEVICE_OUTPUT, output.id, NULL, NULL);
 
-	if (error) {
+	if (err) {
 		print_error("device type add output",
 			    "Failed to add output '%.*s' to device type '%.*s' because "
 			    "this output already exists.", LIT(name),
-			    LIT(dev_type->name));
+			    ALIT(dev_type->name));
 		return NULL;
 	}
 
@@ -84,10 +86,16 @@ struct device_output_def *device_type_add_output(struct device_type *dev_type,
 }
 
 struct device_type *register_device_type(struct stage *stage,
-					 struct string name)
+										 struct string name)
+{
+	return register_device_type_scoped(stage, name, &stage->root_scope);
+}
+
+struct device_type *register_device_type_scoped(struct stage *stage,
+										 struct string name, struct scoped_hash *parent_scope)
 {
 	struct device_type *dev_type;
-	int old_id, error;
+	int old_id, err;
 
 	if (name.length == 0) {
 		print_error("register device type",
@@ -122,25 +130,54 @@ struct device_type *register_device_type(struct stage *stage,
 	dev_type = arena_alloc(&stage->memory, sizeof(struct device_type));
 
 	dev_type->id = stage->num_device_types++;
-	dev_type->name = name;
-	dev_type->attribute_ids.page_arena = &stage->memory;
-	dev_type->attribute_ids.string_arena = &stage->memory;
-
-	dev_type->input_ids.page_arena = &stage->memory;
-	dev_type->input_ids.string_arena = &stage->memory;
-
-	dev_type->output_ids.page_arena = &stage->memory;
-	dev_type->output_ids.string_arena = &stage->memory;
+	dev_type->name = atom_create(&stage->atom_table, name);
+	dev_type->scope = scoped_hash_push(parent_scope);
 
 	stage->device_types[dev_type->id] = dev_type;
 
-	error =
+	err =
 	    id_lookup_table_insert(&stage->device_types_lookup, name,
 				   dev_type->id);
 
-	if (error) {
+	if (err) {
+		return 0;
+	}
+
+	err = scoped_hash_insert(&stage->root_scope,
+							   atom_create(&stage->atom_table, name),
+							   SCOPE_ENTRY_DEVICE_TYPE, dev_type->id,
+							   NULL, NULL);
+
+	if (err) {
 		return 0;
 	}
 
 	return dev_type;
+}
+
+void describe_device_type(struct stage *stage, struct device_type *dev_type)
+{
+	FILE *fp = stdout;
+	fprintf(fp, "device type %.*s\n", ALIT(dev_type->name));
+
+	fprintf(stdout, " attributes:\n");
+	for (size_t i = 0; i < dev_type->num_attributes; ++i) {
+		struct device_attribute_def *attr;
+		attr = &dev_type->attributes[i];
+		fprintf(fp, " - %i: %.*s\n", attr->id, ALIT(attr->name));
+	}
+
+	fprintf(stdout, " inputs:\n");
+	for (size_t i = 0; i < dev_type->num_inputs; ++i) {
+		struct device_channel_def *input;
+		input = &dev_type->inputs[i];
+		fprintf(fp, " - %i: %.*s\n", input->id, ALIT(input->name));
+	}
+
+	fprintf(stdout, " output:\n");
+	for (size_t i = 0; i < dev_type->num_outputs; ++i) {
+		struct device_channel_def *output;
+		output = &dev_type->outputs[i];
+		fprintf(fp, " - %i: %.*s\n", output->id, ALIT(output->name));
+	}
 }

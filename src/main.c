@@ -3,6 +3,7 @@
 #include "device.h"
 #include "device_type.h"
 #include "utils.h"
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,44 +19,13 @@ scalar_value device_add_eval(struct stage *stage, struct device *device, struct 
 
 int main(int argc, char *argv[])
 {
+	int err;
 	struct stage stage;
-	struct scalar_type int_type;
-	int error;
 
-	int_type.min = SCALAR_MIN;
-	int_type.max = SCALAR_MAX;
-
-	zero_memory(&stage, sizeof(struct stage));
-	error = arena_init(&stage.memory, MEGABYTE(10));
-
-	if (error) {
-		return -1;
+	err = stage_init(&stage);
+	if (err) {
+		return err;
 	}
-
-	stage.device_types_lookup.string_arena = &stage.memory;
-	stage.device_types_lookup.page_arena = &stage.memory;
-	stage.types_lookup.string_arena = &stage.memory;
-	stage.types_lookup.page_arena = &stage.memory;
-
-	stage.cap_channels = 300;
-	stage.channels =
-	    arena_alloc(&stage.memory,
-			sizeof(struct channel) * stage.cap_channels);
-
-	channel_id cnl = allocate_channels(&stage, int_type, 2);
-	channel_id cnl2 = cnl + 1;
-
-	if (channel_bind(&stage, cnl, cnl2) != 0) {
-		return -1;
-	}
-
-	if (channel_bind_constant(&stage, cnl, 2) != 0) {
-		return -1;
-	}
-
-	printf("Eval %i: ", cnl);
-	print_scalar(eval_channel(&stage, cnl2));
-	printf("\n");
 
 	register_default_types(&stage);
 
@@ -63,27 +33,48 @@ int main(int argc, char *argv[])
 	device_add = register_device_type(&stage, STR("add"));
 	device_add->eval = device_add_eval;
 
-	device_type_add_input(device_add, STR("left"),
+	device_type_add_attribute(&stage, device_add, STR("foo_attr"),
+							  stage.standard_types.integer, (struct value){.scalar=SCALAR_OFF});
+	device_type_add_attribute(&stage, device_add, STR("bar_attr"),
+							  stage.standard_types.integer, (struct value){.scalar=3});
+
+	device_type_add_input(&stage, device_add, STR("left"),
 	                   stage.standard_types.integer);
-	device_type_add_input(device_add, STR("right"),
+	device_type_add_input(&stage, device_add, STR("right"),
 	                   stage.standard_types.integer);
 
-	device_type_add_output(device_add, STR("out"),
+	device_type_add_output(&stage, device_add, STR("out"),
 	                    stage.standard_types.integer);
-	device_type_add_output(device_add, STR("out2"),
+	device_type_add_output(&stage, device_add, STR("out2"),
 	                    stage.standard_types.integer);
 
-
-	struct device *dev;
-
-	dev = register_device(&stage, device_add->id, 0, 0);
-
-	channel_bind_constant(&stage, dev->input_begin, 2);
-	channel_bind_constant(&stage, dev->input_begin + 1, 2);
-	
-	printf("Eval output: ");
-	print_scalar(eval_channel(&stage, dev->output_begin));
+	describe_device_type(&stage, device_add);
 	printf("\n");
 
+	struct device *dev_test, *dev_test2;
+
+	dev_test = register_device(&stage, device_add->id, NULL, 0);
+	dev_test->name = atom_create(&stage.atom_table, STR("hello"));
+
+	dev_test2 = register_device(&stage, device_add->id, NULL, 0);
+	dev_test2->name = atom_create(&stage.atom_table, STR("hello2"));
+
+	describe_device(&stage, dev_test);
+	printf("\n");
+	describe_device(&stage, dev_test2);
+
+	dependency_matrix_bind(&stage.channel_deps, 0, 1);
+	dependency_matrix_print(&stage.channel_deps);
+
 	return 0;
+
+	/* parse_config_file(STR("config/main.conf"), &stage.atom_table, &stage.memory, &node); */
+
+	/* apply_config(&stage, node); */
+
+	/* config_print_tree(node); */
+
+	/* printf("config_node: %lu\n", sizeof(struct config_node)); */
+
+	/* return 0; */
 }

@@ -12,6 +12,8 @@ struct arena {
 int arena_init(struct arena *arena, size_t capacity);
 void *arena_alloc(struct arena *arena, size_t length);
 
+void arena_print_usage(struct arena *arena);
+
 #define arena_alloc_struct(arena, struct) arena_alloc(arena, sizeof(struct))
 #define arena_alloc_nstruct(arena, struct, n) arena_alloc(arena, sizeof(struct) * n)
 

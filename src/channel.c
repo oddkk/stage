@@ -39,147 +39,77 @@ channel_id allocate_channels(struct stage * stage, struct scalar_type type,
 	return range_begin;
 }
 
-static void _alloc_device_output_channels(struct stage * stage, struct type * type, device_id dev_id, int output_id, channel_id * next_channel, int * next_subindex)
+static void init_device_channels_for_type(struct stage *stage, channel_id *begin, device_id dev_id, int channel_id, type_id type_id)
 {
-	switch (type->kind) {
-	case TYPE_KIND_SCALAR: {
-		channel_id new_channel;
-		int new_subindex;
-		struct channel *cnl;
+	struct type *type;
 
-		new_channel = *next_channel;
-		*next_channel += 1;
+	type = stage->types[type_id];
 
-		new_subindex = *next_subindex;
-		*next_subindex += 1;
-
-
-		cnl = &stage->channels[new_channel];
-
-		cnl->connection_type = CHANNEL_CONNECTION_DEVICE;
+	for (int j = 0; j < type->num_scalars; ++j) {
+		struct channel *cnl = &stage->channels[*begin];
 		cnl->device.id = dev_id;
-		cnl->device.output_id = output_id;
-		cnl->device.output_subindex = new_subindex;
-	} break;
+		cnl->device.channel_id = channel_id;
+		cnl->device.channel_subindex = j;
 
-	case TYPE_KIND_TUPLE:
-		for (size_t i = 0; i < type->tuple.num_types; i++) {
-			type_id child_type_id;
-			struct type *child;
-
-			child_type_id = type->tuple.types[i];
-			child = stage->types[child_type_id];
-
-			_alloc_device_output_channels(stage, child, output_id, dev_id, next_channel, next_subindex);
-		}
-		break;
-
-	case TYPE_KIND_STRING:
-		break;
-
-	default:
-		print_error("alloc device channels", "Invalid type kind for type %.*s (%i).", type->name, type->id);
-		break;
+		*begin += 1;
 	}
 }
 
-channel_id allocate_device_output_channels(struct stage *stage, device_id dev_id)
+static void init_device_channels(struct stage *stage, device_id dev_id, struct device_channel_def *channels, size_t num_channels, channel_id begin)
+{
+	for (size_t i = 0; i < num_channels; ++i) {
+		init_device_channels_for_type(stage, &begin, dev_id, i, channels[i].type);
+	}
+}
+
+int allocate_device_channels(struct stage *stage, device_id dev_id)
 {
 	struct device *device;
 	struct device_type *dev_type;
-	channel_id range_begin;
-	channel_id next_output;
-	int num_scalars = 0;
-	int output_id = 0;
-	int next_subindex = 0;
+	size_t num_input_scalars = 0;
+	size_t num_output_scalars = 0;
+	channel_id channel_begin;
 
 	if (dev_id >= stage->num_devices) {
 		return -1;
 	}
-
 	device = stage->devices[dev_id];
 
 	if (device->type >= stage->num_device_types) {
 		return -1;
 	}
-
-	dev_type = stage->device_types[device->type];
-
-	for (size_t i = 0; i < dev_type->num_outputs; ++i) {
-		struct type *t;
-
-		if (dev_type->outputs[i].type > stage->num_types) {
-			print_error("alloc device channels", "Invalid type for device type '%.*s'.",
-						LIT(dev_type->name));
-			return -1;
-		}
-
-		t = stage->types[dev_type->outputs[i].type];
-
-		num_scalars += t->num_scalars;
-	}
-
-	range_begin = _alloc_channels(stage, num_scalars);
-	next_output = range_begin;
-
-	for (size_t i = 0; i < dev_type->num_outputs; ++i) {
-		struct type *t;
-
-		if (dev_type->outputs[i].type > stage->num_types) {
-			print_error("alloc device channels", "Invalid type for device type '%.*s'.",
-						LIT(dev_type->name));
-			return -1;
-		}
-
-
-		t = stage->types[dev_type->outputs[i].type];
-
-		_alloc_device_output_channels(stage, t, dev_id, output_id, &next_output, &next_subindex);
-
-		output_id += 1;
-	}
-
-	return range_begin;
-}
-
-channel_id allocate_device_input_channels(struct stage *stage, device_id dev_id)
-{
-	struct device *device;
-	struct device_type *dev_type;
-	channel_id range_begin;
-	channel_id next_output;
-	int num_scalars = 0;
-
-	if (dev_id >= stage->num_devices) {
-		return -1;
-	}
-
-	device = stage->devices[dev_id];
-
-	if (device->type >= stage->num_device_types) {
-		return -1;
-	}
-
 	dev_type = stage->device_types[device->type];
 
 	for (size_t i = 0; i < dev_type->num_inputs; ++i) {
 		struct type *t;
 
-		if (dev_type->inputs[i].type > stage->num_types) {
-			print_error("alloc device channels", "Invalid type for device type '%.*s'.",
-						LIT(dev_type->name));
+		t = get_type(stage, dev_type->inputs[i].type);
+		if (!t) {
 			return -1;
 		}
 
-		t = stage->types[dev_type->inputs[i].type];
-
-		num_scalars += t->num_scalars;
+		num_input_scalars += t->num_scalars;
 	}
 
-	range_begin = _alloc_channels(stage, num_scalars);
-	next_output = range_begin;
+	for (size_t i = 0; i < dev_type->num_outputs; ++i) {
+		struct type *t;
 
-	return range_begin;
+		t = get_type(stage, dev_type->outputs[i].type);
+		if (!t) {
+			return -1;
+		}
+
+		num_output_scalars += t->num_scalars;
+	}
+
+	channel_begin = _alloc_channels(stage, num_input_scalars + num_output_scalars);
+	init_device_channels(stage, dev_id, dev_type->inputs, dev_type->num_inputs, channel_begin);
+	init_device_channels(stage, dev_id, dev_type->outputs, dev_type->num_outputs, channel_begin + num_input_scalars);
+
+	device->input_begin = channel_begin;
+	device->output_begin = channel_begin + num_input_scalars;
+
+	return 0;
 }
 
 static bool has_cycle(struct stage *stage, channel_id origin, channel_id dest)
@@ -276,6 +206,8 @@ int channel_bind(struct stage *stage, channel_id src, channel_id dest)
 	dest_channel->connection = src;
 	dest_channel->connection_type = CHANNEL_CONNECTION_CHANNEL;
 
+	dependency_matrix_bind(&stage->channel_deps, src, dest);
+
 	return 0;
 }
 
@@ -327,32 +259,6 @@ int channel_bind_constant(struct stage *stage, channel_id channel,
 	return 0;
 }
 
-int channel_bind_device(struct stage *stage, channel_id channel,
-						device_id dev_id, int output_id)
-{
-	struct channel *cnl;
-
-	if (channel >= stage->num_channels || channel < 0) {
-		return -1;
-	}
-
-	cnl = &stage->channels[channel];
-
-	if (cnl->connection_type != CHANNEL_CONNECTION_UNCONNECTED) {
-		print_error("bind channel",
-			    "Can not bind channel %i to constant because "
-			    "this channel is already bound.", channel);
-		return -1;
-	}
-
-	cnl->connection_type = CHANNEL_CONNECTION_DEVICE;
-	cnl->device.id = dev_id;
-	cnl->device.output_id = output_id;
-
-	return 0;
-}
-
-
 scalar_value eval_channel(struct stage * stage, channel_id channel)
 {
 	struct channel *chnl = &stage->channels[channel];
@@ -397,7 +303,7 @@ scalar_value eval_channel(struct stage * stage, channel_id channel)
 
 		if (type->eval) {
 			result = type->eval(stage, dev, type,
-								chnl->device.output_id, chnl->device.output_subindex);
+								chnl->device.channel_id, chnl->device.channel_subindex);
 		} else {
 			result = SCALAR_OFF;
 		}

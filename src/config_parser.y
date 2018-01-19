@@ -1,0 +1,305 @@
+%define api.value.type union
+%define api.pure full
+%define parse.error verbose
+%locations
+
+%code requires
+{
+	#include "config.h"
+	#include "string.h"
+	#include "arena.h"
+	#include "utils.h"
+	#include <stdio.h>
+	#include <stdlib.h>
+	#include <string.h>
+
+	#define CONFIG_PARSER_STACK_SIZE 128
+	#define BUFFER_SIZE 4096
+	/*!max:re2c*/
+
+	struct lex_context;
+	struct tmp_range {
+		struct config_node *low;
+		struct config_node *high;
+	};
+}
+
+%param { struct lex_context *ctx }
+
+%code
+{
+	struct lex_context {
+		char *cur;
+		char *lim;
+		char *tok;
+		bool eof;
+		struct arena *memory;
+		struct atom_table *atom_table;
+		FILE *fp;
+		char buf[BUFFER_SIZE + YYMAXFILL];
+		size_t head;
+		struct config_node *module;
+	};
+
+	bool config_parse_fill(struct lex_context *ctx, size_t need) {
+		if (ctx->eof) {
+			return false;
+		}
+		size_t free = ctx->tok - ctx->buf;
+		if (free < need) {
+			return false;
+		}
+		memmove(ctx->buf, ctx->tok, ctx->lim - ctx->tok);
+		ctx->lim -= free;
+		ctx->cur -= free;
+		ctx->tok -= free;
+		ctx->lim += fread(ctx->lim, 1, free, ctx->fp);
+		if (ctx->lim < ctx->buf + BUFFER_SIZE) {
+			if (feof(ctx->fp)) {
+				ctx->eof = true;
+				memset(ctx->lim, 0, YYMAXFILL);
+				ctx->lim += YYMAXFILL;
+			} else {
+				perror("config");
+			}
+		}
+		return false;
+	}
+
+	struct config_node *alloc_node(struct lex_context *ctx, enum config_node_type type) {
+		struct config_node *res;
+
+		res = arena_alloc_struct(ctx->memory, struct config_node);
+		res->type = type;
+
+		return res;
+	}
+
+	void append_child(struct config_node **first_child, struct config_node *node) {
+		node->next_sibling = *first_child;
+		*first_child = node;
+	}
+
+	int yylex(YYSTYPE *, YYLTYPE *, struct lex_context *);
+	void yyerror(YYLTYPE *loc, struct lex_context *, const char *);
+}
+
+%token END 0
+%token DEVICETYPE "device_type" DEVICE "device" TYPE "type" INPUT "input"
+%token OUTPUT "output" ATTR "attr" IDENTIFIER NUMLIT
+%token BIND "<-" RANGE ".." VERSION "version"
+
+%type	<struct atom*> IDENTIFIER channel_name
+%type	<scalar_value> NUMLIT
+%type	<struct config_node*> module module_stmt_list module_stmt device_type device_type_body
+%type	<struct config_node*> device_type_body_stmt device device_body device_body_stmt
+%type	<struct config_node*> l_expr type_decl type enum_list enum_label expr
+%type	<struct tmp_range> range
+
+
+%left '+' '-'
+%left '*' '/'
+%left ".."
+%left '.' '[' '{'
+
+%%
+
+module:
+				"version" NUMLIT '.' NUMLIT '.' NUMLIT ';'
+				module_stmt_list {
+	$$ = alloc_node(ctx, CONFIG_NODE_MODULE);
+	$$->module.first_child = $8;
+	$$->module.version.major = $2;
+	$$->module.version.minor = $4;
+	$$->module.version.patch = $6;
+
+	assert(!ctx->module);
+	ctx->module = $$;
+ }
+		;
+module_stmt_list:
+				module_stmt_list module_stmt { $$ = $1; append_child(&$$, $2); }
+		|		%empty                       { $$ = NULL; }
+		;
+module_stmt: 	device_type    { $$ = $1; }
+		|		device         { $$ = $1; }
+		|		type_decl      { $$ = $1; }
+		;
+device_type:	"device_type" IDENTIFIER '{' device_type_body '}' { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE_TYPE); $$->device_type.name = $2; $$->device_type.first_child = $4; }
+		;
+device_type_body:
+				device_type_body device_type_body_stmt { $$ = $1; append_child(&$$, $2); }
+		|		%empty                                 { $$ = NULL; }
+		;
+device_type_body_stmt:
+				"input"  channel_name ':' type ';'        { $$ = alloc_node(ctx, CONFIG_NODE_INPUT);     $$->input.name = $2;  $$->input.type = $4; }
+		|		"output" channel_name ':' type ';'        { $$ = alloc_node(ctx, CONFIG_NODE_OUTPUT);    $$->output.name = $2; $$->output.type = $4; }
+		|		"attr" IDENTIFIER ':' type   ';'          { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; }
+		|		"attr" IDENTIFIER ':' type   '=' expr ';' { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; $$->attr.def_value = $6; }
+		|		l_expr "<-" l_expr ';'                    { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		device                                    { $$ = $1; }
+		|		type_decl                                 { $$ = $1; }
+		;
+device:			"device" l_expr '{' device_body '}'            { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE); $$->device.type = $2;                       $$->device.first_child = $4; }
+		|		"device" l_expr IDENTIFIER '{' device_body '}' { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE); $$->device.type = $2; $$->device.name = $3; $$->device.first_child = $5; }
+		;
+device_body:	device_body device_body_stmt { $$ = $1; append_child(&$$, $2); }
+		|		%empty                       { $$ = NULL; }
+		;
+device_body_stmt:
+				l_expr '=' expr ';'          { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ASSIGN; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		l_expr "<-" l_expr ';'       { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND;   $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		;
+channel_name:	IDENTIFIER                   { $$ = $1; }
+		|		'_'                          { $$ = NULL; }
+		;
+l_expr:			IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = $1; }
+		|		'_'                          { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); }
+		|		l_expr '.' l_expr            { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ACCESS; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		l_expr '[' expr ']'          { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_SUBSCRIPT; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		l_expr '[' range ']'         { $$ = alloc_node(ctx, CONFIG_NODE_SUBSCRIPT_RANGE); $$->subscript_range.lhs = $1; $$->subscript_range.low = $3.low; $$->subscript_range.high = $3.high; }
+		;
+type_decl:		"type" IDENTIFIER '=' type ';' { $$ = alloc_node(ctx, CONFIG_NODE_TYPE_DECL); $$->type_decl.name = $2; $$->type_decl.type = $4; };
+		;
+type:			l_expr                       { $$ = $1; }
+		|		"type"                       { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = atom_create(ctx->atom_table, STR("type")); }
+//		|		l_expr '[' expr ']' This is implicit (part of l_expr)
+		|		l_expr '{' range '}'         { $$ = alloc_node(ctx, CONFIG_NODE_SUBSCRIPT_RANGE); $$->subscript_range.lhs = $1; $$->subscript_range.low = $3.low; $$->subscript_range.high = $3.high; }
+		|		'{' enum_list '}'            { $$ = NULL; printf("TODO: enumlist\n"); }
+		;
+enum_list: 		enum_label                   { $$ = NULL; }
+		| 		enum_list ',' enum_label     { $$ = NULL; }
+		;
+enum_label:		IDENTIFIER                   { $$ = NULL; }
+		;
+range:			expr ".." expr     { $$.low = $1; $$.high = $3; }
+		;
+expr:			NUMLIT             { $$ = alloc_node(ctx, CONFIG_NODE_NUMLIT); $$->numlit = $1; }
+		|		IDENTIFIER         { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = $1; }
+		|		expr '.' expr      { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ACCESS;    $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		expr '+' expr      { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ADD;       $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		expr '-' expr      { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_SUB;       $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		expr '*' expr      { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_MUL;       $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		expr '/' expr      { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_DIV;       $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		expr '[' expr ']'  { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_SUBSCRIPT; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		expr '[' range ']' { $$ = alloc_node(ctx, CONFIG_NODE_SUBSCRIPT_RANGE); $$->subscript_range.lhs = $1; $$->subscript_range.low = $3.low; $$->subscript_range.high = $3.high; }
+		;
+
+%%
+
+#define CURRENT_TOKEN STR_BE(ctx->tok, ctx->cur)
+#define CURRENT_LEN (ctx->cur - ctx->tok)
+
+void _yydebug_print(int state, char sym) {
+	printf("%i '%c'\n", state, sym);
+}
+#undef YYDEBUG
+#define YYDEBUG _yydebug_print
+
+static void lloc_col(YYLTYPE *lloc, int col) {
+	lloc->first_line = lloc->last_line;
+	lloc->first_column = lloc->last_column;
+	lloc->last_column += col;
+}
+
+static void lloc_line(YYLTYPE *lloc) {
+	lloc->last_line += 1;
+	lloc->first_line = lloc->last_line;
+	lloc->last_column = 1;
+	lloc->first_column = 1;
+}
+
+int yylex(YYSTYPE *lval, YYLTYPE *lloc, struct lex_context *ctx) {
+	ctx->tok = ctx->cur;
+	char *YYMARKER = 0;
+
+%{ /* Begin re2c lexer */
+re2c:yyfill:enable = 1;
+re2c:define:YYCTYPE = "char";
+re2c:define:YYCURSOR = "ctx->cur";
+re2c:define:YYLIMIT = "ctx->lim";
+re2c:define:YYFILL = "if (!config_parse_fill(ctx, @@)) return END;";
+re2c:define:YYFILL:naked = 1;
+
+"version"    { lloc_col(lloc, CURRENT_LEN); return VERSION; }
+"device_type" { lloc_col(lloc, CURRENT_LEN); return DEVICETYPE; }
+"device"      { lloc_col(lloc, CURRENT_LEN); return DEVICE; }
+"type"        { lloc_col(lloc, CURRENT_LEN); return TYPE; }
+"input"       { lloc_col(lloc, CURRENT_LEN); return INPUT; }
+"output"      { lloc_col(lloc, CURRENT_LEN); return OUTPUT; }
+"attr"        { lloc_col(lloc, CURRENT_LEN); return ATTR; }
+".."          { lloc_col(lloc, CURRENT_LEN); return RANGE; }
+"<-"          { lloc_col(lloc, CURRENT_LEN); return BIND; }
+
+"\x00"        { lloc_col(lloc, CURRENT_LEN); return END; }
+"\r\n" | [\r\n] { lloc_line(lloc); return yylex(lval, lloc, ctx); }
+ "#" [^\r\n]*  { lloc_col(lloc, CURRENT_LEN); return yylex(lval, lloc, ctx); }
+[\t\v\b\f ]   { lloc_col(lloc, CURRENT_LEN); return yylex(lval, lloc, ctx); }
+
+[a-zA-Z][a-zA-Z0-9_]* | [a-zA-Z_][a-zA-Z0-9_]+ {
+	lloc_col(lloc, CURRENT_LEN);
+	lval->IDENTIFIER = atom_create(ctx->atom_table, CURRENT_TOKEN);
+	return IDENTIFIER;
+ }
+'0b' [01]+    {
+	lloc_col(lloc, CURRENT_LEN);
+	lval->NUMLIT = string_to_int64_base2(CURRENT_TOKEN);
+	return NUMLIT;
+ }
+[1-9][0-9]* | '0'   {
+	lloc_col(lloc, CURRENT_LEN);
+	lval->NUMLIT = string_to_int64_base10(CURRENT_TOKEN);
+	return NUMLIT;
+ }
+'0x' [0-9a-fA-F]+ {
+	lloc_col(lloc, CURRENT_LEN);
+	lval->NUMLIT = string_to_int64_base16(CURRENT_TOKEN);
+	return NUMLIT;
+ }
+
+[-+*/:;={}()\[\].,_] {
+	lloc_col(lloc, CURRENT_LEN);
+	return *ctx->tok;
+ }
+
+* {
+	lloc_col(lloc, CURRENT_LEN);
+	printf("unexpected char '%c' %i\n", *ctx->tok, *ctx->tok);
+	return END;
+ }
+
+%} /* End lexer */
+}
+
+void yyerror(YYLTYPE *lloc, struct lex_context *ctx, const char *error) {
+	printf("Error %i:%i: %s\n",
+		   lloc->first_line, lloc->first_column, error);
+}
+
+int parse_config_file(struct string filename, struct atom_table *table, struct arena *memory, struct config_node **out_node) {
+	struct lex_context ctx;
+
+	memset(&ctx, 0, sizeof(struct lex_context));
+
+	ctx.lim = ctx.buf + BUFFER_SIZE;
+	ctx.cur = ctx.lim;
+	ctx.tok = ctx.lim;
+	ctx.eof = false;
+	ctx.atom_table = table;
+	ctx.memory = memory;
+
+	ctx.fp = fopen(filename.text, "rb");
+
+	if (!ctx.fp) {
+		perror("config");
+		return -1;
+	}
+
+	config_parse_fill(&ctx, BUFFER_SIZE);
+
+	yyparse(&ctx);
+
+	*out_node = ctx.module;
+
+	return 0;
+}

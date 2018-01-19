@@ -28,3 +28,7 @@ void *arena_alloc(struct arena *arena, size_t length)
 
 	return result;
 }
+
+void arena_print_usage(struct arena *arena) {
+	printf("%lu / %lu", arena->head, arena->capacity);
+}
