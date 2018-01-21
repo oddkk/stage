@@ -12,17 +12,17 @@ int dependency_matrix_init(struct dependency_matrix *dep_matrix, size_t num_chan
 	return 0;
 }
 
-int dependency_matrix_bind(struct dependency_matrix *dep_matrix, size_t from, size_t to)
+int dependency_matrix_bind(struct dependency_matrix *dep_matrix, size_t dependent_on, size_t dependency)
 {
 	size_t pos;
 
 	// @TODO: This should also mark all the transitive clojures as
 	// this dependency.
 
-	assert(from < dep_matrix->num_channels &&
-		   to   < dep_matrix->num_channels);
+	assert(dependency   < dep_matrix->num_channels &&
+		   dependent_on < dep_matrix->num_channels);
 
-	pos = dep_matrix->num_channels * to + from;
+	pos = dep_matrix->num_channels * dependency + dependent_on;
 	
 	dep_matrix->matrix[pos / 32] |= (1 << (pos % 32));
 
@@ -60,6 +60,20 @@ int dependency_matrix_list_dependent(struct dependency_matrix *dep_matrix, size_
 	return -1;
 }
 
+int dependency_matrix_list_dependencies(struct dependency_matrix *dep_matrix, size_t depends_on, size_t *i)
+{
+	for (; *i < dep_matrix->num_channels; ++(*i)) {
+		size_t pos = depends_on + (*i) * dep_matrix->num_channels;
+		if (dep_matrix->matrix[pos / 32] & (1 << (pos % 32))) {
+			size_t c = *i;
+			*i += 1;
+			return c;
+		}
+	}
+
+	return -1;
+}
+
 void dependency_matrix_print(struct dependency_matrix *dep_matrix)
 {
 	printf("   ");
@@ -80,5 +94,25 @@ void dependency_matrix_print(struct dependency_matrix *dep_matrix)
 			}
 		}
 		printf("\n");
+	}
+}
+
+void dependency_matrix_describe(struct dependency_matrix *dep_matrix)
+{
+	for (size_t i = 0; i < dep_matrix->num_channels; ++i) {
+		size_t iter = 0;
+		bool header_printed = false;
+		int channel;
+
+		while ((channel = dependency_matrix_list_dependencies(dep_matrix, i, &iter)) >= 0) {
+			if (!header_printed) {
+				printf("channel %zu:\n", i);
+				header_printed = true;
+			}
+			printf(" - %i\n", channel);
+		}
+		if (header_printed) {
+			printf("\n");
+		}
 	}
 }

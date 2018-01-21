@@ -13,7 +13,7 @@ struct stage;
 struct device;
 struct device_type;
 struct config_node;
-typedef void (*device_init_callback) (struct stage *, struct device *);
+typedef int (*device_init_callback) (struct stage *, struct device_type *, struct device *);
 typedef scalar_value (*device_output_eval_callback) (struct stage *, struct device *,
 											 struct device_type *, int /* output id */,
 											 int /* subindex */);

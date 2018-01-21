@@ -29,7 +29,7 @@ int stage_init(struct stage *stage)
 	stage->types_lookup.string_arena = &stage->memory;
 	stage->types_lookup.page_arena = &stage->memory;
 
-	stage->cap_channels = 100;
+	stage->cap_channels = 32;
 	stage->channels =
 	    arena_alloc(&stage->memory,
 			sizeof(struct channel) * stage->cap_channels);

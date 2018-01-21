@@ -53,6 +53,10 @@ struct stage {
 	struct scoped_hash root_scope;
 
 	struct atom_table atom_table;
+
+	uint64_t tick;
+	// Tick duration in nanoseconds (10e-9 s)
+	uint64_t tick_period;
 };
 
 int stage_init(struct stage *stage);

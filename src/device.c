@@ -101,6 +101,14 @@ struct device *register_device(struct stage *stage, device_type_id type,
 		return 0;
 	}
 
+	if (device_type->device_init) {
+		err = device_type->device_init(stage, device_type, device);
+		if (err) {
+			// @TODO: Deallocate
+			return 0;
+		}
+	}
+
 	return device;
 }
 
@@ -126,6 +134,78 @@ struct attribute_value *device_get_attr(struct stage *stage, struct device *devi
 	}
 	assert(entry.id < type->num_attributes);
 	return &device->attributes[entry.id];
+}
+
+channel_id device_get_input_channel_id(struct stage *stage, struct device *device, struct atom *name)
+{
+	struct device_type *type; // @TODO: Is this necessary?
+	struct scope_entry entry;
+	channel_id result;
+	int err;
+
+	type = stage->device_types[device->type];
+
+	err = instanced_scoped_hash_lookup(device->scope, name, &entry);
+	if (err) {
+		print_error("device get input", "The device of type '%.*s' has no input '%.*s'.",
+					ALIT(type->name), ALIT(name));
+		return -1;
+	}
+
+	if (entry.kind != SCOPE_ENTRY_DEVICE_INPUT) {
+		print_error("device get input", "The element '%.*s' on the device '%.*s' is not an input.",
+					ALIT(name), ALIT(type->name));
+		return -1;
+	}
+	assert(entry.id < type->num_inputs);
+
+	result = find_device_channel(stage, device, DEVICE_CHANNEL_INPUT, entry.id, 0);
+
+	if (result >= 0) {
+		return result;
+	} else {
+		print_error("device get input", "The device '%.*s' (id %i) of type '%.*s' (id %i) has an attribute "
+			"'%.*s' (id %i), but no such channel is registered!",
+			ALIT(device->name), device->id, ALIT(type->name), type->id,
+			ALIT(entry.name), entry.id);
+		return -1;
+	}
+}
+
+channel_id device_get_output_channel_id(struct stage *stage, struct device *device, struct atom *name)
+{
+	struct device_type *type; // @TODO: Is this necessary?
+	struct scope_entry entry;
+	channel_id result;
+	int err;
+
+	type = stage->device_types[device->type];
+
+	err = instanced_scoped_hash_local_lookup(device->scope, name, &entry);
+	if (err) {
+		print_error("device get output", "The device of type '%.*s' has no output '%.*s'.",
+					ALIT(type->name), ALIT(name));
+		return -1;
+	}
+
+	if (entry.kind != SCOPE_ENTRY_DEVICE_OUTPUT) {
+		print_error("device get output", "The element '%.*s' on the device '%.*s' is not an output.",
+					ALIT(name), ALIT(type->name));
+		return -1;
+	}
+	assert(entry.id < type->num_outputs);
+
+	result = find_device_channel(stage, device, DEVICE_CHANNEL_OUTPUT, entry.id, 0);
+
+	if (result >= 0) {
+		return result;
+	} else {
+		print_error("device get output", "The device '%.*s' (id %i) of type '%.*s' (id %i) has an attribute "
+			"'%.*s' (id %i), but no such channel is registered!",
+			ALIT(device->name), device->id, ALIT(type->name), type->id,
+			ALIT(entry.name), entry.id);
+		return -1;
+	}
 }
 
 void describe_device(struct stage *stage, struct device *dev)
@@ -155,6 +235,7 @@ void describe_device(struct stage *stage, struct device *dev)
 	for (size_t i = 0; i < dev_type->num_inputs; ++i) {
 		struct device_channel_def *input;
 		channel_id channel_begin;
+		channel_id c_channel;
 
 		input = &dev_type->inputs[i];
 		fprintf(fp, " - %i: %.*s", input->id, ALIT(input->name));
@@ -173,6 +254,15 @@ void describe_device(struct stage *stage, struct device *dev)
 		}
 
 		fprintf(fp, "\n");
+
+		c_channel = channel_begin;
+		while (c_channel < stage->num_channels &&
+			   stage->channels[c_channel].device.id == dev->id &&
+			   stage->channels[c_channel].device.channel_id == i) {
+			fprintf(fp, "  - %i <- ", c_channel);
+			channel_describe_connection(stage, c_channel);
+			c_channel += 1;
+		}
 	}
 
 	fprintf(fp, " output:\n");
@@ -180,6 +270,7 @@ void describe_device(struct stage *stage, struct device *dev)
 	for (size_t i = 0; i < dev_type->num_outputs; ++i) {
 		struct device_channel_def *output;
 		channel_id channel_begin;
+		channel_id c_channel;
 
 		output = &dev_type->outputs[i];
 		fprintf(fp, " - %i: %.*s", output->id, ALIT(output->name));
@@ -198,5 +289,14 @@ void describe_device(struct stage *stage, struct device *dev)
 		}
 
 		fprintf(fp, "\n");
+
+		c_channel = channel_begin;
+		while (c_channel < stage->num_channels &&
+			   stage->channels[c_channel].device.id == dev->id &&
+			   stage->channels[c_channel].device.channel_id == i) {
+			fprintf(fp, "  - %i <- ", c_channel);
+			channel_describe_connection(stage, c_channel);
+			c_channel += 1;
+		}
 	}
 }

@@ -27,20 +27,33 @@ int scoped_hash_insert(struct scoped_hash *scope, struct atom *name, enum scope_
 	return 0;
 }
 
-int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name, struct scope_entry *result)
+int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name, struct scope_entry *result)
 {
 	int err;
 
 	err = id_lookup_table_lookup(&scope->lookup, name->name);
 	if (err < 0) {
-		if (scope->parent) {
-			return scoped_hash_lookup(scope->parent, name, result);
-		} else {
-			return -1;
-		}
+		return -1;
 	}
 
 	*result = scope->entries[err];
+
+	return 0;
+}
+
+int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name, struct scope_entry *result)
+{
+	int err;
+
+	err = scoped_hash_local_lookup(scope, name, result);
+
+	if (err < 0) {
+		if (scope->parent) {
+			return scoped_hash_lookup(scope->parent, name, result);
+		} else {
+			return err;
+		}
+	}
 
 	return 0;
 }
@@ -49,18 +62,25 @@ int instanced_scoped_hash_lookup(struct instanced_scoped_hash scope, struct atom
 {
 	int err;
 
-	err = id_lookup_table_lookup(&scope.self->lookup, name->name);
+	err = scoped_hash_lookup(scope.self, name, result);
 	if (err < 0) {
 		if (scope.parent) {
-			return scoped_hash_lookup(scope.parent, name, result);
+			return scoped_hash_local_lookup(scope.parent, name, result);
 		} else {
-			return -1;
+			return err;
 		}
 	}
 
-	*result = scope.self->entries[err];
-
 	return 0;
+}
+
+int instanced_scoped_hash_local_lookup(struct instanced_scoped_hash scope, struct atom *name, struct scope_entry *result)
+{
+	int err;
+
+	err = scoped_hash_local_lookup(scope.self, name, result);
+
+	return err;
 }
 
 struct scoped_hash *scoped_hash_push(struct scoped_hash *parent)
