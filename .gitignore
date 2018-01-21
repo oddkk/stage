@@ -1,3 +1,4 @@
 /stage
 *~
 *.y.c
+*.y.re2c
