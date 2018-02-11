@@ -17,6 +17,7 @@ struct device {
 	device_type_id type;
 	channel_id input_begin;
 	channel_id output_begin;
+	void *data;
 	struct atom *name;
 	struct attribute_value *attributes;
 	struct instanced_scoped_hash scope;
@@ -39,6 +40,9 @@ struct attribute_value *device_get_attr(struct stage *stage, struct device *devi
 channel_id device_get_channel_by_name(struct stage *stage, struct device *device, struct atom *cnl);
 channel_id device_get_input_channel_id(struct stage *stage, struct device *device, struct atom *name);
 channel_id device_get_output_channel_id(struct stage *stage, struct device *device, struct atom *name);
+
+channel_id device_get_input_channel_id_by_name(struct stage *stage, struct device *device, struct string name);
+channel_id device_get_output_channel_id_by_name(struct stage *stage, struct device *device, struct string name);
 
 void describe_device(struct stage *stage, struct device *dev);
 

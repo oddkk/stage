@@ -4,8 +4,8 @@
 #include <stdlib.h>
 
 struct device *register_device(struct stage *stage, device_type_id type,
-			       struct device_attribute *attributes,
-			       size_t num_attributes)
+							   struct device_attribute *attributes,
+							   size_t num_attributes)
 {
 	struct device *device;
 	struct device_type *device_type;
@@ -13,8 +13,8 @@ struct device *register_device(struct stage *stage, device_type_id type,
 
 	if (type >= stage->num_device_types) {
 		print_error("register device",
-			    "Attempting to register device with non-existent type id %i.",
-			    type);
+					"Attempting to register device with non-existent type id %i.",
+					type);
 		return NULL;
 	}
 
@@ -26,11 +26,11 @@ struct device *register_device(struct stage *stage, device_type_id type,
 
 		// TODO: Use a different allocation schema.
 		new_array = realloc(stage->devices,
-				    stage->cap_devices *
-				    sizeof(struct device *));
+							stage->cap_devices *
+							sizeof(struct device *));
 		if (!new_array) {
 			print_error("register device",
-				    "Failed to allocate memory for device list");
+						"Failed to allocate memory for device list");
 			return NULL;
 		}
 		stage->devices = new_array;
@@ -46,9 +46,9 @@ struct device *register_device(struct stage *stage, device_type_id type,
 
 	if (device_type->num_attributes > 0) {
 		device->attributes =
-		    arena_alloc(&stage->memory,
-				sizeof(struct attribute_value) *
-				device_type->num_attributes);
+			arena_alloc(&stage->memory,
+						sizeof(struct attribute_value) *
+						device_type->num_attributes);
 
 		for (size_t i = 0; i < device_type->num_attributes; i++) {
 			struct device_attribute_def *def;
@@ -165,11 +165,19 @@ channel_id device_get_input_channel_id(struct stage *stage, struct device *devic
 		return result;
 	} else {
 		print_error("device get input", "The device '%.*s' (id %i) of type '%.*s' (id %i) has an attribute "
-			"'%.*s' (id %i), but no such channel is registered!",
-			ALIT(device->name), device->id, ALIT(type->name), type->id,
-			ALIT(entry.name), entry.id);
+					"'%.*s' (id %i), but no such channel is registered!",
+					ALIT(device->name), device->id, ALIT(type->name), type->id,
+					ALIT(entry.name), entry.id);
 		return -1;
 	}
+}
+
+channel_id device_get_input_channel_id_by_name(struct stage *stage, struct device *device, struct string name)
+{
+	struct atom *atom;
+
+	atom = atom_create(&stage->atom_table, name);
+	return device_get_input_channel_id(stage, device, atom);
 }
 
 channel_id device_get_output_channel_id(struct stage *stage, struct device *device, struct atom *name)
@@ -182,6 +190,7 @@ channel_id device_get_output_channel_id(struct stage *stage, struct device *devi
 	type = stage->device_types[device->type];
 
 	err = instanced_scoped_hash_local_lookup(device->scope, name, &entry);
+
 	if (err) {
 		print_error("device get output", "The device of type '%.*s' has no output '%.*s'.",
 					ALIT(type->name), ALIT(name));
@@ -201,11 +210,19 @@ channel_id device_get_output_channel_id(struct stage *stage, struct device *devi
 		return result;
 	} else {
 		print_error("device get output", "The device '%.*s' (id %i) of type '%.*s' (id %i) has an attribute "
-			"'%.*s' (id %i), but no such channel is registered!",
-			ALIT(device->name), device->id, ALIT(type->name), type->id,
-			ALIT(entry.name), entry.id);
+					"'%.*s' (id %i), but no such channel is registered!",
+					ALIT(device->name), device->id, ALIT(type->name), type->id,
+					ALIT(entry.name), entry.id);
 		return -1;
 	}
+}
+
+channel_id device_get_output_channel_id_by_name(struct stage *stage, struct device *device, struct string name)
+{
+	struct atom *atom;
+
+	atom = atom_create(&stage->atom_table, name);
+	return device_get_output_channel_id(stage, device, atom);
 }
 
 void describe_device(struct stage *stage, struct device *dev)
