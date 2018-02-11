@@ -1,5 +1,6 @@
 #include "config.h"
 #include "stage.h"
+#include "device_type.h"
 #include "utils.h"
 #include <stdio.h>
 
@@ -169,202 +170,97 @@ void config_print_tree(struct config_node *node) {
 	_config_print_tree(node, 0);
 }
 
-static int _apply_config_device_type(struct scoped_hash *parent_scope, struct config_node *node)
+void config_apply_device_type(struct stage *stage, struct config_node *node, struct device_type *dev_type)
 {
-	struct scoped_hash *scope;
+	struct string name;
 
-	scope = scoped_hash_push(parent_scope);
-	if (!scope) {
-		return -1;
-	}
+	while (node) {
+		switch (node->type) {
+		case CONFIG_NODE_ATTR:
+			// @TODO: Fix evaluating type and default value.
+			device_type_add_attribute(stage, dev_type, node->attr.name->name,
+									  stage->standard_types.integer, (struct value){.scalar=0});
+			break;
 
-	assert(node->device_type.name);
-	scoped_hash_insert(parent_scope, node->device_type.name, SCOPE_ENTRY_DEVICE_TYPE, -1, node, scope);
-
-	return 0;
-}
-
-static int _apply_config_device(struct scoped_hash *parent_scope, struct config_node *node)
-{
-	struct scoped_hash *scope;
-
-	scope = scoped_hash_push(parent_scope);
-	if (!scope) {
-		return -1;
-	}
-
-	if (node->device.name) {
-		scoped_hash_insert(parent_scope, node->device.name, SCOPE_ENTRY_DEVICE, -1, node, scope);
-	}
-
-	return 0;
-}
-
-static int _apply_config_type_decl(struct scoped_hash *parent_scope, struct config_node *node)
-{
-	if (node->device.name) {
-		scoped_hash_insert(parent_scope, node->type_decl.name, SCOPE_ENTRY_TYPE, -1, node, NULL);
-	}
-
-	return 0;
-}
-
-static int _apply_config_scope(struct scoped_hash *scope, struct config_node *first_child)
-{
-	switch (first_child->type) {
-	case CONFIG_NODE_DEVICE_TYPE:
-		return _apply_config_device_type(scope, first_child);
-
-	case CONFIG_NODE_DEVICE:
-		return _apply_config_device(scope, first_child);
-
-	case CONFIG_NODE_TYPE_DECL:
-		return _apply_config_type_decl(scope, first_child);
-
-	default:
-		print_error("apply config", "Got unexpected node %i", first_child->type);
-		return -1;
-	}
-
-	return 0;
-}
-
-struct resolve_dep_context {
-	int time;
-};
-
-static struct config_node *_resolve_expression_dependency(struct config_node *stmt, struct config_node *node, struct scoped_hash *scope, struct resolve_dep_context *ctx)
-{
-	ctx->time += 1;
-
-	node->dfs.discovered = ctx->time;
-	node->dfs.color = DFS_GRAY;
-
-	switch (node->type) {
-	/* case CONFIG_NODE_MODULE: */
-	/* 	break; */
-			
-	/* case CONFIG_NODE_DEVICE_TYPE: */
-	/* 	break; */
-			
-	/* case CONFIG_NODE_DEVICE: */
-	/* 	break; */
-			
-	/* case CONFIG_NODE_TYPE_DECL: */
-	/* 	break; */
-			
-	/* case CONFIG_NODE_ATTR: */
-	/* 	break; */
-			
-	/* case CONFIG_NODE_INPUT: */
-	/* 	break; */
-			
-	/* case CONFIG_NODE_OUTPUT: */
-	/* 	break; */
-			
-	case CONFIG_NODE_BINARY_OP: {
-		if (node->binary_op.op == CONFIG_OP_ACCESS) {
-			
-		}
-	} break;
-			
-	case CONFIG_NODE_SUBSCRIPT_RANGE:
-		break;
-			
-	case CONFIG_NODE_IDENT: {
-
-	} break;
-			
-	case CONFIG_NODE_NUMLIT:
-		break;
-
-	default:
-		print_error("apply config", "Invalid node in expression, %i.", node->type);
-		break;
-	}
-	
-
-	ctx->time += 1;
-
-	node->dfs.color = DFS_BLACK;
-	node->dfs.finished = ctx->time;
-
-	return 0;
-}
-
-static void _resolve_dependency_order(struct config_node *node, struct resolve_dep_context *ctx)
-{
-	ctx->time += 1;
-	node->dfs.discovered = ctx->time;
-	node->dfs.color = DFS_GRAY;
-
-	switch (node->type) {
-	case CONFIG_NODE_MODULE: {
-		struct config_node *current_child = node->module.first_child;
-
-		while (current_child) {
-			if (current_child->dfs.color == DFS_WHITE) {
-				_resolve_dependency_order(current_child, ctx);
+		case CONFIG_NODE_INPUT:
+			// @TODO: Fix evaluating type.
+			if (node->input.name) {
+				name = node->input.name->name;
+			} else {
+				name.text = 0;
+				name.length = 0;
 			}
+			device_type_add_input(stage, dev_type, name,
+								  stage->standard_types.integer);
+			break;
 
-			current_child = current_child->next_sibling;
+		case CONFIG_NODE_OUTPUT:
+			// @TODO: Fix evaluating type.
+			if (node->output.name) {
+				name = node->output.name->name;
+			} else {
+				name.text = 0;
+				name.length = 0;
+			}
+			device_type_add_output(stage, dev_type, name,
+								  stage->standard_types.integer);
+			break;
+
+		default:
+			break;
+
+		/* case CONFIG_NODE_DEVICE: break; */
+		/* case CONFIG_NODE_TYPE_DECL: break; */
+		/* case CONFIG_NODE_ATTR: break; */
+		/* case CONFIG_NODE_INPUT: break; */
+		/* case CONFIG_NODE_OUTPUT: break; */
+		/* case CONFIG_NODE_BINARY_OP: break; */
+		/* case CONFIG_NODE_SUBSCRIPT_RANGE: break; */
+		/* case CONFIG_NODE_IDENT: break; */
+		/* case CONFIG_NODE_NUMLIT: break; */
 		}
 
-	} break;
-			
-	case CONFIG_NODE_DEVICE_TYPE:
-		break;
-			
-	case CONFIG_NODE_DEVICE:
-		//_resolve_expression_dependency(node, node->device.type);
-		(void)_resolve_expression_dependency;
-		break;
-			
-	case CONFIG_NODE_TYPE_DECL:
-		break;
-			
-	case CONFIG_NODE_ATTR:
-		break;
-			
-	case CONFIG_NODE_INPUT:
-		break;
-			
-	case CONFIG_NODE_OUTPUT:
-		break;
-			
-	case CONFIG_NODE_BINARY_OP:
-		break;
-			
-	case CONFIG_NODE_SUBSCRIPT_RANGE:
-		break;
-			
-	case CONFIG_NODE_IDENT:
-		break;
-			
-	case CONFIG_NODE_NUMLIT:
-		break;
-			
+		node = node->next_sibling;
 	}
-
-	ctx->time += 1;
-
-	node->dfs.color = DFS_BLACK;
-	node->dfs.finished = ctx->time;
 }
 
-int apply_config(struct stage *stage, struct config_node *root)
+void config_apply_device_types(struct stage *stage, struct config_node *node, struct scoped_hash *scope)
 {
-	int err;
-	struct resolve_dep_context dependency_context;
+	while (node) {
+		switch (node->type) {
+		case CONFIG_NODE_MODULE:
+			config_apply_device_types(stage, node->module.first_child, scope);
+			break;
 
-	assert(root->type == CONFIG_NODE_MODULE);
+		case CONFIG_NODE_DEVICE_TYPE: {
+			struct device_type *dev_type;
+			dev_type = register_device_type_scoped(stage, node->device_type.name->name, scope);
+			config_apply_device_type(stage, node->device_type.first_child, dev_type);
 
-	err = _apply_config_scope(&stage->root_scope, root->module.first_child);
-	if (err < 0) {
-		return err;
+			/* describe_device_type(stage, dev_type); */
+			/* printf("\n\n\n\n"); */
+		} break;
+
+		default:
+			break;
+
+		/* case CONFIG_NODE_DEVICE: break; */
+		/* case CONFIG_NODE_TYPE_DECL: break; */
+		/* case CONFIG_NODE_ATTR: break; */
+		/* case CONFIG_NODE_INPUT: break; */
+		/* case CONFIG_NODE_OUTPUT: break; */
+		/* case CONFIG_NODE_BINARY_OP: break; */
+		/* case CONFIG_NODE_SUBSCRIPT_RANGE: break; */
+		/* case CONFIG_NODE_IDENT: break; */
+		/* case CONFIG_NODE_NUMLIT: break; */
+		}
+
+		node = node->next_sibling;
 	}
+}
 
-	_resolve_dependency_order(root, &dependency_context);
-
+int apply_config(struct stage *stage, struct config_node *node)
+{
+	config_apply_device_types(stage, node, &stage->root_scope);
 	return 0;
 }

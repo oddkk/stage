@@ -41,9 +41,17 @@ struct device_channel_def *device_type_add_input(struct stage *stage,
 {
 	int err;
 	struct device_channel_def input;
+	bool self = false;
+
 	input.id = dev_type->num_inputs;
-	input.name = atom_create(&stage->atom_table, name);
 	input.type = type;
+
+	if (!name.text) {
+		name = STR("self_input");
+		self = true;
+	}
+
+	input.name = atom_create(&stage->atom_table, name);
 
 	err = scoped_hash_insert(dev_type->scope, input.name, SCOPE_ENTRY_DEVICE_INPUT, input.id, NULL, NULL);
 
@@ -57,6 +65,10 @@ struct device_channel_def *device_type_add_input(struct stage *stage,
 
 	dlist_append(dev_type->inputs, dev_type->num_inputs, &input);
 
+	if (self) {
+		dev_type->self_input = input.id;
+	}
+
 	return &dev_type->inputs[input.id];
 }
 
@@ -66,9 +78,17 @@ struct device_channel_def *device_type_add_output(struct stage *stage, struct de
 {
 	int err;
 	struct device_channel_def output;
+	bool self = false;
+
 	output.id = dev_type->num_outputs;
-	output.name = atom_create(&stage->atom_table, name);
 	output.type = type;
+
+	if (!name.text) {
+		name = STR("self_output");
+		self = true;
+	}
+
+	output.name = atom_create(&stage->atom_table, name);
 
 	err = scoped_hash_insert(dev_type->scope, output.name, SCOPE_ENTRY_DEVICE_OUTPUT, output.id, NULL, NULL);
 
@@ -81,6 +101,10 @@ struct device_channel_def *device_type_add_output(struct stage *stage, struct de
 	}
 
 	dlist_append(dev_type->outputs, dev_type->num_outputs, &output);
+
+	if (self) {
+		dev_type->self_output = output.id;
+	}
 
 	return &dev_type->outputs[output.id];
 }
@@ -132,6 +156,8 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 	dev_type->id = stage->num_device_types++;
 	dev_type->name = atom_create(&stage->atom_table, name);
 	dev_type->scope = scoped_hash_push(parent_scope);
+	dev_type->self_input = -1;
+	dev_type->self_output = -1;
 
 	stage->device_types[dev_type->id] = dev_type;
 

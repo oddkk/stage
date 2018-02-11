@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
 	struct stage stage;
 	struct timespec tick_begin;
 	struct timespec frame_duration;
-	/* struct config_node *node; */
+	struct config_node *node;
 
 	if (!check_clock_support()) {
 		panic("No alternative clock supported yet.");
@@ -85,11 +85,9 @@ int main(int argc, char *argv[])
 	}
 
 
-	/* parse_config_file(STR("config/main.conf"), &stage.atom_table, &stage.memory, &node); */
-
-	/* apply_config(&stage, node); */
-
+	parse_config_file(STR("config/main.conf"), &stage.atom_table, &stage.memory, &node);
 	/* config_print_tree(node); */
+	apply_config(&stage, node);
 
 	/* printf("config_node: %lu\n", sizeof(struct config_node)); */
 
@@ -103,7 +101,7 @@ int main(int argc, char *argv[])
 	frame_duration.tv_nsec = stage.tick_period % NSEC;
 	tick_begin = read_time();
 
-	while (true) {
+	while (false) {
 		struct timespec tick_end_desired;
 		int clock_err;
 

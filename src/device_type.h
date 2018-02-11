@@ -46,6 +46,9 @@ struct device_type {
 
 	struct scoped_hash *scope;
 
+	int self_input;
+	int self_output;
+
 	device_init_callback device_init;
 	device_output_eval_callback eval;
 
