@@ -51,7 +51,7 @@ struct device *get_device(struct stage *stage, device_id dev_id)
 {
 	struct device *res;
 
-	if (dev_id > stage->num_devices) {
+	if (dev_id >= stage->num_devices) {
 		print_error("get type", "Invalid device id '%i'.", dev_id);
 		return NULL;
 	}
@@ -64,7 +64,7 @@ struct device_type *get_device_type(struct stage *stage, device_id dev_type_id)
 {
 	struct device_type *res;
 
-	if (dev_type_id > stage->num_device_types) {
+	if (dev_type_id >= stage->num_device_types) {
 		print_error("get type", "Invalid device type id '%i'.", dev_type_id);
 		return NULL;
 	}
@@ -77,7 +77,7 @@ struct type *get_type(struct stage *stage, type_id tid)
 {
 	struct type *res;
 
-	if (tid > stage->num_types) {
+	if (tid >= stage->num_types) {
 		print_error("get type", "Invalid type id '%i'.", tid);
 		return NULL;
 	}
