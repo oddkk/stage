@@ -3,9 +3,10 @@
 #include "utils.h"
 #include <stdlib.h>
 
-struct device *register_device(struct stage *stage, device_type_id type, struct atom *name,
-							   struct device_attribute *attributes,
-							   size_t num_attributes, void *data)
+struct device *register_device_scoped(struct stage *stage, device_type_id type, struct atom *name,
+									  struct scoped_hash *parent_scope,
+									  struct device_attribute *attributes,
+									  size_t num_attributes, void *data)
 {
 	struct device *device;
 	struct device_type *device_type;
@@ -44,7 +45,13 @@ struct device *register_device(struct stage *stage, device_type_id type, struct 
 	device->id = stage->num_devices++;
 	stage->devices[device->id] = device;
 
-	device->scope.self = device_type->scope;
+	device->scope = scoped_hash_push(parent_scope, SCOPE_ENTRY_DEVICE, device->id);
+	device->scope->instance = device_type->scope;
+
+	if (device->name) {
+		scoped_hash_insert(parent_scope, device->name, SCOPE_ENTRY_DEVICE,
+						   device->id, NULL, device->scope);
+	}
 
 	if (device_type->num_attributes > 0) {
 		device->attributes =
@@ -68,7 +75,7 @@ struct device *register_device(struct stage *stage, device_type_id type, struct 
 
 			attr = &attributes[i];
 
-			err = scoped_hash_lookup(device_type->scope, attr->name, &attr_entry);
+			err = scoped_hash_local_lookup(device_type->scope, attr->name, &attr_entry);
 			if (err) {
 				print_error("register device", "Device of type '%.*s' does not hav an attribute '%.*s'.\n",
 							ALIT(device_type->name), ALIT(attr->name));
@@ -106,6 +113,16 @@ struct device *register_device(struct stage *stage, device_type_id type, struct 
 	return device;
 }
 
+struct device *register_device(struct stage *stage, device_type_id type, struct atom *name,
+							   struct device_attribute *attributes,
+							   size_t num_attributes, void *data)
+{
+	return register_device_scoped(stage, type, name,
+								  &stage->root_scope,
+								  attributes, num_attributes,
+								  data);
+}
+
 struct attribute_value *device_get_attr(struct stage *stage, struct device *device, struct atom *attr_name)
 {
 	struct device_type *type; // @TODO: Is this necessary?
@@ -114,7 +131,7 @@ struct attribute_value *device_get_attr(struct stage *stage, struct device *devi
 
 	type = stage->device_types[device->type];
 
-	err = instanced_scoped_hash_lookup(device->scope, attr_name, &entry);
+	err = scoped_hash_local_lookup(device->scope, attr_name, &entry);
 	if (err) {
 		print_error("device get attr", "The device of type '%.*s' has no attribute '%.*s'.",
 					ALIT(type->name), ALIT(attr_name));
@@ -139,7 +156,7 @@ channel_id device_get_input_channel_id(struct stage *stage, struct device *devic
 
 	type = stage->device_types[device->type];
 
-	err = instanced_scoped_hash_lookup(device->scope, name, &entry);
+	err = scoped_hash_local_lookup(device->scope, name, &entry);
 	if (err) {
 		print_error("device get input", "The device of type '%.*s' has no input '%.*s'.",
 					ALIT(type->name), ALIT(name));
@@ -183,7 +200,7 @@ channel_id device_get_output_channel_id(struct stage *stage, struct device *devi
 
 	type = stage->device_types[device->type];
 
-	err = instanced_scoped_hash_local_lookup(device->scope, name, &entry);
+	err = scoped_hash_local_lookup(device->scope, name, &entry);
 
 	if (err) {
 		print_error("device get output", "The device of type '%.*s' has no output '%.*s'.",

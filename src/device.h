@@ -19,7 +19,7 @@ struct device {
 	void *data;
 	struct atom *name;
 	struct attribute_value *attributes;
-	struct instanced_scoped_hash scope;
+	struct scoped_hash *scope;
 };
 
 struct stage;
@@ -28,6 +28,11 @@ struct device_attribute {
 	struct atom *name;
 	scalar_value value;
 };
+
+struct device *register_device_scoped(struct stage *stage, device_type_id type, struct atom *name,
+									  struct scoped_hash *parent_scope,
+									  struct device_attribute *attributes,
+									  size_t num_attributes, void *data);
 
 struct device *register_device(struct stage *stage, device_type_id type, struct atom *name,
 							   struct device_attribute *attributes,
