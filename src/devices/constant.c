@@ -22,13 +22,16 @@ int device_constant_init(struct stage *stage, struct device_type *type, struct d
 struct device_type *register_device_type_constant(struct stage *stage)
 {
 	struct device_type *constant;
+	struct device_channel_def *channel_out;
 
 	constant = register_device_type(stage, STR("constant"));
 	constant->device_init = device_constant_init;
 
 	device_type_add_attribute(stage, constant, STR("value"), 0);
-	device_type_add_output(stage, constant, STR("out"),
-						   stage->standard_types.integer);
+	channel_out = device_type_add_output(stage, constant, STR("out"),
+										 stage->standard_types.integer);
+
+	constant->self_output = channel_out->id;
 
 	return constant;
 }

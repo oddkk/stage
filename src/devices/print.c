@@ -41,11 +41,14 @@ static int device_print_init(struct stage *stage, struct device_type *type, stru
 struct device_type *register_device_type_print(struct stage *stage)
 {
 	struct device_type *print;
+	struct device_channel_def *channel_in;
 
 	print = register_device_type(stage, STR("debug_print"));
 	print->device_init = device_print_init;
 
-	device_type_add_input(stage, print, STR("in"), stage->standard_types.integer);
+	channel_in = device_type_add_input(stage, print, STR("in"), stage->standard_types.integer);
+
+	print->self_input = channel_in->id;
 
 	return print;
 }

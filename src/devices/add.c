@@ -46,6 +46,7 @@ int device_add_init(struct stage *stage, struct device_type *type, struct device
 struct device_type *register_device_type_add(struct stage *stage)
 {
 	struct device_type *add;
+	struct device_channel_def *channel_out;
 
 	add = register_device_type(stage, STR("add"));
 	add->device_init = device_add_init;
@@ -55,8 +56,9 @@ struct device_type *register_device_type_add(struct stage *stage)
 	device_type_add_input(stage, add, STR("right"),
 						  stage->standard_types.integer);
 
-	device_type_add_output(stage, add, STR("out"),
-						   stage->standard_types.integer);
+	channel_out = device_type_add_output(stage, add, STR("out"),
+										 stage->standard_types.integer);
 
+	add->self_output = channel_out->id;
 	return add;
 }
