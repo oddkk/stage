@@ -85,3 +85,28 @@ struct type *get_type(struct stage *stage, type_id tid)
 
 	return res;
 }
+
+void register_device_tick_callback(struct stage *stage,
+								   struct device *dev,
+								   uint64_t tick,
+								   tick_callback callback) {
+	struct device_tick_callback *cb;
+
+	cb = arena_alloc(&stage->memory, sizeof(struct device_tick_callback));
+
+	cb->device = dev;
+	cb->callback = callback;
+	cb->next = stage->first_callback;
+	stage->first_callback = cb;
+}
+
+void stage_tick(struct stage *stage) {
+	struct device_tick_callback *cb;
+	stage->tick += 1;
+
+	cb = stage->first_callback;
+	while (cb) {
+		cb->callback(stage, cb->device);
+		cb = cb->next;
+	}
+}

@@ -105,6 +105,8 @@ int main(int argc, char *argv[])
 		struct timespec tick_end_desired;
 		int clock_err;
 
+		stage_tick(&stage);
+
 		tick_end_desired =
 		    timespec_add(tick_begin, frame_duration);
 
@@ -116,7 +118,6 @@ int main(int argc, char *argv[])
 		}
 
 		tick_begin = read_time();
-		stage.tick += 1;
 	}
 
 	return 0;
