@@ -31,9 +31,9 @@ struct device_attribute {
 	struct value value;
 };
 
-struct device *register_device(struct stage *stage, device_type_id type,
-			       struct device_attribute *attributes,
-			       size_t num_attributes);
+struct device *register_device(struct stage *stage, device_type_id type, struct atom *name,
+							   struct device_attribute *attributes,
+							   size_t num_attributes, void *data);
 
 struct attribute_value *device_get_attr(struct stage *stage, struct device *device, struct atom *attr_name);
 

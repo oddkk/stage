@@ -3,9 +3,9 @@
 #include "utils.h"
 #include <stdlib.h>
 
-struct device *register_device(struct stage *stage, device_type_id type,
+struct device *register_device(struct stage *stage, device_type_id type, struct atom *name,
 							   struct device_attribute *attributes,
-							   size_t num_attributes)
+							   size_t num_attributes, void *data)
 {
 	struct device *device;
 	struct device_type *device_type;
@@ -38,6 +38,8 @@ struct device *register_device(struct stage *stage, device_type_id type,
 
 	device = arena_alloc(&stage->memory, sizeof(struct device));
 	device->type = type;
+	device->name = name;
+	device->data = data;
 
 	device->id = stage->num_devices++;
 	stage->devices[device->id] = device;
