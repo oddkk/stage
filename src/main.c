@@ -82,13 +82,9 @@ int main(int argc, char *argv[])
 		return err;
 	}
 
+	parse_config_file(STR("config/simple.conf"), &stage.atom_table, &stage.memory, &node);
 
-	parse_config_file(STR("config/main.conf"), &stage.atom_table, &stage.memory, &node);
-	/* config_print_tree(node); */
 	apply_config(&stage, node);
-
-	/* printf("config_node: %lu\n", sizeof(struct config_node)); */
-
 
 	stage.tick_period = NSEC / 1000;
 
@@ -96,7 +92,7 @@ int main(int argc, char *argv[])
 	frame_duration.tv_nsec = stage.tick_period % NSEC;
 	tick_begin = read_time();
 
-	while (false) {
+	while (true) {
 		struct timespec tick_end_desired;
 		int clock_err;
 

@@ -87,8 +87,6 @@ struct device *register_device_scoped(struct stage *stage, device_type_id type, 
 				continue;
 			}
 
-			printf("Adding attribute %.*s\n", ALIT(attr->name));
-
 			struct attribute_value *attr_val;
 			attr_val = &device->attributes[attr_entry.id];
 

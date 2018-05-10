@@ -289,16 +289,12 @@ void device_apply_config_node(struct stage *stage, struct device_type *dev_type,
 			break;
 
 		case CONFIG_NODE_BINARY_OP:
-			printf("binop\n");
-
 			switch (node->binary_op.op) {
 			case CONFIG_OP_BIND: {
 				struct scoped_hash *owner;
 				struct scope_entry lhs_entry, rhs_entry;
 				channel_id input, output;
 				int err;
-
-				printf("bind\n");
 
 				if (node->binary_op.lhs->type != CONFIG_NODE_IDENT || node->binary_op.lhs->ident) {
 					err = config_eval_l_expr_owner(dev->scope, node->binary_op.lhs, &lhs_entry, &owner);
@@ -309,14 +305,12 @@ void device_apply_config_node(struct stage *stage, struct device_type *dev_type,
 						break;
 					}
 
-					print_l_expr(node->binary_op.lhs);
 					if (lhs_entry.kind == SCOPE_ENTRY_DEVICE_INPUT) {
 						struct device *lhs_dev;
 						assert(owner->kind == SCOPE_ENTRY_DEVICE);
 						lhs_dev = get_device(stage, owner->id);
 
 						input = lhs_dev->input_begin + lhs_entry.id;
-						printf(" dev input %i\n", input);
 					} else if (lhs_entry.kind == SCOPE_ENTRY_DEVICE) {
 						struct device *lhs_dev;
 						struct device_type *lhs_dev_type;
@@ -326,8 +320,6 @@ void device_apply_config_node(struct stage *stage, struct device_type *dev_type,
 
 						input = lhs_dev->input_begin + lhs_dev_type->self_input;
 
-						printf(" dev %i input %i\n", lhs_entry.id, input);
-
 						if (input < 0) {
 							printf("'");
 							print_l_expr(node->binary_op.lhs);
@@ -335,8 +327,6 @@ void device_apply_config_node(struct stage *stage, struct device_type *dev_type,
 							break;
 						}
 					} else {
-						printf(" not found\n");
-
 						printf("'");
 						print_l_expr(node->binary_op.lhs);
 						printf("' is not an input for %.*s.\n", ALIT(dev_type->name));
@@ -360,14 +350,12 @@ void device_apply_config_node(struct stage *stage, struct device_type *dev_type,
 						break;
 					}
 
-					print_l_expr(node->binary_op.rhs);
 					if (rhs_entry.kind == SCOPE_ENTRY_DEVICE_OUTPUT) {
 						struct device *rhs_dev;
 						assert(owner->kind == SCOPE_ENTRY_DEVICE);
 						rhs_dev = get_device(stage, owner->id);
 
 						output = rhs_dev->output_begin + rhs_entry.id;
-						printf(" dev output %i\n", output);
 					} else if (rhs_entry.kind == SCOPE_ENTRY_DEVICE) {
 						struct device *rhs_dev;
 						struct device_type *rhs_dev_type;
@@ -376,7 +364,6 @@ void device_apply_config_node(struct stage *stage, struct device_type *dev_type,
 						rhs_dev_type = get_device_type(stage, rhs_dev->type);
 
 						output = rhs_dev->output_begin + rhs_dev_type->self_output;
-						printf(" dev %i output %i\n", rhs_entry.id, output);
 
 						if (output < 0) {
 							printf("'");
@@ -400,8 +387,6 @@ void device_apply_config_node(struct stage *stage, struct device_type *dev_type,
 					}
 					output = dev->output_begin + dev_type->self_output;
 				}
-
-				printf("binding %i <- %i.\n", input, output);
 
 				channel_bind(stage, output, input);
 
@@ -432,13 +417,6 @@ int device_type_config_init(struct stage *stage, struct device_type *type, struc
 
 	assert(dev_node && dev_node->type == CONFIG_NODE_DEVICE);
 	assert(dev_type_node && dev_type_node->type == CONFIG_NODE_DEVICE_TYPE);
-
-	/* printf("Device of type %.*s initializing\n", ALIT(type->name)); */
-	/* printf("Device tree:\n"); */
-	/* config_print_tree(dev_node->device.first_child); */
-
-	/* printf("\nDevice type tree:\n"); */
-	/* config_print_tree(dev_type_node->device_type.first_child); */
 
 	device_apply_config_node(stage, type, dev, dev_type_node->device_type.first_child);
 	device_apply_config_node(stage, type, dev, dev_node->device.first_child);
@@ -589,8 +567,6 @@ static void eval_device_attributes(struct stage *stage, struct config_node *node
 
 				attr->name = node->binary_op.lhs->ident;
 				config_eval_scalar_expr(scope, node->binary_op.rhs, &attr->value);
-
-				printf("Dev attr: %.*s: %i\n", ALIT(attr->name), attr->value);
 			}
 			break;
 
@@ -652,8 +628,6 @@ void config_apply_devices(struct stage *stage, struct config_node *node, struct 
 			dev = register_device_scoped(stage, dev_type->id, node->device.name, scope, attributes, num_attributes, node);
 
 			free(attributes);
-
-			printf("Initing device '%.*s'.\n", ALIT(dev->name));
 
 			node->device.id = dev->id;
 		} break;
