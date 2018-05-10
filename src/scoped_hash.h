@@ -27,6 +27,8 @@ struct scope_entry {
 
 struct scoped_hash {
 	struct scoped_hash *parent;
+	struct scoped_hash *instance;
+
 	struct id_lookup_table lookup;
 
 	struct scope_entry *entries;
@@ -34,19 +36,15 @@ struct scoped_hash {
 
 	struct scoped_hash *children;
 	size_t num_children;
-};
 
-struct instanced_scoped_hash {
-	struct scoped_hash *parent;
-	struct scoped_hash *self;
+	enum scope_entry_kind kind;
+	int id;
 };
 
 int scoped_hash_insert(struct scoped_hash *scope, struct atom *name, enum scope_entry_kind kind, int id, struct config_node *node, struct scoped_hash *child_scope);
 int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name, struct scope_entry *result);
+int scoped_hash_lookup_owner(struct scoped_hash *scope, struct atom *name, struct scope_entry *result, struct scoped_hash **owner);
 int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name, struct scope_entry *result);
-struct scoped_hash *scoped_hash_push(struct scoped_hash *parent);
-
-int instanced_scoped_hash_lookup(struct instanced_scoped_hash scope, struct atom *name, struct scope_entry *result);
-int instanced_scoped_hash_local_lookup(struct instanced_scoped_hash scope, struct atom *name, struct scope_entry *result);
+struct scoped_hash *scoped_hash_push(struct scoped_hash *parent, enum scope_entry_kind kind, int id);
 
 #endif
