@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "type.h"
 #include "channel.h"
+#include "devices/devices.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -42,7 +43,8 @@ int stage_init(struct stage *stage)
 	stage->root_scope.lookup.page_arena = &stage->memory;
 	stage->root_scope.lookup.string_arena = &stage->memory;
 
-
+	register_default_types(stage);
+	register_device_types(stage);
 
 	return 0;
 }

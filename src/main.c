@@ -5,8 +5,6 @@
 #include "utils.h"
 #include "config.h"
 
-#include "devices/devices.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -93,9 +91,6 @@ int main(int argc, char *argv[])
 
 
 	stage.tick_period = NSEC / 1000;
-
-	register_default_types(&stage);
-	register_device_types(&stage);
 
 	frame_duration.tv_sec = stage.tick_period / NSEC;
 	frame_duration.tv_nsec = stage.tick_period % NSEC;
