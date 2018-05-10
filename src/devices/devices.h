@@ -9,5 +9,6 @@ void register_device_types(struct stage *);
 struct device_type *register_device_type_constant(struct stage *);
 struct device_type *register_device_type_ease(struct stage *);
 struct device_type *register_device_type_add(struct stage *);
+struct device_type *register_device_type_print(struct stage *);
 
 #endif
