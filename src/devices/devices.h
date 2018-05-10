@@ -10,5 +10,6 @@ struct device_type *register_device_type_constant(struct stage *);
 struct device_type *register_device_type_ease(struct stage *);
 struct device_type *register_device_type_add(struct stage *);
 struct device_type *register_device_type_print(struct stage *);
+struct device_type *register_device_type_tick(struct stage *);
 
 #endif
