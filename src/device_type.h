@@ -27,8 +27,7 @@ struct device_channel_def {
 struct device_attribute_def {
 	int id;
 	struct atom *name;
-	type_id type;
-	struct value def;
+	scalar_value def;
 };
 
 struct device_type {
@@ -57,9 +56,7 @@ struct device_type {
 
 struct device_attribute_def *device_type_add_attribute(struct stage *, struct device_type
 						       *dev_type,
-						       struct string name,
-						       type_id type,
-						       struct value def);
+						       struct string name, scalar_value def);
 struct device_channel_def *device_type_add_input(struct stage *, struct device_type *dev_type,
 					       struct string name,
 					       type_id type);

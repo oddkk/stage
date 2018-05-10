@@ -8,8 +8,7 @@
 typedef unsigned int device_id;
 
 struct attribute_value {
-	type_id type;
-	struct value value;
+	scalar_value value;
 };
 
 struct device {
@@ -27,8 +26,7 @@ struct stage;
 
 struct device_attribute {
 	struct atom *name;
-	struct type type;
-	struct value value;
+	scalar_value value;
 };
 
 struct device *register_device(struct stage *stage, device_type_id type, struct atom *name,

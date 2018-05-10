@@ -76,6 +76,8 @@ struct device *get_device(struct stage *stage, device_id);
 struct device_type *get_device_type(struct stage *stage, device_type_id);
 struct type *get_type(struct stage *stage, type_id);
 
+struct atom *stage_atom(struct stage *stage, struct string str);
+
 void register_device_tick_callback(struct stage *stage,
 								   struct device *dev,
 								   uint64_t tick,

@@ -7,18 +7,15 @@
 #include <stdlib.h>
 
 struct device_attribute_def *device_type_add_attribute(struct stage *stage,
-													   struct device_type
-													   *dev_type,
+													   struct device_type *dev_type,
 													   struct string name,
-													   type_id type,
-													   struct value def)
+													   scalar_value def)
 {
 	int err;
 	struct device_attribute_def attr;
 
 	attr.id = dev_type->num_attributes;
 	attr.name = atom_create(&stage->atom_table, name);;
-	attr.type = type;
 	attr.def = def;
 
 	err = scoped_hash_insert(dev_type->scope, attr.name, SCOPE_ENTRY_DEVICE_ATTRIBUTE, attr.id, NULL, NULL);

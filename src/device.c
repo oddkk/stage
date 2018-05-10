@@ -59,7 +59,6 @@ struct device *register_device(struct stage *stage, device_type_id type, struct 
 			def = &device_type->attributes[i];
 			attr = &device->attributes[i];
 
-			attr->type = def->type;
 			attr->value = def->def;
 		}
 
@@ -83,17 +82,10 @@ struct device *register_device(struct stage *stage, device_type_id type, struct 
 
 			printf("Adding attribute %.*s\n", ALIT(attr->name));
 
-			/* pos = */
-			/*     id_lookup_table_lookup(&device_type->attribute_ids, */
-			/* 			   attr->name); */
+			struct attribute_value *attr_val;
+			attr_val = &device->attributes[attr_entry.id];
 
-			/* if (pos >= 0) { */
-			/* 	/\* struct attribute_value *attr_val = &device->attributes[pos]; *\/ */
-			/* 	/\* assign_value(&attr_val->value, &attr_val->type, *\/ */
-			/* 	/\*                       &attr->value, &attr->type); *\/ */
-			/* 	/\* device->attributes[pos].type = attr->type; *\/ */
-			/* 	/\* device->attributes[pos].value = attr->value; *\/ */
-			/* } */
+			attr_val->value = attr->value;
 		}
 	}
 
@@ -245,7 +237,7 @@ void describe_device(struct stage *stage, struct device *dev)
 		struct attribute_value *value;
 		attr = &dev_type->attributes[i];
 		value = &dev->attributes[i];
-		fprintf(fp, " - %i: %.*s\n", attr->id, ALIT(attr->name));
+		fprintf(fp, " - %i: %.*s = %i\n", attr->id, ALIT(attr->name), value->value);
 	}
 
 	fprintf(fp, " inputs:\n");

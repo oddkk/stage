@@ -88,6 +88,11 @@ struct type *get_type(struct stage *stage, type_id tid)
 	return res;
 }
 
+struct atom *stage_atom(struct stage *stage, struct string str)
+{
+	return atom_create(&stage->atom_table, str);
+}
+
 void register_device_tick_callback(struct stage *stage,
 								   struct device *dev,
 								   uint64_t tick,
