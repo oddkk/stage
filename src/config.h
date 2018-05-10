@@ -66,11 +66,13 @@ struct config_node {
 		struct {
 			struct atom *name;
 			struct config_node *first_child;
+			int id;
 		} device_type;
 		struct {
 			struct config_node *type;
 			struct atom *name;
 			struct config_node *first_child;
+			int id;
 		} device;
 		struct {
 			struct atom *name;
