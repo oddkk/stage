@@ -169,10 +169,10 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 		return 0;
 	}
 
-	err = scoped_hash_insert(&stage->root_scope,
-							   atom_create(&stage->atom_table, name),
-							   SCOPE_ENTRY_DEVICE_TYPE, dev_type->id,
-							   NULL, NULL);
+	err = scoped_hash_insert(parent_scope,
+							 atom_create(&stage->atom_table, name),
+							 SCOPE_ENTRY_DEVICE_TYPE, dev_type->id,
+							 NULL, dev_type->scope);
 
 	if (err) {
 		return 0;
