@@ -152,7 +152,7 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 
 	dev_type->id = stage->num_device_types++;
 	dev_type->name = atom_create(&stage->atom_table, name);
-	dev_type->scope = scoped_hash_push(parent_scope);
+	dev_type->scope = scoped_hash_push(parent_scope, SCOPE_ENTRY_DEVICE_TYPE, dev_type->id);
 	dev_type->self_input = -1;
 	dev_type->self_output = -1;
 
