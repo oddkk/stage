@@ -6,6 +6,8 @@
 #include "type.h"
 #include "channel.h"
 #include "devices/devices.h"
+#include "device.h"
+#include "device_type.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -96,7 +98,8 @@ struct atom *stage_atom(struct stage *stage, struct string str)
 void register_device_tick_callback(struct stage *stage,
 								   struct device *dev,
 								   uint64_t tick,
-								   tick_callback callback) {
+								   tick_callback callback)
+{
 	struct device_tick_callback *cb;
 
 	cb = arena_alloc(&stage->memory, sizeof(struct device_tick_callback));
@@ -107,7 +110,8 @@ void register_device_tick_callback(struct stage *stage,
 	stage->first_callback = cb;
 }
 
-void stage_tick(struct stage *stage) {
+void stage_tick(struct stage *stage)
+{
 	struct device_tick_callback *cb;
 	stage->tick += 1;
 
@@ -116,4 +120,58 @@ void stage_tick(struct stage *stage) {
 		cb->callback(stage, cb->device);
 		cb = cb->next;
 	}
+}
+
+static bool print_full_entry_name_internal(struct stage *stage, struct scoped_hash *entry)
+{
+	if (entry->parent) {
+		if (print_full_entry_name_internal(stage, entry->parent)) {
+			printf(".");
+		}
+	}
+
+	switch (entry->kind) {
+	case SCOPE_ENTRY_NONE:
+		return false;
+
+	case SCOPE_ENTRY_DEVICE: {
+		struct device *dev;
+		dev = get_device(stage, entry->id);
+		printf("%.*s", ALIT(dev->name));
+	} break;
+
+	case SCOPE_ENTRY_DEVICE_TYPE: {
+		struct device_type *dev_type;
+		dev_type = get_device_type(stage, entry->id);
+		printf("%.*s", ALIT(dev_type->name));
+	} break;
+
+	case SCOPE_ENTRY_DEVICE_INPUT: {
+		struct device_type *dev_type;
+		assert(entry->parent);
+		dev_type = get_device_type(stage, entry->parent->id);
+		assert(entry->id < dev_type->num_inputs);
+		printf("%.*s", ALIT(dev_type->inputs[entry->id].name));
+	} break;
+
+	case SCOPE_ENTRY_DEVICE_OUTPUT: {
+		struct device_type *dev_type;
+		assert(entry->parent);
+		dev_type = get_device_type(stage, entry->parent->id);
+		assert(entry->id < dev_type->num_outputs);
+		printf("%.*s", ALIT(dev_type->outputs[entry->id].name));
+	} break;
+
+	default:
+		printf("(@TODO complete print_full_entry_name)");
+		break;
+
+	}
+
+	return true;
+}
+
+void print_full_entry_name(struct stage *stage, struct scoped_hash *entry)
+{
+	print_full_entry_name_internal(stage, entry);
 }

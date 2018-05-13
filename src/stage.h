@@ -83,4 +83,6 @@ void register_device_tick_callback(struct stage *stage,
 								   uint64_t tick,
 								   tick_callback callback);
 
+void print_full_entry_name(struct stage *stage, struct scoped_hash *entry);
+
 #endif
