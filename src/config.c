@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+void config_apply_devices(struct stage *stage, struct config_node *node, struct scoped_hash *scope);
+
 static void _print_indent(int depth) {
 	for (int i = 0; i < depth; ++i) {
 		printf("  ");
@@ -422,6 +424,9 @@ int device_type_config_init(struct stage *stage, struct device_type *type, struc
 	assert(dev_node && dev_node->type == CONFIG_NODE_DEVICE);
 	assert(dev_type_node && dev_type_node->type == CONFIG_NODE_DEVICE_TYPE);
 
+	config_apply_devices(stage, dev_type_node->device_type.first_child, type->scope);
+	config_apply_devices(stage, dev_node->device.first_child, dev->scope);
+
 	device_apply_config_node(stage, type, dev, dev_type_node->device_type.first_child);
 	device_apply_config_node(stage, type, dev, dev_node->device.first_child);
 
@@ -634,6 +639,8 @@ void config_apply_devices(struct stage *stage, struct config_node *node, struct 
 			free(attributes);
 
 			node->device.id = dev->id;
+
+			config_apply_devices(stage, node->module.first_child, dev->scope);
 		} break;
 
 		default:
@@ -670,9 +677,9 @@ void config_apply_device_configs(struct stage *stage, struct config_node *node, 
 			dev_type = get_device_type(stage, dev->type);
 
 			device_apply_config_node(stage, dev_type, dev, node->device.first_child);
-
-			// @TODO: device_apply_config_node(stage, node->device.first_child, dev->scope);
-		}
+			//device_apply_config_node(stage, node->device.first_child, dev->scope);
+			config_apply_device_configs(stage, node->device.first_child, dev->scope);
+		} break;
 
 		default:
 			break;
