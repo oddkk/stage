@@ -305,7 +305,9 @@ void device_apply_config_node(struct stage *stage, struct device_type *dev_type,
 						break;
 					}
 
-					if (lhs_entry.kind == SCOPE_ENTRY_DEVICE_INPUT) {
+					if (lhs_entry.kind == SCOPE_ENTRY_DEVICE_INPUT ||
+						(lhs_entry.kind == SCOPE_ENTRY_DEVICE_OUTPUT &&
+						 owner->id == dev->id)) {
 						struct device *lhs_dev;
 						assert(owner->kind == SCOPE_ENTRY_DEVICE);
 						lhs_dev = get_device(stage, owner->id);
@@ -350,7 +352,9 @@ void device_apply_config_node(struct stage *stage, struct device_type *dev_type,
 						break;
 					}
 
-					if (rhs_entry.kind == SCOPE_ENTRY_DEVICE_OUTPUT) {
+					if (rhs_entry.kind == SCOPE_ENTRY_DEVICE_OUTPUT ||
+						(rhs_entry.kind == SCOPE_ENTRY_DEVICE_INPUT &&
+						 owner->id == dev->id)) {
 						struct device *rhs_dev;
 						assert(owner->kind == SCOPE_ENTRY_DEVICE);
 						rhs_dev = get_device(stage, owner->id);
