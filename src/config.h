@@ -86,10 +86,12 @@ struct config_node {
 		struct {
 			struct atom *name;
 			struct config_node *type;
+			bool def;
 		} input;
 		struct {
 			struct atom *name;
 			struct config_node *type;
+			bool def;
 		} output;
 		struct {
 			enum config_binary_op op;

@@ -86,10 +86,10 @@
 
 %token END 0
 %token DEVICETYPE "device_type" DEVICE "device" TYPE "type" INPUT "input"
-%token OUTPUT "output" ATTR "attr" IDENTIFIER NUMLIT
+%token OUTPUT "output" DEFAULT "default" ATTR "attr" IDENTIFIER NUMLIT
 %token BIND "<-" RANGE ".." VERSION "version"
 
-%type	<struct atom*> IDENTIFIER channel_name
+%type	<struct atom*> IDENTIFIER
 %type	<scalar_value> NUMLIT
 %type	<struct config_node*> module module_stmt_list module_stmt device_type device_type_body
 %type	<struct config_node*> device_type_body_stmt device device_body device_body_stmt
@@ -132,13 +132,15 @@ device_type_body:
 		|		%empty                                 { $$ = NULL; }
 		;
 device_type_body_stmt:
-				"input"  channel_name ':' type ';'        { $$ = alloc_node(ctx, CONFIG_NODE_INPUT);     $$->input.name = $2;  $$->input.type = $4; }
-		|		"output" channel_name ':' type ';'        { $$ = alloc_node(ctx, CONFIG_NODE_OUTPUT);    $$->output.name = $2; $$->output.type = $4; }
-		|		"attr" IDENTIFIER ':' type   ';'          { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; }
-		|		"attr" IDENTIFIER ':' type   '=' expr ';' { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; $$->attr.def_value = $6; }
-		|		l_expr "<-" l_expr ';'                    { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
-		|		device                                    { $$ = $1; }
-		|		type_decl                                 { $$ = $1; }
+				"input"  IDENTIFIER ':' type ';'           { $$ = alloc_node(ctx, CONFIG_NODE_INPUT);     $$->input.name = $2;  $$->input.type = $4; $$->input.def = false; }
+		|		"input" "default" IDENTIFIER ':' type ';'  { $$ = alloc_node(ctx, CONFIG_NODE_INPUT);     $$->input.name = $3;  $$->input.type = $5; $$->input.def = true; }
+		|		"output" IDENTIFIER ':' type ';'           { $$ = alloc_node(ctx, CONFIG_NODE_OUTPUT);    $$->output.name = $2; $$->output.type = $4; $$->output.def = false; }
+		|		"output" "default" IDENTIFIER ':' type ';' { $$ = alloc_node(ctx, CONFIG_NODE_OUTPUT);    $$->output.name = $3; $$->output.type = $5; $$->output.def = true; }
+		|		"attr" IDENTIFIER ':' type   ';'           { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; }
+		|		"attr" IDENTIFIER ':' type   '=' expr ';'  { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; $$->attr.def_value = $6; }
+		|		l_expr "<-" l_expr ';'                     { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		device                                     { $$ = $1; }
+		|		type_decl                                  { $$ = $1; }
 		;
 device:			"device" l_expr '{' device_body '}'            { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE); $$->device.type = $2;                       $$->device.first_child = $4; }
 		|		"device" l_expr IDENTIFIER '{' device_body '}' { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE); $$->device.type = $2; $$->device.name = $3; $$->device.first_child = $5; }
@@ -149,9 +151,6 @@ device_body:	device_body device_body_stmt { $$ = $1; append_child(&$$, $2); }
 device_body_stmt:
 				l_expr '=' expr ';'          { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ASSIGN; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		|		l_expr "<-" l_expr ';'       { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND;   $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
-		;
-channel_name:	IDENTIFIER                   { $$ = $1; }
-		|		'_'                          { $$ = NULL; }
 		;
 l_expr:			IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = $1; }
 		|		'_'                          { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); }
@@ -221,13 +220,14 @@ re2c:define:YYLIMIT = "ctx->lim";
 re2c:define:YYFILL = "if (!config_parse_fill(ctx, @@)) return END;";
 re2c:define:YYFILL:naked = 1;
 
-"version"    { lloc_col(lloc, CURRENT_LEN); return VERSION; }
+"version"     { lloc_col(lloc, CURRENT_LEN); return VERSION; }
 "device_type" { lloc_col(lloc, CURRENT_LEN); return DEVICETYPE; }
 "device"      { lloc_col(lloc, CURRENT_LEN); return DEVICE; }
 "type"        { lloc_col(lloc, CURRENT_LEN); return TYPE; }
 "input"       { lloc_col(lloc, CURRENT_LEN); return INPUT; }
 "output"      { lloc_col(lloc, CURRENT_LEN); return OUTPUT; }
 "attr"        { lloc_col(lloc, CURRENT_LEN); return ATTR; }
+"default"     { lloc_col(lloc, CURRENT_LEN); return DEFAULT; }
 ".."          { lloc_col(lloc, CURRENT_LEN); return RANGE; }
 "<-"          { lloc_col(lloc, CURRENT_LEN); return BIND; }
 

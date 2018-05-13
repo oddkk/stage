@@ -435,8 +435,7 @@ int device_type_config_init(struct stage *stage, struct device_type *type, struc
 
 void config_apply_device_type(struct stage *stage, struct config_node *node, struct device_type *dev_type)
 {
-	struct string name;
-
+	struct device_channel_def *channel;
 	while (node) {
 		switch (node->type) {
 		case CONFIG_NODE_ATTR: {
@@ -452,26 +451,36 @@ void config_apply_device_type(struct stage *stage, struct config_node *node, str
 
 		case CONFIG_NODE_INPUT:
 			// @TODO: Fix evaluating type.
-			if (node->input.name) {
-				name = node->input.name->name;
-			} else {
-				name.text = 0;
-				name.length = 0;
+			channel = device_type_add_input(stage, dev_type, node->input.name->name,
+											stage->standard_types.integer);
+
+			if (node->input.def) {
+				if (dev_type->self_input >= 0) {
+					// @TODO: Improve this error message with the name
+					// of the current default channel.
+					printf("The device type '%.*s' already has a default input channel.",
+						   ALIT(dev_type->name));
+					break;
+				}
+				dev_type->self_input = channel->id;
 			}
-			device_type_add_input(stage, dev_type, name,
-								  stage->standard_types.integer);
 			break;
 
 		case CONFIG_NODE_OUTPUT:
 			// @TODO: Fix evaluating type.
-			if (node->output.name) {
-				name = node->output.name->name;
-			} else {
-				name.text = 0;
-				name.length = 0;
+			channel = device_type_add_output(stage, dev_type, node->output.name->name,
+											 stage->standard_types.integer);
+
+			if (node->output.def) {
+				if (dev_type->self_output >= 0) {
+					// @TODO: Improve this error message with the name
+					// of the current default channel.
+					printf("The device type '%.*s' already has a default output channel.",
+						   ALIT(dev_type->name));
+					break;
+				}
+				dev_type->self_output = channel->id;
 			}
-			device_type_add_output(stage, dev_type, name,
-								  stage->standard_types.integer);
 			break;
 
 		default:

@@ -2,3 +2,4 @@
 *~
 *.y.c
 *.y.re2c
+*.y.output
