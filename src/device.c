@@ -243,8 +243,9 @@ void describe_device(struct stage *stage, struct device *dev)
 	assert(dev->type < stage->num_device_types);
 	dev_type = stage->device_types[dev->type];
 
-	fprintf(fp, "device %.*s\n", ALIT(dev->name));
-	fprintf(fp, " type: %.*s\n", ALIT(dev_type->name));
+	fprintf(fp, "device ");
+	print_full_entry_name(stage, dev->scope);
+	fprintf(fp, "\n type: %.*s\n", ALIT(dev_type->name));
 
 	fprintf(fp, " attributes:\n");
 	for (size_t i = 0; i < dev_type->num_attributes; ++i) {
