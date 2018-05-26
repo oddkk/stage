@@ -1553,13 +1553,12 @@ static struct scoped_hash *get_equivalent_scope(struct apply_context *ctx,
 	struct apply_node *node;
 	int err;
 
-	if (target->parent != NULL) {
-		eq_parent = get_equivalent_scope(ctx, target->parent, root);
-	} else {
-		eq_parent = root;
+	if (target->parent == NULL) {
+		return root;
 	}
 
-	//node = ctx->nodes[eq_parent->id];
+	eq_parent = get_equivalent_scope(ctx, target->parent, root);
+
 	node = ctx->nodes[target->id];
 
 	printf("Looking for %.*s\n", ALIT(node->name));
