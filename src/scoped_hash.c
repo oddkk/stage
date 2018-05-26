@@ -100,3 +100,15 @@ struct scoped_hash *scoped_hash_push(struct scoped_hash *parent, enum scope_entr
 	return new_child;
 }
 
+void scoped_hash_print(struct scoped_hash *hash, int indent)
+{
+	for (size_t i = 0; i < hash->num_entries; i++) {
+		for (int pad = 0; pad < indent; pad++) {
+			printf("  ");
+		}
+		printf("%.*s\n", ALIT(hash->entries[i].name));
+		if (hash->entries[i].scope) {
+			scoped_hash_print(hash->entries[i].scope, indent + 1);
+		}
+	}
+}

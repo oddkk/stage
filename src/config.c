@@ -751,11 +751,11 @@ struct apply_node {
 	struct apply_edge *outgoing_edges;
 	size_t num_outgoing_edges;
 
-	int final_id;
+	/* int final_id; */
 
 	union {
 		struct device_type *dev_type;
-		struct device_type *dev;
+		struct device *dev;
 		int channel;
 		int attribute;
 	} final;
@@ -860,7 +860,6 @@ static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx
 	new_node->name  = name;
 	new_node->cnode = cnode;
 	new_node->owner = owner;
-	new_node->final_id = -1;
 
 	new_node->next = ctx->terminal_nodes;
 	ctx->terminal_nodes = new_node;
@@ -1068,6 +1067,7 @@ static void discover_device_types(struct apply_context *ctx,
 }
 
 static void discover_devices(struct apply_context *ctx,
+							 struct scoped_hash *owner_scope,
 							 struct scoped_hash *scope,
 							 struct config_node *node)
 {
@@ -1076,7 +1076,7 @@ static void discover_devices(struct apply_context *ctx,
 	while (current) {
 		switch (current->type) {
 		case CONFIG_NODE_MODULE:
-			discover_devices(ctx, scope, current->module.first_child);
+			discover_devices(ctx, owner_scope, scope, current->module.first_child);
 			break;
 
 		case CONFIG_NODE_DEVICE_TYPE:
@@ -1110,22 +1110,22 @@ static void discover_devices(struct apply_context *ctx,
 				break;
 			}
 
-			dev = create_apply_node_with_owner(ctx, scope,
+			dev = create_apply_node_with_owner(ctx, owner_scope,
 											   APPLY_NODE_DEVICE,
 											   current->device.name,
 											   current, dev_type);
 
 			apply_node_depends(ctx, dev_type, dev);
 
-			struct scoped_hash *scope;
+			struct scoped_hash *dev_type_scope;
 
-			scope = dev_type->scope;
-			for (size_t i = 0; i < scope->num_entries; i++) {
+			dev_type_scope = dev_type->scope;
+			for (size_t i = 0; i < dev_type_scope->num_entries; i++) {
 				struct scope_entry *entry;
 				struct apply_node *cnl_node;
 				struct apply_node *new_node;
 
-				entry = &scope->entries[i];
+				entry = &dev_type_scope->entries[i];
 				cnl_node = ctx->nodes[entry->id];
 
 				switch (entry->kind) {
@@ -1179,6 +1179,7 @@ static void discover_devices(struct apply_context *ctx,
 			if (dev_type->cnode) {
 				discover_devices(ctx,
 								 dev->scope,
+								 dev_type->scope,
 								 dev_type->cnode->device_type.first_child);
 			}
 		} break;
@@ -1554,7 +1555,10 @@ static struct scoped_hash *get_equivalent_scope(struct apply_context *ctx,
 		eq_parent = root;
 	}
 
-	node = ctx->nodes[eq_parent->id];
+	//node = ctx->nodes[eq_parent->id];
+	node = ctx->nodes[target->id];
+
+	printf("Looking for %.*s\n", ALIT(node->name));
 
 	assert(node->name);
 
@@ -1590,7 +1594,10 @@ static bool do_apply_config(struct apply_context *ctx,
 			struct device_type *dev_type;
 			struct scoped_hash *scope;
 
-			scope = get_equivalent_scope(ctx, node->owner->scope->parent, &stage->root_scope);
+			printf("Create device type %.*s\n", ALIT(node->name));
+
+			scope = get_equivalent_scope(ctx, node->owner->scope->parent,
+										 &stage->root_scope);
 			dev_type = register_device_type_scoped(stage, node->owner->name->name, scope);
 
 			node->owner->final.dev_type = dev_type;
@@ -1644,6 +1651,26 @@ static bool do_apply_config(struct apply_context *ctx,
 			node->final.attribute = attr->id;
 		} break;
 
+		case APPLY_NODE_DEVICE: {
+			struct device *dev;
+			struct device_type *dev_type;
+			struct scoped_hash *scope;
+
+			printf("Create device %.*s\n", ALIT(node->name));
+
+			dev_type = node->owner->final.dev_type;
+
+			printf("dev owner: ");
+			print_apply_node_name(node->owner);
+			printf("\n");
+
+			scope = get_equivalent_scope(ctx, node->scope->parent, &stage->root_scope);
+			dev = register_device_scoped(stage, dev_type->id,
+										 node->name,
+										 scope, NULL, 0, NULL);
+
+			node->final.dev = dev;
+		} break;
 
 		default:
 			//assert(false);
@@ -1664,8 +1691,10 @@ int apply_config(struct stage *stage, struct config_node *node)
 
 	discover_built_ins(&ctx, stage);
 	discover_device_types(&ctx, &ctx.scope, node);
-	discover_devices(&ctx, &ctx.scope, node);
+	discover_devices(&ctx, &ctx.scope, &ctx.scope, node);
 	discover_entries(&ctx, &ctx.scope, node);
+
+	scoped_hash_print(&ctx.scope, 0);
 
 	printf("Nodes:\n");
 	for (size_t i = 0; i < ctx.num_nodes; i++) {
