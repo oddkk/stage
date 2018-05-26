@@ -86,6 +86,7 @@ int main(int argc, char *argv[])
 
 	apply_config(&stage, node);
 
+#if 0
 	printf("======================== devices_types ========================\n");
 	for (int i = 0; i < stage.num_device_types; i++) {
 		struct device_type *dev_type;
@@ -105,8 +106,7 @@ int main(int argc, char *argv[])
 		describe_device(&stage, dev);
 		printf("\n");
 	}
-
-	return 0;
+#endif
 
 	stage.tick_period = NSEC / 1000;
 

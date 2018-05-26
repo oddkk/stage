@@ -898,6 +898,7 @@ static struct apply_node *create_apply_node(struct apply_context *ctx,
 	return result;
 }
 
+#if 0
 static void print_apply_node_name(struct apply_node *node)
 {
 	switch (node->type) {
@@ -945,7 +946,7 @@ static void print_apply_node_name(struct apply_node *node)
 		printf(")");
 	}
 }
-
+#endif
 
 static void remove_terminal_apply_node(struct apply_context *ctx,
 									   struct apply_node *node)
@@ -1376,7 +1377,6 @@ static void discover_entries_device(struct apply_context *ctx,
 													&lhs_node);
 
 				if (err) {
-					printf("============================ FAILED ============================\n");
 					break;
 				}
 
@@ -1386,15 +1386,8 @@ static void discover_entries_device(struct apply_context *ctx,
 													&rhs_node);
 
 				if (err) {
-					printf("============================ FAILED ============================\n");
 					break;
 				}
-
-				printf("bind ");
-				print_apply_node_name(lhs_node);
-				printf(" <- ");
-				print_apply_node_name(rhs_node);
-				printf("\n");
 
 				// The bind depends on the operands.
 				apply_node_depends(ctx, lhs_node, op);
@@ -1573,8 +1566,6 @@ static struct scoped_hash *get_equivalent_scope(struct apply_context *ctx,
 
 	node = ctx->nodes[target->id];
 
-	printf("Looking for %.*s\n", ALIT(node->name));
-
 	assert(node->name);
 
 	err = scoped_hash_local_lookup(eq_parent, node->name, &entry);
@@ -1656,8 +1647,6 @@ static bool do_apply_config(struct apply_context *ctx,
 			struct device_type *dev_type;
 			struct scoped_hash *scope;
 
-			printf("Create device type %.*s\n", ALIT(node->name));
-
 			scope = get_equivalent_scope(ctx, node->owner->scope->parent,
 										 &stage->root_scope);
 			dev_type = register_device_type_scoped(stage, node->owner->name->name, scope);
@@ -1717,13 +1706,7 @@ static bool do_apply_config(struct apply_context *ctx,
 			struct device_type *dev_type;
 			struct scoped_hash *scope;
 
-			printf("Create device %.*s\n", ALIT(node->name));
-
 			dev_type = node->owner->final.dev_type;
-
-			printf("dev owner: ");
-			print_apply_node_name(node->owner);
-			printf("\n");
 
 			scope = get_equivalent_scope(ctx, node->scope->parent, &stage->root_scope);
 			dev = register_device_scoped(stage, dev_type->id,
@@ -1790,7 +1773,6 @@ static bool do_apply_config(struct apply_context *ctx,
 												&lhs_node);
 
 			if (err) {
-				printf("============================ FAILED ============================\n");
 				continue;
 			}
 
@@ -1800,11 +1782,8 @@ static bool do_apply_config(struct apply_context *ctx,
 												&rhs_node);
 
 			if (err) {
-				printf("============================ FAILED ============================\n");
 				continue;
 			}
-
-			printf("Bind channel %i <- %i\n", lhs_node->final.channel, rhs_node->final.channel);
 
 			channel_bind(stage,
 						 rhs_node->final.channel,
@@ -1823,6 +1802,7 @@ static bool do_apply_config(struct apply_context *ctx,
 int apply_config(struct stage *stage, struct config_node *node)
 {
 	struct apply_context ctx = {0};
+	struct apply_node *tn;
 
 	ctx.scope.parent = 0;
 	ctx.scope.lookup.page_arena = &stage->memory;
@@ -1833,8 +1813,13 @@ int apply_config(struct stage *stage, struct config_node *node)
 	discover_devices(&ctx, &ctx.scope, &ctx.scope, node);
 	discover_entries(&ctx, &ctx.scope, node);
 
-	scoped_hash_print(&ctx.scope, 0);
+	if (!apply_topological_sort(&ctx, &tn)) {
+		return -1;
+	}
 
+	do_apply_config(&ctx, stage, tn);
+
+#if 0
 	printf("Nodes:\n");
 	for (size_t i = 0; i < ctx.num_nodes; i++) {
 		struct apply_node *node;
@@ -1856,25 +1841,7 @@ int apply_config(struct stage *stage, struct config_node *node)
 			printf("\n");
 		}
 	}
+#endif
 
-	printf("\nSorted nodes:\n");
-
-	struct apply_node *tn;
-
-	if (!apply_topological_sort(&ctx, &tn)) {
-		return -1;
-	}
-
-	do_apply_config(&ctx, stage, tn);
-
-	/* while (tn) { */
-	/* 	print_apply_node_name(tn); */
-	/* 	printf("\n"); */
-	/* 	tn = tn->next; */
-	/* } */
-
-	/* config_apply_device_types(stage, node, &stage->root_scope); */
-	/* config_apply_devices(stage, node, &stage->root_scope); */
-	/* config_apply_device_configs(stage, node, &stage->root_scope); */
 	return 0;
 }

@@ -16,7 +16,7 @@ static void device_print_tick(struct stage *stage, struct device *dev) {
 	in = eval_channel(stage, data->in);
 
 	if (in != data->last_value) {
-		printf("value: ");
+		printf("value %i: ", data->in);
 		print_scalar(in);
 		printf("\n");
 	}

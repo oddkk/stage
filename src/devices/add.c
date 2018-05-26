@@ -18,6 +18,10 @@ scalar_value device_add_eval(struct stage *stage, channel_id cnl_id, struct chan
 	lhs = eval_channel(stage, device->input_begin);
 	rhs = eval_channel(stage, device->input_begin + 1);
 
+	if (lhs == SCALAR_OFF || rhs == SCALAR_OFF) {
+		return SCALAR_OFF;
+	}
+
 	return lhs + rhs;
 }
 
