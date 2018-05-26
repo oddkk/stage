@@ -755,7 +755,11 @@ struct apply_node {
 
 	union {
 		struct device_type *dev_type;
-		struct device *dev;
+		struct {
+			struct device *dev;
+			struct device_attribute *attrs;
+			size_t num_attrs;
+		} dev_data;
 		int channel;
 		int attribute;
 	} final;
@@ -1211,6 +1215,79 @@ static struct apply_node *find_default_channel_for_dev(struct apply_context *ctx
 	return NULL;
 }
 
+enum bind_channel_side {
+	BIND_CHANNEL_SIDE_LEFT,
+	BIND_CHANNEL_SIDE_RIGHT,
+};
+
+static int find_channel_node_from_l_expr(struct apply_context *ctx,
+										 struct scoped_hash *scope,
+										 struct apply_node *dev,
+										 struct config_node *cnode,
+										 enum bind_channel_side side,
+										 struct apply_node **out)
+{
+	struct scope_entry entry;
+	struct apply_node *node;
+	enum apply_node_type primary_channel_type;
+	enum apply_node_type self_channel_type;
+	int err;
+
+	if (side == BIND_CHANNEL_SIDE_LEFT) {
+		primary_channel_type = APPLY_NODE_DEVICE_INPUT;
+		self_channel_type = APPLY_NODE_DEVICE_OUTPUT;
+	} else {
+		primary_channel_type = APPLY_NODE_DEVICE_OUTPUT;
+		self_channel_type = APPLY_NODE_DEVICE_INPUT;
+	}
+
+	err = config_eval_l_expr(scope, cnode, &entry);
+	if (err) {
+		printf("No such channel '");
+		print_l_expr(cnode);
+		printf("' for %.*s.\n", ALIT(dev->name));
+		return -1;
+	}
+
+	node = ctx->nodes[entry.id];
+
+	if (node->type == APPLY_NODE_DEVICE) {
+		enum apply_node_type channel_type;
+
+		channel_type =
+			(node == dev)
+			? self_channel_type
+			: primary_channel_type;
+
+		node = find_default_channel_for_dev(ctx, node, channel_type);
+
+		if (!node) {
+			printf("'");
+			print_l_expr(cnode);
+			printf("' has no default %s.\n",
+				   (channel_type == APPLY_NODE_DEVICE_OUTPUT)
+				   ? "output"
+				   : "input");
+			return -1;
+		}
+	}
+
+	if (!(node->type == primary_channel_type ||
+		  (node->type == self_channel_type &&
+		   node->owner == dev))) {
+		printf("Expected '");
+		print_l_expr(cnode);
+		printf("' to be an %s.\n",
+			   (primary_channel_type == APPLY_NODE_DEVICE_OUTPUT)
+			   ? "output"
+			   : "input");
+		return -1;
+	}
+
+	*out = node;
+	return 0;
+}
+
 static void discover_entries_device(struct apply_context *ctx,
 									struct scoped_hash *scope,
 									struct apply_node *dev,
@@ -1231,106 +1308,33 @@ static void discover_entries_device(struct apply_context *ctx,
 				create_dependency_for_l_expr(ctx, scope, op, current->binary_op.lhs);
 				create_dependencies_for_expr(ctx, scope, op, current->binary_op.rhs);
 			} else if (current->binary_op.op == CONFIG_OP_BIND) {
+				struct apply_node *lhs_node, *rhs_node;
 				struct apply_node *op;
+				int err;
 
 				op = create_apply_node_with_owner(ctx, scope,
 												  APPLY_NODE_DEVICE_BIND,
 												  NULL, current, dev);
 
 
-				struct scope_entry lhs_entry, rhs_entry;
-				struct apply_node *lhs_node, *rhs_node;
-				bool has_errors = false;
-				int err;
 
-				err = config_eval_l_expr(scope, current->binary_op.lhs, &lhs_entry);
+				err = find_channel_node_from_l_expr(ctx, scope, dev,
+													current->binary_op.lhs,
+													BIND_CHANNEL_SIDE_LEFT,
+													&lhs_node);
+
 				if (err) {
-					printf("No such variable '");
-					print_l_expr(current->binary_op.lhs);
-					printf("' for %.*s.\n", ALIT(dev->name));
-					has_errors = true;
-				}
-
-				err = config_eval_l_expr(scope, current->binary_op.rhs, &rhs_entry);
-				if (err) {
-					printf("No such variable '");
-					print_l_expr(current->binary_op.rhs);
-					printf("' for %.*s.\n", ALIT(dev->name));
-					has_errors = true;
-				}
-
-				if (has_errors) {
+					printf("============================ FAILED ============================\n");
 					break;
 				}
 
-				lhs_node = ctx->nodes[lhs_entry.id];
-				rhs_node = ctx->nodes[rhs_entry.id];
+				err = find_channel_node_from_l_expr(ctx, scope, dev,
+													current->binary_op.rhs,
+													BIND_CHANNEL_SIDE_RIGHT,
+													&rhs_node);
 
-				if (lhs_node->type == APPLY_NODE_DEVICE) {
-					enum apply_node_type channel_type;
-
-					channel_type =
-						(lhs_node == dev)
-						? APPLY_NODE_DEVICE_OUTPUT
-						: APPLY_NODE_DEVICE_INPUT;
-
-					lhs_node = find_default_channel_for_dev(ctx, lhs_node, channel_type);
-
-					if (!lhs_node) {
-						printf("'");
-						print_l_expr(current->binary_op.lhs);
-						printf("' has no default %s.\n",
-							   (channel_type == APPLY_NODE_DEVICE_OUTPUT)
-							   ? "output"
-							   : "input");
-						has_errors = true;
-					}
-				}
-
-				if (rhs_node->type == APPLY_NODE_DEVICE) {
-					enum apply_node_type channel_type;
-
-					channel_type =
-						(rhs_node == dev)
-						? APPLY_NODE_DEVICE_INPUT
-						: APPLY_NODE_DEVICE_OUTPUT;
-
-					rhs_node = find_default_channel_for_dev(ctx, rhs_node, channel_type);
-
-					if (!rhs_node) {
-						printf("'");
-						print_l_expr(current->binary_op.rhs);
-						printf("' has no default %s.\n",
-							   (channel_type == APPLY_NODE_DEVICE_OUTPUT)
-							   ? "output"
-							   : "input");
-						has_errors = true;
-					}
-				}
-
-				if (has_errors) {
-					break;
-				}
-
-				if (!(lhs_node->type == APPLY_NODE_DEVICE_INPUT ||
-					  (lhs_node->type == APPLY_NODE_DEVICE_OUTPUT &&
-					   lhs_node->owner == dev))) {
-					printf("Expected '");
-					print_l_expr(current->binary_op.rhs);
-					printf("' to be an input.\n");
-					has_errors = true;
-				}
-
-				if (!(rhs_node->type == APPLY_NODE_DEVICE_OUTPUT ||
-					  (rhs_node->type == APPLY_NODE_DEVICE_INPUT &&
-					   rhs_node->owner == dev))) {
-					printf("Expected '");
-					print_l_expr(current->binary_op.rhs);
-					printf("' to be an output.\n");
-					has_errors = true;
-				}
-
-				if (has_errors) {
+				if (err) {
+					printf("============================ FAILED ============================\n");
 					break;
 				}
 
@@ -1568,10 +1572,56 @@ static struct scoped_hash *get_equivalent_scope(struct apply_context *ctx,
 	return entry.scope;
 }
 
-static scalar_value apply_eval_value(struct apply_context *ctx,
-									 struct stage *stage,
-									 struct apply_node *expr)
+static scalar_value apply_eval_l_expr_value(struct apply_context *ctx,
+											struct stage *stage,
+											struct apply_node *expr,
+											struct config_node *cnode)
 {
+	return 0;
+}
+
+static scalar_value apply_eval_expr_value(struct apply_context *ctx,
+										  struct stage *stage,
+										  struct apply_node *expr,
+										  struct config_node *cnode)
+{
+	switch (cnode->type) {
+	case CONFIG_NODE_NUMLIT:
+		return cnode->numlit;
+
+	case CONFIG_NODE_IDENT:
+		return apply_eval_l_expr_value(ctx, stage, expr, cnode);
+
+	case CONFIG_NODE_BINARY_OP:
+		if (cnode->binary_op.op == CONFIG_OP_ACCESS ||
+			cnode->binary_op.op == CONFIG_OP_SUBSCRIPT) {
+			return apply_eval_l_expr_value(ctx, stage, expr, cnode);
+		} else {
+			scalar_value lhs, rhs;
+
+			lhs = apply_eval_expr_value(ctx, stage, expr, cnode->binary_op.lhs);
+			rhs = apply_eval_expr_value(ctx, stage, expr, cnode->binary_op.rhs);
+
+			switch (cnode->binary_op.op) {
+			case CONFIG_OP_ADD:
+				return lhs + rhs;
+			case CONFIG_OP_SUB:
+				return lhs - rhs;
+			case CONFIG_OP_MUL:
+				return lhs * rhs;
+			case CONFIG_OP_DIV:
+				return lhs / rhs;
+
+			default:
+				printf("Cannot use the %s operand in an expression.",
+					   _binary_op_name(cnode->binary_op.op));
+			}
+		}
+
+	default:
+		assert(false);
+		break;
+	}
 	// TODO: Implement
 	return 0;
 }
@@ -1641,9 +1691,8 @@ static bool do_apply_config(struct apply_context *ctx,
 				continue;
 			}
 
-			// TODO: Figure out what node should be.
-			// How should we store what expressions eval to?
-			default_value = apply_eval_value(ctx, stage, node);
+			default_value = apply_eval_expr_value(ctx, stage, node,
+												  node->cnode->attr.def_value);
 
 			attr = device_type_add_attribute(stage, node->owner->final.dev_type,
 											 node->name->name, stage->standard_types.integer);
@@ -1666,10 +1715,84 @@ static bool do_apply_config(struct apply_context *ctx,
 
 			scope = get_equivalent_scope(ctx, node->scope->parent, &stage->root_scope);
 			dev = register_device_scoped(stage, dev_type->id,
-										 node->name,
-										 scope, NULL, 0, NULL);
+										 node->name, scope,
+										 node->final.dev_data.attrs,
+										 node->final.dev_data.num_attrs,
+										 NULL);
 
-			node->final.dev = dev;
+			node->final.dev_data.dev = dev;
+		} break;
+
+		case APPLY_NODE_DEVICE_INPUT: {
+			struct device *dev;
+			dev = node->owner->final.dev_data.dev;
+			node->final.channel = device_get_input_channel_id(stage, dev, node->name);
+		} break;
+
+		case APPLY_NODE_DEVICE_OUTPUT: {
+			struct device *dev;
+			dev = node->owner->final.dev_data.dev;
+			node->final.channel = device_get_output_channel_id(stage, dev, node->name);
+		} break;
+
+		case APPLY_NODE_DEVICE_ATTR:
+			break;
+
+		case APPLY_NODE_DEVICE_ASSIGN: {
+			struct device_attribute attribute = {0};
+			struct scope_entry lhs;
+			struct apply_node *attr, *dev;
+			int err;
+
+			err = config_eval_l_expr(node->owner->scope, node->cnode->binary_op.lhs, &lhs);
+
+			if (err) {
+				printf("Could not find l expr '");
+				print_l_expr(node->cnode->binary_op.lhs);
+				printf("'.");
+				continue;
+			}
+
+			attr = ctx->nodes[lhs.id];
+			dev = attr->owner;
+
+			attribute.name = attr->name;
+			attribute.value = apply_eval_expr_value(ctx, stage, node,
+													node->cnode->binary_op.rhs);
+
+			dlist_append(dev->final.dev_data.attrs,
+						 dev->final.dev_data.num_attrs,
+						 &attribute);
+		} break;
+
+		case APPLY_NODE_DEVICE_BIND: {
+			struct apply_node *lhs_node, *rhs_node;
+			struct apply_node *dev;
+			int err;
+
+			dev = node->owner;
+
+			err = find_channel_node_from_l_expr(ctx, dev->scope, dev,
+												node->cnode->binary_op.lhs,
+												BIND_CHANNEL_SIDE_LEFT,
+												&lhs_node);
+
+			if (err) {
+				continue;
+			}
+
+			err = find_channel_node_from_l_expr(ctx, dev->scope, dev,
+												node->cnode->binary_op.rhs,
+												BIND_CHANNEL_SIDE_RIGHT,
+												&rhs_node);
+
+			if (err) {
+				continue;
+			}
+
+			channel_bind(stage,
+						 rhs_node->final.channel,
+						 lhs_node->final.channel);
 		} break;
 
 		default:
