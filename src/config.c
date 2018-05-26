@@ -1579,8 +1579,40 @@ static scalar_value apply_eval_l_expr_value(struct apply_context *ctx,
 											struct apply_node *expr,
 											struct config_node *cnode)
 {
-	printf("Implement eval l expr value\n");
-	return 0;
+	struct scope_entry entry;
+	struct apply_node *node;
+	struct device *dev;
+	int err;
+
+	err = config_eval_l_expr(expr->owner->scope, cnode, &entry);
+
+	if (err) {
+		printf("No such variable '");
+		print_l_expr(cnode);
+		printf("'.\n");
+		return SCALAR_OFF;
+	}
+
+	node = ctx->nodes[entry.id];
+	dev = node->owner->final.dev_data.dev;
+
+	switch (node->type) {
+	case APPLY_NODE_DEVICE_ATTR: {
+		for (size_t i = 0; i < node->owner->final.dev_data.num_attrs; i++) {
+			if (node->owner->final.dev_data.attrs[i].name == node->name) {
+				return node->owner->final.dev_data.attrs[i].value;
+			}
+		}
+		printf("Missing attr. Something is probably wrong with the sort.");
+		return SCALAR_OFF;
+	} break;
+
+	default:
+		printf("'");
+		print_l_expr(cnode);
+		printf("' is not a value.");
+		return SCALAR_OFF;
+	}
 }
 
 static scalar_value apply_eval_expr_value(struct apply_context *ctx,
