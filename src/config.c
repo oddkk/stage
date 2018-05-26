@@ -898,6 +898,55 @@ static struct apply_node *create_apply_node(struct apply_context *ctx,
 	return result;
 }
 
+static void print_apply_node_name(struct apply_node *node)
+{
+	switch (node->type) {
+	case APPLY_NODE_DEVICE_TYPE_PRE:
+		printf("dev_t_pre");
+		break;
+	case APPLY_NODE_DEVICE_TYPE:
+		printf("dev_t    ");
+		break;
+	case APPLY_NODE_DEVICE_TYPE_BUILTIN:
+		printf("dev_t_bi ");
+		break;
+	case APPLY_NODE_DEVICE_TYPE_INPUT:
+		printf("dev_t_in ");
+		break;
+	case APPLY_NODE_DEVICE_TYPE_OUTPUT:
+		printf("dev_t_out");
+		break;
+	case APPLY_NODE_DEVICE_TYPE_ATTR:
+		printf("dev_t_atr");
+		break;
+	case APPLY_NODE_DEVICE:
+		printf("dev      ");
+		break;
+	case APPLY_NODE_DEVICE_INPUT:
+		printf("dev_in   ");
+		break;
+	case APPLY_NODE_DEVICE_OUTPUT:
+		printf("dev_out  ");
+		break;
+	case APPLY_NODE_DEVICE_ATTR:
+		printf("dev_atr  ");
+		break;
+	case APPLY_NODE_DEVICE_BIND:
+		printf("dev_bnd  ");
+		break;
+	case APPLY_NODE_DEVICE_ASSIGN:
+		printf("dev_asn  ");
+		break;
+	}
+	printf(" %.*s", ALIT(node->name));
+	if (node->owner) {
+		printf(" (");
+		print_apply_node_name(node->owner);
+		printf(")");
+	}
+}
+
+
 static void remove_terminal_apply_node(struct apply_context *ctx,
 									   struct apply_node *node)
 {
@@ -1290,10 +1339,13 @@ static int find_channel_node_from_l_expr(struct apply_context *ctx,
 
 static void discover_entries_device(struct apply_context *ctx,
 									struct scoped_hash *scope,
+									struct scoped_hash *extra_scope,
 									struct apply_node *dev,
 									struct config_node *node)
 {
 	struct config_node *current = node;
+
+	// TODO: Ensure device_types are restricted to their own scope.
 
 	while (current) {
 		switch (current->type) {
@@ -1337,6 +1389,12 @@ static void discover_entries_device(struct apply_context *ctx,
 					printf("============================ FAILED ============================\n");
 					break;
 				}
+
+				printf("bind ");
+				print_apply_node_name(lhs_node);
+				printf(" <- ");
+				print_apply_node_name(rhs_node);
+				printf("\n");
 
 				// The bind depends on the operands.
 				apply_node_depends(ctx, lhs_node, op);
@@ -1386,9 +1444,11 @@ static void discover_entries(struct apply_context *ctx,
 
 			dev_type = node->owner;
 
-			// Apply dev_type
-			discover_entries_device(ctx, dev_type->scope, node, dev_type->cnode);
-			discover_entries_device(ctx, node->scope, node,
+			if (dev_type->cnode) {
+				discover_entries_device(ctx, node->scope, dev_type->scope, node,
+										dev_type->cnode->device_type.first_child);
+			}
+			discover_entries_device(ctx, node->scope, NULL, node,
 									node->cnode->device.first_child);
 
 		} break;
@@ -1493,54 +1553,6 @@ static bool apply_topological_sort(struct apply_context *ctx, struct apply_node 
 	return true;
 }
 
-static void print_apply_node_name(struct apply_node *node)
-{
-	switch (node->type) {
-	case APPLY_NODE_DEVICE_TYPE_PRE:
-		printf("dev_t_pre");
-		break;
-	case APPLY_NODE_DEVICE_TYPE:
-		printf("dev_t    ");
-		break;
-	case APPLY_NODE_DEVICE_TYPE_BUILTIN:
-		printf("dev_t_bi ");
-		break;
-	case APPLY_NODE_DEVICE_TYPE_INPUT:
-		printf("dev_t_in ");
-		break;
-	case APPLY_NODE_DEVICE_TYPE_OUTPUT:
-		printf("dev_t_out");
-		break;
-	case APPLY_NODE_DEVICE_TYPE_ATTR:
-		printf("dev_t_atr");
-		break;
-	case APPLY_NODE_DEVICE:
-		printf("dev      ");
-		break;
-	case APPLY_NODE_DEVICE_INPUT:
-		printf("dev_in   ");
-		break;
-	case APPLY_NODE_DEVICE_OUTPUT:
-		printf("dev_out  ");
-		break;
-	case APPLY_NODE_DEVICE_ATTR:
-		printf("dev_atr  ");
-		break;
-	case APPLY_NODE_DEVICE_BIND:
-		printf("dev_bnd  ");
-		break;
-	case APPLY_NODE_DEVICE_ASSIGN:
-		printf("dev_asn  ");
-		break;
-	}
-	printf(" %.*s", ALIT(node->name));
-	if (node->owner) {
-		printf(" (");
-		print_apply_node_name(node->owner);
-		printf(")");
-	}
-}
-
 static struct scoped_hash *get_equivalent_scope(struct apply_context *ctx,
 												struct scoped_hash *target,
 												struct scoped_hash *root)
@@ -1576,6 +1588,7 @@ static scalar_value apply_eval_l_expr_value(struct apply_context *ctx,
 											struct apply_node *expr,
 											struct config_node *cnode)
 {
+	printf("Implement eval l expr value\n");
 	return 0;
 }
 
@@ -1777,6 +1790,7 @@ static bool do_apply_config(struct apply_context *ctx,
 												&lhs_node);
 
 			if (err) {
+				printf("============================ FAILED ============================\n");
 				continue;
 			}
 
@@ -1786,8 +1800,11 @@ static bool do_apply_config(struct apply_context *ctx,
 												&rhs_node);
 
 			if (err) {
+				printf("============================ FAILED ============================\n");
 				continue;
 			}
+
+			printf("Bind channel %i <- %i\n", lhs_node->final.channel, rhs_node->final.channel);
 
 			channel_bind(stage,
 						 rhs_node->final.channel,
