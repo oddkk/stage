@@ -3,6 +3,7 @@
 #include "device_type.h"
 #include "device.h"
 #include "utils.h"
+#include "dlist.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -189,6 +190,21 @@ int config_eval_l_expr_internal(struct scoped_hash *scope, struct config_node *e
 			}
 			return scoped_hash_local_lookup(scope, expr->ident, result);
 		} else {
+			if (!expr->ident) {
+				if (!scope->parent) {
+					printf("This scope can not be referenced as self.\n");
+					return false;
+				}
+
+				assert(scope->parent->num_entries < scope->id);
+				*result = scope->parent->entries[scope->id];
+				if (owner) {
+					*owner = scope->parent;
+				}
+
+				return true;
+			}
+
 			return scoped_hash_lookup_owner(scope, expr->ident, result, owner);
 		}
 		break;
@@ -208,6 +224,7 @@ int config_eval_l_expr_internal(struct scoped_hash *scope, struct config_node *e
 			if (!lhs.scope) {
 				// @TODO: Improve this error message.
 				printf("%.*s has no members.\n", ALIT(lhs.name));
+				return -1;
 			}
 
 			return config_eval_l_expr_internal(lhs.scope, expr->binary_op.rhs, true, result, owner);
@@ -698,10 +715,754 @@ void config_apply_device_configs(struct stage *stage, struct config_node *node, 
 	}
 }
 
+enum apply_node_type {
+	APPLY_NODE_DEVICE_TYPE,
+	APPLY_NODE_DEVICE_TYPE_BUILTIN,
+	APPLY_NODE_DEVICE_TYPE_INPUT,
+	APPLY_NODE_DEVICE_TYPE_OUTPUT,
+	APPLY_NODE_DEVICE_TYPE_ATTR,
+	APPLY_NODE_DEVICE,
+	APPLY_NODE_DEVICE_INPUT,
+	APPLY_NODE_DEVICE_OUTPUT,
+	APPLY_NODE_DEVICE_ATTR,
+	APPLY_NODE_DEVICE_BIND,
+	APPLY_NODE_DEVICE_ASSIGN,
+};
+
+struct apply_node;
+
+struct apply_edge {
+	struct apply_node *from, *to;
+};
+
+struct apply_node {
+	size_t id;
+	struct apply_node *owner;
+	enum apply_node_type type;
+	struct atom *name;
+	struct scoped_hash *scope;
+	struct config_node *cnode;
+
+	struct apply_edge *outgoing_edges;
+	size_t num_outgoing_edges;
+
+	int final_id;
+	// For channels
+	bool is_default;
+};
+
+struct apply_context {
+	struct apply_node **nodes;
+	size_t num_nodes;
+
+	struct scoped_hash scope;
+};
+
+static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx,
+													   struct scoped_hash *scope,
+													   enum apply_node_type type,
+													   struct atom *name,
+													   struct config_node *cnode,
+													   struct apply_node *owner)
+{
+	enum scope_entry_kind scope_entry_kind;
+	struct apply_node *new_node;
+	bool create_scope = false;
+	size_t id;
+
+	switch (type) {
+		case APPLY_NODE_DEVICE_TYPE:
+			scope_entry_kind = SCOPE_ENTRY_DEVICE_TYPE;
+			create_scope = true;
+			assert(!owner);
+			break;
+
+		case APPLY_NODE_DEVICE_TYPE_BUILTIN:
+			scope_entry_kind = SCOPE_ENTRY_DEVICE_TYPE;
+			create_scope = true;
+			assert(!owner);
+			break;
+
+		case APPLY_NODE_DEVICE_TYPE_INPUT:
+			scope_entry_kind = SCOPE_ENTRY_DEVICE_INPUT;
+			assert(owner);
+			break;
+
+		case APPLY_NODE_DEVICE_TYPE_OUTPUT:
+			scope_entry_kind = SCOPE_ENTRY_DEVICE_OUTPUT;
+			assert(owner);
+			break;
+
+		case APPLY_NODE_DEVICE_TYPE_ATTR:
+			scope_entry_kind = SCOPE_ENTRY_DEVICE_ATTRIBUTE;
+			assert(owner);
+			break;
+
+		case APPLY_NODE_DEVICE_INPUT:
+			scope_entry_kind = SCOPE_ENTRY_DEVICE_INPUT;
+			assert(owner);
+			break;
+
+		case APPLY_NODE_DEVICE_OUTPUT:
+			scope_entry_kind = SCOPE_ENTRY_DEVICE_OUTPUT;
+			assert(owner);
+			break;
+
+		case APPLY_NODE_DEVICE_ATTR:
+			scope_entry_kind = SCOPE_ENTRY_DEVICE_ATTRIBUTE;
+			assert(owner);
+			break;
+
+		case APPLY_NODE_DEVICE:
+			scope_entry_kind = SCOPE_ENTRY_DEVICE;
+			create_scope = true;
+			assert(owner);
+			break;
+
+		case APPLY_NODE_DEVICE_BIND:
+			scope_entry_kind = SCOPE_ENTRY_NONE;
+			assert(owner);
+			break;
+
+		case APPLY_NODE_DEVICE_ASSIGN:
+			scope_entry_kind = SCOPE_ENTRY_NONE;
+			assert(owner);
+			break;
+	}
+
+	new_node = calloc(1, sizeof(struct apply_node));
+	id = dlist_append(ctx->nodes, ctx->num_nodes, &new_node);
+
+	new_node->id    = id;
+	new_node->type  = type;
+	new_node->name  = name;
+	new_node->cnode = cnode;
+	new_node->owner = owner;
+
+	if (scope_entry_kind != SCOPE_ENTRY_NONE) {
+		if (create_scope) {
+			new_node->scope = scoped_hash_push(scope, scope_entry_kind, id);
+		}
+
+		scoped_hash_insert(scope,
+						   new_node->name,
+						   scope_entry_kind,
+						   id,
+						   cnode,
+						   new_node->scope);
+	}
+
+	return new_node;
+}
+
+static struct apply_node *create_apply_node(struct apply_context *ctx,
+											struct scoped_hash *scope,
+											enum apply_node_type type,
+											struct atom *name,
+											struct config_node *cnode)
+
+{
+	struct apply_node *result;
+
+	result = create_apply_node_with_owner(ctx, scope, type, name, cnode, NULL);
+
+	return result;
+}
+
+// Makes depends_on require node. In other words, node must be
+// initialized before depends_on.
+static void apply_node_depends(struct apply_node *node, struct apply_node *depends_on)
+{
+	struct apply_edge new_edge = {0};
+
+	new_edge.from = node;
+	new_edge.to = depends_on;
+
+	dlist_append(node->outgoing_edges, node->num_outgoing_edges, &new_edge);
+}
+
+static void create_dependency_for_l_expr(struct apply_context *ctx,
+										 struct scoped_hash *scope,
+										 struct apply_node *node,
+										 struct config_node *expr)
+{
+	struct scope_entry entry;
+	struct apply_node *attr;
+	int err;
+
+	err = config_eval_l_expr(scope, expr, &entry);
+
+	if (err) {
+		printf("No such variable '");
+		print_l_expr(expr);
+		printf("'.\n");
+		return;
+	}
+
+	attr = ctx->nodes[entry.id];
+
+	if (attr->type != APPLY_NODE_DEVICE_ATTR) {
+		printf("'");
+		print_l_expr(expr);
+		printf("' is not an attribute.\n");
+		return;
+	}
+
+	// The result depends on the attribute (value).
+	apply_node_depends(attr, node);
+}
+
+static void create_dependencies_for_expr(struct apply_context *ctx,
+										 struct scoped_hash *scope,
+										 struct apply_node *node,
+										 struct config_node *expr)
+{
+	switch (expr->type) {
+	case CONFIG_NODE_IDENT:
+		create_dependency_for_l_expr(ctx, scope, node, expr);
+		break;
+
+	case CONFIG_NODE_BINARY_OP:
+		if (expr->binary_op.op == CONFIG_OP_ACCESS ||
+			expr->binary_op.op == CONFIG_OP_SUBSCRIPT) {
+			// This is a l-expr
+			create_dependency_for_l_expr(ctx, scope, node, expr);
+		} else {
+			create_dependencies_for_expr(ctx, scope, node, expr->binary_op.lhs);
+			create_dependencies_for_expr(ctx, scope, node, expr->binary_op.rhs);
+		}
+		break;
+
+	case CONFIG_NODE_NUMLIT:
+		break;
+
+	default:
+		print_error("config", "Invalid node in expr!");
+		break;
+	}
+}
+
+
+static void discover_device_types(struct apply_context *ctx,
+								  struct scoped_hash *scope,
+								  struct config_node *node)
+{
+	struct config_node *current = node;
+
+	while (current) {
+		switch (current->type) {
+		case CONFIG_NODE_MODULE:
+			discover_device_types(ctx, scope, current->module.first_child);
+			break;
+
+		case CONFIG_NODE_DEVICE_TYPE: {
+			struct config_node *stmt;
+			struct apply_node *dev_type;
+			dev_type = create_apply_node(ctx, scope,
+										 APPLY_NODE_DEVICE_TYPE,
+										 current->device_type.name,
+										 current);
+
+
+			stmt = current->device_type.first_child;
+
+			while (stmt) {
+				struct apply_node *new_node;
+				switch (stmt->type) {
+				case CONFIG_NODE_INPUT:
+					new_node = create_apply_node_with_owner(ctx, dev_type->scope,
+															APPLY_NODE_DEVICE_TYPE_INPUT,
+															stmt->input.name, stmt,
+															dev_type);
+					new_node->is_default = stmt->input.def;
+					apply_node_depends(dev_type, new_node);
+					break;
+
+				case CONFIG_NODE_OUTPUT:
+					new_node = create_apply_node_with_owner(ctx, dev_type->scope,
+															APPLY_NODE_DEVICE_TYPE_OUTPUT,
+															stmt->output.name, stmt,
+															dev_type);
+					new_node->is_default = stmt->output.def;
+					apply_node_depends(dev_type, new_node);
+					break;
+
+				case CONFIG_NODE_ATTR:
+					new_node = create_apply_node_with_owner(ctx, dev_type->scope,
+															APPLY_NODE_DEVICE_TYPE_ATTR,
+															stmt->attr.name, stmt,
+															dev_type);
+					apply_node_depends(dev_type, new_node);
+					break;
+
+				default:
+					break;
+				}
+
+				stmt = stmt->next_sibling;
+			}
+		} break;
+
+		default:
+			break;
+		}
+
+		current = current->next_sibling;
+	}
+}
+
+static void discover_devices(struct apply_context *ctx,
+							 struct scoped_hash *scope,
+							 struct config_node *node)
+{
+	struct config_node *current = node;
+
+	while (current) {
+		switch (current->type) {
+		case CONFIG_NODE_MODULE:
+			discover_devices(ctx, scope, current->module.first_child);
+			break;
+
+		case CONFIG_NODE_DEVICE_TYPE:
+			break;
+
+		case CONFIG_NODE_DEVICE: {
+			struct scope_entry dev_type_entry;
+			struct apply_node *dev_type;
+			struct apply_node *dev;
+			int err;
+
+			err = config_eval_l_expr(scope,
+									 current->device.type,
+									 &dev_type_entry);
+
+			if (err) {
+				printf("No such device type '");
+				print_l_expr(current->device.type);
+				printf("'.\n");
+				break;
+			}
+
+			dev_type = ctx->nodes[dev_type_entry.id];
+
+			if (dev_type->type != APPLY_NODE_DEVICE_TYPE &&
+				dev_type->type != APPLY_NODE_DEVICE_TYPE_BUILTIN) {
+				printf("'");
+				print_l_expr(current->device.type);
+				printf("' is not a device type (for the device %.*s).\n",
+					   ALIT(current->device.name));
+				break;
+			}
+
+			dev = create_apply_node_with_owner(ctx, scope,
+											   APPLY_NODE_DEVICE,
+											   current->device.name,
+											   current, dev_type);
+
+			apply_node_depends(dev_type, dev);
+
+			struct scoped_hash *scope;
+
+			scope = dev_type->scope;
+			for (size_t i = 0; i < scope->num_entries; i++) {
+				struct scope_entry *entry;
+				struct apply_node *cnl_node;
+				struct apply_node *new_node;
+
+				entry = &scope->entries[i];
+				cnl_node = ctx->nodes[entry->id];
+
+				switch (entry->kind) {
+				case SCOPE_ENTRY_DEVICE_INPUT:
+					assert(cnl_node->type == APPLY_NODE_DEVICE_TYPE_INPUT);
+
+					new_node = create_apply_node_with_owner(ctx, dev->scope,
+															APPLY_NODE_DEVICE_INPUT,
+															cnl_node->name,
+															cnl_node->cnode,
+															dev);
+					new_node->is_default = cnl_node->is_default;
+					apply_node_depends(dev, new_node);
+					break;
+
+				case SCOPE_ENTRY_DEVICE_OUTPUT:
+					assert(cnl_node->type == APPLY_NODE_DEVICE_TYPE_OUTPUT);
+
+					new_node = create_apply_node_with_owner(ctx, dev->scope,
+															APPLY_NODE_DEVICE_OUTPUT,
+															cnl_node->name,
+															cnl_node->cnode,
+															dev);
+					new_node->is_default = cnl_node->is_default;
+					apply_node_depends(dev, new_node);
+					break;
+
+				case SCOPE_ENTRY_DEVICE_ATTRIBUTE:
+					assert(cnl_node->type == APPLY_NODE_DEVICE_TYPE_ATTR);
+
+					new_node = create_apply_node_with_owner(ctx, dev->scope,
+															APPLY_NODE_DEVICE_ATTR,
+															cnl_node->name,
+															cnl_node->cnode,
+															dev);
+					// NOTE: Because attributes must be known when the
+					// device is created, the device depends on the attribute.
+					apply_node_depends(new_node, dev);
+					break;
+
+				default:
+					break;
+				}
+			}
+
+			// TODO: Fix scope not staying with original definition of
+			// device type.
+			if (dev_type->cnode) {
+				discover_devices(ctx,
+								 dev->scope,
+								 dev_type->cnode->device_type.first_child);
+			}
+		} break;
+
+		default:
+			break;
+		}
+
+		current = current->next_sibling;
+	}
+}
+
+static struct apply_node *find_default_channel_for_dev(struct apply_context *ctx,
+													   struct apply_node *dev,
+													   enum apply_node_type type)
+{
+	assert(type == APPLY_NODE_DEVICE_INPUT ||
+		   type == APPLY_NODE_DEVICE_OUTPUT);
+
+	for (size_t i = 0; i < dev->scope->num_entries; i++) {
+		struct apply_node *child;
+		child = ctx->nodes[dev->scope->entries[i].id];
+
+		if (child->type == type && child->is_default) {
+			return child;
+		}
+	}
+
+	return NULL;
+}
+
+static void discover_entries_device(struct apply_context *ctx,
+									struct scoped_hash *scope,
+									struct apply_node *dev,
+									struct config_node *node)
+{
+	struct config_node *current = node;
+
+	while (current) {
+		switch (current->type) {
+		case CONFIG_NODE_BINARY_OP:
+			if (current->binary_op.op == CONFIG_OP_ASSIGN) {
+				struct apply_node *op;
+
+				op = create_apply_node_with_owner(ctx, scope,
+												  APPLY_NODE_DEVICE_ASSIGN,
+												  NULL, current, dev);
+
+				create_dependency_for_l_expr(ctx, scope, op, current->binary_op.lhs);
+				create_dependencies_for_expr(ctx, scope, op, current->binary_op.rhs);
+			} else if (current->binary_op.op == CONFIG_OP_BIND) {
+				struct apply_node *op;
+
+				op = create_apply_node_with_owner(ctx, scope,
+												  APPLY_NODE_DEVICE_BIND,
+												  NULL, current, dev);
+
+
+				struct scope_entry lhs_entry, rhs_entry;
+				struct apply_node *lhs_node, *rhs_node;
+				bool has_errors = false;
+				int err;
+
+				err = config_eval_l_expr(scope, current->binary_op.lhs, &lhs_entry);
+				if (err) {
+					printf("No such variable '");
+					print_l_expr(current->binary_op.lhs);
+					printf("' for %.*s.\n", ALIT(dev->name));
+					has_errors = true;
+				}
+
+				err = config_eval_l_expr(scope, current->binary_op.rhs, &rhs_entry);
+				if (err) {
+					printf("No such variable '");
+					print_l_expr(current->binary_op.rhs);
+					printf("' for %.*s.\n", ALIT(dev->name));
+					has_errors = true;
+				}
+
+				if (has_errors) {
+					break;
+				}
+
+				lhs_node = ctx->nodes[lhs_entry.id];
+				rhs_node = ctx->nodes[rhs_entry.id];
+
+				if (lhs_node->type == APPLY_NODE_DEVICE) {
+					enum apply_node_type channel_type;
+
+					channel_type =
+						(lhs_node == dev)
+						? APPLY_NODE_DEVICE_OUTPUT
+						: APPLY_NODE_DEVICE_INPUT;
+
+					lhs_node = find_default_channel_for_dev(ctx, lhs_node, channel_type);
+
+					if (!lhs_node) {
+						printf("'");
+						print_l_expr(current->binary_op.lhs);
+						printf("' has no default %s.\n",
+							   (channel_type == APPLY_NODE_DEVICE_OUTPUT)
+							   ? "output"
+							   : "input");
+						has_errors = true;
+					}
+				}
+
+				if (rhs_node->type == APPLY_NODE_DEVICE) {
+					enum apply_node_type channel_type;
+
+					channel_type =
+						(rhs_node == dev)
+						? APPLY_NODE_DEVICE_INPUT
+						: APPLY_NODE_DEVICE_OUTPUT;
+
+					rhs_node = find_default_channel_for_dev(ctx, rhs_node, channel_type);
+
+					if (!rhs_node) {
+						printf("'");
+						print_l_expr(current->binary_op.rhs);
+						printf("' has no default %s.\n",
+							   (channel_type == APPLY_NODE_DEVICE_OUTPUT)
+							   ? "output"
+							   : "input");
+						has_errors = true;
+					}
+				}
+
+				if (has_errors) {
+					break;
+				}
+
+				if (!(lhs_node->type == APPLY_NODE_DEVICE_INPUT ||
+					  (lhs_node->type == APPLY_NODE_DEVICE_OUTPUT &&
+					   lhs_node->owner == dev))) {
+					printf("Expected '");
+					print_l_expr(current->binary_op.rhs);
+					printf("' to be an input.\n");
+					has_errors = true;
+				}
+
+				if (!(rhs_node->type == APPLY_NODE_DEVICE_OUTPUT ||
+					  (rhs_node->type == APPLY_NODE_DEVICE_INPUT &&
+					   rhs_node->owner == dev))) {
+					printf("Expected '");
+					print_l_expr(current->binary_op.rhs);
+					printf("' to be an output.\n");
+					has_errors = true;
+				}
+
+				if (has_errors) {
+					break;
+				}
+
+				// The bind depends on the operands.
+				apply_node_depends(lhs_node, op);
+				apply_node_depends(rhs_node, op);
+			}
+			break;
+
+		default:
+			break;
+		}
+		current = current->next_sibling;
+	}
+}
+
+static void discover_entries(struct apply_context *ctx,
+							 struct scoped_hash *scope,
+							 struct config_node *node)
+{
+	for (size_t i = 0; i < ctx->num_nodes; i++) {
+		struct apply_node *node;
+
+		node = ctx->nodes[i];
+
+		switch (node->type) {
+		/* case APPLY_NODE_DEVICE_TYPE_INPUT: */
+		/* 	break; */
+
+		/* case APPLY_NODE_DEVICE_TYPE_OUTPUT: */
+		/* 	break; */
+
+		case APPLY_NODE_DEVICE_TYPE_ATTR:
+			if (node->cnode && node->cnode->attr.def_value) {
+				struct apply_node *dev_type;
+
+				assert(node->owner);
+
+				dev_type = node->owner;
+
+				assert(node->cnode->type == CONFIG_NODE_ATTR);
+				create_dependencies_for_expr(ctx, dev_type->scope,
+											 node, node->cnode->attr.def_value);
+			}
+			break;
+
+		case APPLY_NODE_DEVICE: {
+			struct apply_node *dev_type;
+
+			dev_type = node->owner;
+
+			// Apply dev_type
+			discover_entries_device(ctx, dev_type->scope, node, dev_type->cnode);
+			discover_entries_device(ctx, node->scope, node,
+									node->cnode->device.first_child);
+
+		} break;
+
+		default:
+			break;
+		}
+	}
+}
+
+static void discover_built_ins(struct apply_context *ctx, struct stage *stage)
+{
+	for (size_t i = 0; i < stage->num_device_types; i++) {
+		struct device_type *dev_type = stage->device_types[i];
+		struct apply_node *node;
+
+		node = create_apply_node(ctx, &ctx->scope,
+								 APPLY_NODE_DEVICE_TYPE_BUILTIN,
+								 dev_type->name, NULL);
+		node->final_id = dev_type->id;
+
+		for (size_t cnl = 0; cnl < dev_type->num_inputs; cnl++) {
+			struct apply_node *cnl_node;
+			cnl_node = create_apply_node_with_owner(ctx, node->scope,
+													APPLY_NODE_DEVICE_TYPE_INPUT,
+													dev_type->inputs[cnl].name, NULL,
+													node);
+			if (cnl == dev_type->self_input) {
+				cnl_node->is_default = true;
+			}
+			apply_node_depends(node, cnl_node);
+		}
+
+		for (size_t cnl = 0; cnl < dev_type->num_outputs; cnl++) {
+			struct apply_node *cnl_node;
+			cnl_node = create_apply_node_with_owner(ctx, node->scope,
+													APPLY_NODE_DEVICE_TYPE_OUTPUT,
+													dev_type->outputs[cnl].name, NULL,
+													node);
+			if (cnl == dev_type->self_output) {
+				cnl_node->is_default = true;
+			}
+			apply_node_depends(node, cnl_node);
+		}
+
+		for (size_t attr = 0; attr < dev_type->num_attributes; attr++) {
+			struct apply_node *attr_node;
+			attr_node = create_apply_node_with_owner(ctx, node->scope,
+													 APPLY_NODE_DEVICE_TYPE_ATTR,
+													 dev_type->attributes[attr].name, NULL,
+													 node);
+			apply_node_depends(node, attr_node);
+		}
+	}
+}
+
+static void print_apply_node_name(struct apply_node *node)
+{
+	switch (node->type) {
+	case APPLY_NODE_DEVICE_TYPE:
+		printf("dev_t    ");
+		break;
+	case APPLY_NODE_DEVICE_TYPE_BUILTIN:
+		printf("dev_t_bi ");
+		break;
+	case APPLY_NODE_DEVICE_TYPE_INPUT:
+		printf("dev_t_in ");
+		break;
+	case APPLY_NODE_DEVICE_TYPE_OUTPUT:
+		printf("dev_t_out");
+		break;
+	case APPLY_NODE_DEVICE_TYPE_ATTR:
+		printf("dev_t_atr");
+		break;
+	case APPLY_NODE_DEVICE:
+		printf("dev      ");
+		break;
+	case APPLY_NODE_DEVICE_INPUT:
+		printf("dev_in   ");
+		break;
+	case APPLY_NODE_DEVICE_OUTPUT:
+		printf("dev_out  ");
+		break;
+	case APPLY_NODE_DEVICE_ATTR:
+		printf("dev_atr  ");
+		break;
+	case APPLY_NODE_DEVICE_BIND:
+		printf("dev_bnd  ");
+		break;
+	case APPLY_NODE_DEVICE_ASSIGN:
+		printf("dev_asn  ");
+		break;
+	}
+	printf(" %.*s", ALIT(node->name));
+	if (node->owner) {
+		printf(" (");
+		print_apply_node_name(node->owner);
+		printf(")");
+	}
+}
+
 int apply_config(struct stage *stage, struct config_node *node)
 {
-	config_apply_device_types(stage, node, &stage->root_scope);
-	config_apply_devices(stage, node, &stage->root_scope);
-	config_apply_device_configs(stage, node, &stage->root_scope);
+	struct apply_context ctx = {0};
+
+	ctx.scope.parent = 0;
+	ctx.scope.lookup.page_arena = &stage->memory;
+	ctx.scope.lookup.string_arena = &stage->memory;
+
+	discover_built_ins(&ctx, stage);
+	discover_device_types(&ctx, &ctx.scope, node);
+	discover_devices(&ctx, &ctx.scope, node);
+	discover_entries(&ctx, &ctx.scope, node);
+
+	printf("Nodes:\n");
+	for (size_t i = 0; i < ctx.num_nodes; i++) {
+		struct apply_node *node;
+
+		node = ctx.nodes[i];
+
+		print_apply_node_name(node);
+		if (node->is_default) {
+			printf(" (default)");
+		}
+		printf("\n");
+
+		for (size_t i = 0; i < node->num_outgoing_edges; i++) {
+			struct apply_node *dep;
+
+			dep = node->outgoing_edges[i].to;
+			printf("  ");
+			print_apply_node_name(dep);
+			printf("\n");
+		}
+	}
+
+	/* config_apply_device_types(stage, node, &stage->root_scope); */
+	/* config_apply_devices(stage, node, &stage->root_scope); */
+	/* config_apply_device_configs(stage, node, &stage->root_scope); */
 	return 0;
 }

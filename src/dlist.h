@@ -10,5 +10,6 @@ int _dlist_append(void **list, size_t * length, void *new_element,
 		  size_t element_size);
 
 #define dlist_append(list, list_len, new_element) _dlist_append((void**)&(list), &(list_len), new_element, sizeof(*(list)))
+#define dlist_alloc(list, list_len) _dlist_append((void**)&(list), &(list_len), NULL, sizeof(*(list)))
 
 #endif

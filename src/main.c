@@ -86,6 +86,17 @@ int main(int argc, char *argv[])
 
 	apply_config(&stage, node);
 
+	return 0;
+
+	for (int i = 0; i < stage.num_devices; i++) {
+		struct device *dev;
+
+		dev = get_device(&stage, i);
+
+		describe_device(&stage, dev);
+		printf("\n");
+	}
+
 	stage.tick_period = NSEC / 1000;
 
 	frame_duration.tv_sec = stage.tick_period / NSEC;
