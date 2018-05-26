@@ -716,6 +716,7 @@ void config_apply_device_configs(struct stage *stage, struct config_node *node, 
 }
 
 enum apply_node_type {
+	APPLY_NODE_DEVICE_TYPE_PRE,
 	APPLY_NODE_DEVICE_TYPE,
 	APPLY_NODE_DEVICE_TYPE_BUILTIN,
 	APPLY_NODE_DEVICE_TYPE_INPUT,
@@ -752,6 +753,13 @@ struct apply_node {
 
 	int final_id;
 
+	union {
+		struct device_type *dev_type;
+		struct device_type *dev;
+		int channel;
+		int attribute;
+	} final;
+
 	// For channels
 	bool is_default;
 };
@@ -780,6 +788,11 @@ static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx
 	size_t id;
 
 	switch (type) {
+		case APPLY_NODE_DEVICE_TYPE_PRE:
+			scope_entry_kind = SCOPE_ENTRY_NONE;
+			assert(owner);
+			break;
+
 		case APPLY_NODE_DEVICE_TYPE:
 			scope_entry_kind = SCOPE_ENTRY_DEVICE_TYPE;
 			create_scope = true;
@@ -847,6 +860,7 @@ static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx
 	new_node->name  = name;
 	new_node->cnode = cnode;
 	new_node->owner = owner;
+	new_node->final_id = -1;
 
 	new_node->next = ctx->terminal_nodes;
 	ctx->terminal_nodes = new_node;
@@ -990,11 +1004,17 @@ static void discover_device_types(struct apply_context *ctx,
 
 		case CONFIG_NODE_DEVICE_TYPE: {
 			struct config_node *stmt;
-			struct apply_node *dev_type;
+			struct apply_node *dev_type, *dev_type_pre;
 			dev_type = create_apply_node(ctx, scope,
 										 APPLY_NODE_DEVICE_TYPE,
 										 current->device_type.name,
 										 current);
+			dev_type_pre = create_apply_node_with_owner(ctx, scope,
+														APPLY_NODE_DEVICE_TYPE_PRE,
+														current->device_type.name,
+														current, dev_type);
+
+			apply_node_depends(ctx, dev_type_pre, dev_type);
 
 
 			stmt = current->device_type.first_child;
@@ -1008,7 +1028,8 @@ static void discover_device_types(struct apply_context *ctx,
 															stmt->input.name, stmt,
 															dev_type);
 					new_node->is_default = stmt->input.def;
-					apply_node_depends(ctx, dev_type, new_node);
+					apply_node_depends(ctx, dev_type_pre, new_node);
+					apply_node_depends(ctx, new_node, dev_type);
 					break;
 
 				case CONFIG_NODE_OUTPUT:
@@ -1017,7 +1038,8 @@ static void discover_device_types(struct apply_context *ctx,
 															stmt->output.name, stmt,
 															dev_type);
 					new_node->is_default = stmt->output.def;
-					apply_node_depends(ctx, dev_type, new_node);
+					apply_node_depends(ctx, dev_type_pre, new_node);
+					apply_node_depends(ctx, new_node, dev_type);
 					break;
 
 				case CONFIG_NODE_ATTR:
@@ -1025,7 +1047,8 @@ static void discover_device_types(struct apply_context *ctx,
 															APPLY_NODE_DEVICE_TYPE_ATTR,
 															stmt->attr.name, stmt,
 															dev_type);
-					apply_node_depends(ctx, dev_type, new_node);
+					apply_node_depends(ctx, dev_type_pre, new_node);
+					apply_node_depends(ctx, new_node, dev_type);
 					break;
 
 				default:
@@ -1115,6 +1138,7 @@ static void discover_devices(struct apply_context *ctx,
 															cnl_node->cnode,
 															dev);
 					new_node->is_default = cnl_node->is_default;
+					apply_node_depends(ctx, cnl_node, new_node);
 					apply_node_depends(ctx, dev, new_node);
 					break;
 
@@ -1127,6 +1151,7 @@ static void discover_devices(struct apply_context *ctx,
 															cnl_node->cnode,
 															dev);
 					new_node->is_default = cnl_node->is_default;
+					apply_node_depends(ctx, cnl_node, new_node);
 					apply_node_depends(ctx, dev, new_node);
 					break;
 
@@ -1140,6 +1165,7 @@ static void discover_devices(struct apply_context *ctx,
 															dev);
 					// NOTE: Because attributes must be known when the
 					// device is created, the device depends on the attribute.
+					apply_node_depends(ctx, cnl_node, new_node);
 					apply_node_depends(ctx, new_node, dev);
 					break;
 
@@ -1377,7 +1403,7 @@ static void discover_built_ins(struct apply_context *ctx, struct stage *stage)
 		node = create_apply_node(ctx, &ctx->scope,
 								 APPLY_NODE_DEVICE_TYPE_BUILTIN,
 								 dev_type->name, NULL);
-		node->final_id = dev_type->id;
+		node->final.dev_type = dev_type;
 
 		for (size_t cnl = 0; cnl < dev_type->num_inputs; cnl++) {
 			struct apply_node *cnl_node;
@@ -1465,6 +1491,9 @@ static bool apply_topological_sort(struct apply_context *ctx, struct apply_node 
 static void print_apply_node_name(struct apply_node *node)
 {
 	switch (node->type) {
+	case APPLY_NODE_DEVICE_TYPE_PRE:
+		printf("dev_t_pre");
+		break;
 	case APPLY_NODE_DEVICE_TYPE:
 		printf("dev_t    ");
 		break;
@@ -1505,6 +1534,124 @@ static void print_apply_node_name(struct apply_node *node)
 		print_apply_node_name(node->owner);
 		printf(")");
 	}
+}
+
+static struct scoped_hash *get_equivalent_scope(struct apply_context *ctx,
+												struct scoped_hash *target,
+												struct scoped_hash *root)
+{
+	assert(root->parent == NULL);
+	assert(target != NULL);
+
+	struct scoped_hash *eq_parent;
+	struct scope_entry entry;
+	struct apply_node *node;
+	int err;
+
+	if (target->parent != NULL) {
+		eq_parent = get_equivalent_scope(ctx, target->parent, root);
+	} else {
+		eq_parent = root;
+	}
+
+	node = ctx->nodes[eq_parent->id];
+
+	assert(node->name);
+
+	err = scoped_hash_local_lookup(eq_parent, node->name, &entry);
+	assert(!err);
+
+	return entry.scope;
+}
+
+static scalar_value apply_eval_value(struct apply_context *ctx,
+									 struct stage *stage,
+									 struct apply_node *expr)
+{
+	// TODO: Implement
+	return 0;
+}
+
+static bool do_apply_config(struct apply_context *ctx,
+							struct stage *stage,
+							struct apply_node *action_list)
+{
+	while (action_list) {
+		struct apply_node *node;
+		node = action_list;
+		action_list = node->next;
+		node->next = NULL;
+
+		switch (node->type) {
+		case APPLY_NODE_DEVICE_TYPE_BUILTIN:
+			break;
+
+		case APPLY_NODE_DEVICE_TYPE_PRE: {
+			struct device_type *dev_type;
+			struct scoped_hash *scope;
+
+			scope = get_equivalent_scope(ctx, node->owner->scope->parent, &stage->root_scope);
+			dev_type = register_device_type_scoped(stage, node->owner->name->name, scope);
+
+			node->owner->final.dev_type = dev_type;
+		} break;
+
+		case APPLY_NODE_DEVICE_TYPE:
+			assert(node->final.dev_type);
+			break;
+
+		case APPLY_NODE_DEVICE_TYPE_INPUT: {
+			struct device_channel_def *cnl;
+
+			if (node->owner->type == APPLY_NODE_DEVICE_TYPE_BUILTIN) {
+				continue;
+			}
+
+			cnl = device_type_add_input(stage, node->owner->final.dev_type,
+										node->name->name, stage->standard_types.integer);
+
+			node->final.channel = cnl->id;
+		} break;
+
+		case APPLY_NODE_DEVICE_TYPE_OUTPUT: {
+			struct device_channel_def *cnl;
+
+			if (node->owner->type == APPLY_NODE_DEVICE_TYPE_BUILTIN) {
+				continue;
+			}
+
+			cnl = device_type_add_output(stage, node->owner->final.dev_type,
+										node->name->name, stage->standard_types.integer);
+
+			node->final.channel = cnl->id;
+		} break;
+
+		case APPLY_NODE_DEVICE_TYPE_ATTR: {
+			struct device_attribute_def *attr;
+			scalar_value default_value;
+
+			if (node->owner->type == APPLY_NODE_DEVICE_TYPE_BUILTIN) {
+				continue;
+			}
+
+			// TODO: Figure out what node should be.
+			// How should we store what expressions eval to?
+			default_value = apply_eval_value(ctx, stage, node);
+
+			attr = device_type_add_attribute(stage, node->owner->final.dev_type,
+											 node->name->name, stage->standard_types.integer);
+
+			node->final.attribute = attr->id;
+		} break;
+
+
+		default:
+			//assert(false);
+			break;
+		}
+	}
+
+	return true;
 }
 
 int apply_config(struct stage *stage, struct config_node *node)
@@ -1550,11 +1697,13 @@ int apply_config(struct stage *stage, struct config_node *node)
 		return -1;
 	}
 
-	while (tn) {
-		print_apply_node_name(tn);
-		printf("\n");
-		tn = tn->next;
-	}
+	do_apply_config(&ctx, stage, tn);
+
+	/* while (tn) { */
+	/* 	print_apply_node_name(tn); */
+	/* 	printf("\n"); */
+	/* 	tn = tn->next; */
+	/* } */
 
 	/* config_apply_device_types(stage, node, &stage->root_scope); */
 	/* config_apply_devices(stage, node, &stage->root_scope); */

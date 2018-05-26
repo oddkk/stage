@@ -86,6 +86,15 @@ int main(int argc, char *argv[])
 
 	apply_config(&stage, node);
 
+	for (int i = 0; i < stage.num_device_types; i++) {
+		struct device_type *dev_type;
+
+		dev_type = get_device_type(&stage, i);
+
+		describe_device_type(&stage, dev_type);
+		printf("\n");
+	}
+
 	return 0;
 
 	for (int i = 0; i < stage.num_devices; i++) {
