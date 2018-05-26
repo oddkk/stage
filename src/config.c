@@ -733,9 +733,11 @@ struct apply_node;
 
 struct apply_edge {
 	struct apply_node *from, *to;
+	bool visited;
 };
 
 struct apply_node {
+	struct apply_node *next;
 	size_t id;
 	struct apply_node *owner;
 	enum apply_node_type type;
@@ -743,10 +745,13 @@ struct apply_node {
 	struct scoped_hash *scope;
 	struct config_node *cnode;
 
+	size_t num_incoming_edges;
+
 	struct apply_edge *outgoing_edges;
 	size_t num_outgoing_edges;
 
 	int final_id;
+
 	// For channels
 	bool is_default;
 };
@@ -756,6 +761,10 @@ struct apply_context {
 	size_t num_nodes;
 
 	struct scoped_hash scope;
+
+	// A linked list of all nodes with no incoming edges.
+	struct apply_node *terminal_nodes;
+	size_t unvisited_edges;
 };
 
 static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx,
@@ -839,6 +848,9 @@ static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx
 	new_node->cnode = cnode;
 	new_node->owner = owner;
 
+	new_node->next = ctx->terminal_nodes;
+	ctx->terminal_nodes = new_node;
+
 	if (scope_entry_kind != SCOPE_ENTRY_NONE) {
 		if (create_scope) {
 			new_node->scope = scoped_hash_push(scope, scope_entry_kind, id);
@@ -869,9 +881,24 @@ static struct apply_node *create_apply_node(struct apply_context *ctx,
 	return result;
 }
 
+static void remove_terminal_apply_node(struct apply_context *ctx,
+									   struct apply_node *node)
+{
+	struct apply_node **n;
+	n = &ctx->terminal_nodes;
+	while (*n) {
+		if (*n == node) {
+			*n = node->next;
+			node->next = NULL;
+			break;
+		}
+		n = &(*n)->next;
+	}
+}
+
 // Makes depends_on require node. In other words, node must be
 // initialized before depends_on.
-static void apply_node_depends(struct apply_node *node, struct apply_node *depends_on)
+static void apply_node_depends(struct apply_context *ctx, struct apply_node *node, struct apply_node *depends_on)
 {
 	struct apply_edge new_edge = {0};
 
@@ -879,6 +906,12 @@ static void apply_node_depends(struct apply_node *node, struct apply_node *depen
 	new_edge.to = depends_on;
 
 	dlist_append(node->outgoing_edges, node->num_outgoing_edges, &new_edge);
+
+	ctx->unvisited_edges += 1;
+	depends_on->num_incoming_edges += 1;
+	if (depends_on->num_incoming_edges == 1) {
+		remove_terminal_apply_node(ctx, depends_on);
+	}
 }
 
 static void create_dependency_for_l_expr(struct apply_context *ctx,
@@ -909,7 +942,7 @@ static void create_dependency_for_l_expr(struct apply_context *ctx,
 	}
 
 	// The result depends on the attribute (value).
-	apply_node_depends(attr, node);
+	apply_node_depends(ctx, attr, node);
 }
 
 static void create_dependencies_for_expr(struct apply_context *ctx,
@@ -975,7 +1008,7 @@ static void discover_device_types(struct apply_context *ctx,
 															stmt->input.name, stmt,
 															dev_type);
 					new_node->is_default = stmt->input.def;
-					apply_node_depends(dev_type, new_node);
+					apply_node_depends(ctx, dev_type, new_node);
 					break;
 
 				case CONFIG_NODE_OUTPUT:
@@ -984,7 +1017,7 @@ static void discover_device_types(struct apply_context *ctx,
 															stmt->output.name, stmt,
 															dev_type);
 					new_node->is_default = stmt->output.def;
-					apply_node_depends(dev_type, new_node);
+					apply_node_depends(ctx, dev_type, new_node);
 					break;
 
 				case CONFIG_NODE_ATTR:
@@ -992,7 +1025,7 @@ static void discover_device_types(struct apply_context *ctx,
 															APPLY_NODE_DEVICE_TYPE_ATTR,
 															stmt->attr.name, stmt,
 															dev_type);
-					apply_node_depends(dev_type, new_node);
+					apply_node_depends(ctx, dev_type, new_node);
 					break;
 
 				default:
@@ -1059,7 +1092,7 @@ static void discover_devices(struct apply_context *ctx,
 											   current->device.name,
 											   current, dev_type);
 
-			apply_node_depends(dev_type, dev);
+			apply_node_depends(ctx, dev_type, dev);
 
 			struct scoped_hash *scope;
 
@@ -1082,7 +1115,7 @@ static void discover_devices(struct apply_context *ctx,
 															cnl_node->cnode,
 															dev);
 					new_node->is_default = cnl_node->is_default;
-					apply_node_depends(dev, new_node);
+					apply_node_depends(ctx, dev, new_node);
 					break;
 
 				case SCOPE_ENTRY_DEVICE_OUTPUT:
@@ -1094,7 +1127,7 @@ static void discover_devices(struct apply_context *ctx,
 															cnl_node->cnode,
 															dev);
 					new_node->is_default = cnl_node->is_default;
-					apply_node_depends(dev, new_node);
+					apply_node_depends(ctx, dev, new_node);
 					break;
 
 				case SCOPE_ENTRY_DEVICE_ATTRIBUTE:
@@ -1107,7 +1140,7 @@ static void discover_devices(struct apply_context *ctx,
 															dev);
 					// NOTE: Because attributes must be known when the
 					// device is created, the device depends on the attribute.
-					apply_node_depends(new_node, dev);
+					apply_node_depends(ctx, new_node, dev);
 					break;
 
 				default:
@@ -1275,8 +1308,8 @@ static void discover_entries_device(struct apply_context *ctx,
 				}
 
 				// The bind depends on the operands.
-				apply_node_depends(lhs_node, op);
-				apply_node_depends(rhs_node, op);
+				apply_node_depends(ctx, lhs_node, op);
+				apply_node_depends(ctx, rhs_node, op);
 			}
 			break;
 
@@ -1355,7 +1388,7 @@ static void discover_built_ins(struct apply_context *ctx, struct stage *stage)
 			if (cnl == dev_type->self_input) {
 				cnl_node->is_default = true;
 			}
-			apply_node_depends(node, cnl_node);
+			apply_node_depends(ctx, node, cnl_node);
 		}
 
 		for (size_t cnl = 0; cnl < dev_type->num_outputs; cnl++) {
@@ -1367,7 +1400,7 @@ static void discover_built_ins(struct apply_context *ctx, struct stage *stage)
 			if (cnl == dev_type->self_output) {
 				cnl_node->is_default = true;
 			}
-			apply_node_depends(node, cnl_node);
+			apply_node_depends(ctx, node, cnl_node);
 		}
 
 		for (size_t attr = 0; attr < dev_type->num_attributes; attr++) {
@@ -1376,9 +1409,57 @@ static void discover_built_ins(struct apply_context *ctx, struct stage *stage)
 													 APPLY_NODE_DEVICE_TYPE_ATTR,
 													 dev_type->attributes[attr].name, NULL,
 													 node);
-			apply_node_depends(node, attr_node);
+			apply_node_depends(ctx, node, attr_node);
 		}
 	}
+}
+
+static bool apply_topological_sort(struct apply_context *ctx, struct apply_node **out)
+{
+	struct apply_node *result = NULL;
+	struct apply_node *result_tail = NULL;
+
+	while (ctx->terminal_nodes) {
+		struct apply_node *node;
+		node = ctx->terminal_nodes;
+		ctx->terminal_nodes = node->next;
+		node->next = NULL;
+
+		if (!result) {
+			result = node;
+			result_tail = node;
+		} else {
+			result_tail->next = node;
+			result_tail = node;
+		}
+
+		for (size_t i = 0; i < node->num_outgoing_edges; i++) {
+			struct apply_edge *edge;
+
+			edge = &node->outgoing_edges[i];
+			if (!edge->visited) {
+				edge->visited = true;
+
+				assert(edge->to->num_incoming_edges > 0);
+
+				edge->to->num_incoming_edges -= 1;
+				ctx->unvisited_edges -= 1;
+				if (edge->to->num_incoming_edges == 0) {
+					edge->to->next = ctx->terminal_nodes;
+					ctx->terminal_nodes = edge->to;
+				}
+			}
+		}
+	}
+
+	if (ctx->unvisited_edges != 0) {
+		// TODO: Improve error message!
+		printf("Detected one or more circular dependencies in the config file.\n");
+		return false;
+	}
+
+	*out = result;
+	return true;
 }
 
 static void print_apply_node_name(struct apply_node *node)
@@ -1459,6 +1540,20 @@ int apply_config(struct stage *stage, struct config_node *node)
 			print_apply_node_name(dep);
 			printf("\n");
 		}
+	}
+
+	printf("\nSorted nodes:\n");
+
+	struct apply_node *tn;
+
+	if (!apply_topological_sort(&ctx, &tn)) {
+		return -1;
+	}
+
+	while (tn) {
+		print_apply_node_name(tn);
+		printf("\n");
+		tn = tn->next;
 	}
 
 	/* config_apply_device_types(stage, node, &stage->root_scope); */
