@@ -442,12 +442,14 @@ static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx
 			new_node->scope = scoped_hash_push(scope, scope_entry_kind, id);
 		}
 
-		scoped_hash_insert(scope,
-						   new_node->name,
-						   scope_entry_kind,
-						   id,
-						   cnode,
-						   new_node->scope);
+		if (new_node->name) {
+			scoped_hash_insert(scope,
+							new_node->name,
+							scope_entry_kind,
+							id,
+							cnode,
+							new_node->scope);
+		}
 	}
 
 	return new_node;
