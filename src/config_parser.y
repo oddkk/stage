@@ -139,6 +139,7 @@ device_type_body_stmt:
 		|		"attr" IDENTIFIER ':' type   ';'           { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; }
 		|		"attr" IDENTIFIER ':' type   '=' expr ';'  { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; $$->attr.def_value = $6; }
 		|		l_expr "<-" l_expr ';'                     { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		l_expr '=' expr ';'                     { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ASSIGN; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		|		device                                     { $$ = $1; }
 		|		type_decl                                  { $$ = $1; }
 		;

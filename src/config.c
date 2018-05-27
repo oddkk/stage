@@ -1315,14 +1315,18 @@ static bool do_apply_config(struct apply_context *ctx,
 
 		case APPLY_NODE_DEVICE_TYPE_ATTR: {
 			struct device_attribute_def *attr;
-			scalar_value default_value;
+			scalar_value default_value = SCALAR_OFF;
 
 			if (node->owner->type == APPLY_NODE_DEVICE_TYPE_BUILTIN) {
 				continue;
 			}
 
-			default_value = apply_eval_expr_value(ctx, stage, node,
-												  node->cnode->attr.def_value);
+			if (node->cnode->attr.def_value) {
+				// TODO: Nodes should be able to not have a default
+				// value, requiering a value to be specified.
+				default_value = apply_eval_expr_value(ctx, stage, node,
+													  node->cnode->attr.def_value);
+			}
 
 			attr = device_type_add_attribute(stage, node->owner->final.dev_type,
 											 node->name->name, default_value);
