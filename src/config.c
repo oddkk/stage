@@ -891,6 +891,12 @@ static int find_channel_node_from_l_expr(struct apply_context *ctx,
 		}
 	}
 
+	if (node->type == APPLY_NODE_DEVICE_ATTR &&
+		side == BIND_CHANNEL_SIDE_RIGHT) {
+		*out = node;
+		return 0;
+	}
+
 	if (!(node->type == primary_channel_type ||
 		  (node->type == self_channel_type &&
 		   node->owner == dev))) {
@@ -1167,13 +1173,18 @@ static scalar_value apply_eval_l_expr_value(struct apply_context *ctx,
 
 	switch (node->type) {
 	case APPLY_NODE_DEVICE_ATTR: {
+		struct device_attribute_def *attr;
+		struct device_type *dev_type;
 		for (size_t i = 0; i < node->owner->final.dev_data.num_attrs; i++) {
 			if (node->owner->final.dev_data.attrs[i].name == node->name) {
 				return node->owner->final.dev_data.attrs[i].value;
 			}
 		}
-		printf("Missing attr. Something is probably wrong with the sort.");
-		return SCALAR_OFF;
+
+		dev_type = node->owner->owner->final.dev_type;
+		attr = &dev_type->attributes[node->final.attribute];
+
+		return attr->def;
 	} break;
 
 	default:
@@ -1230,6 +1241,12 @@ static scalar_value apply_eval_expr_value(struct apply_context *ctx,
 	return 0;
 }
 
+#if 0
+#define DEBUG_PRINT_APPLICATION(...) printf(__VA_ARGS__)
+#else
+#define DEBUG_PRINT_APPLICATION(...)
+#endif
+
 static bool do_apply_config(struct apply_context *ctx,
 							struct stage *stage,
 							struct apply_node *action_list)
@@ -1253,10 +1270,13 @@ static bool do_apply_config(struct apply_context *ctx,
 			dev_type = register_device_type_scoped(stage, node->owner->name->name, scope);
 
 			node->owner->final.dev_type = dev_type;
+
+			DEBUG_PRINT_APPLICATION("apply dev type pre %.*s\n", ALIT(node->owner->name));
 		} break;
 
 		case APPLY_NODE_DEVICE_TYPE:
 			assert(node->final.dev_type);
+			DEBUG_PRINT_APPLICATION("apply dev type %.*s\n", ALIT(node->name));
 			break;
 
 		case APPLY_NODE_DEVICE_TYPE_INPUT: {
@@ -1270,6 +1290,9 @@ static bool do_apply_config(struct apply_context *ctx,
 										node->name->name, stage->standard_types.integer);
 
 			node->final.channel = cnl->id;
+
+			DEBUG_PRINT_APPLICATION("apply dev type input %.*s.%.*s\n",
+				   ALIT(node->owner->name), ALIT(node->name));
 		} break;
 
 		case APPLY_NODE_DEVICE_TYPE_OUTPUT: {
@@ -1283,6 +1306,9 @@ static bool do_apply_config(struct apply_context *ctx,
 										node->name->name, stage->standard_types.integer);
 
 			node->final.channel = cnl->id;
+
+			DEBUG_PRINT_APPLICATION("apply dev type output %.*s.%.*s\n",
+				   ALIT(node->owner->name), ALIT(node->name));
 		} break;
 
 		case APPLY_NODE_DEVICE_TYPE_ATTR: {
@@ -1297,9 +1323,13 @@ static bool do_apply_config(struct apply_context *ctx,
 												  node->cnode->attr.def_value);
 
 			attr = device_type_add_attribute(stage, node->owner->final.dev_type,
-											 node->name->name, stage->standard_types.integer);
+											 node->name->name, default_value);
 
 			node->final.attribute = attr->id;
+
+			DEBUG_PRINT_APPLICATION("apply dev type attr %.*s.%.*s (%i = %i)\n",
+				   ALIT(node->owner->name), ALIT(node->name),
+				   attr->id, default_value);
 		} break;
 
 		case APPLY_NODE_DEVICE: {
@@ -1317,22 +1347,35 @@ static bool do_apply_config(struct apply_context *ctx,
 										 NULL);
 
 			node->final.dev_data.dev = dev;
+
+			DEBUG_PRINT_APPLICATION("apply dev %.*s\n", ALIT(node->name));
 		} break;
 
 		case APPLY_NODE_DEVICE_INPUT: {
 			struct device *dev;
 			dev = node->owner->final.dev_data.dev;
 			node->final.channel = device_get_input_channel_id(stage, dev, node->name);
+
+			DEBUG_PRINT_APPLICATION("apply dev input %.*s.%.*s (%.*s)\n",
+				   ALIT(node->owner->name), ALIT(node->name),
+				   ALIT(node->owner->owner->name));
 		} break;
 
 		case APPLY_NODE_DEVICE_OUTPUT: {
 			struct device *dev;
 			dev = node->owner->final.dev_data.dev;
 			node->final.channel = device_get_output_channel_id(stage, dev, node->name);
+
+			DEBUG_PRINT_APPLICATION("apply dev output %.*s.%.*s (%.*s)\n",
+				   ALIT(node->owner->name), ALIT(node->name),
+				   ALIT(node->owner->owner->name));
 		} break;
 
-		case APPLY_NODE_DEVICE_ATTR:
-			break;
+		case APPLY_NODE_DEVICE_ATTR: {
+			DEBUG_PRINT_APPLICATION("apply dev attr %.*s.%.*s (%.*s)\n",
+				   ALIT(node->owner->name), ALIT(node->name),
+				   ALIT(node->owner->owner->name));
+		} break;
 
 		case APPLY_NODE_DEVICE_ASSIGN: {
 			struct device_attribute attribute = {0};
@@ -1359,6 +1402,9 @@ static bool do_apply_config(struct apply_context *ctx,
 			dlist_append(dev->final.dev_data.attrs,
 						 dev->final.dev_data.num_attrs,
 						 &attribute);
+
+			DEBUG_PRINT_APPLICATION("apply dev assign %.*s.%.*s = %i\n",
+				   ALIT(dev->name), ALIT(attribute.name), attribute.value);
 		} break;
 
 		case APPLY_NODE_DEVICE_BIND: {
@@ -1386,9 +1432,21 @@ static bool do_apply_config(struct apply_context *ctx,
 				continue;
 			}
 
-			channel_bind(stage,
-						 rhs_node->final.channel,
-						 lhs_node->final.channel);
+			if (rhs_node->type == APPLY_NODE_DEVICE_ATTR) {
+				scalar_value val;
+
+				val = apply_eval_l_expr_value(ctx, stage, node, rhs_node->cnode);
+
+				channel_bind_constant(stage, lhs_node->final.channel, val);
+			} else {
+				channel_bind(stage,
+							rhs_node->final.channel,
+							lhs_node->final.channel);
+			}
+
+			DEBUG_PRINT_APPLICATION("apply dev bind %.*s.%.*s <- %.*s.%.*s\n",
+									ALIT(lhs_node->name), ALIT(lhs_node->owner->name),
+									ALIT(rhs_node->name), ALIT(rhs_node->owner->name));
 		} break;
 
 		default:
