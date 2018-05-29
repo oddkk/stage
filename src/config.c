@@ -446,12 +446,9 @@ static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx
 	if (scope_entry_kind != SCOPE_ENTRY_NONE) {
 		if (create_scope) {
 			new_node->scope = scoped_hash_push(scope, scope_entry_kind, id);
-			printf("creating scope for %.*s %zu\n", ALIT(new_node->name), id);
 		}
 
 		if (new_node->name) {
-			printf("inserting node %.*s %zu into scope %.*s %i\n",
-				   ALIT(new_node->name), id, ALIT(ctx->nodes[scope->id]->name), scope->id);
 			scoped_hash_insert(scope,
 							new_node->name,
 							scope_entry_kind,
@@ -1305,7 +1302,7 @@ static scalar_value apply_eval_expr_value(struct apply_context *ctx,
 	return 0;
 }
 
-#if 1
+#if 0
 #define DEBUG_PRINT_APPLICATION(...) printf(__VA_ARGS__)
 #else
 #define DEBUG_PRINT_APPLICATION(...)
