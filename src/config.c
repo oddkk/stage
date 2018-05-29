@@ -410,7 +410,7 @@ static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx
 			break;
 
 		case APPLY_NODE_DEVICE_PRE:
-			scope_entry_kind = SCOPE_ENTRY_DEVICE;
+			scope_entry_kind = SCOPE_ENTRY_NONE;
 			assert(owner);
 			break;
 
@@ -446,9 +446,12 @@ static struct apply_node *create_apply_node_with_owner(struct apply_context *ctx
 	if (scope_entry_kind != SCOPE_ENTRY_NONE) {
 		if (create_scope) {
 			new_node->scope = scoped_hash_push(scope, scope_entry_kind, id);
+			printf("creating scope for %.*s %zu\n", ALIT(new_node->name), id);
 		}
 
 		if (new_node->name) {
+			printf("inserting node %.*s %zu into scope %.*s %i\n",
+				   ALIT(new_node->name), id, ALIT(ctx->nodes[scope->id]->name), scope->id);
 			scoped_hash_insert(scope,
 							new_node->name,
 							scope_entry_kind,
@@ -731,14 +734,15 @@ static void discover_device_types(struct apply_context *ctx,
 static void discover_devices(struct apply_context *ctx,
 							 struct scoped_hash *owner_scope,
 							 struct scoped_hash *scope,
-							 struct config_node *node)
+							 struct config_node *node,
+							 struct apply_node  *parent_dev)
 {
 	struct config_node *current = node;
 
 	while (current) {
 		switch (current->type) {
 		case CONFIG_NODE_MODULE:
-			discover_devices(ctx, owner_scope, scope, current->module.first_child);
+			discover_devices(ctx, owner_scope, scope, current->module.first_child, parent_dev);
 			break;
 
 		case CONFIG_NODE_DEVICE_TYPE:
@@ -785,6 +789,10 @@ static void discover_devices(struct apply_context *ctx,
 			apply_node_depends(ctx, dev_pre,  dev);
 			apply_node_depends(ctx, dev_type, dev_pre);
 			// apply_node_depends(ctx, dev_type, dev); // transitive
+
+			if (parent_dev) {
+				apply_node_depends(ctx, parent_dev, dev);
+			}
 
 			struct scoped_hash *dev_type_scope;
 
@@ -850,7 +858,8 @@ static void discover_devices(struct apply_context *ctx,
 				discover_devices(ctx,
 								 dev->scope,
 								 dev_type->scope,
-								 dev_type->cnode->device_type.first_child);
+								 dev_type->cnode->device_type.first_child,
+								 dev);
 			}
 		} break;
 
@@ -1296,7 +1305,7 @@ static scalar_value apply_eval_expr_value(struct apply_context *ctx,
 	return 0;
 }
 
-#if 0
+#if 1
 #define DEBUG_PRINT_APPLICATION(...) printf(__VA_ARGS__)
 #else
 #define DEBUG_PRINT_APPLICATION(...)
@@ -1391,7 +1400,13 @@ static bool do_apply_config(struct apply_context *ctx,
 				   attr->id, default_value);
 		} break;
 
+		case APPLY_NODE_DEVICE_PRE:
+			DEBUG_PRINT_APPLICATION("apply dev pre %.*s\n", ALIT(node->name));
+			break;
+
 		case APPLY_NODE_DEVICE: {
+			DEBUG_PRINT_APPLICATION("apply dev %.*s\n", ALIT(node->name));
+
 			struct device *dev;
 			struct device_type *dev_type;
 			struct scoped_hash *scope;
@@ -1406,8 +1421,6 @@ static bool do_apply_config(struct apply_context *ctx,
 										 NULL);
 
 			node->final.dev_data.dev = dev;
-
-			DEBUG_PRINT_APPLICATION("apply dev %.*s\n", ALIT(node->name));
 		} break;
 
 		case APPLY_NODE_DEVICE_INPUT: {
@@ -1543,7 +1556,7 @@ int apply_config(struct stage *stage, struct config_node *node)
 
 	discover_built_ins(&ctx, stage);
 	discover_device_types(&ctx, &ctx.scope, node);
-	discover_devices(&ctx, &ctx.scope, &ctx.scope, node);
+	discover_devices(&ctx, &ctx.scope, &ctx.scope, node, NULL);
 	discover_entries(&ctx, &ctx.scope, node);
 
 	if (!apply_topological_sort(&ctx, &tn)) {
