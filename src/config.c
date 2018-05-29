@@ -589,6 +589,37 @@ static void create_dependency_for_l_expr(struct apply_context *ctx,
 	apply_node_depends(ctx, attr, node);
 }
 
+static void create_dependency_on_l_expr(struct apply_context *ctx,
+										struct scoped_hash *scope,
+										struct apply_node *node,
+										struct config_node *expr)
+{
+	struct scope_entry entry;
+	struct apply_node *attr;
+	int err;
+
+	err = config_eval_l_expr(scope, expr, &entry);
+
+	if (err) {
+		printf("No such variable '");
+		print_l_expr(expr);
+		printf("'.\n");
+		return;
+	}
+
+	attr = ctx->nodes[entry.id];
+
+	if (attr->type != APPLY_NODE_DEVICE_ATTR) {
+		printf("'");
+		print_l_expr(expr);
+		printf("' is not an attribute.\n");
+		return;
+	}
+
+	// The result depends on the attribute (value).
+	apply_node_depends(ctx, node, attr);
+}
+
 static void create_dependencies_for_expr(struct apply_context *ctx,
 										 struct scoped_hash *scope,
 										 struct apply_node *node,
@@ -949,7 +980,7 @@ static void discover_entries_device(struct apply_context *ctx,
 												  APPLY_NODE_DEVICE_ASSIGN,
 												  NULL, current, dev);
 
-				create_dependency_for_l_expr(ctx, scope, op, current->binary_op.lhs);
+				create_dependency_on_l_expr(ctx, scope, op, current->binary_op.lhs);
 				create_dependencies_for_expr(ctx, scope, op, current->binary_op.rhs);
 			} else if (current->binary_op.op == CONFIG_OP_BIND) {
 				struct apply_node *lhs_node, *rhs_node;
