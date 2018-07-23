@@ -82,12 +82,14 @@ int main(int argc, char *argv[])
 		return err;
 	}
 
-	parse_config_file(STR("config/simple.conf"), &stage.atom_table, &stage.memory, &node);
+	parse_config_file(STR("config/simple.conf"), &stage.atom_table,
+			  &stage.memory, &node);
 
 	apply_config(&stage, node);
 
 #if 0
-	printf("======================== devices_types ========================\n");
+	printf
+	    ("======================== devices_types ========================\n");
 	for (int i = 0; i < stage.num_device_types; i++) {
 		struct device_type *dev_type;
 
@@ -97,7 +99,8 @@ int main(int argc, char *argv[])
 		printf("\n");
 	}
 
-	printf("=========================== devices ===========================\n");
+	printf
+	    ("=========================== devices ===========================\n");
 	for (int i = 0; i < stage.num_devices; i++) {
 		struct device *dev;
 
@@ -120,12 +123,11 @@ int main(int argc, char *argv[])
 
 		stage_tick(&stage);
 
-		tick_end_desired =
-		    timespec_add(tick_begin, frame_duration);
+		tick_end_desired = timespec_add(tick_begin, frame_duration);
 
 		clock_err =
-			clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME,
-							&tick_end_desired, 0);
+		    clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME,
+				    &tick_end_desired, 0);
 		if (clock_err) {
 			perror("clock_nanosleep");
 		}

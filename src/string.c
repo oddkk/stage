@@ -30,7 +30,8 @@ int string_duplicate(struct arena *arena, struct string *dest,
 	return 0;
 }
 
-int64_t string_to_int64_base2(struct string str) {
+int64_t string_to_int64_base2(struct string str)
+{
 	int64_t res = 0;
 	for (size_t i = 0; i < str.length; ++i) {
 		char c = str.text[i];
@@ -41,7 +42,8 @@ int64_t string_to_int64_base2(struct string str) {
 	return res;
 }
 
-int64_t string_to_int64_base10(struct string str) {
+int64_t string_to_int64_base10(struct string str)
+{
 	int64_t res = 0;
 	for (size_t i = 0; i < str.length; ++i) {
 		char c = str.text[i];
@@ -54,7 +56,8 @@ int64_t string_to_int64_base10(struct string str) {
 	return res;
 }
 
-int64_t string_to_int64_base16(struct string str) {
+int64_t string_to_int64_base16(struct string str)
+{
 	int64_t res = 0;
 	for (size_t i = 0; i < str.length; ++i) {
 		char c = str.text[i];

@@ -69,7 +69,8 @@ struct device_type *get_device_type(struct stage *stage, device_id dev_type_id)
 	struct device_type *res;
 
 	if (dev_type_id >= stage->num_device_types) {
-		print_error("get type", "Invalid device type id '%i'.", dev_type_id);
+		print_error("get type", "Invalid device type id '%i'.",
+			    dev_type_id);
 		return NULL;
 	}
 	res = stage->device_types[dev_type_id];
@@ -96,9 +97,8 @@ struct atom *stage_atom(struct stage *stage, struct string str)
 }
 
 void register_device_tick_callback(struct stage *stage,
-								   struct device *dev,
-								   uint64_t tick,
-								   tick_callback callback)
+				   struct device *dev,
+				   uint64_t tick, tick_callback callback)
 {
 	struct device_tick_callback *cb;
 
@@ -122,7 +122,8 @@ void stage_tick(struct stage *stage)
 	}
 }
 
-static bool print_full_entry_name_internal(struct stage *stage, struct scoped_hash *entry)
+static bool print_full_entry_name_internal(struct stage *stage,
+					   struct scoped_hash *entry)
 {
 	if (entry->parent) {
 		if (print_full_entry_name_internal(stage, entry->parent)) {
@@ -134,33 +135,33 @@ static bool print_full_entry_name_internal(struct stage *stage, struct scoped_ha
 	case SCOPE_ENTRY_NONE:
 		return false;
 
-	case SCOPE_ENTRY_DEVICE: {
-		struct device *dev;
-		dev = get_device(stage, entry->id);
-		printf("%.*s", ALIT(dev->name));
-	} break;
+	case SCOPE_ENTRY_DEVICE:{
+			struct device *dev;
+			dev = get_device(stage, entry->id);
+			printf("%.*s", ALIT(dev->name));
+		} break;
 
-	case SCOPE_ENTRY_DEVICE_TYPE: {
-		struct device_type *dev_type;
-		dev_type = get_device_type(stage, entry->id);
-		printf("%.*s", ALIT(dev_type->name));
-	} break;
+	case SCOPE_ENTRY_DEVICE_TYPE:{
+			struct device_type *dev_type;
+			dev_type = get_device_type(stage, entry->id);
+			printf("%.*s", ALIT(dev_type->name));
+		} break;
 
-	case SCOPE_ENTRY_DEVICE_INPUT: {
-		struct device_type *dev_type;
-		assert(entry->parent);
-		dev_type = get_device_type(stage, entry->parent->id);
-		assert(entry->id < dev_type->num_inputs);
-		printf("%.*s", ALIT(dev_type->inputs[entry->id].name));
-	} break;
+	case SCOPE_ENTRY_DEVICE_INPUT:{
+			struct device_type *dev_type;
+			assert(entry->parent);
+			dev_type = get_device_type(stage, entry->parent->id);
+			assert(entry->id < dev_type->num_inputs);
+			printf("%.*s", ALIT(dev_type->inputs[entry->id].name));
+		} break;
 
-	case SCOPE_ENTRY_DEVICE_OUTPUT: {
-		struct device_type *dev_type;
-		assert(entry->parent);
-		dev_type = get_device_type(stage, entry->parent->id);
-		assert(entry->id < dev_type->num_outputs);
-		printf("%.*s", ALIT(dev_type->outputs[entry->id].name));
-	} break;
+	case SCOPE_ENTRY_DEVICE_OUTPUT:{
+			struct device_type *dev_type;
+			assert(entry->parent);
+			dev_type = get_device_type(stage, entry->parent->id);
+			assert(entry->id < dev_type->num_outputs);
+			printf("%.*s", ALIT(dev_type->outputs[entry->id].name));
+		} break;
 
 	default:
 		printf("(@TODO complete print_full_entry_name)");

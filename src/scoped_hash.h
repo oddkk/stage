@@ -41,11 +41,19 @@ struct scoped_hash {
 	int id;
 };
 
-int scoped_hash_insert(struct scoped_hash *scope, struct atom *name, enum scope_entry_kind kind, int id, struct config_node *node, struct scoped_hash *child_scope);
-int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name, struct scope_entry *result);
-int scoped_hash_lookup_owner(struct scoped_hash *scope, struct atom *name, struct scope_entry *result, struct scoped_hash **owner);
-int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name, struct scope_entry *result);
-struct scoped_hash *scoped_hash_push(struct scoped_hash *parent, enum scope_entry_kind kind, int id);
+int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
+		       enum scope_entry_kind kind, int id,
+		       struct config_node *node,
+		       struct scoped_hash *child_scope);
+int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name,
+		       struct scope_entry *result);
+int scoped_hash_lookup_owner(struct scoped_hash *scope, struct atom *name,
+			     struct scope_entry *result,
+			     struct scoped_hash **owner);
+int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name,
+			     struct scope_entry *result);
+struct scoped_hash *scoped_hash_push(struct scoped_hash *parent,
+				     enum scope_entry_kind kind, int id);
 
 void scoped_hash_print(struct scoped_hash *hash, int indent);
 

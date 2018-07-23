@@ -13,10 +13,13 @@ struct stage;
 struct device;
 struct device_type;
 struct config_node;
-typedef int (*device_init_callback) (struct stage *, struct device_type *, struct device *);
-typedef scalar_value (*device_output_eval_callback) (struct stage *, struct device *,
-											 struct device_type *, int /* output id */,
-											 int /* subindex */);
+typedef int (*device_init_callback) (struct stage *, struct device_type *,
+				     struct device *);
+typedef scalar_value(*device_output_eval_callback) (struct stage *,
+						    struct device *,
+						    struct device_type *,
+						    int /* output id */ ,
+						    int /* subindex */ );
 
 struct device_channel_def {
 	int id;
@@ -56,25 +59,25 @@ struct device_type {
 
 struct device_attribute_def *device_type_add_attribute(struct stage *, struct device_type
 						       *dev_type,
-						       struct string name, scalar_value def);
-struct device_channel_def *device_type_add_input(struct stage *, struct device_type *dev_type,
-					       struct string name,
-					       type_id type);
-struct device_channel_def *device_type_add_output(struct stage *, struct device_type *dev_type,
+						       struct string name,
+						       scalar_value def);
+struct device_channel_def *device_type_add_input(struct stage *,
+						 struct device_type *dev_type,
 						 struct string name,
 						 type_id type);
+struct device_channel_def *device_type_add_output(struct stage *,
+						  struct device_type *dev_type,
+						  struct string name,
+						  type_id type);
 
 struct device_type *register_device_type(struct stage *stage,
-										 struct string name);
+					 struct string name);
 
 struct device_type *register_device_type_scoped(struct stage *stage,
-										 struct string name, struct scoped_hash *parent_scope);
+						struct string name,
+						struct scoped_hash
+						*parent_scope);
 
 void describe_device_type(struct stage *stage, struct device_type *dev_type);
 
 #endif
-
-
-
-
-

@@ -22,12 +22,9 @@ struct atom_table {
 	struct atom **buckets;
 };
 
+struct atom *atom_create(struct atom_table *table, struct string name);
 
-struct atom *
-atom_create(struct atom_table *table, struct string name);
-
-void
-atom_table_rehash(struct atom_table *table, size_t new_num_buckets);
+void atom_table_rehash(struct atom_table *table, size_t new_num_buckets);
 
 void atom_table_print(struct atom_table *table);
 

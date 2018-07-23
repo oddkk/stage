@@ -3,7 +3,10 @@
 #include "atom.h"
 #include "utils.h"
 
-int scoped_hash_insert(struct scoped_hash *scope, struct atom *name, enum scope_entry_kind kind, int id, struct config_node *node, struct scoped_hash *child_scope)
+int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
+		       enum scope_entry_kind kind, int id,
+		       struct config_node *node,
+		       struct scoped_hash *child_scope)
 {
 	struct scope_entry new_entry;
 	int entry_id;
@@ -28,7 +31,8 @@ int scoped_hash_insert(struct scoped_hash *scope, struct atom *name, enum scope_
 	return 0;
 }
 
-int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name, struct scope_entry *result)
+int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name,
+			     struct scope_entry *result)
 {
 	int err;
 
@@ -37,7 +41,8 @@ int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name, struc
 	err = id_lookup_table_lookup(&scope->lookup, name->name);
 	if (err < 0) {
 		if (scope->instance) {
-			return scoped_hash_local_lookup(scope->instance, name, result);
+			return scoped_hash_local_lookup(scope->instance, name,
+							result);
 		}
 
 		return -1;
@@ -49,7 +54,8 @@ int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name, struc
 }
 
 int scoped_hash_lookup_owner(struct scoped_hash *scope, struct atom *name,
-							 struct scope_entry *result, struct scoped_hash **owner)
+			     struct scope_entry *result,
+			     struct scoped_hash **owner)
 {
 	int err;
 
@@ -57,7 +63,8 @@ int scoped_hash_lookup_owner(struct scoped_hash *scope, struct atom *name,
 
 	if (err < 0) {
 		if (scope->parent) {
-			return scoped_hash_lookup_owner(scope->parent, name, result, owner);
+			return scoped_hash_lookup_owner(scope->parent, name,
+							result, owner);
 		} else {
 			return err;
 		}
@@ -71,18 +78,20 @@ int scoped_hash_lookup_owner(struct scoped_hash *scope, struct atom *name,
 }
 
 int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name,
-					   struct scope_entry *result)
+		       struct scope_entry *result)
 {
 	return scoped_hash_lookup_owner(scope, name, result, NULL);
 }
 
-struct scoped_hash *scoped_hash_push(struct scoped_hash *parent, enum scope_entry_kind kind, int id)
+struct scoped_hash *scoped_hash_push(struct scoped_hash *parent,
+				     enum scope_entry_kind kind, int id)
 {
 	struct scoped_hash *new_child;
 	int child_id;
 
 	// TODO: Make this use a more suited allocator?
-	new_child = arena_alloc(parent->lookup.page_arena, sizeof(struct scoped_hash));
+	new_child =
+	    arena_alloc(parent->lookup.page_arena, sizeof(struct scoped_hash));
 
 	if (!new_child) {
 		return 0;

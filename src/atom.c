@@ -11,8 +11,8 @@ struct atom_page {
 	struct atom atoms[atom_page_capacity];
 };
 
-static void
-atom_table_insert(struct atom_table *table, struct atom *new_atom) {
+static void atom_table_insert(struct atom_table *table, struct atom *new_atom)
+{
 	struct atom **current;
 
 	current = &table->buckets[new_atom->hash % table->num_buckets];
@@ -30,8 +30,8 @@ atom_table_insert(struct atom_table *table, struct atom *new_atom) {
 	*current = new_atom;
 }
 
-void
-atom_table_rehash(struct atom_table *table, size_t new_num_buckets) {
+void atom_table_rehash(struct atom_table *table, size_t new_num_buckets)
+{
 	if (new_num_buckets == table->num_buckets) {
 		return;
 	}
@@ -58,13 +58,13 @@ atom_table_rehash(struct atom_table *table, size_t new_num_buckets) {
 	}
 }
 
-struct atom *
-atom_create(struct atom_table *table, struct string name) {
+struct atom *atom_create(struct atom_table *table, struct string name)
+{
 	assert(table);
 	assert(name.text);
 	uint32_t name_hash = murmurhash(name.text, name.length, 0);
 	struct atom **current;
-	
+
 	current = &table->buckets[name_hash % table->num_buckets];
 
 	while (*current && (*current)->hash <= name_hash) {
@@ -75,14 +75,16 @@ atom_create(struct atom_table *table, struct string name) {
 		}
 		current = &(*current)->next_in_bucket;
 	}
-	
+
 	// NOTE: The atom did not already exist. Append atom to bucket.
-	
+
 	// NOTE: Get a new atom from the last atom page. If the last page
 	// is full, allocate a new one.
 	struct atom *new_atom;
-	if (!table->last_page || table->last_page->num_used >= atom_page_capacity) {
-		struct atom_page *new_page = calloc(1, sizeof(struct atom_page));
+	if (!table->last_page
+	    || table->last_page->num_used >= atom_page_capacity) {
+		struct atom_page *new_page =
+		    calloc(1, sizeof(struct atom_page));
 
 		if (!new_page) {
 			fprintf(stderr, "Could not allocate new atom page.\n");
@@ -109,7 +111,8 @@ atom_create(struct atom_table *table, struct string name) {
 	return new_atom;
 }
 
-void atom_table_print(struct atom_table *table) {
+void atom_table_print(struct atom_table *table)
+{
 	for (int i = 0; i < table->num_buckets; ++i) {
 		struct atom *current = table->buckets[i];
 

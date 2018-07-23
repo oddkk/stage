@@ -2,34 +2,38 @@
 #include <stdlib.h>
 #include "utils.h"
 
-int dependency_matrix_init(struct dependency_matrix *dep_matrix, size_t num_channels)
+int dependency_matrix_init(struct dependency_matrix *dep_matrix,
+			   size_t num_channels)
 {
 	dep_matrix->num_channels = num_channels;
-	dep_matrix->matrix = calloc(((num_channels * num_channels) / 32) + 1, sizeof(uint32_t));
+	dep_matrix->matrix =
+	    calloc(((num_channels * num_channels) / 32) + 1, sizeof(uint32_t));
 	if (!dep_matrix->matrix) {
 		return -1;
 	}
 	return 0;
 }
 
-int dependency_matrix_bind(struct dependency_matrix *dep_matrix, size_t dependent_on, size_t dependency)
+int dependency_matrix_bind(struct dependency_matrix *dep_matrix,
+			   size_t dependent_on, size_t dependency)
 {
 	size_t pos;
 
 	// @TODO: This should also mark all the transitive clojures as
 	// this dependency.
 
-	assert(dependency   < dep_matrix->num_channels &&
-		   dependent_on < dep_matrix->num_channels);
+	assert(dependency < dep_matrix->num_channels &&
+	       dependent_on < dep_matrix->num_channels);
 
 	pos = dep_matrix->num_channels * dependency + dependent_on;
-	
+
 	dep_matrix->matrix[pos / 32] |= (1 << (pos % 32));
 
 	return 0;
 }
 
-int dependency_matrix_list_dependent(struct dependency_matrix *dep_matrix, size_t dependent_on, size_t *i)
+int dependency_matrix_list_dependent(struct dependency_matrix *dep_matrix,
+				     size_t dependent_on, size_t * i)
 {
 	size_t row_begin = dep_matrix->num_channels * dependent_on;
 	if (*i < row_begin) {
@@ -60,7 +64,8 @@ int dependency_matrix_list_dependent(struct dependency_matrix *dep_matrix, size_
 	return -1;
 }
 
-int dependency_matrix_list_dependencies(struct dependency_matrix *dep_matrix, size_t depends_on, size_t *i)
+int dependency_matrix_list_dependencies(struct dependency_matrix *dep_matrix,
+					size_t depends_on, size_t * i)
 {
 	for (; *i < dep_matrix->num_channels; ++(*i)) {
 		size_t pos = depends_on + (*i) * dep_matrix->num_channels;
@@ -104,7 +109,9 @@ void dependency_matrix_describe(struct dependency_matrix *dep_matrix)
 		bool header_printed = false;
 		int channel;
 
-		while ((channel = dependency_matrix_list_dependencies(dep_matrix, i, &iter)) >= 0) {
+		while ((channel =
+			dependency_matrix_list_dependencies(dep_matrix, i,
+							    &iter)) >= 0) {
 			if (!header_printed) {
 				printf("channel %zu:\n", i);
 				header_printed = true;

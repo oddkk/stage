@@ -3,7 +3,7 @@
 #include "device.h"
 #include "utils.h"
 
-static channel_id _alloc_channels(struct stage * stage, unsigned int count)
+static channel_id _alloc_channels(struct stage *stage, unsigned int count)
 {
 	channel_id range_begin;
 
@@ -39,7 +39,10 @@ channel_id allocate_channels(struct stage * stage, struct scalar_type type,
 	return range_begin;
 }
 
-static void init_device_channels_for_type(struct stage *stage, channel_id *begin, device_id dev_id, int channel_id, type_id type_id, enum device_channel_kind kind)
+static void init_device_channels_for_type(struct stage *stage,
+					  channel_id * begin, device_id dev_id,
+					  int channel_id, type_id type_id,
+					  enum device_channel_kind kind)
 {
 	struct type *type;
 
@@ -56,10 +59,14 @@ static void init_device_channels_for_type(struct stage *stage, channel_id *begin
 	}
 }
 
-static void init_device_channels(struct stage *stage, device_id dev_id, struct device_channel_def *channels, size_t num_channels, channel_id begin, enum device_channel_kind kind)
+static void init_device_channels(struct stage *stage, device_id dev_id,
+				 struct device_channel_def *channels,
+				 size_t num_channels, channel_id begin,
+				 enum device_channel_kind kind)
 {
 	for (size_t i = 0; i < num_channels; ++i) {
-		init_device_channels_for_type(stage, &begin, dev_id, i, channels[i].type, kind);
+		init_device_channels_for_type(stage, &begin, dev_id, i,
+					      channels[i].type, kind);
 	}
 }
 
@@ -103,9 +110,15 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 		num_output_scalars += t->num_scalars;
 	}
 
-	channel_begin = _alloc_channels(stage, num_input_scalars + num_output_scalars);
-	init_device_channels(stage, dev_id, dev_type->inputs, dev_type->num_inputs, channel_begin, DEVICE_CHANNEL_INPUT);
-	init_device_channels(stage, dev_id, dev_type->outputs, dev_type->num_outputs, channel_begin + num_input_scalars, DEVICE_CHANNEL_OUTPUT);
+	channel_begin =
+	    _alloc_channels(stage, num_input_scalars + num_output_scalars);
+	init_device_channels(stage, dev_id, dev_type->inputs,
+			     dev_type->num_inputs, channel_begin,
+			     DEVICE_CHANNEL_INPUT);
+	init_device_channels(stage, dev_id, dev_type->outputs,
+			     dev_type->num_outputs,
+			     channel_begin + num_input_scalars,
+			     DEVICE_CHANNEL_OUTPUT);
 
 	device->input_begin = channel_begin;
 	device->output_begin = channel_begin + num_input_scalars;
@@ -113,7 +126,9 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 	return 0;
 }
 
-channel_id find_device_channel(struct stage *stage, struct device *dev, enum device_channel_kind kind, int channel, int subindex)
+channel_id find_device_channel(struct stage * stage, struct device * dev,
+			       enum device_channel_kind kind, int channel,
+			       int subindex)
 {
 	struct channel *cnl;
 	channel_id dev_begin;
@@ -130,13 +145,12 @@ channel_id find_device_channel(struct stage *stage, struct device *dev, enum dev
 	cnl = &stage->channels[dev_begin];
 
 	for (channel_id i = dev_begin;
-		 i < stage->num_channels &&
-		 cnl->device.id == dev->id &&
-			 cnl->device.channel_id <= channel;
-			 ++i, ++cnl) {
+	     i < stage->num_channels &&
+	     cnl->device.id == dev->id &&
+	     cnl->device.channel_id <= channel; ++i, ++cnl) {
 		if (cnl->device.channel_id == channel &&
-			cnl->device.channel_subindex == subindex &&
-			cnl->device_channel == kind) {
+		    cnl->device.channel_subindex == subindex &&
+		    cnl->device_channel == kind) {
 			return i;
 		}
 	}
@@ -313,7 +327,7 @@ scalar_value eval_channel(struct stage * stage, channel_id channel)
 		result = chnl->constant;
 		break;
 
-	case CHANNEL_CONNECTION_CALLBACK: {
+	case CHANNEL_CONNECTION_CALLBACK:{
 			if (!chnl->callback) {
 				result = SCALAR_OFF;
 				print_error("channel eval",
@@ -325,20 +339,23 @@ scalar_value eval_channel(struct stage * stage, channel_id channel)
 		}
 		break;
 
-	case CHANNEL_CONNECTION_DEVICE: {
-		struct device *dev;
-		struct device_type *type;
+	case CHANNEL_CONNECTION_DEVICE:{
+			struct device *dev;
+			struct device_type *type;
 
-		dev = stage->devices[chnl->device.id];
-		type = stage->device_types[dev->type];
+			dev = stage->devices[chnl->device.id];
+			type = stage->device_types[dev->type];
 
-		if (type->eval) {
-			result = type->eval(stage, dev, type,
-								chnl->device.channel_id, chnl->device.channel_subindex);
-		} else {
-			result = SCALAR_OFF;
+			if (type->eval) {
+				result = type->eval(stage, dev, type,
+						    chnl->device.channel_id,
+						    chnl->device.
+						    channel_subindex);
+			} else {
+				result = SCALAR_OFF;
+			}
 		}
-	} break;
+		break;
 
 	default:
 		result = SCALAR_OFF;
@@ -371,16 +388,24 @@ void channel_describe(struct stage *stage, channel_id cnl_id)
 
 			dev_type = get_device_type(stage, dev->type);
 			if (dev_type) {
-				printf(" device_type=%.*s", ALIT(dev_type->name));
+				printf(" device_type=%.*s",
+				       ALIT(dev_type->name));
 
 				if (cnl->device_channel == DEVICE_CHANNEL_INPUT) {
-					assert(cnl->device.channel_id < dev_type->num_inputs);
+					assert(cnl->device.channel_id <
+					       dev_type->num_inputs);
 					printf(" input=%.*s",
-						   ALIT(dev_type->inputs[cnl->device.channel_id].name));
-				} else if (cnl->device_channel == DEVICE_CHANNEL_OUTPUT) {
-					assert(cnl->device.channel_id < dev_type->num_outputs);
+					       ALIT(dev_type->
+						    inputs[cnl->device.
+							   channel_id].name));
+				} else if (cnl->device_channel ==
+					   DEVICE_CHANNEL_OUTPUT) {
+					assert(cnl->device.channel_id <
+					       dev_type->num_outputs);
 					printf(" output=%.*s",
-						   ALIT(dev_type->outputs[cnl->device.channel_id].name));
+					       ALIT(dev_type->
+						    outputs[cnl->device.
+							    channel_id].name));
 				}
 			} else {
 				printf(" (invalid type)");
@@ -398,14 +423,22 @@ void channel_describe_connection(struct stage *stage, channel_id cnl_id)
 	cnl = &stage->channels[cnl_id];
 
 	switch (cnl->connection_type) {
-	case CHANNEL_CONNECTION_UNCONNECTED: printf("unconnected"); break;
+	case CHANNEL_CONNECTION_UNCONNECTED:
+		printf("unconnected");
+		break;
 	case CHANNEL_CONNECTION_CHANNEL:
 		printf("channel ");
 		channel_describe(stage, cnl->connection);
-	break;
-	case CHANNEL_CONNECTION_CONSTANT: printf("constant %i", cnl->constant); break;
-	case CHANNEL_CONNECTION_CALLBACK: printf("callback"); break;
-	case CHANNEL_CONNECTION_DEVICE: printf("device"); break;
+		break;
+	case CHANNEL_CONNECTION_CONSTANT:
+		printf("constant %i", cnl->constant);
+		break;
+	case CHANNEL_CONNECTION_CALLBACK:
+		printf("callback");
+		break;
+	case CHANNEL_CONNECTION_DEVICE:
+		printf("device");
+		break;
 	}
 	printf("\n");
 }

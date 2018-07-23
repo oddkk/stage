@@ -172,7 +172,10 @@ void register_default_types(struct stage *stage)
 	stage->standard_types.integer =
 	    register_scalar_type(stage, STR("int"), SCALAR_MIN, SCALAR_MAX)->id;
 
-	scoped_hash_insert(&stage->root_scope, atom_create(&stage->atom_table, STR("int")), SCOPE_ENTRY_TYPE, stage->standard_types.integer, NULL, 0);
+	scoped_hash_insert(&stage->root_scope,
+			   atom_create(&stage->atom_table, STR("int")),
+			   SCOPE_ENTRY_TYPE, stage->standard_types.integer,
+			   NULL, 0);
 
 	new_type.kind = TYPE_KIND_STRING;
 	new_type.name = STR("string");

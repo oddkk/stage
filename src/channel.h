@@ -47,7 +47,9 @@ struct channel {
 channel_id allocate_channels(struct stage *stage, struct scalar_type type,
 			     unsigned int count);
 int allocate_device_channels(struct stage *stage, device_id device);
-channel_id find_device_channel(struct stage *stage, struct device *dev, enum device_channel_kind kind, int channel, int subindex);
+channel_id find_device_channel(struct stage *stage, struct device *dev,
+			       enum device_channel_kind kind, int channel,
+			       int subindex);
 
 int channel_unbind(struct stage *, channel_id channel);
 int channel_bind(struct stage *, channel_id src, channel_id dest);

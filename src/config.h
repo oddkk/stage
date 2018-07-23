@@ -108,7 +108,8 @@ struct config_node {
 	};
 };
 
-int parse_config_file(struct string filename, struct atom_table *table, struct arena *memory, struct config_node **out_node);
+int parse_config_file(struct string filename, struct atom_table *table,
+		      struct arena *memory, struct config_node **out_node);
 
 int apply_config(struct stage *, struct config_node *);
 

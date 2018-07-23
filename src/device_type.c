@@ -7,9 +7,10 @@
 #include <stdlib.h>
 
 struct device_attribute_def *device_type_add_attribute(struct stage *stage,
-													   struct device_type *dev_type,
-													   struct string name,
-													   scalar_value def)
+						       struct device_type
+						       *dev_type,
+						       struct string name,
+						       scalar_value def)
 {
 	int err;
 	struct device_attribute_def attr;
@@ -18,12 +19,16 @@ struct device_attribute_def *device_type_add_attribute(struct stage *stage,
 	attr.name = atom_create(&stage->atom_table, name);;
 	attr.def = def;
 
-	err = scoped_hash_insert(dev_type->scope, attr.name, SCOPE_ENTRY_DEVICE_ATTRIBUTE, attr.id, NULL, NULL);
+	err =
+	    scoped_hash_insert(dev_type->scope, attr.name,
+			       SCOPE_ENTRY_DEVICE_ATTRIBUTE, attr.id, NULL,
+			       NULL);
 
 	if (err) {
 		print_error("device type add attribute",
 			    "Failed to add attribute '%.*s' to device type '%.*s' because "
-			    "this attribute already exists.", LIT(name), ALIT(dev_type->name));
+			    "this attribute already exists.", LIT(name),
+			    ALIT(dev_type->name));
 		return NULL;
 	}
 
@@ -33,8 +38,9 @@ struct device_attribute_def *device_type_add_attribute(struct stage *stage,
 }
 
 struct device_channel_def *device_type_add_input(struct stage *stage,
-											   struct device_type *dev_type,
-											   struct string name, type_id type)
+						 struct device_type *dev_type,
+						 struct string name,
+						 type_id type)
 {
 	int err;
 	struct device_channel_def input;
@@ -50,7 +56,9 @@ struct device_channel_def *device_type_add_input(struct stage *stage,
 
 	input.name = atom_create(&stage->atom_table, name);
 
-	err = scoped_hash_insert(dev_type->scope, input.name, SCOPE_ENTRY_DEVICE_INPUT, input.id, NULL, NULL);
+	err =
+	    scoped_hash_insert(dev_type->scope, input.name,
+			       SCOPE_ENTRY_DEVICE_INPUT, input.id, NULL, NULL);
 
 	if (err) {
 		print_error("device type add input",
@@ -69,9 +77,10 @@ struct device_channel_def *device_type_add_input(struct stage *stage,
 	return &dev_type->inputs[input.id];
 }
 
-struct device_channel_def *device_type_add_output(struct stage *stage, struct device_type *dev_type,
-												 struct string name,
-												 type_id type)
+struct device_channel_def *device_type_add_output(struct stage *stage,
+						  struct device_type *dev_type,
+						  struct string name,
+						  type_id type)
 {
 	int err;
 	struct device_channel_def output;
@@ -87,7 +96,10 @@ struct device_channel_def *device_type_add_output(struct stage *stage, struct de
 
 	output.name = atom_create(&stage->atom_table, name);
 
-	err = scoped_hash_insert(dev_type->scope, output.name, SCOPE_ENTRY_DEVICE_OUTPUT, output.id, NULL, NULL);
+	err =
+	    scoped_hash_insert(dev_type->scope, output.name,
+			       SCOPE_ENTRY_DEVICE_OUTPUT, output.id, NULL,
+			       NULL);
 
 	if (err) {
 		print_error("device type add output",
@@ -107,13 +119,15 @@ struct device_channel_def *device_type_add_output(struct stage *stage, struct de
 }
 
 struct device_type *register_device_type(struct stage *stage,
-										 struct string name)
+					 struct string name)
 {
 	return register_device_type_scoped(stage, name, &stage->root_scope);
 }
 
 struct device_type *register_device_type_scoped(struct stage *stage,
-										 struct string name, struct scoped_hash *parent_scope)
+						struct string name,
+						struct scoped_hash
+						*parent_scope)
 {
 	struct device_type *dev_type;
 	int old_id, err;
@@ -152,7 +166,9 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 
 	dev_type->id = stage->num_device_types++;
 	dev_type->name = atom_create(&stage->atom_table, name);
-	dev_type->scope = scoped_hash_push(parent_scope, SCOPE_ENTRY_DEVICE_TYPE, dev_type->id);
+	dev_type->scope =
+	    scoped_hash_push(parent_scope, SCOPE_ENTRY_DEVICE_TYPE,
+			     dev_type->id);
 	dev_type->self_input = -1;
 	dev_type->self_output = -1;
 
@@ -167,9 +183,9 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 	}
 
 	err = scoped_hash_insert(parent_scope,
-							 atom_create(&stage->atom_table, name),
-							 SCOPE_ENTRY_DEVICE_TYPE, dev_type->id,
-							 NULL, dev_type->scope);
+				 atom_create(&stage->atom_table, name),
+				 SCOPE_ENTRY_DEVICE_TYPE, dev_type->id,
+				 NULL, dev_type->scope);
 
 	if (err) {
 		return 0;

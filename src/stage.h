@@ -21,7 +21,7 @@ struct type;
 struct channel;
 struct stage;
 
-typedef void(*tick_callback)(struct stage *, struct device *);
+typedef void (*tick_callback) (struct stage *, struct device *);
 struct device_tick_callback {
 	struct device *device;
 	tick_callback callback;
@@ -79,9 +79,8 @@ struct type *get_type(struct stage *stage, type_id);
 struct atom *stage_atom(struct stage *stage, struct string str);
 
 void register_device_tick_callback(struct stage *stage,
-								   struct device *dev,
-								   uint64_t tick,
-								   tick_callback callback);
+				   struct device *dev,
+				   uint64_t tick, tick_callback callback);
 
 void print_full_entry_name(struct stage *stage, struct scoped_hash *entry);
 
