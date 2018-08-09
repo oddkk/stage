@@ -3,6 +3,8 @@
 
 #include "intdef.h"
 #include "string.h"
+#include "atom.h"
+#include "scoped_hash.h"
 #include <limits.h>
 
 typedef unsigned int type_id;
@@ -15,27 +17,39 @@ typedef int scalar_value;
 #define TYPE_KIND_SCALAR 0
 #define TYPE_KIND_STRING 1
 #define TYPE_KIND_TUPLE 2
-//#define TYPE_KIND_ANY 3
+#define TYPE_KIND_NAMED_TUPLE 3
+#define TYPE_KIND_ARRAY 4
 
 struct scalar_type {
 	scalar_value min, max;
 };
 
+struct named_tuple_member {
+	struct atom *name;
+	type_id type;
+};
+
 struct type {
 	type_id id;
-	struct string name;
+	struct atom *name;
 	int num_scalars;
 	int kind;
 	union {
 		struct {
-			//type_id type;
 			scalar_value min, max;
 		} scalar;
 		struct {
 			type_id *types;
-			size_t num_types;
+			size_t length;
 		} tuple;
-		//TODO: Array type?
+		struct {
+			struct named_tuple_member *members;
+			size_t length;
+		} named_tuple;
+		struct {
+			type_id type;
+			size_t length;
+		} array;
 	};
 };
 
@@ -64,11 +78,16 @@ int type_count_scalars(struct stage *, struct type *type);
 void print_type(struct stage *, struct type *type);
 void expand_type(struct stage *, struct type *type, bool recurse_expand);
 
+int register_type_name(struct stage *stage, type_id type, struct scoped_hash *scope, struct atom *name);
+
 struct type *register_type(struct stage *stage, struct type def);
-struct type *register_scalar_type(struct stage *stage, struct string name,
+struct type *register_scalar_type(struct stage *stage, struct atom *name,
 				  scalar_value min, scalar_value max);
-struct type *register_tuple_type(struct stage *stage, struct string name,
+struct type *register_tuple_type(struct stage *stage, struct atom *name,
 				 type_id * subtypes, size_t num_subtypes);
+
+struct type *register_named_tuple_type(struct stage *stage, struct atom *name,
+				 struct named_tuple_member * members, size_t num_members);
 
 int assign_value(struct value *dest, struct type *dest_type, struct value *src,
 		 struct type *src_type);

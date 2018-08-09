@@ -80,6 +80,16 @@
 		*first_child = node;
 	}
 
+	static struct config_node *make_list(struct lex_context *ctx, struct config_node *head, struct config_node *tail) {
+		struct config_node *list_node;
+
+		list_node = alloc_node(ctx, CONFIG_NODE_INTERNAL_LIST);
+		list_node->internal_list.head = head;
+		list_node->internal_list.tail = tail;
+
+		return list_node;
+	}
+
 	int yylex(YYSTYPE *, YYLTYPE *, struct lex_context *);
 	void yyerror(YYLTYPE *loc, struct lex_context *, const char *);
 }
@@ -93,7 +103,9 @@
 %type	<scalar_value> NUMLIT
 %type	<struct config_node*> module module_stmt_list module_stmt device_type device_type_body
 %type	<struct config_node*> device_type_body_stmt device device_body device_body_stmt
-%type	<struct config_node*> l_expr type_decl type enum_list enum_label expr
+%type	<struct config_node*> l_expr type_decl type enum_list enum_label tuple_decl tuple_list
+%type	<struct config_node*> named_tuple_list tuple_item named_tuple_item expr type_litteral_name
+%type	<struct config_node*> subrange_type
 %type	<struct tmp_range> range
 
 
@@ -161,17 +173,44 @@ l_expr:			IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDENT)
 		;
 type_decl:		"type" IDENTIFIER '=' type ';' { $$ = alloc_node(ctx, CONFIG_NODE_TYPE_DECL); $$->type_decl.name = $2; $$->type_decl.type = $4; };
 		;
-type:			l_expr                       { $$ = $1; }
-		|		"type"                       { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = atom_create(ctx->atom_table, STR("type")); }
-//		|		l_expr '[' expr ']' This is implicit (part of l_expr)
-		|		l_expr '{' range '}'         { $$ = alloc_node(ctx, CONFIG_NODE_SUBSCRIPT_RANGE); $$->subscript_range.lhs = $1; $$->subscript_range.low = $3.low; $$->subscript_range.high = $3.high; }
+type:			l_expr                       { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $1; }
+		|		type_litteral_name           { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $1; }
+		|		subrange_type                { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $1; }
 		|		'{' enum_list '}'            { $$ = NULL; printf("TODO: enumlist\n"); }
+		|		'(' tuple_decl ')'           { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $2; }
+		;
+type_litteral_name:
+				"type"                       { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = atom_create(ctx->atom_table, STR("type")); }
+		;
+subrange_type:	l_expr '{' range '}'         { $$ = alloc_node(ctx, CONFIG_NODE_SUBSCRIPT_RANGE); $$->subscript_range.lhs = $1; $$->subscript_range.low = $3.low; $$->subscript_range.high = $3.high; }
 		;
 enum_list: 		enum_label                   { $$ = NULL; }
 		| 		enum_list ',' enum_label     { $$ = NULL; }
 		;
 enum_label:		IDENTIFIER                   { $$ = NULL; }
 		;
+
+tuple_decl:   	tuple_list                   { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE); $$->tuple.first_child = $1; $$->tuple.named = false; }
+		|		named_tuple_list             { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE); $$->tuple.first_child = $1; $$->tuple.named = true;  }
+//										tuple_item                            { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE); $$->tuple.named = false; append_child(&$$->tuple.first_child, $1); }
+//						|		tuple_item ',' tuple_list             { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE); $$->tuple.named = false; append_child(&$$->tuple.first_child, $1); append_child(&$$->tuple.first_child, $3); }
+//						|		named_tuple_item                      { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE); $$->tuple.named = true;  append_child(&$$->tuple.first_child, $1); }
+//						|		named_tuple_item ',' named_tuple_list { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE); $$->tuple.named = true;  append_child(&$$->tuple.first_child, $1); append_child(&$$->tuple.first_child, $3); }
+		;
+tuple_list:		tuple_item                   { $$ = make_list(ctx, $1, NULL); }
+		|		tuple_list ',' tuple_item    { $$ = make_list(ctx, $3, $1); }
+		;
+named_tuple_list:
+				named_tuple_item                      { $$ = make_list(ctx, $1, NULL); }
+		|		named_tuple_list ',' named_tuple_item { $$ = make_list(ctx, $3, $1); }
+		;
+tuple_item: 	type                         { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = NULL; $$->tuple_item.type = $1; }
+		;
+named_tuple_item:
+				IDENTIFIER ':' type          { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = $1; $$->tuple_item.type = $3; }
+		;
+
+
 range:			expr ".." expr     { $$.low = $1; $$.high = $3; }
 		;
 expr:			NUMLIT             { $$ = alloc_node(ctx, CONFIG_NODE_NUMLIT); $$->numlit = $1; }
@@ -277,6 +316,8 @@ void yyerror(YYLTYPE *lloc, struct lex_context *ctx, const char *error) {
 		   lloc->first_line, lloc->first_column, error);
 }
 
+void config_tree_clean(struct config_node *tree);
+
 int parse_config_file(struct string filename, struct atom_table *table, struct arena *memory, struct config_node **out_node) {
 	struct lex_context ctx;
 
@@ -300,6 +341,7 @@ int parse_config_file(struct string filename, struct atom_table *table, struct a
 
 	yyparse(&ctx);
 
+	config_tree_clean(ctx.module);
 	*out_node = ctx.module;
 
 	return 0;

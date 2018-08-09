@@ -20,6 +20,9 @@ enum config_node_type {
 	CONFIG_NODE_DEVICE_TYPE,
 	CONFIG_NODE_DEVICE,
 	CONFIG_NODE_TYPE_DECL,
+	CONFIG_NODE_TYPE,
+	CONFIG_NODE_TUPLE,
+	CONFIG_NODE_TUPLE_ITEM,
 	CONFIG_NODE_ATTR,
 	CONFIG_NODE_INPUT,
 	CONFIG_NODE_OUTPUT,
@@ -29,6 +32,8 @@ enum config_node_type {
 	CONFIG_NODE_SUBSCRIPT_RANGE,
 	CONFIG_NODE_IDENT,
 	CONFIG_NODE_NUMLIT,
+
+	CONFIG_NODE_INTERNAL_LIST,
 };
 
 struct version {
@@ -51,11 +56,7 @@ struct config_node {
 
 	struct scoped_hash *scope;
 
-	struct {
-		int color;
-		int discovered;
-		int finished;
-	} dfs;
+	int apply_id;
 
 	union {
 		struct {
@@ -78,6 +79,17 @@ struct config_node {
 			struct atom *name;
 			struct config_node *type;
 		} type_decl;
+		struct {
+			struct config_node *first_child;
+		} type_def;
+		struct {
+			bool named;
+			struct config_node *first_child;
+		} tuple;
+		struct {
+			struct atom *name;
+			struct config_node *type;
+		} tuple_item;
 		struct {
 			struct atom *name;
 			struct config_node *type;
@@ -103,6 +115,10 @@ struct config_node {
 			struct config_node *low;
 			struct config_node *high;
 		} subscript_range;
+		struct {
+			struct config_node *head;
+			struct config_node *tail;
+		} internal_list;
 		struct atom *ident;
 		scalar_value numlit;
 	};

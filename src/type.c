@@ -9,18 +9,45 @@ int type_count_scalars(struct stage *stage, struct type *type)
 {
 	int count = 0;
 	switch (type->kind) {
+
 	case TYPE_KIND_SCALAR:
 		return 1;
+
 	case TYPE_KIND_STRING:
 		return -1;
+
 	case TYPE_KIND_TUPLE:
-		for (size_t i = 0; i < type->tuple.num_types; i++) {
+		for (size_t i = 0; i < type->tuple.length; i++) {
 			type_id child_type_id;
 			struct type *child;
 			int ret;
 
 			child_type_id = type->tuple.types[i];
-			child = stage->types[child_type_id];
+			child = get_type(stage, child_type_id);
+			if (!child) {
+				return -1;
+			}
+
+			ret = type_count_scalars(stage, child);
+			if (ret == -1) {
+				return ret;
+			}
+			count += ret;
+		}
+		return count;
+
+	case TYPE_KIND_NAMED_TUPLE:
+		for (size_t i = 0; i < type->named_tuple.length; i++) {
+			type_id child_type_id;
+			struct type *child;
+			int ret;
+
+			child_type_id = type->named_tuple.members[i].type;
+			child = get_type(stage, child_type_id);
+			if (!child) {
+				return -1;
+			}
+
 			ret = type_count_scalars(stage, child);
 			if (ret == -1) {
 				return ret;
@@ -29,18 +56,18 @@ int type_count_scalars(struct stage *stage, struct type *type)
 		}
 		return count;
 	}
-	print_error("type", "Type '%.*s' has invalid kind %i", LIT(type->name),
+	print_error("type", "Type '%.*s' has invalid kind %i", ALIT(type->name),
 		    type->kind);
 	return -1;
 }
 
 void print_type(struct stage *stage, struct type *type)
 {
-	if (!type->name.length) {
+	if (!type->name) {
 		expand_type(stage, type, false);
 	}
 
-	printf("%.*s", LIT(type->name));
+	printf("%.*s", ALIT(type->name));
 }
 
 void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
@@ -49,12 +76,14 @@ void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
 	case TYPE_KIND_SCALAR:
 		printf("int{%i..%i}", type->scalar.min, type->scalar.max);
 		break;
+
 	case TYPE_KIND_STRING:
 		printf("string");
 		break;
+
 	case TYPE_KIND_TUPLE:
 		printf("(");
-		for (size_t i = 0; i < type->tuple.num_types; i++) {
+		for (size_t i = 0; i < type->tuple.length; i++) {
 			type_id child_type_id;
 			struct type *child;
 
@@ -73,27 +102,49 @@ void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
 		}
 		printf(")");
 		break;
+
+	case TYPE_KIND_NAMED_TUPLE:
+		printf("(");
+		for (size_t i = 0; i < type->tuple.length; i++) {
+			type_id child_type_id;
+			struct type *child;
+			struct atom *name;
+
+			name = type->named_tuple.members[i].name;
+			child_type_id = type->named_tuple.members[i].type;
+			child = stage->types[child_type_id];
+
+			if (i != 0) {
+				printf(", ");
+			}
+
+			printf("%.*s: ", ALIT(name));
+			if (recurse_expand) {
+				expand_type(stage, child, recurse_expand);
+			} else {
+				print_type(stage, child);
+			}
+		}
+		printf(")");
+		break;
 	}
+}
+
+int register_type_name(struct stage *stage, type_id type, struct scoped_hash *scope, struct atom *name)
+{
+	int result;
+	assert(scope);
+	assert(name);
+
+	result = scoped_hash_insert(scope, name, SCOPE_ENTRY_TYPE, type, NULL, NULL);
+
+	return result;
 }
 
 struct type *register_type(struct stage *stage, struct type def)
 {
 	struct type *type;
-	int old_id, error;
-
-	if (def.name.length == 0) {
-		print_error("register type", "Type must have name.",
-			    LIT(def.name));
-		return 0;
-	}
-
-	old_id = id_lookup_table_lookup(&stage->types_lookup, def.name);
-	if (old_id >= 0) {
-		print_error("register type",
-			    "Cannot register type '%.*s' because "
-			    "the name is already registered.", LIT(def.name));
-		return 0;
-	}
+	int error;
 
 	if (stage->num_types + 1 >= stage->cap_types) {
 		struct type **new_array;
@@ -115,15 +166,19 @@ struct type *register_type(struct stage *stage, struct type def)
 	type->id = stage->num_types++;
 
 	stage->types[type->id] = type;
-	error =
-	    id_lookup_table_insert(&stage->types_lookup, type->name, type->id);
+
+	if (type->name) {
+		error =
+			id_lookup_table_insert(&stage->types_lookup, type->name->name,
+					type->id);
+	}
 
 	type->num_scalars = type_count_scalars(stage, type);
 
 	return type;
 }
 
-struct type *register_scalar_type(struct stage *stage, struct string name,
+struct type *register_scalar_type(struct stage *stage, struct atom *name,
 				  scalar_value min, scalar_value max)
 {
 	struct type new_type;
@@ -138,7 +193,7 @@ struct type *register_scalar_type(struct stage *stage, struct string name,
 	return register_type(stage, new_type);
 }
 
-struct type *register_tuple_type(struct stage *stage, struct string name,
+struct type *register_tuple_type(struct stage *stage, struct atom *name,
 				 type_id * subtypes, size_t num_subtypes)
 {
 	struct type new_type;
@@ -148,13 +203,32 @@ struct type *register_tuple_type(struct stage *stage, struct string name,
 	new_type.name = name;
 	new_type.kind = TYPE_KIND_TUPLE;
 
-	new_type.tuple.num_types = num_subtypes;
+	new_type.tuple.length = num_subtypes;
 	new_type.tuple.types =
 	    arena_alloc(&stage->memory,
-			sizeof(type_id) * new_type.tuple.num_types);
+			sizeof(type_id) * new_type.tuple.length);
 
 	memcpy(new_type.tuple.types, subtypes,
-	       sizeof(type_id) * new_type.tuple.num_types);
+	       sizeof(type_id) * new_type.tuple.length);
+
+	return register_type(stage, new_type);
+}
+
+struct type *register_named_tuple_type(struct stage *stage, struct atom *name,
+				 struct named_tuple_member * members, size_t num_members)
+{
+	struct type new_type;
+
+	zero_memory(&new_type, sizeof(struct type));
+
+	new_type.name = name;
+	new_type.kind = TYPE_KIND_NAMED_TUPLE;
+
+	new_type.named_tuple.length = num_members;
+	new_type.named_tuple.members =
+		arena_alloc(&stage->memory, sizeof(struct named_tuple_member) * num_members);
+
+	memcpy(new_type.tuple.types, members, sizeof(struct named_tuple_member) * num_members);
 
 	return register_type(stage, new_type);
 }
@@ -170,7 +244,9 @@ void register_default_types(struct stage *stage)
 	struct type new_type;
 
 	stage->standard_types.integer =
-	    register_scalar_type(stage, STR("int"), SCALAR_MIN, SCALAR_MAX)->id;
+	    register_scalar_type(stage,
+				 atom_create(&stage->atom_table, STR("int")),
+				 SCALAR_MIN, SCALAR_MAX)->id;
 
 	scoped_hash_insert(&stage->root_scope,
 			   atom_create(&stage->atom_table, STR("int")),
@@ -178,7 +254,7 @@ void register_default_types(struct stage *stage)
 			   NULL, 0);
 
 	new_type.kind = TYPE_KIND_STRING;
-	new_type.name = STR("string");
+	new_type.name = atom_create(&stage->atom_table, STR("string"));
 	stage->standard_types.string = register_type(stage, new_type)->id;
 
 	/* new_type.kind = TYPE_KIND_ANY; */

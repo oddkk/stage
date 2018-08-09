@@ -349,8 +349,8 @@ scalar_value eval_channel(struct stage * stage, channel_id channel)
 			if (type->eval) {
 				result = type->eval(stage, dev, type,
 						    chnl->device.channel_id,
-						    chnl->device.
-						    channel_subindex);
+						    chnl->
+						    device.channel_subindex);
 			} else {
 				result = SCALAR_OFF;
 			}
@@ -395,17 +395,17 @@ void channel_describe(struct stage *stage, channel_id cnl_id)
 					assert(cnl->device.channel_id <
 					       dev_type->num_inputs);
 					printf(" input=%.*s",
-					       ALIT(dev_type->
-						    inputs[cnl->device.
-							   channel_id].name));
+					       ALIT(dev_type->inputs
+						    [cnl->device.channel_id].
+						    name));
 				} else if (cnl->device_channel ==
 					   DEVICE_CHANNEL_OUTPUT) {
 					assert(cnl->device.channel_id <
 					       dev_type->num_outputs);
 					printf(" output=%.*s",
-					       ALIT(dev_type->
-						    outputs[cnl->device.
-							    channel_id].name));
+					       ALIT(dev_type->outputs
+						    [cnl->device.channel_id].
+						    name));
 				}
 			} else {
 				printf(" (invalid type)");

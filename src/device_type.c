@@ -6,11 +6,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-struct device_attribute_def *device_type_add_attribute(struct stage *stage,
-						       struct device_type
+struct device_attribute_def *device_type_add_attribute(struct stage *stage, struct device_type
 						       *dev_type,
 						       struct string name,
-						       scalar_value def)
+							scalar_value def,
+							type_id type)
 {
 	int err;
 	struct device_attribute_def attr;
@@ -18,6 +18,7 @@ struct device_attribute_def *device_type_add_attribute(struct stage *stage,
 	attr.id = dev_type->num_attributes;
 	attr.name = atom_create(&stage->atom_table, name);;
 	attr.def = def;
+	attr.type = type;
 
 	err =
 	    scoped_hash_insert(dev_type->scope, attr.name,
@@ -203,20 +204,26 @@ void describe_device_type(struct stage *stage, struct device_type *dev_type)
 	for (size_t i = 0; i < dev_type->num_attributes; ++i) {
 		struct device_attribute_def *attr;
 		attr = &dev_type->attributes[i];
-		fprintf(fp, " - %i: %.*s\n", attr->id, ALIT(attr->name));
+		fprintf(fp, " - %i: %.*s ", attr->id, ALIT(attr->name));
+		print_type(stage, get_type(stage, attr->type));
+		fprintf(fp, "\n");
 	}
 
 	fprintf(stdout, " inputs:\n");
 	for (size_t i = 0; i < dev_type->num_inputs; ++i) {
 		struct device_channel_def *input;
 		input = &dev_type->inputs[i];
-		fprintf(fp, " - %i: %.*s\n", input->id, ALIT(input->name));
+		fprintf(fp, " - %i: %.*s ", input->id, ALIT(input->name));
+		print_type(stage, get_type(stage, input->type));
+		fprintf(fp, "\n");
 	}
 
 	fprintf(stdout, " output:\n");
 	for (size_t i = 0; i < dev_type->num_outputs; ++i) {
 		struct device_channel_def *output;
 		output = &dev_type->outputs[i];
-		fprintf(fp, " - %i: %.*s\n", output->id, ALIT(output->name));
+		fprintf(fp, " - %i: %.*s ", output->id, ALIT(output->name));
+		print_type(stage, get_type(stage, output->type));
+		fprintf(fp, "\n");
 	}
 }

@@ -85,9 +85,26 @@ int main(int argc, char *argv[])
 	parse_config_file(STR("config/simple.conf"), &stage.atom_table,
 			  &stage.memory, &node);
 
+	config_print_tree(node);
+
 	apply_config(&stage, node);
 
-#if 0
+#if 1
+	printf
+	    ("============================ types ============================\n");
+	for (int i = 0; i < stage.num_types; i++) {
+		struct type *type;
+
+		type = get_type(&stage, i);
+
+		print_type(&stage, type);
+		printf(" ");
+		expand_type(&stage, type, false);
+		//expand_type(&stage, type, true);
+		printf("\n");
+	}
+	printf("\n");
+
 	printf
 	    ("======================== devices_types ========================\n");
 	for (int i = 0; i < stage.num_device_types; i++) {

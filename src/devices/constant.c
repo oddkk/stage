@@ -27,7 +27,7 @@ struct device_type *register_device_type_constant(struct stage *stage)
 	constant = register_device_type(stage, STR("constant"));
 	constant->device_init = device_constant_init;
 
-	device_type_add_attribute(stage, constant, STR("value"), 0);
+	device_type_add_attribute(stage, constant, STR("value"), 0, stage->standard_types.integer);
 	channel_out = device_type_add_output(stage, constant, STR("out"),
 										 stage->standard_types.integer);
 
