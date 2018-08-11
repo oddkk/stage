@@ -1,3 +1,15 @@
+// TODO:
+//  * Make separate "apply lists" for device types, to allow device
+//    creation outside config
+//  * Fix referencing elements of tuples, both named and unnamed
+//  * Implement const fields in config (fields that are only used for
+//    calculations)
+//  * Make types "first-class" (a type type)?
+//  * Allow "templated" types in device types for channels and
+//    attributes (type types). Concider if channels should be created
+//    at init instead of as part of device type definition.
+//  * Clean up config.c
+
 #include "stage.h"
 #include "channel.h"
 #include "device.h"
