@@ -16,6 +16,9 @@ int type_count_scalars(struct stage *stage, struct type *type)
 	case TYPE_KIND_STRING:
 		return -1;
 
+	case TYPE_KIND_TYPE:
+		return -1;
+
 	case TYPE_KIND_TUPLE:
 		for (size_t i = 0; i < type->tuple.length; i++) {
 			type_id child_type_id;
@@ -79,6 +82,10 @@ void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
 
 	case TYPE_KIND_STRING:
 		printf("string");
+		break;
+
+	case TYPE_KIND_TYPE:
+		printf("type");
 		break;
 
 	case TYPE_KIND_TUPLE:
@@ -241,26 +248,24 @@ int assign_value(struct value *dest, struct type *dest_type, struct value *src,
 
 void register_default_types(struct stage *stage)
 {
-	struct type new_type;
-
 	stage->standard_types.integer =
 	    register_scalar_type(stage,
 				 atom_create(&stage->atom_table, STR("int")),
 				 SCALAR_MIN, SCALAR_MAX)->id;
+	register_type_name(stage, stage->standard_types.integer, &stage->root_scope,
+					   atom_create(&stage->atom_table, STR("int")));
 
-	scoped_hash_insert(&stage->root_scope,
-			   atom_create(&stage->atom_table, STR("int")),
-			   SCOPE_ENTRY_TYPE, stage->standard_types.integer,
-			   NULL, 0);
+	struct type string_type;
+	string_type.kind = TYPE_KIND_STRING;
+	string_type.name = atom_create(&stage->atom_table, STR("string"));
+	stage->standard_types.string = register_type(stage, string_type)->id;
 
-	new_type.kind = TYPE_KIND_STRING;
-	new_type.name = atom_create(&stage->atom_table, STR("string"));
-	stage->standard_types.string = register_type(stage, new_type)->id;
 
-	/* new_type.kind = TYPE_KIND_ANY; */
-	/* new_type.name = STR("any"); */
-	/* stage->standard_types.string = */
-	/*      register_type(stage, new_type)->id; */
+	struct type type_type;
+	type_type.kind = TYPE_KIND_TYPE;
+	type_type.name = atom_create(&stage->atom_table, STR("type"));
+	stage->standard_types.type = register_type(stage, type_type)->id;
+	register_type_name(stage, stage->standard_types.type, &stage->root_scope, type_type.name);
 }
 
 void print_scalar(scalar_value val)

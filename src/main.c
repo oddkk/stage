@@ -97,11 +97,12 @@ int main(int argc, char *argv[])
 	parse_config_file(STR("config/simple.conf"), &stage.atom_table,
 			  &stage.memory, &node);
 
-	config_print_tree(node);
+	//config_print_tree(node);
 
 	apply_config(&stage, node);
 
-#if 1
+
+#if 0
 	printf
 	    ("============================ types ============================\n");
 	for (int i = 0; i < stage.num_types; i++) {

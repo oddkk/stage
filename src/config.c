@@ -9,7 +9,7 @@
 #include <stdlib.h>
 
 #define PRINT_APPLY_ORDER 0
-#define PRINT_APPLICATION_DEBUG 1
+#define PRINT_APPLICATION_DEBUG 0
 
 void config_apply_devices(struct stage *stage, struct config_node *node,
 			  struct scoped_hash *scope);
@@ -426,6 +426,28 @@ struct apply_context {
 	size_t unvisited_edges;
 };
 
+struct apply_node *config_eval_l_expr_node(struct apply_context *ctx,
+										   struct scoped_hash *scope,
+										   struct config_node *expr)
+{
+	struct scope_entry result;
+	int err;
+
+	err = config_eval_l_expr(scope, expr, &result);
+
+	if (err) {
+		printf("No such variable '");
+		print_l_expr(expr);
+		printf("'.\n");
+		return NULL;
+	}
+
+	assert(result.id > 0 && result.id <= ctx->num_nodes)
+
+	return ctx->nodes[result.id];
+}
+
+
 static struct apply_node *create_apply_node_with_owner(struct apply_context
 						       *ctx, struct scoped_hash
 						       *scope,
@@ -691,7 +713,7 @@ static void create_dependency_for_l_expr(struct apply_context *ctx,
 
 	attr = ctx->nodes[entry.id];
 
-	if (attr->type != APPLY_NODE_DEVICE_ATTR) {
+	if (attr->type == APPLY_NODE_DEVICE_ATTR) {
 		printf("'");
 		print_l_expr(expr);
 		printf("' is not an attribute.\n");
@@ -1602,7 +1624,6 @@ static scalar_value apply_eval_l_expr_value(struct apply_context *ctx,
 {
 	struct scope_entry entry;
 	struct apply_node *node;
-	struct device *dev;
 	int err;
 
 	err = config_eval_l_expr(expr->owner->scope, cnode, &entry);
@@ -1615,12 +1636,15 @@ static scalar_value apply_eval_l_expr_value(struct apply_context *ctx,
 	}
 
 	node = ctx->nodes[entry.id];
-	dev = node->owner->final.dev_data.dev;
 
 	switch (node->type) {
 	case APPLY_NODE_DEVICE_ATTR:{
+			struct device *dev;
 			struct device_attribute_def *attr;
 			struct device_type *dev_type;
+
+			dev = node->owner->final.dev_data.dev;
+
 			for (size_t i = 0;
 			     i < node->owner->final.dev_data.num_attrs; i++) {
 				if (node->owner->final.dev_data.attrs[i].name ==
@@ -1638,6 +1662,13 @@ static scalar_value apply_eval_l_expr_value(struct apply_context *ctx,
 			return attr->def;
 		}
 		break;
+
+	case APPLY_NODE_TYPE_DECL:
+		node = node->owner;
+
+		// fallthrough
+	case APPLY_NODE_TYPE:
+		return node->final.type.id;
 
 	default:
 		printf("'");

@@ -83,7 +83,7 @@ struct device *register_device_scoped(struct stage *stage, device_type_id type,
 						     attr->name, &attr_entry);
 			if (err) {
 				print_error("register device",
-					    "Device of type '%.*s' does not hav an attribute '%.*s'.\n",
+					    "Device of type '%.*s' does not have an attribute '%.*s'.\n",
 					    ALIT(device_type->name),
 					    ALIT(attr->name));
 				continue;
@@ -111,6 +111,7 @@ struct device *register_device_scoped(struct stage *stage, device_type_id type,
 	if (device_type->device_init) {
 		err = device_type->device_init(stage, device_type, device);
 		if (err) {
+			printf("Could not initialize device!\n");
 			// @TODO: Deallocate
 			return 0;
 		}

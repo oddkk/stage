@@ -14,11 +14,13 @@ typedef int scalar_value;
 #define SCALAR_MIN INT_MIN + 1
 #define SCALAR_MAX INT_MAX
 
-#define TYPE_KIND_SCALAR 0
-#define TYPE_KIND_STRING 1
-#define TYPE_KIND_TUPLE 2
-#define TYPE_KIND_NAMED_TUPLE 3
-#define TYPE_KIND_ARRAY 4
+enum type_kind {
+	TYPE_KIND_SCALAR = 0,
+	TYPE_KIND_STRING = 1,
+	TYPE_KIND_TYPE = 2,
+	TYPE_KIND_TUPLE = 3,
+	TYPE_KIND_NAMED_TUPLE = 4,
+};
 
 struct scalar_type {
 	scalar_value min, max;
@@ -33,7 +35,8 @@ struct type {
 	type_id id;
 	struct atom *name;
 	int num_scalars;
-	int kind;
+	bool templated;
+	enum type_kind kind;
 	union {
 		struct {
 			scalar_value min, max;
@@ -50,6 +53,9 @@ struct type {
 			type_id type;
 			size_t length;
 		} array;
+		struct {
+			size_t id;
+		} template;
 	};
 };
 
