@@ -39,12 +39,23 @@ static void device_print_tick(struct stage *stage, struct device *dev) {
 	data->buffer ^= 0x1;
 }
 
+static int device_print_template_init(struct stage *stage, struct device_type *type, struct device *dev)
+{
+	struct attribute_value *input_type;
+	int err;
+
+	input_type = device_get_attr(stage, dev, SATOM(stage, "T"));
+	err = device_assign_input_type_by_name(stage, dev, SATOM(stage, "in"), input_type->value);
+
+	return err;
+}
+
 static int device_print_init(struct stage *stage, struct device_type *type, struct device *dev)
 {
 	struct device_debug_print_data *data = calloc(1, sizeof(struct device_debug_print_data));
 	struct attribute_value *input_type;
 
-	input_type = device_get_attr(stage, dev, atom_create(&stage->atom_table, STR("T")));
+	input_type = device_get_attr(stage, dev, SATOM(stage, "T"));
 	data->type = get_type(stage, input_type->value);
 	data->buffer = 0;
 
@@ -67,12 +78,13 @@ struct device_type *register_device_type_print(struct stage *stage)
 
 	print = register_device_type(stage, STR("debug_print"));
 	print->device_init = device_print_init;
+	print->device_template_init = device_print_template_init;
 
 	device_type_add_attribute(stage, print, STR("T"),
 							  stage->standard_types.integer,
 							  stage->standard_types.type);
 
-	channel_in = device_type_add_input(stage, print, STR("in"), stage->standard_types.integer);
+	channel_in = device_type_add_input(stage, print, STR("in"), TYPE_TEMPLATE);
 
 	print->self_input = channel_in->id;
 

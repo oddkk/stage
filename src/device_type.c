@@ -119,6 +119,32 @@ struct device_channel_def *device_type_add_output(struct stage *stage,
 	return &dev_type->outputs[output.id];
 }
 
+int device_type_get_input_id(struct stage *stage,
+							 struct device_type *type,
+							 struct atom *name)
+{
+	for (size_t i = 0; i < type->num_inputs; i++) {
+		if (type->inputs[i].name == name) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+int device_type_get_output_id(struct stage *stage,
+							  struct device_type *type,
+							  struct atom *name)
+{
+	for (size_t i = 0; i < type->num_outputs; i++) {
+		if (type->outputs[i].name == name) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
 struct device_type *register_device_type(struct stage *stage,
 					 struct string name)
 {

@@ -83,7 +83,11 @@ struct type *get_type(struct stage *stage, type_id tid)
 	struct type *res;
 
 	if (tid >= stage->num_types) {
-		print_error("get type", "Invalid type id '%i'.", tid);
+		if (tid == TYPE_TEMPLATE) {
+			print_error("get type", "Type is a template that is not assigned.");
+		} else {
+			print_error("get type", "Invalid type id '%i'.", tid);
+		}
 		return NULL;
 	}
 	res = stage->types[tid];
@@ -120,6 +124,11 @@ void stage_tick(struct stage *stage)
 		cb->callback(stage, cb->device);
 		cb = cb->next;
 	}
+}
+
+struct atom *satom(struct stage *stage, struct string name)
+{
+	return atom_create(&stage->atom_table, name);
 }
 
 static bool print_full_entry_name_internal(struct stage *stage,

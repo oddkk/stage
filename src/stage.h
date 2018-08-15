@@ -73,6 +73,10 @@ struct stage {
 int stage_init(struct stage *stage);
 void stage_tick(struct stage *stage);
 
+struct atom *satom(struct stage *stage, struct string name);
+
+#define SATOM(stage, name) satom((stage), STR(name))
+
 struct device *get_device(struct stage *stage, device_id);
 struct device_type *get_device_type(struct stage *stage, device_type_id);
 struct type *get_type(struct stage *stage, type_id);

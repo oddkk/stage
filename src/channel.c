@@ -39,14 +39,18 @@ channel_id allocate_channels(struct stage * stage, struct scalar_type type,
 	return range_begin;
 }
 
-static void init_device_channels_for_type(struct stage *stage,
+static int init_device_channels_for_type(struct stage *stage,
 					  channel_id * begin, device_id dev_id,
 					  int channel_id, type_id type_id,
 					  enum device_channel_kind kind)
 {
 	struct type *type;
 
-	type = stage->types[type_id];
+	type = get_type(stage, type_id);
+
+	if (!type) {
+		return -1;
+	}
 
 	for (int j = 0; j < type->num_scalars; ++j) {
 		struct channel *cnl = &stage->channels[*begin];
@@ -57,17 +61,26 @@ static void init_device_channels_for_type(struct stage *stage,
 
 		*begin += 1;
 	}
+
+	return 0;
 }
 
-static void init_device_channels(struct stage *stage, device_id dev_id,
-				 struct device_channel_def *channels,
+static int init_device_channels(struct stage *stage, device_id dev_id,
+				 type_id *channels,
 				 size_t num_channels, channel_id begin,
 				 enum device_channel_kind kind)
 {
+	int err = 0;
+
 	for (size_t i = 0; i < num_channels; ++i) {
-		init_device_channels_for_type(stage, &begin, dev_id, i,
-					      channels[i].type, kind);
+		err = init_device_channels_for_type(stage, &begin, dev_id, i,
+											channels[i], kind);
+		if (err) {
+			break;
+		}
 	}
+
+	return err;
 }
 
 int allocate_device_channels(struct stage *stage, device_id dev_id)
@@ -78,20 +91,20 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 	size_t num_output_scalars = 0;
 	channel_id channel_begin;
 
-	if (dev_id >= stage->num_devices) {
+	device = get_device(stage, dev_id);
+	if (!device) {
 		return -1;
 	}
-	device = stage->devices[dev_id];
 
-	if (device->type >= stage->num_device_types) {
+	dev_type = get_device_type(stage, device->type);
+	if (!dev_type) {
 		return -1;
 	}
-	dev_type = stage->device_types[device->type];
 
 	for (size_t i = 0; i < dev_type->num_inputs; ++i) {
 		struct type *t;
 
-		t = get_type(stage, dev_type->inputs[i].type);
+		t = get_type(stage, device->input_types[i]);
 		if (!t) {
 			return -1;
 		}
@@ -102,7 +115,7 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 	for (size_t i = 0; i < dev_type->num_outputs; ++i) {
 		struct type *t;
 
-		t = get_type(stage, dev_type->outputs[i].type);
+		t = get_type(stage, device->output_types[i]);
 		if (!t) {
 			return -1;
 		}
@@ -112,13 +125,23 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 
 	channel_begin =
 	    _alloc_channels(stage, num_input_scalars + num_output_scalars);
-	init_device_channels(stage, dev_id, dev_type->inputs,
-			     dev_type->num_inputs, channel_begin,
-			     DEVICE_CHANNEL_INPUT);
-	init_device_channels(stage, dev_id, dev_type->outputs,
-			     dev_type->num_outputs,
-			     channel_begin + num_input_scalars,
-			     DEVICE_CHANNEL_OUTPUT);
+
+	int err;
+
+	err = init_device_channels(stage, dev_id, device->input_types,
+							   dev_type->num_inputs, channel_begin,
+							   DEVICE_CHANNEL_INPUT);
+	if (err) {
+		return err;
+	}
+
+	err = init_device_channels(stage, dev_id, device->output_types,
+							   dev_type->num_outputs,
+							   channel_begin + num_input_scalars,
+							   DEVICE_CHANNEL_OUTPUT);
+	if (err) {
+		return err;
+	}
 
 	device->input_begin = channel_begin;
 	device->output_begin = channel_begin + num_input_scalars;

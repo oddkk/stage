@@ -16,6 +16,9 @@ struct device {
 	device_type_id type;
 	channel_id input_begin;
 	channel_id output_begin;
+	type_id *input_types;
+	type_id *output_types;
+
 	void *data;
 	struct atom *name;
 	struct attribute_value *attributes;
@@ -40,6 +43,11 @@ struct device *register_device(struct stage *stage, device_type_id type,
 			       struct device_attribute *attributes,
 			       size_t num_attributes, void *data);
 
+int device_assign_input_type_by_name(struct stage *stage,
+									 struct device *dev,
+									 struct atom *name,
+									 type_id type);
+
 struct attribute_value *device_get_attr(struct stage *stage,
 					struct device *device,
 					struct atom *attr_name);
@@ -59,6 +67,11 @@ channel_id device_get_input_channel_id_by_name(struct stage *stage,
 channel_id device_get_output_channel_id_by_name(struct stage *stage,
 						struct device *device,
 						struct string name);
+
+int device_assign_input_by_name(struct stage *stage,
+								struct device *dev,
+								struct string name,
+								type_id type);
 
 void describe_device(struct stage *stage, struct device *dev);
 

@@ -9,6 +9,8 @@
 
 typedef unsigned int type_id;
 
+#define TYPE_TEMPLATE ((type_id)-1)
+
 typedef int scalar_value;
 #define SCALAR_OFF INT_MIN
 #define SCALAR_MIN INT_MIN + 1

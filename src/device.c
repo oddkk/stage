@@ -102,6 +102,42 @@ struct device *register_device_scoped(struct stage *stage, device_type_id type,
 		}
 	}
 
+	if (device_type->num_inputs > 0) {
+		device->input_types = calloc(device_type->num_inputs, sizeof(type_id));
+		if (!device->input_types) {
+			printf("Out of memory!");
+			// @TODO: Deallocate
+			return NULL;
+		}
+
+		for (size_t i = 0; i < device_type->num_inputs; i++) {
+			device->input_types[i] = device_type->inputs[i].type;
+		}
+	}
+
+	if (device_type->num_outputs > 0) {
+		device->output_types = calloc(device_type->num_outputs, sizeof(type_id));
+		if (!device->output_types) {
+			printf("Out of memory!");
+			// @TODO: Deallocate
+			return NULL;
+		}
+
+		for (size_t i = 0; i < device_type->num_outputs; i++) {
+			device->output_types[i] = device_type->outputs[i].type;
+		}
+	}
+
+	if (device_type->device_template_init) {
+		err = device_type->device_template_init(stage, device_type, device);
+		if (err) {
+			printf("Could not initialize device templates for '%.*s'!\n",
+				   ALIT(device_type->name));
+			// @TODO: Deallocate
+			return 0;
+		}
+	}
+
 	err = allocate_device_channels(stage, device->id);
 	if (err) {
 		// @TODO: Deallocate
@@ -111,7 +147,8 @@ struct device *register_device_scoped(struct stage *stage, device_type_id type,
 	if (device_type->device_init) {
 		err = device_type->device_init(stage, device_type, device);
 		if (err) {
-			printf("Could not initialize device!\n");
+			printf("Could not initialize device for '%.*s'!\n",
+				   ALIT(device_type->name));
 			// @TODO: Deallocate
 			return 0;
 		}
@@ -128,6 +165,38 @@ struct device *register_device(struct stage *stage, device_type_id type,
 	return register_device_scoped(stage, type, name,
 				      &stage->root_scope,
 				      attributes, num_attributes, data);
+}
+
+int device_assign_input_type_by_name(struct stage *stage,
+									 struct device *dev,
+									 struct atom *name,
+									 type_id type)
+{
+	struct device_type *dev_type;
+	dev_type = get_device_type(stage, dev->type);
+
+	channel_id id;
+	id = device_type_get_input_id(stage, dev_type, name);
+
+	if (id < 0) {
+		return -1;
+	}
+
+	if (dev->input_types[id] != TYPE_TEMPLATE) {
+		if (dev_type->inputs[id].type == TYPE_TEMPLATE) {
+			printf("The type of the templated input '%.*s' was already assigned to.\n",
+				   ALIT(dev_type->inputs[id].name));
+		} else {
+			printf("Attempted to assign a new type to the non-templated input '%.*s'.\n",
+				   ALIT(dev_type->inputs[id].name));
+		}
+
+		return -1;
+	}
+
+	dev->input_types[id] = type;
+
+	return 0;
 }
 
 struct attribute_value *device_get_attr(struct stage *stage,
@@ -162,6 +231,10 @@ channel_id device_get_input_channel_id(struct stage * stage,
 				       struct device * device,
 				       struct atom * name)
 {
+	assert(stage != NULL);
+	assert(device != NULL);
+	assert(name != NULL);
+
 	struct device_type *type;	// @TODO: Is this necessary?
 	struct scope_entry entry;
 	channel_id result;
@@ -193,7 +266,7 @@ channel_id device_get_input_channel_id(struct stage * stage,
 		return result;
 	} else {
 		print_error("device get input",
-			    "The device '%.*s' (id %i) of type '%.*s' (id %i) has an attribute "
+			    "The device '%.*s' (id %i) of type '%.*s' (id %i) has an input "
 			    "'%.*s' (id %i), but no such channel is registered!",
 			    ALIT(device->name), device->id, ALIT(type->name),
 			    type->id, ALIT(entry.name), entry.id);
@@ -215,6 +288,10 @@ channel_id device_get_output_channel_id(struct stage * stage,
 					struct device * device,
 					struct atom * name)
 {
+	assert(stage != NULL);
+	assert(device != NULL);
+	assert(name != NULL);
+
 	struct device_type *type;	// @TODO: Is this necessary?
 	struct scope_entry entry;
 	channel_id result;
@@ -247,7 +324,7 @@ channel_id device_get_output_channel_id(struct stage * stage,
 		return result;
 	} else {
 		print_error("device get output",
-			    "The device '%.*s' (id %i) of type '%.*s' (id %i) has an attribute "
+			    "The device '%.*s' (id %i) of type '%.*s' (id %i) has an output "
 			    "'%.*s' (id %i), but no such channel is registered!",
 			    ALIT(device->name), device->id, ALIT(type->name),
 			    type->id, ALIT(entry.name), entry.id);
