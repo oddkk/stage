@@ -39,10 +39,33 @@ channel_id allocate_channels(struct stage * stage, struct scalar_type type,
 	return range_begin;
 }
 
+static void init_scalar_device_channel(struct stage *stage,
+									   channel_id *begin,
+									   device_id dev,
+									   int channel_id,
+									   int *subindex,
+									   enum device_channel_kind kind,
+									   struct scalar_type type)
+{
+	struct channel *cnl = &stage->channels[*begin];
+	cnl->device_channel = kind;
+	cnl->device.id = dev;
+	cnl->device.channel_id = channel_id;
+	cnl->device.channel_subindex = *subindex;
+
+	*begin += 1;
+	*subindex += 1;
+}
+
 static int init_device_channels_for_type(struct stage *stage,
-					  channel_id * begin, device_id dev_id,
-					  int channel_id, type_id type_id,
-					  enum device_channel_kind kind)
+										 channel_id * begin,
+										 device_id dev_id,
+										 struct scoped_hash *scope,
+										 struct atom *name,
+										 int channel,
+										 int *subindex,
+										 type_id type_id,
+										 enum device_channel_kind kind)
 {
 	struct type *type;
 
@@ -52,29 +75,132 @@ static int init_device_channels_for_type(struct stage *stage,
 		return -1;
 	}
 
-	for (int j = 0; j < type->num_scalars; ++j) {
-		struct channel *cnl = &stage->channels[*begin];
-		cnl->device_channel = kind;
-		cnl->device.id = dev_id;
-		cnl->device.channel_id = channel_id;
-		cnl->device.channel_subindex = j;
+	switch (type->kind) {
+	case TYPE_KIND_SCALAR: {
+		int err;
+		err = scoped_hash_insert(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
+								 *begin, NULL, NULL);
+		if (err) {
+			return -1;
+		}
 
-		*begin += 1;
+		init_scalar_device_channel(stage, begin,
+								   dev_id, channel, subindex,
+								   kind, type->scalar);
+	} break;
+
+	case TYPE_KIND_TUPLE:
+		for (size_t i = 0; i < type->tuple.length; i++) {
+			channel_id first_channel = *begin;
+			struct scoped_hash *tuple_scope;
+
+			tuple_scope = scoped_hash_push(scope, SCOPE_ENTRY_DEVICE_CHANNEL, first_channel);
+
+			if (!tuple_scope) {
+				break;
+			}
+
+			init_device_channels_for_type(stage, begin,
+										  dev_id,
+										  tuple_scope,
+										  NULL,
+										  channel,
+										  subindex, type->tuple.types[i],
+										  kind);
+			channel_id last_channel = *begin - 1;
+
+			scoped_hash_insert_ranged(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
+									  first_channel, last_channel,
+									  NULL, tuple_scope);
+			// @TODO: Register tuple entries in scope
+		}
+		break;
+
+	case TYPE_KIND_NAMED_TUPLE:
+		for (size_t i = 0; i < type->named_tuple.length; i++) {
+			struct named_tuple_member *member = &type->named_tuple.members[i];
+
+			channel_id first_channel = *begin;
+			struct scoped_hash *tuple_scope;
+
+			tuple_scope = scoped_hash_push(scope, SCOPE_ENTRY_DEVICE_CHANNEL, first_channel);
+
+			if (!tuple_scope) {
+				break;
+			}
+
+			init_device_channels_for_type(stage, begin,
+										  dev_id,
+										  tuple_scope,
+										  member->name,
+										  channel,
+										  subindex,
+										  member->type,
+										  kind);
+
+			channel_id last_channel = *begin - 1;
+
+			scoped_hash_insert_ranged(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
+									  first_channel, last_channel,
+									  NULL, tuple_scope);
+
+			/* channel_id first_channel = *begin; */
+			/* init_device_channels_for_type(stage, begin, */
+			/* 							  dev_id, channel, */
+			/* 							  subindex, member->type, */
+			/* 							  kind); */
+			/* channel_id last_channel = *begin - 1; */
+
+			/* printf("%.*s: %i -> %i\n", ALIT(member->name), first_channel, last_channel); */
+			// @TODO: Register tuple entries in scope
+		}
+		break;
+
+	case TYPE_KIND_STRING:
+		print_error("init device channels", "Channels cannot be of type 'string'.");
+		break;
+
+	case TYPE_KIND_TYPE:
+		print_error("init device channels", "Channels cannot be of type 'type'.");
+		break;
 	}
+
+	/* for (int j = 0; j < type->num_scalars; ++j) { */
+	/* 	struct channel *cnl = &stage->channels[*begin]; */
+	/* 	cnl->device_channel = kind; */
+	/* 	cnl->device.id = dev_id; */
+	/* 	cnl->device.channel_id = channel_id; */
+	/* 	cnl->device.channel_subindex = j; */
+
+	/* 	*begin += 1; */
+	/* } */
 
 	return 0;
 }
 
 static int init_device_channels(struct stage *stage, device_id dev_id,
-				 type_id *channels,
-				 size_t num_channels, channel_id begin,
-				 enum device_channel_kind kind)
+								type_id *channels,
+								struct device_channel_def *channel_defs,
+								size_t num_channels, channel_id begin,
+								enum device_channel_kind kind,
+								struct scoped_hash *scope)
 {
 	int err = 0;
 
 	for (size_t i = 0; i < num_channels; ++i) {
-		err = init_device_channels_for_type(stage, &begin, dev_id, i,
-											channels[i], kind);
+		int subindex = 0;
+		channel_id first_id = begin;
+		err = scoped_hash_insert(scope, channel_defs[i].name,
+								 SCOPE_ENTRY_DEVICE_CHANNEL,
+								 first_id, NULL, NULL);
+
+		if (err) {
+			break;
+		}
+
+		err = init_device_channels_for_type(stage, &begin, dev_id,
+											scope, channel_defs[i].name,
+											i, &subindex, channels[i], kind);
 		if (err) {
 			break;
 		}
@@ -129,16 +255,18 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 	int err;
 
 	err = init_device_channels(stage, dev_id, device->input_types,
+							   dev_type->inputs,
 							   dev_type->num_inputs, channel_begin,
-							   DEVICE_CHANNEL_INPUT);
+							   DEVICE_CHANNEL_INPUT, device->scope);
 	if (err) {
 		return err;
 	}
 
 	err = init_device_channels(stage, dev_id, device->output_types,
+							   dev_type->outputs,
 							   dev_type->num_outputs,
 							   channel_begin + num_input_scalars,
-							   DEVICE_CHANNEL_OUTPUT);
+							   DEVICE_CHANNEL_OUTPUT, device->scope);
 	if (err) {
 		return err;
 	}

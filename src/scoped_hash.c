@@ -3,10 +3,10 @@
 #include "atom.h"
 #include "utils.h"
 
-int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
-		       enum scope_entry_kind kind, int id,
-		       struct config_node *node,
-		       struct scoped_hash *child_scope)
+int scoped_hash_insert_ranged(struct scoped_hash *scope, struct atom *name,
+							  enum scope_entry_kind kind, int id, int end,
+							  struct config_node *node,
+							  struct scoped_hash *child_scope)
 {
 	struct scope_entry new_entry;
 	int entry_id;
@@ -15,6 +15,7 @@ int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
 	new_entry.name = name;
 	new_entry.kind = kind;
 	new_entry.id = id;
+	new_entry.end = end;
 	new_entry.scope = child_scope;
 
 	err = dlist_append(scope->entries, scope->num_entries, &new_entry);
@@ -29,6 +30,14 @@ int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
 	}
 
 	return 0;
+}
+
+int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
+		       enum scope_entry_kind kind, int id,
+		       struct config_node *node,
+		       struct scoped_hash *child_scope)
+{
+	return scoped_hash_insert_ranged(scope, name, kind, id, -1, node, child_scope);
 }
 
 int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name,
@@ -94,6 +103,7 @@ struct scoped_hash *scoped_hash_push(struct scoped_hash *parent,
 	    arena_alloc(parent->lookup.page_arena, sizeof(struct scoped_hash));
 
 	if (!new_child) {
+		printf("Could not allocate new scoped hash. Out of memory.\n");
 		return 0;
 	}
 

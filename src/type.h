@@ -40,9 +40,7 @@ struct type {
 	bool templated;
 	enum type_kind kind;
 	union {
-		struct {
-			scalar_value min, max;
-		} scalar;
+		struct scalar_type scalar;
 		struct {
 			type_id *types;
 			size_t length;

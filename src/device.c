@@ -227,7 +227,7 @@ struct attribute_value *device_get_attr(struct stage *stage,
 	return &device->attributes[entry.id];
 }
 
-channel_id device_get_input_channel_id(struct stage * stage,
+channel_id device_get_channel_id(struct stage * stage,
 				       struct device * device,
 				       struct atom * name)
 {
@@ -237,41 +237,58 @@ channel_id device_get_input_channel_id(struct stage * stage,
 
 	struct device_type *type;	// @TODO: Is this necessary?
 	struct scope_entry entry;
-	channel_id result;
 	int err;
 
 	type = stage->device_types[device->type];
 
 	err = scoped_hash_local_lookup(device->scope, name, &entry);
 	if (err) {
-		print_error("device get input",
+		print_error("device get channel",
 			    "The device of type '%.*s' has no input '%.*s'.",
 			    ALIT(type->name), ALIT(name));
 		return -1;
 	}
 
-	if (entry.kind != SCOPE_ENTRY_DEVICE_INPUT) {
-		print_error("device get input",
+	if (entry.kind != SCOPE_ENTRY_DEVICE_CHANNEL) {
+		print_error("device get channel",
 			    "The element '%.*s' on the device '%.*s' is not an input.",
 			    ALIT(name), ALIT(type->name));
 		return -1;
 	}
-	assert(entry.id < type->num_inputs);
 
-	result =
-	    find_device_channel(stage, device, DEVICE_CHANNEL_INPUT, entry.id,
-				0);
+	return entry.id;
+}
 
-	if (result >= 0) {
-		return result;
-	} else {
-		print_error("device get input",
-			    "The device '%.*s' (id %i) of type '%.*s' (id %i) has an input "
-			    "'%.*s' (id %i), but no such channel is registered!",
-			    ALIT(device->name), device->id, ALIT(type->name),
-			    type->id, ALIT(entry.name), entry.id);
+channel_id device_get_input_channel_id(struct stage * stage,
+				       struct device * device,
+				       struct atom * name)
+{
+	channel_id channel;
+
+	channel = device_get_channel_id(stage, device, name);
+
+	if (channel < 0) {
+		return channel;
+	}
+
+	if (channel > stage->num_channels) {
 		return -1;
 	}
+
+	struct channel *cnl;
+	cnl = &stage->channels[channel];
+
+	if (cnl->device_channel != DEVICE_CHANNEL_INPUT) {
+		struct device_type *type;
+
+		type = get_device_type(stage, device->type);
+		print_error("device get channel",
+			    "The element '%.*s' on the device '%.*s' is not an input.",
+			    ALIT(name), ALIT(type->name));
+		return -1;
+	}
+
+	return channel;
 }
 
 channel_id device_get_input_channel_id_by_name(struct stage * stage,
@@ -285,51 +302,35 @@ channel_id device_get_input_channel_id_by_name(struct stage * stage,
 }
 
 channel_id device_get_output_channel_id(struct stage * stage,
-					struct device * device,
-					struct atom * name)
+				       struct device * device,
+				       struct atom * name)
 {
-	assert(stage != NULL);
-	assert(device != NULL);
-	assert(name != NULL);
+	channel_id channel;
 
-	struct device_type *type;	// @TODO: Is this necessary?
-	struct scope_entry entry;
-	channel_id result;
-	int err;
+	channel = device_get_channel_id(stage, device, name);
 
-	type = stage->device_types[device->type];
+	if (channel < 0) {
+		return channel;
+	}
 
-	err = scoped_hash_local_lookup(device->scope, name, &entry);
-
-	if (err) {
-		print_error("device get output",
-			    "The device of type '%.*s' has no output '%.*s'.",
-			    ALIT(type->name), ALIT(name));
+	if (channel > stage->num_channels) {
 		return -1;
 	}
 
-	if (entry.kind != SCOPE_ENTRY_DEVICE_OUTPUT) {
-		print_error("device get output",
+	struct channel *cnl;
+	cnl = &stage->channels[channel];
+
+	if (cnl->device_channel != DEVICE_CHANNEL_OUTPUT) {
+		struct device_type *type;
+
+		type = get_device_type(stage, device->type);
+		print_error("device get channel",
 			    "The element '%.*s' on the device '%.*s' is not an output.",
 			    ALIT(name), ALIT(type->name));
 		return -1;
 	}
-	assert(entry.id < type->num_outputs);
 
-	result =
-	    find_device_channel(stage, device, DEVICE_CHANNEL_OUTPUT, entry.id,
-				0);
-
-	if (result >= 0) {
-		return result;
-	} else {
-		print_error("device get output",
-			    "The device '%.*s' (id %i) of type '%.*s' (id %i) has an output "
-			    "'%.*s' (id %i), but no such channel is registered!",
-			    ALIT(device->name), device->id, ALIT(type->name),
-			    type->id, ALIT(entry.name), entry.id);
-		return -1;
-	}
+	return channel;
 }
 
 channel_id device_get_output_channel_id_by_name(struct stage * stage,

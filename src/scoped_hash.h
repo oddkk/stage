@@ -9,6 +9,7 @@ enum scope_entry_kind {
 	SCOPE_ENTRY_TYPE,
 	SCOPE_ENTRY_DEVICE,
 	SCOPE_ENTRY_DEVICE_TYPE,
+	SCOPE_ENTRY_DEVICE_CHANNEL,
 	SCOPE_ENTRY_DEVICE_INPUT,
 	SCOPE_ENTRY_DEVICE_OUTPUT,
 	SCOPE_ENTRY_DEVICE_ATTRIBUTE,
@@ -23,6 +24,7 @@ struct scope_entry {
 	struct scoped_hash *scope;
 	struct config_node *config_node;
 	int id;
+	int end;
 };
 
 struct scoped_hash {
@@ -45,6 +47,12 @@ int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
 		       enum scope_entry_kind kind, int id,
 		       struct config_node *node,
 		       struct scoped_hash *child_scope);
+
+int scoped_hash_insert_ranged(struct scoped_hash *scope, struct atom *name,
+							  enum scope_entry_kind kind, int id, int end,
+							  struct config_node *node,
+							  struct scoped_hash *child_scope);
+
 int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name,
 		       struct scope_entry *result);
 int scoped_hash_lookup_owner(struct scoped_hash *scope, struct atom *name,
