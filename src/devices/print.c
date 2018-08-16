@@ -90,3 +90,4 @@ struct device_type *register_device_type_print(struct stage *stage)
 
 	return print;
 }
+

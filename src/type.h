@@ -104,4 +104,20 @@ void register_default_types(struct stage *stage);
 
 void print_scalar(scalar_value val);
 
+int register_typed_member_in_scope(struct stage *, struct atom *name,
+								   type_id type, struct scoped_hash *scope,
+								   enum scope_entry_kind kind, int start_id);
+
+struct type_iterator {
+	type_id type;
+	int subindex;
+};
+
+int type_find_member(struct type_iterator *out,
+					 struct stage *stage,
+					 struct type_iterator iter,
+					 struct atom *name);
+
+void print_typed_value(struct stage *, type_id tid, scalar_value *values, size_t num_values);
+
 #endif

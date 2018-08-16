@@ -15,6 +15,11 @@ struct device_attribute_def *device_type_add_attribute(struct stage *stage, stru
 	int err;
 	struct device_attribute_def attr;
 
+	if (dev_type->finalized) {
+		printf("Cannot alter a finalized device type.\n");
+		return NULL;
+	}
+
 	attr.id = dev_type->num_attributes;
 	attr.name = atom_create(&stage->atom_table, name);;
 	attr.def = def;
@@ -46,6 +51,11 @@ struct device_channel_def *device_type_add_input(struct stage *stage,
 	int err;
 	struct device_channel_def input;
 	bool self = false;
+
+	if (dev_type->finalized) {
+		printf("Cannot alter a finalized device type.\n");
+		return NULL;
+	}
 
 	input.id = dev_type->num_inputs;
 	input.type = type;
@@ -86,6 +96,11 @@ struct device_channel_def *device_type_add_output(struct stage *stage,
 	int err;
 	struct device_channel_def output;
 	bool self = false;
+
+	if (dev_type->finalized) {
+		printf("Cannot alter a finalized device type.\n");
+		return NULL;
+	}
 
 	output.id = dev_type->num_outputs;
 	output.type = type;
@@ -219,6 +234,11 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 	}
 
 	return dev_type;
+}
+
+void finalize_device_type(struct device_type *dev_type)
+{
+	dev_type->finalized = true;
 }
 
 void describe_device_type(struct stage *stage, struct device_type *dev_type)

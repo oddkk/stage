@@ -21,7 +21,8 @@ struct device {
 
 	void *data;
 	struct atom *name;
-	struct attribute_value *attributes;
+	struct attribute_value *attribute_values;
+	size_t num_attribute_values;
 	struct scoped_hash *scope;
 };
 
@@ -42,6 +43,12 @@ struct device *register_device(struct stage *stage, device_type_id type,
 			       struct atom *name,
 			       struct device_attribute *attributes,
 			       size_t num_attributes, void *data);
+
+struct device *register_device_pre_attrs(struct stage *stage, device_type_id type,
+										 struct scoped_hash *parent_scope,
+										 struct atom *name);
+
+int finalize_device(struct stage *stage, struct device *dev);
 
 int device_assign_input_type_by_name(struct stage *stage,
 									 struct device *dev,

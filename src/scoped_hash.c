@@ -3,10 +3,10 @@
 #include "atom.h"
 #include "utils.h"
 
-int scoped_hash_insert_ranged(struct scoped_hash *scope, struct atom *name,
-							  enum scope_entry_kind kind, int id, int end,
-							  struct config_node *node,
-							  struct scoped_hash *child_scope)
+int scoped_hash_insert_typed_ranged(struct scoped_hash *scope, struct atom *name,
+									enum scope_entry_kind kind, int id, int end,
+									int type, struct config_node *node,
+									struct scoped_hash *child_scope)
 {
 	struct scope_entry new_entry;
 	int entry_id;
@@ -16,6 +16,7 @@ int scoped_hash_insert_ranged(struct scoped_hash *scope, struct atom *name,
 	new_entry.kind = kind;
 	new_entry.id = id;
 	new_entry.end = end;
+	new_entry.type = type;
 	new_entry.scope = child_scope;
 
 	err = dlist_append(scope->entries, scope->num_entries, &new_entry);
@@ -32,12 +33,20 @@ int scoped_hash_insert_ranged(struct scoped_hash *scope, struct atom *name,
 	return 0;
 }
 
+int scoped_hash_insert_ranged(struct scoped_hash *scope, struct atom *name,
+							  enum scope_entry_kind kind, int id, int end,
+							  struct config_node *node,
+							  struct scoped_hash *child_scope)
+{
+	return scoped_hash_insert_typed_ranged(scope, name, kind, id, end, -1, node, child_scope);
+}
+
 int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
 		       enum scope_entry_kind kind, int id,
 		       struct config_node *node,
 		       struct scoped_hash *child_scope)
 {
-	return scoped_hash_insert_ranged(scope, name, kind, id, -1, node, child_scope);
+	return scoped_hash_insert_typed_ranged(scope, name, kind, id, -1, -1, node, child_scope);
 }
 
 int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name,

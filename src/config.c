@@ -1,6 +1,7 @@
 #include "config.h"
 #include "stage.h"
 #include "device_type.h"
+#include "device.h"
 #include "utils.h"
 #include "dlist.h"
 #include <stdarg.h>
@@ -18,6 +19,7 @@ enum apply_node_type {
 	APPLY_NODE_DEVICE_TYPE_OUTPUT,
 
 	APPLY_NODE_DEVICE,
+	APPLY_NODE_DEVICE_ATTR,
 
 	APPLY_NODE_TYPE_DECL,
 
@@ -37,6 +39,7 @@ const char *apply_node_name(enum apply_node_type type) {
 		APPLY_NODE_NAME(DEVICE_TYPE_INPUT);
 		APPLY_NODE_NAME(DEVICE_TYPE_OUTPUT);
 		APPLY_NODE_NAME(DEVICE);
+		APPLY_NODE_NAME(DEVICE_ATTR);
 
 		APPLY_NODE_NAME(TYPE_DECL);
 
@@ -103,9 +106,25 @@ struct apply_node {
 		} device_type_output;
 
 		struct {
+			bool visited;
+
+			struct device *device;
+			struct atom *name;
 			struct scoped_hash *scope;
-			struct device_type *device;
+			struct apply_node *type;
+
+			struct apply_node **attrs;
+			size_t num_attrs;
+			size_t not_found_attrs;
+			size_t missing_attrs;
 		} device;
+
+		struct {
+			struct apply_node *name;
+			struct apply_node *value;
+
+			struct apply_node *device;
+		} device_attr;
 
 		struct {
 			struct atom *name;
@@ -274,9 +293,11 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 
 static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 											  struct scoped_hash *scope,
-											  struct config_node *expr)
+											  struct config_node *expr,
+											  type_id expected_type)
 {
-	printf("@TODO: Expr");
+	printf("type: %i\n", expected_type);
+	printf("@TODO: Expr\n");
 	return NULL;
 }
 
@@ -342,11 +363,49 @@ static void apply_discover_device_type_members(struct apply_context *ctx,
 	}
 }
 
+static void apply_discover_device_attrs(struct apply_context *ctx,
+										struct apply_node *device,
+										struct config_node *device_node)
+{
+	for (struct config_node *member = device_node->device.first_child;
+		 member;
+		 member = member->next_sibling) {
+
+		if (member->type == CONFIG_NODE_BINARY_OP &&
+			member->binary_op.op == CONFIG_OP_ASSIGN) {
+			struct config_node *lhs;
+			lhs = member->binary_op.lhs;
+
+			struct apply_node *attr;
+			attr = alloc_apply_node(ctx, APPLY_NODE_DEVICE_ATTR, member);
+			attr->device_attr.device = device;
+
+			attr->device_attr.name
+				= apply_discover_l_expr(ctx, device->device.device->scope, lhs, true);
+
+			dlist_append(device->device.attrs, device->device.num_attrs, &attr);
+			device->device.missing_attrs += 1;
+
+			push_apply_node(ctx, attr);
+		}
+	}
+}
+
 static void apply_discover_device(struct apply_context *ctx,
 								  struct scoped_hash *scope,
-								  struct config_node *device_type_node)
+								  struct config_node *device_node)
 {
-	assert(device_type_node->type == CONFIG_NODE_DEVICE);
+	assert(device_node->type == CONFIG_NODE_DEVICE);
+
+	struct apply_node *device;
+
+	device = alloc_apply_node(ctx, APPLY_NODE_DEVICE, device_node);
+	device->device.name = device_node->device.name;
+	device->device.scope = scope;
+	device->device.type
+		= apply_discover_l_expr(ctx, scope, device_node->device.type, false);
+
+	push_apply_node(ctx, device);
 }
 
 static struct apply_node *apply_discover_type(struct apply_context *ctx,
@@ -392,10 +451,12 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 				= apply_discover_l_expr(ctx, scope, type_expr->subrange.lhs, false);
 
 			type->type_subrange.low
-				= apply_discover_expr(ctx, scope, type_expr->subrange.low);
+				= apply_discover_expr(ctx, scope, type_expr->subrange.low,
+									  ctx->stage->standard_types.integer);
 
 			type->type_subrange.high
-				= apply_discover_expr(ctx, scope, type_expr->subrange.high);
+				= apply_discover_expr(ctx, scope, type_expr->subrange.high,
+									  ctx->stage->standard_types.integer);
 			break;
 
 		default:
@@ -497,6 +558,7 @@ apply_dispatch(struct apply_context *ctx,
 			return DISPATCH_YIELD;
 		}
 		node->device_type.complete = true;
+		finalize_device_type(node->device_type.type);
 
 		node->entry.kind = SCOPE_ENTRY_DEVICE_TYPE;
 		node->entry.id = node->device_type.type->id;
@@ -505,8 +567,53 @@ apply_dispatch(struct apply_context *ctx,
 
 		return DISPATCH_DONE;
 
-	case APPLY_NODE_DEVICE_TYPE_ATTR:
-		return DISPATCH_ERROR;
+	case APPLY_NODE_DEVICE_TYPE_ATTR: {
+		struct apply_node *dev_type_node;
+
+		dev_type_node = node->device_type_attribute.owner;
+		assert(dev_type_node->type == APPLY_NODE_DEVICE_TYPE);
+
+		if (!node->device_type_attribute.type) {
+			node->device_type_attribute.type
+				= apply_discover_l_expr(ctx, dev_type_node->device_type.scope,
+										node->cnode->attr.type, false);
+		}
+
+		struct apply_node *type_expr;
+		type_expr = node->device_type_attribute.type;
+
+		if (type_expr->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+		else if (type_expr->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		}
+
+		if (type_expr->entry.kind != SCOPE_ENTRY_TYPE) {
+			apply_error(type_expr->cnode, "Expression is not a type.");
+			return DISPATCH_ERROR;
+		}
+
+		type_id type;
+		struct device_type *dev_type;
+		struct atom *name;
+
+		type = type_expr->entry.id;
+		dev_type = dev_type_node->device_type.type;
+
+		name = node->device_type_attribute.name;
+		//device_type_add_output(ctx->stage, dev_type, name->name, type);
+		struct device_attribute_def *res;
+		res = device_type_add_attribute(ctx->stage, dev_type, name->name, 0, type);
+		if (!res) {
+			return DISPATCH_ERROR;
+		}
+
+		assert(dev_type_node->device_type.missing_attributes > 0);
+		dev_type_node->device_type.missing_attributes -= 1;
+
+		return DISPATCH_DONE;
+	}
 
 	case APPLY_NODE_DEVICE_TYPE_OUTPUT: // fallthrough
 	case APPLY_NODE_DEVICE_TYPE_INPUT: {
@@ -515,6 +622,7 @@ apply_dispatch(struct apply_context *ctx,
 		dev_type_node = node->device_type_input.owner;
 		assert(dev_type_node->type == APPLY_NODE_DEVICE_TYPE);
 
+		// @TODO: This should use input or output.
 		if (!node->device_type_input.type) {
 			node->device_type_input.type
 				= apply_discover_l_expr(ctx, dev_type_node->device_type.scope,
@@ -560,8 +668,94 @@ apply_dispatch(struct apply_context *ctx,
 		return DISPATCH_DONE;
 	}
 
-	case APPLY_NODE_DEVICE:
+	case APPLY_NODE_DEVICE_ATTR:
+		if (node->device_attr.name->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+		else if (node->device_attr.name->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		}
+
+		if (!node->device_attr.value) {
+			struct apply_node *dev;
+			dev = node->device_attr.device;
+
+			node->device_attr.value
+				= apply_discover_expr(ctx, dev->device.device->scope,
+									  node->cnode->binary_op.rhs,
+									  node->device_attr.name->entry.type);
+		}
+
+		if (node->device_attr.value->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+		else if (node->device_attr.value->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		}
+
 		return DISPATCH_ERROR;
+
+	case APPLY_NODE_DEVICE: {
+		if (node->device.type->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		} else if (node->device.type->entry_found == ENTRY_FOUND_WAITING) {
+			apply_debug("Waiting for device type.");
+			return DISPATCH_YIELD;
+		}
+
+		if (node->device.type->entry.kind != SCOPE_ENTRY_DEVICE_TYPE) {
+			return DISPATCH_ERROR;
+		}
+
+		struct device_type *dev_type;
+		dev_type = get_device_type(ctx->stage, node->device.type->entry.id);
+
+		if (!dev_type->finalized) {
+			apply_debug("Waiting for device type finalization.");
+			return DISPATCH_YIELD;
+		}
+
+		if (!node->device.device) {
+			node->device.device
+				= register_device_pre_attrs(ctx->stage, node->device.type->entry.id,
+											node->device.scope, node->device.name);
+			if (!node->device.device) {
+				apply_debug("Failed to register device.");
+				return DISPATCH_ERROR;
+			}
+
+			node->device.device->data = node;
+		}
+
+		if (!node->device.visited) {
+			apply_discover_device_attrs(ctx, node, node->cnode);
+			node->device.visited = true;
+		}
+
+		if (node->device.not_found_attrs > 0) {
+			return DISPATCH_ERROR;
+		}
+
+		if (node->device.missing_attrs > 0) {
+			apply_debug("Waiting for %zu missing attributes.",
+						node->device.missing_attrs);
+			return DISPATCH_YIELD;
+		}
+
+		for (size_t i = 0; i < node->device.num_attrs; i++) {
+			struct apply_node *attr;
+			attr = node->device.attrs[i];
+		}
+
+		int err;
+		err = finalize_device(ctx->stage, node->device.device);
+
+		if (err) {
+			return DISPATCH_ERROR;
+		}
+
+		return DISPATCH_DONE;
+	}
 
 	case APPLY_NODE_TYPE_DECL:
 		if (node->type_decl.type->entry_found == ENTRY_NOT_FOUND) {
@@ -610,12 +804,27 @@ apply_dispatch(struct apply_context *ctx,
 			new_type.named_tuple.members
 				= calloc(new_type.named_tuple.length,
 						 sizeof(struct named_tuple_member));
+			for (size_t i = 0; i < new_type.named_tuple.length; i++) {
+				struct named_tuple_member *new_member;
+				struct apply_tuple_member *member;
+				new_member = &new_type.named_tuple.members[i];
+				member = &node->type_tuple.members[i];
+
+				new_member->name = member->name;
+				new_member->type = member->type->entry.id;
+			}
 		} else {
 			new_type.kind = TYPE_KIND_TUPLE;
 			new_type.tuple.length = node->type_tuple.num_members;
 			new_type.tuple.types
 				= calloc(new_type.tuple.length,
 						 sizeof(type_id));
+			for (size_t i = 0; i < new_type.tuple.length; i++) {
+				struct apply_tuple_member *member;
+
+				member = &node->type_tuple.members[i];
+				new_type.tuple.types[i] = member->type->entry.id;
+			}
 		}
 
 		struct type *final_type;

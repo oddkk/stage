@@ -200,6 +200,41 @@ struct type *register_type(struct stage *stage, struct type def)
 
 	type->num_scalars = type_count_scalars(stage, type);
 
+	switch (type->kind) {
+	case TYPE_KIND_SCALAR:
+	case TYPE_KIND_STRING:
+	case TYPE_KIND_TYPE:
+		break;
+
+	case TYPE_KIND_TUPLE:
+		for (size_t i = 0; i < type->tuple.length; i++) {
+			if (type->named_tuple.members[i].type == TYPE_TEMPLATE) {
+				type->templated = true;
+				break;
+			}
+			struct type *member = get_type(stage, type->tuple.types[i]);
+			if (member->templated) {
+				type->templated = true;
+				break;
+			}
+		}
+		break;
+
+	case TYPE_KIND_NAMED_TUPLE:
+		for (size_t i = 0; i < type->named_tuple.length; i++) {
+			if (type->named_tuple.members[i].type == TYPE_TEMPLATE) {
+				type->templated = true;
+				break;
+			}
+			struct type *member = get_type(stage, type->named_tuple.members[i].type);
+			if (member->templated) {
+				type->templated = true;
+				break;
+			}
+		}
+		break;
+	}
+
 	return type;
 }
 
@@ -258,6 +293,53 @@ struct type *register_named_tuple_type(struct stage *stage, struct atom *name,
 	return register_type(stage, new_type);
 }
 
+int register_typed_member_in_scope(struct stage *stage, struct atom *name,
+								   type_id tid, struct scoped_hash *scope,
+								   enum scope_entry_kind kind, int start_id)
+{
+	struct type *type;
+
+	type = get_type(stage, tid);
+
+	struct scoped_hash *new_scope = NULL;
+
+	switch (type->kind) {
+	case TYPE_KIND_TUPLE:
+		printf("@TODO: Implement register in scope for unnamed tuples.");
+		break;
+
+	case TYPE_KIND_NAMED_TUPLE: {
+		int subindex = 0;
+		new_scope = scoped_hash_push(scope, kind, start_id);
+
+		for (size_t i = 0; i < type->named_tuple.length; i++) {
+			struct named_tuple_member *member;
+			int num_scalars;
+
+			member = &type->named_tuple.members[i];
+
+			num_scalars
+				= register_typed_member_in_scope(stage, member->name,
+												 member->type, new_scope,
+												 kind, start_id + subindex);
+
+			subindex += num_scalars;
+		}
+		assert(subindex == type->num_scalars);
+	} break;
+
+	default:
+		break;
+	}
+
+	printf("Registering typed member %.*s\n", ALIT(name));
+	scoped_hash_insert_typed_ranged(scope, name, kind, start_id,
+									start_id + type->num_scalars,
+									type->id, NULL, new_scope);
+
+	return type->num_scalars;
+}
+
 int assign_value(struct value *dest, struct type *dest_type, struct value *src,
 		 struct type *src_type)
 {
@@ -293,4 +375,110 @@ void print_scalar(scalar_value val)
 	} else {
 		printf("%i", val);
 	}
+}
+
+int type_find_member(struct type_iterator *out,
+					 struct stage *stage,
+					 struct type_iterator iter,
+					 struct atom *name)
+{
+	struct type *type = get_type(stage, iter.type);
+
+	if (!type) {
+		return -1;
+	}
+
+	switch (type->kind) {
+	case TYPE_KIND_SCALAR:
+	case TYPE_KIND_STRING:
+	case TYPE_KIND_TYPE:
+		return -2;
+
+	case TYPE_KIND_TUPLE:
+		printf("@TODO: Name of unnamed tuples\n");
+		return -2;
+
+	case TYPE_KIND_NAMED_TUPLE: {
+		int subindex = iter.subindex;
+		for (size_t i = 0; i < type->named_tuple.length; i++) {
+			if (type->named_tuple.members[i].name == name) {
+				out->type = type->named_tuple.members[i].type;
+				out->subindex = subindex;
+				return 0;
+			}
+			struct type *member_type;
+			member_type = get_type(stage, type->named_tuple.members[i].type);
+			subindex += member_type->num_scalars;
+		}
+	}
+
+	}
+
+	return -2;
+}
+
+int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *values, size_t num_values)
+{
+	struct type *type;
+
+	type = get_type(stage, tid);
+	int scalars_read = 0;
+
+	switch (type->kind) {
+	case TYPE_KIND_SCALAR:
+		print_scalar(values[0]);
+		scalars_read = 1;
+		break;
+
+	case TYPE_KIND_STRING:
+		printf("(@TODO: strings)");
+		break;
+
+	case TYPE_KIND_TYPE:
+		printf("(type ");
+		if (values[0] == SCALAR_OFF) {
+			printf("none");
+		} else {
+			print_type_id(stage, values[0]);
+		}
+		scalars_read = 1;
+		printf(")");
+		break;
+
+	case TYPE_KIND_TUPLE:
+		printf("(");
+		for (size_t i = 0; i < type->tuple.length; i++) {
+			if (i > 0) {
+				printf(",\n");
+			}
+			scalars_read
+				+= print_typed_value_internal(stage, type->tuple.types[i],
+											  &values[scalars_read],
+											  num_values - scalars_read);
+		}
+		printf(")");
+		break;
+
+	case TYPE_KIND_NAMED_TUPLE:
+		printf("(");
+		for (size_t i = 0; i < type->named_tuple.length; i++) {
+			if (i > 0) {
+				printf(",\n");
+			}
+			printf("%.*s : ", ALIT(type->named_tuple.members[i].name));
+			scalars_read
+				+= print_typed_value_internal(stage, type->named_tuple.members[i].type,
+											  &values[scalars_read],
+											  num_values - scalars_read);
+		}
+		printf(")");
+		break;
+	}
+
+	return scalars_read;
+}
+
+void print_typed_value(struct stage *stage, type_id tid, scalar_value *values, size_t num_values)
+{
+	print_typed_value_internal(stage, tid, values, num_values);
 }

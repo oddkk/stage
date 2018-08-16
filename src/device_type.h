@@ -56,6 +56,8 @@ struct device_type {
 	device_init_callback device_init;
 	device_output_eval_callback eval;
 
+	bool finalized;
+
 	void *user_data;
 };
 
@@ -90,6 +92,8 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 						struct string name,
 						struct scoped_hash
 						*parent_scope);
+
+void finalize_device_type(struct device_type *);
 
 void describe_device_type(struct stage *stage, struct device_type *dev_type);
 

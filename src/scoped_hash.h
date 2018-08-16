@@ -23,8 +23,11 @@ struct scope_entry {
 	enum scope_entry_kind kind;
 	struct scoped_hash *scope;
 	struct config_node *config_node;
+
 	int id;
 	int end;
+
+	int type;
 };
 
 struct scoped_hash {
@@ -52,6 +55,11 @@ int scoped_hash_insert_ranged(struct scoped_hash *scope, struct atom *name,
 							  enum scope_entry_kind kind, int id, int end,
 							  struct config_node *node,
 							  struct scoped_hash *child_scope);
+
+int scoped_hash_insert_typed_ranged(struct scoped_hash *scope, struct atom *name,
+									enum scope_entry_kind kind, int id, int end,
+									int type, struct config_node *node,
+									struct scoped_hash *child_scope);
 
 int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name,
 		       struct scope_entry *result);
