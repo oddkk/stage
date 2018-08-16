@@ -30,6 +30,7 @@ enum config_node_type {
 	/* CONFIG_NODE_BIND, */
 	CONFIG_NODE_BINARY_OP,
 	CONFIG_NODE_SUBSCRIPT_RANGE,
+	CONFIG_NODE_SUBRANGE,
 	CONFIG_NODE_IDENT,
 	CONFIG_NODE_NUMLIT,
 
@@ -44,19 +45,17 @@ struct version {
 
 struct scoped_hash;
 
-enum dfs_color {
-	DFS_WHITE = 0,
-	DFS_GRAY = 1,
-	DFS_BLACK = 2,
+struct config_location {
+	size_t line;
+	size_t column;
 };
 
 struct config_node {
 	enum config_node_type type;
 	struct config_node *next_sibling;
 
-	struct scoped_hash *scope;
-
-	int apply_id;
+	struct config_location from;
+	struct config_location to;
 
 	union {
 		struct {
@@ -115,6 +114,11 @@ struct config_node {
 			struct config_node *low;
 			struct config_node *high;
 		} subscript_range;
+		struct {
+			struct config_node *lhs;
+			struct config_node *low;
+			struct config_node *high;
+		} subrange;
 		struct {
 			struct config_node *head;
 			struct config_node *tail;

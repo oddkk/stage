@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
 	apply_config(&stage, node);
 
 
-#if 0
+#if 1
 	printf
 	    ("============================ types ============================\n");
 	for (int i = 0; i < stage.num_types; i++) {

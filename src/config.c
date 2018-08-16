@@ -1,2265 +1,742 @@
 #include "config.h"
 #include "stage.h"
 #include "device_type.h"
-#include "device.h"
-#include "type.h"
 #include "utils.h"
 #include "dlist.h"
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#define PRINT_APPLY_ORDER 0
-#define PRINT_APPLICATION_DEBUG 0
+#include <stdatomic.h>
 
-void config_apply_devices(struct stage *stage, struct config_node *node,
-			  struct scoped_hash *scope);
-
-static void _print_indent(int depth)
-{
-	for (int i = 0; i < depth; ++i) {
-		printf("  ");
-	}
-}
-
-static char *_binary_op_name(enum config_binary_op op)
-{
-	switch (op) {
-	case CONFIG_OP_ASSIGN:
-		return "=";
-	case CONFIG_OP_BIND:
-		return "<-";
-	case CONFIG_OP_ADD:
-		return "+";
-	case CONFIG_OP_SUB:
-		return "-";
-	case CONFIG_OP_MUL:
-		return "*";
-	case CONFIG_OP_DIV:
-		return "/";
-	case CONFIG_OP_ACCESS:
-		return ".";
-	case CONFIG_OP_SUBSCRIPT:
-		return "[]";
-	}
-}
-
-static void _config_print_tree(struct config_node *node, int depth)
-{
-	if (!node) {
-		return;
-	}
-
-	_print_indent(depth);
-
-	switch (node->type) {
-	case CONFIG_NODE_MODULE:
-		printf("module\n");
-		_print_indent(depth + 1);
-		printf("version: %i.%i.%i\n",
-		       node->module.version.major,
-		       node->module.version.minor, node->module.version.patch);
-		_config_print_tree(node->module.first_child, depth + 1);
-		break;
-	case CONFIG_NODE_DEVICE_TYPE:
-		printf("device_type\n");
-		_print_indent(depth + 1);
-		printf("name: %.*s\n", LIT(node->device_type.name->name));
-		_config_print_tree(node->device_type.first_child, depth + 1);
-		break;
-	case CONFIG_NODE_DEVICE:
-		printf("device\n");
-
-		_print_indent(depth + 1);
-		if (node->device.name) {
-			printf("name: %.*s\n", LIT(node->device.name->name));
-		} else {
-			printf("name: (unnamed)\n");
-		}
-
-		_print_indent(depth + 1);
-		printf("type:\n");
-		_config_print_tree(node->device.type, depth + 2);
-
-		_config_print_tree(node->device.first_child, depth + 1);
-		break;
-
-	case CONFIG_NODE_TYPE_DECL:
-		printf("type_decl\n");
-
-		_print_indent(depth + 1);
-		printf("name: %.*s\n", LIT(node->type_decl.name->name));
-
-		_config_print_tree(node->type_decl.type, depth + 1);
-		break;
-
-	case CONFIG_NODE_TYPE:
-		printf("type:\n");
-		_config_print_tree(node->type_def.first_child, depth + 1);
-		break;
-
-	case CONFIG_NODE_TUPLE:
-		printf("tuple%s:\n", node->tuple.named ? " (named)" : "");
-		_config_print_tree(node->tuple.first_child, depth + 1);
-		break;
-
-	case CONFIG_NODE_TUPLE_ITEM:
-		printf("tuple_item\n");
-
-		_print_indent(depth + 1);
-		printf("name: %.*s\n", ALIT(node->tuple_item.name));
-
-		_config_print_tree(node->tuple_item.type, depth + 1);
-		break;
-
-	case CONFIG_NODE_ATTR:
-		printf("attr\n");
-
-		_print_indent(depth + 1);
-		printf("name: %.*s\n", LIT(node->attr.name->name));
-
-		_print_indent(depth + 1);
-		printf("type:\n");
-		_config_print_tree(node->attr.type, depth + 2);
-
-		_print_indent(depth + 1);
-		printf("def_value:\n");
-		_config_print_tree(node->attr.def_value, depth + 2);
-		break;
-
-	case CONFIG_NODE_INPUT:
-		printf("input\n");
-
-		_print_indent(depth + 1);
-		if (node->input.name) {
-			printf("name: %.*s\n", LIT(node->input.name->name));
-		} else {
-			printf("name: _\n");
-		}
-
-		_print_indent(depth + 1);
-		printf("type:\n");
-		_config_print_tree(node->input.type, depth + 2);
-		break;
-
-	case CONFIG_NODE_OUTPUT:
-		printf("output\n");
-
-		_print_indent(depth + 1);
-		if (node->output.name) {
-			printf("name: %.*s\n", LIT(node->output.name->name));
-		} else {
-			printf("name: _\n");
-		}
-
-		_print_indent(depth + 1);
-		printf("type:\n");
-		_config_print_tree(node->output.type, depth + 2);
-		break;
-
-	case CONFIG_NODE_BINARY_OP:
-		printf("binary %s\n", _binary_op_name(node->binary_op.op));
-
-		_print_indent(depth + 1);
-		printf("lhs:\n");
-		_config_print_tree(node->binary_op.lhs, depth + 2);
-
-		_print_indent(depth + 1);
-		printf("rhs:\n");
-		_config_print_tree(node->binary_op.rhs, depth + 2);
-
-		break;
-
-	case CONFIG_NODE_SUBSCRIPT_RANGE:
-		printf("subscript range\n");
-
-		_print_indent(depth + 1);
-		printf("lhs:\n");
-		_config_print_tree(node->subscript_range.lhs, depth + 2);
-
-		_print_indent(depth + 1);
-		printf("low:\n");
-		_config_print_tree(node->subscript_range.low, depth + 2);
-
-		_print_indent(depth + 1);
-		printf("high:\n");
-		_config_print_tree(node->subscript_range.high, depth + 2);
-		break;
-
-	case CONFIG_NODE_INTERNAL_LIST:
-		printf("list_node:\n");
-
-		_print_indent(depth + 1);
-		printf("head:\n");
-		_config_print_tree(node->internal_list.head, depth + 2);
-
-		_print_indent(depth + 1);
-		printf("tail:\n");
-		_config_print_tree(node->internal_list.tail, depth + 2);
-		break;
-
-	case CONFIG_NODE_IDENT:
-		if (node->ident) {
-			printf("ident %.*s\n", LIT(node->ident->name));
-		} else {
-			printf("ident (self)\n");
-		}
-		break;
-
-	case CONFIG_NODE_NUMLIT:
-		printf("numlit %i\n", node->numlit);
-		break;
-	}
-
-	if (node->next_sibling) {
-		_config_print_tree(node->next_sibling, depth);
-	}
-}
-
-void config_print_tree(struct config_node *node)
-{
-	_config_print_tree(node, 0);
-}
-
-int config_eval_l_expr_internal(struct scoped_hash *scope,
-				struct config_node *expr, bool restrict_local,
-				struct scope_entry *result,
-				struct scoped_hash **owner)
-{
-	switch (expr->type) {
-	case CONFIG_NODE_IDENT:
-		if (restrict_local) {
-			if (!expr->ident) {
-				// @TODO: Rewrite this error message!
-				printf
-				    ("Cannot have a self node not in this device.");
-				break;
-			}
-
-			if (owner) {
-				*owner = scope;
-			}
-			return scoped_hash_local_lookup(scope, expr->ident,
-							result);
-		} else {
-			if (!expr->ident) {
-				if (!scope->parent) {
-					printf
-					    ("This scope can not be referenced as self.\n");
-					return false;
-				}
-
-				assert(scope->parent->num_entries < scope->id);
-				*result = scope->parent->entries[scope->id];
-				if (owner) {
-					*owner = scope->parent;
-				}
-
-				return true;
-			}
-
-			return scoped_hash_lookup_owner(scope, expr->ident,
-							result, owner);
-		}
-		break;
-
-	case CONFIG_NODE_BINARY_OP:
-		switch (expr->binary_op.op) {
-		case CONFIG_OP_ACCESS:{
-				struct scope_entry lhs;
-				int err;
-
-				err =
-				    config_eval_l_expr_internal(scope,
-								expr->
-								binary_op.lhs,
-								restrict_local,
-								&lhs, NULL);
-
-				if (err) {
-					return err;
-				}
-
-				if (!lhs.scope) {
-					// @TODO: Improve this error message.
-					printf("%.*s has no members.\n",
-					       ALIT(lhs.name));
-					return -1;
-				}
-
-				return config_eval_l_expr_internal(lhs.scope,
-								   expr->binary_op.rhs,
-								   true, result,
-								   owner);
-			}
-			break;
-
-		default:
-			printf("Got unexpected operator '%s' in l-expression.",
-			       _binary_op_name(expr->binary_op.op));
-		}
-
-	default:
-		printf("@TODO: Implement evaluating l_expressions!\n");
-		return -1;
-	}
-
-	return 0;
-}
-
-int config_eval_l_expr(struct scoped_hash *scope, struct config_node *expr,
-		       struct scope_entry *result)
-{
-	return config_eval_l_expr_internal(scope, expr, false, result, NULL);
-}
-
-int config_eval_l_expr_owner(struct scoped_hash *scope,
-			     struct config_node *expr,
-			     struct scope_entry *result,
-			     struct scoped_hash **owner)
-{
-	return config_eval_l_expr_internal(scope, expr, false, result, owner);
-}
-
-void print_l_expr(struct config_node *expr)
-{
-	switch (expr->type) {
-	case CONFIG_NODE_IDENT:
-		if (expr->ident) {
-			printf("%.*s", ALIT(expr->ident));
-		} else {
-			printf("_");
-		}
-		break;
-
-	case CONFIG_NODE_BINARY_OP:
-		print_l_expr(expr->binary_op.lhs);
-
-		if (expr->binary_op.op == CONFIG_OP_SUBSCRIPT) {
-			printf("[");
-			printf("(expr)");
-			printf("]");
-		} else if (expr->binary_op.op == CONFIG_OP_ACCESS) {
-			printf(".");
-			print_l_expr(expr->binary_op.rhs);
-		} else {
-			printf("(non l-expr)");
-		}
-		break;
-
-	default:
-		printf("(non l-expr)");
-		break;
-	}
-}
+#define APPLY_DEBUG 1
 
 enum apply_node_type {
-	APPLY_NODE_DEVICE_TYPE_PRE,
 	APPLY_NODE_DEVICE_TYPE,
-	APPLY_NODE_DEVICE_TYPE_BUILTIN,
+	APPLY_NODE_DEVICE_TYPE_ATTR,
 	APPLY_NODE_DEVICE_TYPE_INPUT,
 	APPLY_NODE_DEVICE_TYPE_OUTPUT,
-	APPLY_NODE_DEVICE_TYPE_ATTR,
-	APPLY_NODE_DEVICE_PRE,
+
 	APPLY_NODE_DEVICE,
-	APPLY_NODE_DEVICE_INPUT,
-	APPLY_NODE_DEVICE_OUTPUT,
-	APPLY_NODE_DEVICE_ATTR,
-	APPLY_NODE_DEVICE_BIND,
-	APPLY_NODE_DEVICE_ASSIGN,
-	APPLY_NODE_TYPE,
+
 	APPLY_NODE_TYPE_DECL,
-	APPLY_NODE_TYPE_BUILTIN,
+
+	APPLY_NODE_TYPE_TUPLE,
+	APPLY_NODE_TYPE_SUBRANGE,
+
+	APPLY_NODE_BINARY_OP,
+	APPLY_NODE_ACCESS,
+	APPLY_NODE_IDENT,
+};
+
+const char *apply_node_name(enum apply_node_type type) {
+#define APPLY_NODE_NAME(name) case APPLY_NODE_##name: return #name;
+	switch (type) {
+		APPLY_NODE_NAME(DEVICE_TYPE);
+		APPLY_NODE_NAME(DEVICE_TYPE_ATTR);
+		APPLY_NODE_NAME(DEVICE_TYPE_INPUT);
+		APPLY_NODE_NAME(DEVICE_TYPE_OUTPUT);
+		APPLY_NODE_NAME(DEVICE);
+
+		APPLY_NODE_NAME(TYPE_DECL);
+
+		APPLY_NODE_NAME(TYPE_TUPLE);
+		APPLY_NODE_NAME(TYPE_SUBRANGE);
+
+		APPLY_NODE_NAME(BINARY_OP);
+		APPLY_NODE_NAME(ACCESS);
+		APPLY_NODE_NAME(IDENT);
+	}
+#undef APPLY_NODE_NAME
+	return "(unknown apply node)";
+}
+
+enum entry_found_state {
+	ENTRY_FOUND_WAITING = 0,
+	ENTRY_NOT_FOUND = -1,
+	ENTRY_FOUND = 1,
 };
 
 struct apply_node;
 
-struct apply_edge {
-	struct apply_node *from, *to;
-	bool visited;
+struct apply_tuple_member {
+	struct atom *name;
+	struct apply_node *type;
 };
 
 struct apply_node {
 	struct apply_node *next;
-	size_t id;
-	struct apply_node *owner;
+
 	enum apply_node_type type;
-	struct atom *name;
-	struct scoped_hash *scope;
-	struct scoped_hash *parent_scope;
 	struct config_node *cnode;
 
-	size_t num_incoming_edges;
-
-	struct apply_edge *outgoing_edges;
-	size_t num_outgoing_edges;
-
-	/* int final_id; */
-
 	union {
-		struct device_type *dev_type;
 		struct {
-			struct device *dev;
-			struct device_attribute *attrs;
-			size_t num_attrs;
-		} dev_data;
-		int channel;
-		int attribute;
-		struct {
-			type_id id;
-			struct apply_node **members;
-			size_t num_members;
-		} type;
-	} final;
+			struct scoped_hash *scope;
+			struct device_type *type;
+			struct atom *name;
+			bool visited;
+			bool complete;
 
-	// For channels
-	bool is_default;
+			size_t missing_inputs;
+			size_t missing_outputs;
+			size_t missing_attributes;
+		} device_type;
+
+		struct {
+			struct atom *name;
+			struct apply_node *owner;
+			struct apply_node *type;
+			struct apply_node *def;
+		} device_type_attribute;
+
+		struct {
+			struct atom *name;
+			struct apply_node *owner;
+			struct apply_node *type;
+		} device_type_input;
+
+		struct {
+			struct atom *name;
+			struct apply_node *owner;
+			struct apply_node *type;
+		} device_type_output;
+
+		struct {
+			struct scoped_hash *scope;
+			struct device_type *device;
+		} device;
+
+		struct {
+			struct atom *name;
+			struct apply_node *type;
+			struct scoped_hash *scope;
+		} type_decl;
+
+		struct {
+			struct atom *name;
+			bool named;
+			struct apply_tuple_member *members;
+			size_t num_members;
+		} type_tuple;
+
+		struct {
+			struct atom *name;
+			struct apply_node *lhs;
+			struct apply_node *low;
+			struct apply_node *high;
+		} type_subrange;
+
+		struct {
+			struct apply_node *lhs;
+			struct apply_node *rhs;
+			enum config_binary_op op;
+		} binary_op;
+
+		struct {
+			struct apply_node *lhs;
+			struct apply_node *rhs;
+			bool local_lookup;
+		} access;
+
+		struct {
+			struct scoped_hash *scope;
+			struct atom *name;
+			bool local_lookup;
+		} ident;
+
+	};
+
+	enum entry_found_state entry_found;
+	struct scope_entry entry;
+};
+
+struct apply_queue_entry {
+	int _dc;
 };
 
 struct apply_context {
-	struct apply_node **nodes;
-	size_t num_nodes;
+	struct apply_node *queue;
+	struct apply_node *queue_tail;
 
-	struct scoped_hash scope;
-
-	// A linked list of all nodes with no incoming edges.
-	struct apply_node *terminal_nodes;
-	size_t unvisited_edges;
+	struct stage *stage;
 };
 
-struct apply_node *config_eval_l_expr_node(struct apply_context *ctx,
-										   struct scoped_hash *scope,
-										   struct config_node *expr)
+#if APPLY_DEBUG
+static void apply_debug(const char *fmt, ...)
 {
-	struct scope_entry result;
-	int err;
+	va_list ap;
 
-	err = config_eval_l_expr(scope, expr, &result);
+	va_start(ap, fmt);
+	vfprintf(stdout, fmt, ap);
+	fprintf(stdout, "\n");
+	va_end(ap);
+}
+#else
+#define apply_debug(fmt, ...)
+#endif
 
-	if (err) {
-		printf("No such variable '");
-		print_l_expr(expr);
-		printf("'.\n");
-		return NULL;
-	}
+static void apply_error(struct config_node *node, const char *fmt, ...)
+{
+	va_list ap;
 
-	assert(result.id > 0 && result.id <= ctx->num_nodes)
-
-	return ctx->nodes[result.id];
+	va_start(ap, fmt);
+	fprintf(stderr, "%zu:%zu: ", node->from.line, node->from.column);
+	vfprintf(stderr, fmt, ap);
+	fprintf(stderr, "\n");
+	va_end(ap);
 }
 
-
-static struct apply_node *create_apply_node_with_owner(struct apply_context
-						       *ctx, struct scoped_hash
-						       *scope,
-						       enum apply_node_type
-						       type, struct atom *name,
-						       struct config_node
-						       *cnode,
-						       struct apply_node *owner)
+static struct apply_node *alloc_apply_node(struct apply_context *ctx, enum apply_node_type type, struct config_node *cnode)
 {
-	enum scope_entry_kind scope_entry_kind;
-	struct apply_node *new_node;
-	bool create_scope = false;
-	size_t id;
-
-	switch (type) {
-	case APPLY_NODE_DEVICE_TYPE_PRE:
-		scope_entry_kind = SCOPE_ENTRY_NONE;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE_TYPE:
-		scope_entry_kind = SCOPE_ENTRY_DEVICE_TYPE;
-		create_scope = true;
-		assert(!owner);
-		break;
-
-	case APPLY_NODE_DEVICE_TYPE_BUILTIN:
-		scope_entry_kind = SCOPE_ENTRY_DEVICE_TYPE;
-		create_scope = true;
-		assert(!owner);
-		break;
-
-	case APPLY_NODE_DEVICE_TYPE_INPUT:
-		scope_entry_kind = SCOPE_ENTRY_DEVICE_INPUT;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE_TYPE_OUTPUT:
-		scope_entry_kind = SCOPE_ENTRY_DEVICE_OUTPUT;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE_TYPE_ATTR:
-		scope_entry_kind = SCOPE_ENTRY_DEVICE_ATTRIBUTE;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE_INPUT:
-		scope_entry_kind = SCOPE_ENTRY_DEVICE_INPUT;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE_OUTPUT:
-		scope_entry_kind = SCOPE_ENTRY_DEVICE_OUTPUT;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE_ATTR:
-		scope_entry_kind = SCOPE_ENTRY_DEVICE_ATTRIBUTE;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE_PRE:
-		scope_entry_kind = SCOPE_ENTRY_NONE;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE:
-		scope_entry_kind = SCOPE_ENTRY_DEVICE;
-		create_scope = true;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE_BIND:
-		scope_entry_kind = SCOPE_ENTRY_NONE;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_DEVICE_ASSIGN:
-		scope_entry_kind = SCOPE_ENTRY_NONE;
-		assert(owner);
-		break;
-
-	case APPLY_NODE_TYPE:
-		scope_entry_kind = SCOPE_ENTRY_NONE;
-		assert(!owner);
-		assert(!scope);
-		break;
-
-	case APPLY_NODE_TYPE_DECL:
-		scope_entry_kind = SCOPE_ENTRY_TYPE;
-		assert(scope);
-		break;
-
-	case APPLY_NODE_TYPE_BUILTIN:
-		scope_entry_kind = SCOPE_ENTRY_TYPE;
-		assert(!owner);
-		break;
-	}
-
-	new_node = calloc(1, sizeof(struct apply_node));
-	id = dlist_append(ctx->nodes, ctx->num_nodes, &new_node);
-
-	new_node->id = id;
-	new_node->type = type;
-	new_node->name = name;
-	new_node->cnode = cnode;
-	new_node->owner = owner;
-	new_node->parent_scope = scope;
-
-	new_node->next = ctx->terminal_nodes;
-	ctx->terminal_nodes = new_node;
-
-	if (cnode) {
-		cnode->apply_id = new_node->id;
-	}
-
-	if (scope_entry_kind != SCOPE_ENTRY_NONE) {
-		if (create_scope) {
-			new_node->scope =
-			    scoped_hash_push(scope, scope_entry_kind, id);
-		}
-
-		if (new_node->name) {
-			scoped_hash_insert(scope,
-					   new_node->name,
-					   scope_entry_kind,
-					   id, cnode, new_node->scope);
-		}
-	}
-
-	return new_node;
+	struct apply_node *node;
+	node = calloc(1, sizeof(struct apply_node));
+	node->type = type;
+	node->cnode = cnode;
+	return node;
 }
 
-static struct apply_node *create_apply_node(struct apply_context *ctx,
-					    struct scoped_hash *scope,
-					    enum apply_node_type type,
-					    struct atom *name,
-					    struct config_node *cnode)
+static void push_apply_node(struct apply_context *ctx, struct apply_node *node)
+{
+	// Only append the node if it is not already queued.
+	if (node->next == NULL) {
+		// @TODO: Make this concurrent-safe
+		if (ctx->queue_tail) {
+			assert(ctx->queue);
+			ctx->queue_tail->next = node;
+		} else {
+			assert(!ctx->queue);
+			ctx->queue = node;
+		}
+		ctx->queue_tail = node;
+	}
+}
+
+static struct apply_node *pop_apply_node(struct apply_context *ctx)
 {
 	struct apply_node *result;
 
-	result =
-	    create_apply_node_with_owner(ctx, scope, type, name, cnode, NULL);
+	result = ctx->queue;
+	// @TODO: Make this concurrent-safe
+	ctx->queue = result->next;
+	result->next = NULL;
+	if (ctx->queue_tail == result) {
+		ctx->queue_tail = NULL;
+	}
 
 	return result;
 }
 
-#if PRINT_APPLY_ORDER
-static void print_apply_node_name(struct apply_node *node)
-{
-	switch (node->type) {
-	case APPLY_NODE_DEVICE_TYPE_PRE:
-		printf("dev_t_pre");
-		break;
-	case APPLY_NODE_DEVICE_TYPE:
-		printf("dev_t    ");
-		break;
-	case APPLY_NODE_DEVICE_TYPE_BUILTIN:
-		printf("dev_t_bi ");
-		break;
-	case APPLY_NODE_DEVICE_TYPE_INPUT:
-		printf("dev_t_in ");
-		break;
-	case APPLY_NODE_DEVICE_TYPE_OUTPUT:
-		printf("dev_t_out");
-		break;
-	case APPLY_NODE_DEVICE_TYPE_ATTR:
-		printf("dev_t_atr");
-		break;
-	case APPLY_NODE_DEVICE:
-		printf("dev      ");
-		break;
-	case APPLY_NODE_DEVICE_PRE:
-		printf("dev_pre  ");
-		break;
-	case APPLY_NODE_DEVICE_INPUT:
-		printf("dev_in   ");
-		break;
-	case APPLY_NODE_DEVICE_OUTPUT:
-		printf("dev_out  ");
-		break;
-	case APPLY_NODE_DEVICE_ATTR:
-		printf("dev_atr  ");
-		break;
-	case APPLY_NODE_DEVICE_BIND:
-		printf("dev_bnd  ");
-		break;
-	case APPLY_NODE_DEVICE_ASSIGN:
-		printf("dev_asn  ");
-		break;
-	case APPLY_NODE_TYPE:
-		printf("type     ");
-		break;
-	case APPLY_NODE_TYPE_DECL:
-		printf("type_decl");
-		break;
-	case APPLY_NODE_TYPE_BUILTIN:
-		printf("type_bi  ");
-		break;
-	}
-	printf(" %.*s", ALIT(node->name));
-	if (node->owner) {
-		printf(" (");
-		print_apply_node_name(node->owner);
-		printf(")");
-	}
-}
-#endif
-
-static void remove_terminal_apply_node(struct apply_context *ctx,
-				       struct apply_node *node)
-{
-	struct apply_node **n;
-	n = &ctx->terminal_nodes;
-	while (*n) {
-		if (*n == node) {
-			*n = node->next;
-			node->next = NULL;
-			break;
-		}
-		n = &(*n)->next;
-	}
-}
-
-// Makes depends_on require node. In other words, node must be
-// initialized before depends_on.
-static void apply_node_depends(struct apply_context *ctx,
-			       struct apply_node *node,
-			       struct apply_node *depends_on)
-{
-	struct apply_edge new_edge = { 0 };
-
-	new_edge.from = node;
-	new_edge.to = depends_on;
-
-	dlist_append(node->outgoing_edges, node->num_outgoing_edges, &new_edge);
-
-	ctx->unvisited_edges += 1;
-	depends_on->num_incoming_edges += 1;
-	if (depends_on->num_incoming_edges == 1) {
-		remove_terminal_apply_node(ctx, depends_on);
-	}
-}
-
-static void create_dependency_for_l_expr(struct apply_context *ctx,
-					 struct scoped_hash *scope,
-					 struct apply_node *node,
-					 struct config_node *expr)
-{
-	struct scope_entry entry;
-	struct apply_node *attr;
-	int err;
-
-	err = config_eval_l_expr(scope, expr, &entry);
-
-	if (err) {
-		printf("No such variable '");
-		print_l_expr(expr);
-		printf("'.\n");
-		return;
-	}
-
-	attr = ctx->nodes[entry.id];
-
-	if (attr->type == APPLY_NODE_DEVICE_ATTR) {
-		printf("'");
-		print_l_expr(expr);
-		printf("' is not an attribute.\n");
-		return;
-	}
-	// The result depends on the attribute (value).
-	apply_node_depends(ctx, attr, node);
-}
-
-static void create_dependency_on_l_expr(struct apply_context *ctx,
-					struct scoped_hash *scope,
-					struct apply_node *node,
-					struct config_node *expr)
-{
-	struct scope_entry entry;
-	struct apply_node *attr;
-	int err;
-
-	err = config_eval_l_expr(scope, expr, &entry);
-
-	if (err) {
-		printf("No such variable '");
-		print_l_expr(expr);
-		printf("'.\n");
-		return;
-	}
-
-	attr = ctx->nodes[entry.id];
-
-	if (attr->type != APPLY_NODE_DEVICE_ATTR) {
-		printf("'");
-		print_l_expr(expr);
-		printf("' is not an attribute.\n");
-		return;
-	}
-	// The result depends on the attribute (value).
-	apply_node_depends(ctx, node, attr);
-}
-
-static void create_dependencies_for_expr(struct apply_context *ctx,
-					 struct scoped_hash *scope,
-					 struct apply_node *node,
-					 struct config_node *expr)
+static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
+												struct scoped_hash *scope,
+												struct config_node *expr,
+												bool local_lookup)
 {
 	switch (expr->type) {
-	case CONFIG_NODE_IDENT:
-		create_dependency_for_l_expr(ctx, scope, node, expr);
-		break;
-
-	case CONFIG_NODE_BINARY_OP:
-		if (expr->binary_op.op == CONFIG_OP_ACCESS ||
-		    expr->binary_op.op == CONFIG_OP_SUBSCRIPT) {
-			// This is a l-expr
-			create_dependency_for_l_expr(ctx, scope, node, expr);
-		} else {
-			create_dependencies_for_expr(ctx, scope, node,
-						     expr->binary_op.lhs);
-			create_dependencies_for_expr(ctx, scope, node,
-						     expr->binary_op.rhs);
-		}
-		break;
-
-	case CONFIG_NODE_NUMLIT:
-		break;
-
-	default:
-		print_error("config", "Invalid node in expr!");
-		break;
-	}
-}
-
-static struct apply_node * discover_type(struct apply_context *ctx,
-						  struct scoped_hash *scope,
-						  struct config_node *node)
-{
-	struct apply_node *type = NULL;
-	struct config_node *type_expr;
-
-	assert(node->type == CONFIG_NODE_TYPE);
-
-	type_expr = node->type_def.first_child;
-
-	switch (type_expr->type) {
-	case CONFIG_NODE_TUPLE: {
-		struct config_node *tuple_member;
-
-		type = create_apply_node(ctx, NULL, APPLY_NODE_TYPE, NULL, node);
-
-		tuple_member = type_expr->tuple.first_child;
-		type->final.type.num_members = 0;
-		while (tuple_member) {
-			assert(tuple_member->type == CONFIG_NODE_TUPLE_ITEM);
-
-			struct apply_node *member_type;
-			member_type = discover_type(ctx, scope, tuple_member->tuple_item.type);
-			if (member_type) {
-				apply_node_depends(ctx, member_type, type);
-				dlist_append(type->final.type.members,
-							type->final.type.num_members,
-							&member_type);
-			} else {
-				printf("No such type '");
-				print_l_expr(tuple_member->tuple_item.type);
-				printf("'.\n");
-			}
-
-			tuple_member = tuple_member->next_sibling;
-		}
-	} break;
-
-	case CONFIG_NODE_BINARY_OP:
 	case CONFIG_NODE_IDENT: {
-		struct scope_entry entry;
-		struct apply_node *attr;
-		int err;
+		struct apply_node *node;
 
-		err = config_eval_l_expr(scope, type_expr, &entry);
+		node = alloc_apply_node(ctx, APPLY_NODE_IDENT, expr);
+		node->ident.name = expr->ident;
+		node->ident.scope = scope;
+		node->ident.local_lookup = local_lookup;
 
-		if (err) {
-			printf("No such type '");
-			print_l_expr(type_expr);
-			printf("'.\n");
-			break;
-		}
+		push_apply_node(ctx, node);
 
-		attr = ctx->nodes[entry.id];
-
-		if (attr->type != APPLY_NODE_TYPE_DECL && attr->type != APPLY_NODE_TYPE_BUILTIN) {
-			printf("'");
-			print_l_expr(type_expr);
-			printf("' is not a type.\n");
-			break;
-		}
-
-		type = attr;
-		node->apply_id = type->id;
+		return node;
 	} break;
 
-	case CONFIG_NODE_SUBSCRIPT_RANGE: {
-		struct scope_entry entry;
-		struct apply_node *lhs_type;
-		int err;
+	case CONFIG_NODE_BINARY_OP: {
+		if (expr->binary_op.op == CONFIG_OP_ACCESS) {
+			struct apply_node *node;
+			node = alloc_apply_node(ctx, APPLY_NODE_ACCESS, expr);
+			node->access.local_lookup = local_lookup;
+			node->access.lhs = apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, true);
 
-		err = config_eval_l_expr(scope, type_expr->subscript_range.lhs, &entry);
+			push_apply_node(ctx, node);
 
-		if (err) {
-			printf("No such type '");
-			print_l_expr(type_expr);
-			printf("'.\n");
-			break;
+			return node;
+		} else {
+			apply_error(expr, "Invalid node in l-expression.");
 		}
-
-		lhs_type = ctx->nodes[entry.id];
-
-		if (lhs_type->type != APPLY_NODE_TYPE_DECL && lhs_type->type != APPLY_NODE_TYPE_BUILTIN) {
-			printf("'");
-			print_l_expr(type_expr);
-			printf("' is not a type.\n");
-			break;
-		}
-
-		type = create_apply_node(ctx, NULL, APPLY_NODE_TYPE, NULL, node);
-
-		apply_node_depends(ctx, lhs_type, type);
-
-		create_dependencies_for_expr(ctx, scope, type, type_expr->subscript_range.low);
-		create_dependencies_for_expr(ctx, scope, type, type_expr->subscript_range.high);
 	} break;
+
+	case CONFIG_NODE_SUBSCRIPT_RANGE:
+		printf("@TODO: Subscript range\n");
+		break;
 
 	default:
-		print_error("config", "Invalid node in type");
+		apply_error(expr, "Invalid node '%s' in l-expression.");
 		break;
-	};
-
-	assert(type != NULL);
-
-	return type;
-}
-
-static void discover_type_decls(struct apply_context *ctx,
-								struct scoped_hash *scope,
-								struct config_node *node)
-{
-	struct config_node *current = node;
-
-	while (current) {
-		switch (current->type) {
-		case CONFIG_NODE_MODULE:
-			discover_type_decls(ctx, scope,
-						   current->module.first_child);
-			break;
-
-		case CONFIG_NODE_DEVICE_TYPE:
-			// TODO: This should have the scope of the device_type
-			discover_type_decls(ctx, scope,
-						   current->device_type.first_child);
-			break;
-
-		case CONFIG_NODE_TYPE_DECL:
-			create_apply_node(ctx, scope, APPLY_NODE_TYPE_DECL, current->type_decl.name, current);
-		break;
-
-		default:
-			break;
-		}
-
-		current = current->next_sibling;
 	}
-
-}
-
-static void discover_types(struct apply_context *ctx,
-						   struct scoped_hash *scope,
-						   struct config_node *node)
-{
-	struct config_node *current = node;
-
-	while (current) {
-		switch (current->type) {
-		case CONFIG_NODE_MODULE:
-			discover_types(ctx, scope,
-						   current->module.first_child);
-			break;
-
-		case CONFIG_NODE_DEVICE_TYPE:
-			// TODO: This should have the scope of the device_type
-			discover_types(ctx, scope,
-						   current->device_type.first_child);
-			break;
-
-		case CONFIG_NODE_TYPE_DECL: {
-			struct apply_node *type;
-			struct apply_node *type_decl;
-
-			type = discover_type(ctx, scope, current->type_decl.type);
-			type_decl = ctx->nodes[current->apply_id];
-
-			type_decl->owner = type;
-
-			apply_node_depends(ctx, type, type_decl);
-		} break;
-
-		default:
-			break;
-		}
-
-		current = current->next_sibling;
-	}
-
-}
-
-static void discover_device_types(struct apply_context *ctx,
-				  struct scoped_hash *scope,
-				  struct config_node *node)
-{
-	struct config_node *current = node;
-
-	while (current) {
-		switch (current->type) {
-		case CONFIG_NODE_MODULE:
-			discover_device_types(ctx, scope,
-					      current->module.first_child);
-			break;
-
-		case CONFIG_NODE_DEVICE_TYPE:{
-				struct config_node *stmt;
-				struct apply_node *dev_type, *dev_type_pre;
-				dev_type = create_apply_node(ctx, scope,
-							     APPLY_NODE_DEVICE_TYPE,
-							     current->device_type.
-							     name, current);
-				dev_type_pre =
-				    create_apply_node_with_owner(ctx, scope,
-								 APPLY_NODE_DEVICE_TYPE_PRE,
-								 current->device_type.name,
-								 current,
-								 dev_type);
-
-				apply_node_depends(ctx, dev_type_pre, dev_type);
-
-				stmt = current->device_type.first_child;
-
-				while (stmt) {
-					struct apply_node *new_node;
-					struct apply_node *type;
-					switch (stmt->type) {
-					case CONFIG_NODE_INPUT:
-						new_node =
-						    create_apply_node_with_owner
-						    (ctx, dev_type->scope,
-						     APPLY_NODE_DEVICE_TYPE_INPUT,
-						     stmt->input.name, stmt,
-						     dev_type);
-						new_node->is_default =
-						    stmt->input.def;
-						apply_node_depends(ctx,
-								   dev_type_pre,
-								   new_node);
-						apply_node_depends(ctx,
-								   new_node,
-								   dev_type);
-
-
-						type = discover_type(ctx, dev_type->scope, stmt->input.type);
-						apply_node_depends(ctx, type, new_node);
-						break;
-
-					case CONFIG_NODE_OUTPUT:
-						new_node =
-						    create_apply_node_with_owner
-						    (ctx, dev_type->scope,
-						     APPLY_NODE_DEVICE_TYPE_OUTPUT,
-						     stmt->output.name, stmt,
-						     dev_type);
-						new_node->is_default =
-						    stmt->output.def;
-						apply_node_depends(ctx,
-								   dev_type_pre,
-								   new_node);
-						apply_node_depends(ctx,
-								   new_node,
-								   dev_type);
-
-						type = discover_type(ctx, dev_type->scope, stmt->output.type);
-						apply_node_depends(ctx, type, new_node);
-						break;
-
-					case CONFIG_NODE_ATTR:
-						new_node =
-						    create_apply_node_with_owner
-						    (ctx, dev_type->scope,
-						     APPLY_NODE_DEVICE_TYPE_ATTR,
-						     stmt->attr.name, stmt,
-						     dev_type);
-						apply_node_depends(ctx,
-								   dev_type_pre,
-								   new_node);
-						apply_node_depends(ctx,
-								   new_node,
-								   dev_type);
-
-						type = discover_type(ctx, dev_type->scope, stmt->attr.type);
-						apply_node_depends(ctx, type, new_node);
-						break;
-
-					default:
-						break;
-					}
-
-					stmt = stmt->next_sibling;
-				}
-			}
-			break;
-
-		default:
-			break;
-		}
-
-		current = current->next_sibling;
-	}
-}
-
-static void discover_devices(struct apply_context *ctx,
-			     struct scoped_hash *owner_scope,
-			     struct scoped_hash *scope,
-			     struct config_node *node,
-			     struct apply_node *parent_dev)
-{
-	struct config_node *current = node;
-
-	while (current) {
-		switch (current->type) {
-		case CONFIG_NODE_MODULE:
-			discover_devices(ctx, owner_scope, scope,
-					 current->module.first_child,
-					 parent_dev);
-			break;
-
-		case CONFIG_NODE_DEVICE_TYPE:
-			break;
-
-		case CONFIG_NODE_DEVICE:{
-				struct scope_entry dev_type_entry;
-				struct apply_node *dev_type;
-				struct apply_node *dev, *dev_pre;
-				int err;
-
-				err = config_eval_l_expr(scope,
-							 current->device.type,
-							 &dev_type_entry);
-
-				if (err) {
-					printf("No such device type '");
-					print_l_expr(current->device.type);
-					printf("'.\n");
-					break;
-				}
-
-				dev_type = ctx->nodes[dev_type_entry.id];
-
-				if (dev_type->type != APPLY_NODE_DEVICE_TYPE &&
-				    dev_type->type !=
-				    APPLY_NODE_DEVICE_TYPE_BUILTIN) {
-					printf("'");
-					print_l_expr(current->device.type);
-					printf
-					    ("' is not a device type (for the device %.*s).\n",
-					     ALIT(current->device.name));
-					break;
-				}
-
-				dev =
-				    create_apply_node_with_owner(ctx,
-								 owner_scope,
-								 APPLY_NODE_DEVICE,
-								 current->device.
-								 name, current,
-								 dev_type);
-
-				dev_pre =
-				    create_apply_node_with_owner(ctx,
-								 owner_scope,
-								 APPLY_NODE_DEVICE_PRE,
-								 current->device.
-								 name, current,
-								 dev);
-
-				apply_node_depends(ctx, dev_pre, dev);
-				apply_node_depends(ctx, dev_type, dev_pre);
-				// apply_node_depends(ctx, dev_type, dev); // transitive
-
-				if (parent_dev) {
-					apply_node_depends(ctx, parent_dev,
-							   dev);
-				}
-
-				struct scoped_hash *dev_type_scope;
-
-				dev_type_scope = dev_type->scope;
-				for (size_t i = 0;
-				     i < dev_type_scope->num_entries; i++) {
-					struct scope_entry *entry;
-					struct apply_node *cnl_node;
-					struct apply_node *new_node;
-
-					entry = &dev_type_scope->entries[i];
-					cnl_node = ctx->nodes[entry->id];
-
-					switch (entry->kind) {
-					case SCOPE_ENTRY_DEVICE_INPUT:
-						assert(cnl_node->type ==
-						       APPLY_NODE_DEVICE_TYPE_INPUT);
-
-						new_node =
-						    create_apply_node_with_owner
-						    (ctx, dev->scope,
-						     APPLY_NODE_DEVICE_INPUT,
-						     cnl_node->name,
-						     cnl_node->cnode, dev);
-						new_node->is_default =
-						    cnl_node->is_default;
-						apply_node_depends(ctx,
-								   cnl_node,
-								   new_node);
-						apply_node_depends(ctx, dev,
-								   new_node);
-						break;
-
-					case SCOPE_ENTRY_DEVICE_OUTPUT:
-						assert(cnl_node->type ==
-						       APPLY_NODE_DEVICE_TYPE_OUTPUT);
-
-						new_node =
-						    create_apply_node_with_owner
-						    (ctx, dev->scope,
-						     APPLY_NODE_DEVICE_OUTPUT,
-						     cnl_node->name,
-						     cnl_node->cnode, dev);
-						new_node->is_default =
-						    cnl_node->is_default;
-						apply_node_depends(ctx,
-								   cnl_node,
-								   new_node);
-						apply_node_depends(ctx, dev,
-								   new_node);
-						break;
-
-					case SCOPE_ENTRY_DEVICE_ATTRIBUTE:
-						assert(cnl_node->type ==
-						       APPLY_NODE_DEVICE_TYPE_ATTR);
-
-						new_node =
-						    create_apply_node_with_owner
-						    (ctx, dev->scope,
-						     APPLY_NODE_DEVICE_ATTR,
-						     cnl_node->name,
-						     cnl_node->cnode, dev);
-						// NOTE: Because attributes must be known when the
-						// device is created, the device depends on the attribute.
-						apply_node_depends(ctx,
-								   cnl_node,
-								   new_node);
-						apply_node_depends(ctx,
-								   new_node,
-								   dev);
-						apply_node_depends(ctx, dev_pre,
-								   new_node);
-						break;
-
-					default:
-						break;
-					}
-				}
-
-				// TODO: Fix scope not staying with original definition of
-				// device type.
-				if (dev_type->cnode) {
-					discover_devices(ctx,
-							 dev->scope,
-							 dev_type->scope,
-							 dev_type->
-							 cnode->device_type.first_child,
-							 dev);
-				}
-			}
-			break;
-
-		default:
-			break;
-		}
-
-		current = current->next_sibling;
-	}
-}
-
-static struct apply_node *find_default_channel_for_dev(struct apply_context
-						       *ctx,
-						       struct apply_node *dev,
-						       enum apply_node_type
-						       type)
-{
-	assert(type == APPLY_NODE_DEVICE_INPUT ||
-	       type == APPLY_NODE_DEVICE_OUTPUT);
-
-	for (size_t i = 0; i < dev->scope->num_entries; i++) {
-		struct apply_node *child;
-		child = ctx->nodes[dev->scope->entries[i].id];
-
-		if (child->type == type && child->is_default) {
-			return child;
-		}
-	}
-
 	return NULL;
 }
 
-enum bind_channel_side {
-	BIND_CHANNEL_SIDE_LEFT,
-	BIND_CHANNEL_SIDE_RIGHT,
+static struct apply_node *apply_discover_expr(struct apply_context *ctx,
+											  struct scoped_hash *scope,
+											  struct config_node *expr)
+{
+	printf("@TODO: Expr");
+	return NULL;
+}
+
+static void apply_discover_device_type(struct apply_context *ctx,
+									   struct scoped_hash *scope,
+									   struct config_node *device_type_node)
+{
+	assert(device_type_node->type == CONFIG_NODE_DEVICE_TYPE);
+
+	struct apply_node *device_type;
+
+	device_type = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE, device_type_node);
+	device_type->device_type.name = device_type_node->device_type.name;
+	device_type->device_type.scope = scope;
+
+	push_apply_node(ctx, device_type);
+}
+
+static void apply_discover_device_type_members(struct apply_context *ctx,
+											   struct scoped_hash *scope,
+											   struct config_node *node,
+											   struct apply_node *device_type)
+{
+	for (; node; node = node->next_sibling) {
+		switch (node->type) {
+		case CONFIG_NODE_ATTR: {
+			struct apply_node *attr;
+
+			attr = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE_ATTR, node);
+			attr->device_type_attribute.owner = device_type;
+			attr->device_type_attribute.name = node->attr.name;
+			device_type->device_type.missing_attributes += 1;
+
+			push_apply_node(ctx, attr);
+		} break;
+
+		case CONFIG_NODE_INPUT: {
+			struct apply_node *input;
+
+			input = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE_INPUT, node);
+			input->device_type_input.owner = device_type;
+			input->device_type_attribute.name = node->input.name;
+			device_type->device_type.missing_inputs += 1;
+
+			push_apply_node(ctx, input);
+		} break;
+
+		case CONFIG_NODE_OUTPUT: {
+			struct apply_node *output;
+
+			output = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE_OUTPUT, node);
+			output->device_type_output.owner = device_type;
+			output->device_type_attribute.name = node->output.name;
+			device_type->device_type.missing_outputs += 1;
+
+			push_apply_node(ctx, output);
+		} break;
+
+		default:
+			apply_error(node, "Unexpected node in device type.");
+			break;
+		}
+	}
+}
+
+static void apply_discover_device(struct apply_context *ctx,
+								  struct scoped_hash *scope,
+								  struct config_node *device_type_node)
+{
+	assert(device_type_node->type == CONFIG_NODE_DEVICE);
+}
+
+static struct apply_node *apply_discover_type(struct apply_context *ctx,
+											  struct scoped_hash *scope,
+											  struct config_node *type_node,
+											  struct atom *name)
+{
+	if (type_node->type == CONFIG_NODE_TYPE) {
+		struct config_node *type_expr;
+		struct apply_node *type = NULL;
+		type_expr = type_node->type_def.first_child;
+
+		switch (type_expr->type) {
+		case CONFIG_NODE_TUPLE: {
+			bool named;
+			type = alloc_apply_node(ctx, APPLY_NODE_TYPE_TUPLE, type_node);
+			type->type_tuple.name = name;
+
+			named = type_expr->tuple.named;
+			type->type_tuple.named = named;
+
+			for (struct config_node *member = type_expr->tuple.first_child;
+				 member;
+				 member = member->next_sibling) {
+				assert(member->type == CONFIG_NODE_TUPLE_ITEM);
+
+				struct apply_tuple_member new_member = {0};
+
+				if (named) {
+					new_member.name = member->tuple_item.name;
+				}
+				new_member.type = apply_discover_type(ctx, scope, member->tuple_item.type, new_member.name);
+
+				dlist_append(type->type_tuple.members, type->type_tuple.num_members, &new_member);
+			}
+		} break;
+
+		case CONFIG_NODE_SUBRANGE:
+			type = alloc_apply_node(ctx, APPLY_NODE_TYPE_SUBRANGE, type_node);
+			type->type_subrange.name = name;
+
+			type->type_subrange.lhs
+				= apply_discover_l_expr(ctx, scope, type_expr->subrange.lhs, false);
+
+			type->type_subrange.low
+				= apply_discover_expr(ctx, scope, type_expr->subrange.low);
+
+			type->type_subrange.high
+				= apply_discover_expr(ctx, scope, type_expr->subrange.high);
+			break;
+
+		default:
+			apply_error(type_expr, "Not a valid type.");
+		}
+
+		if (type) {
+			push_apply_node(ctx, type);
+		}
+
+		return type;
+
+	} else {
+		return apply_discover_l_expr(ctx, scope, type_node, false);
+	}
+}
+
+static void apply_discover_type_decl(struct apply_context *ctx,
+									 struct scoped_hash *scope,
+									 struct config_node *type_decl_node)
+{
+	assert(type_decl_node->type == CONFIG_NODE_TYPE_DECL);
+
+	struct apply_node *type_decl;
+
+	type_decl = alloc_apply_node(ctx, APPLY_NODE_TYPE_DECL, type_decl_node);
+	type_decl->type_decl.name = type_decl_node->type_decl.name;
+	type_decl->type_decl.scope = scope;
+	type_decl->type_decl.type =
+		apply_discover_type(ctx, scope, type_decl_node->type_decl.type,
+							type_decl->type_decl.name);
+
+	push_apply_node(ctx, type_decl);
+}
+
+static void apply_discover(struct apply_context *ctx,
+						   struct scoped_hash *scope,
+						   struct config_node *node)
+{
+	for (; node; node = node->next_sibling) {
+		switch (node->type) {
+		case CONFIG_NODE_MODULE:
+			apply_discover(ctx, scope, node->module.first_child);
+			break;
+
+		case CONFIG_NODE_DEVICE_TYPE:
+			apply_discover_device_type(ctx, scope, node);
+			break;
+
+		case CONFIG_NODE_DEVICE:
+			apply_discover_device(ctx, scope, node);
+			break;
+
+		case CONFIG_NODE_TYPE_DECL:
+			apply_discover_type_decl(ctx, scope, node);
+			break;
+
+		default:
+			apply_error(node, "Unexpected node.");
+			break;
+		}
+	}
+}
+
+enum apply_dispatch_result {
+	DISPATCH_DONE  = 0,
+	DISPATCH_YIELD = 1,
+	DISPATCH_ERROR = -1,
 };
 
-static int find_channel_node_from_l_expr(struct apply_context *ctx,
-					 struct scoped_hash *scope,
-					 struct apply_node *dev,
-					 struct config_node *cnode,
-					 enum bind_channel_side side,
-					 struct apply_node **out)
+static enum apply_dispatch_result
+apply_dispatch(struct apply_context *ctx,
+			   struct apply_node *node)
 {
-	struct scope_entry entry;
-	struct apply_node *node;
-	enum apply_node_type primary_channel_type;
-	enum apply_node_type self_channel_type;
-	int err;
-
-	if (side == BIND_CHANNEL_SIDE_LEFT) {
-		primary_channel_type = APPLY_NODE_DEVICE_INPUT;
-		self_channel_type = APPLY_NODE_DEVICE_OUTPUT;
-	} else {
-		primary_channel_type = APPLY_NODE_DEVICE_OUTPUT;
-		self_channel_type = APPLY_NODE_DEVICE_INPUT;
-	}
-
-	err = config_eval_l_expr(scope, cnode, &entry);
-	if (err) {
-		printf("No such channel '");
-		print_l_expr(cnode);
-		printf("' for %.*s.\n", ALIT(dev->name));
-		return -1;
-	}
-
-	node = ctx->nodes[entry.id];
-
-	if (node->type == APPLY_NODE_DEVICE) {
-		enum apply_node_type channel_type;
-
-		channel_type = (node == dev)
-		    ? self_channel_type : primary_channel_type;
-
-		node = find_default_channel_for_dev(ctx, node, channel_type);
-
-		if (!node) {
-			printf("'");
-			print_l_expr(cnode);
-			printf("' has no default %s.\n",
-			       (channel_type == APPLY_NODE_DEVICE_OUTPUT)
-			       ? "output" : "input");
-			return -1;
-		}
-	}
-
-	if (node->type == APPLY_NODE_DEVICE_ATTR &&
-	    side == BIND_CHANNEL_SIDE_RIGHT) {
-		*out = node;
-		return 0;
-	}
-
-	if (!(node->type == primary_channel_type ||
-	      (node->type == self_channel_type && node->owner == dev))) {
-		printf("Expected '");
-		print_l_expr(cnode);
-		printf("' to be an %s.\n",
-		       (primary_channel_type == APPLY_NODE_DEVICE_OUTPUT)
-		       ? "output" : "input");
-		return -1;
-	}
-
-	*out = node;
-	return 0;
-}
-
-static void discover_entries_device(struct apply_context *ctx,
-				    struct scoped_hash *scope,
-				    struct scoped_hash *extra_scope,
-				    struct apply_node *dev,
-				    struct config_node *node)
-{
-	struct config_node *current = node;
-
-	// TODO: Ensure device_types are restricted to their own scope.
-
-	while (current) {
-		switch (current->type) {
-		case CONFIG_NODE_BINARY_OP:
-			if (current->binary_op.op == CONFIG_OP_ASSIGN) {
-				struct apply_node *op;
-
-				op = create_apply_node_with_owner(ctx, scope,
-								  APPLY_NODE_DEVICE_ASSIGN,
-								  NULL, current,
-								  dev);
-
-				create_dependency_on_l_expr(ctx, scope, op,
-							    current->
-							    binary_op.lhs);
-				create_dependencies_for_expr(ctx, scope, op,
-							     current->
-							     binary_op.rhs);
-			} else if (current->binary_op.op == CONFIG_OP_BIND) {
-				struct apply_node *lhs_node, *rhs_node;
-				struct apply_node *op;
-				int err;
-
-				op = create_apply_node_with_owner(ctx, scope,
-								  APPLY_NODE_DEVICE_BIND,
-								  NULL, current,
-								  dev);
-
-				err =
-				    find_channel_node_from_l_expr(ctx, scope,
-								  dev,
-								  current->binary_op.
-								  lhs,
-								  BIND_CHANNEL_SIDE_LEFT,
-								  &lhs_node);
-
-				if (err) {
-					break;
-				}
-
-				err =
-				    find_channel_node_from_l_expr(ctx, scope,
-								  dev,
-								  current->binary_op.
-								  rhs,
-								  BIND_CHANNEL_SIDE_RIGHT,
-								  &rhs_node);
-
-				if (err) {
-					break;
-				}
-				// The bind depends on the operands.
-				apply_node_depends(ctx, lhs_node, op);
-				apply_node_depends(ctx, rhs_node, op);
-			}
-			break;
-
-		default:
-			break;
-		}
-		current = current->next_sibling;
-	}
-}
-
-static void discover_entries(struct apply_context *ctx,
-			     struct scoped_hash *scope,
-			     struct config_node *node)
-{
-	for (size_t i = 0; i < ctx->num_nodes; i++) {
-		struct apply_node *node;
-
-		node = ctx->nodes[i];
-
-		switch (node->type) {
-			/* case APPLY_NODE_DEVICE_TYPE_INPUT: */
-			/*      break; */
-
-			/* case APPLY_NODE_DEVICE_TYPE_OUTPUT: */
-			/*      break; */
-
-		case APPLY_NODE_DEVICE_TYPE_ATTR:
-			if (node->cnode && node->cnode->attr.def_value) {
-				struct apply_node *dev_type;
-
-				assert(node->owner);
-
-				dev_type = node->owner;
-
-				assert(node->cnode->type == CONFIG_NODE_ATTR);
-				create_dependencies_for_expr(ctx,
-							     dev_type->scope,
-							     node,
-							     node->cnode->
-							     attr.def_value);
-			}
-			break;
-
-		case APPLY_NODE_DEVICE:{
-				struct apply_node *dev_type;
-
-				dev_type = node->owner;
-
-				if (dev_type->cnode) {
-					discover_entries_device(ctx,
-								node->scope,
-								dev_type->scope,
-								node,
-								dev_type->cnode->device_type.first_child);
-				}
-				discover_entries_device(ctx, node->scope, NULL,
-							node,
-							node->cnode->
-							device.first_child);
-
-			}
-			break;
-
-		default:
-			break;
-		}
-	}
-}
-
-static void discover_built_ins(struct apply_context *ctx, struct stage *stage)
-{
-	for (size_t i = 0; i < stage->num_types; i++) {
-		struct type *type = get_type(stage, i);
-		struct apply_node *node;
-
-		node = create_apply_node(ctx, &ctx->scope,
-								 APPLY_NODE_TYPE_BUILTIN,
-								 type->name, NULL);
-		node->final.type.id = i;
-	}
-
-	for (size_t i = 0; i < stage->num_device_types; i++) {
-		struct device_type *dev_type = stage->device_types[i];
-		struct apply_node *node;
-
-		node = create_apply_node(ctx, &ctx->scope,
-					 APPLY_NODE_DEVICE_TYPE_BUILTIN,
-					 dev_type->name, NULL);
-		node->final.dev_type = dev_type;
-
-		for (size_t cnl = 0; cnl < dev_type->num_inputs; cnl++) {
-			struct apply_node *cnl_node;
-			cnl_node =
-			    create_apply_node_with_owner(ctx, node->scope,
-							 APPLY_NODE_DEVICE_TYPE_INPUT,
-							 dev_type->
-							 inputs[cnl].name, NULL,
-							 node);
-			if (cnl == dev_type->self_input) {
-				cnl_node->is_default = true;
-			}
-			apply_node_depends(ctx, node, cnl_node);
-		}
-
-		for (size_t cnl = 0; cnl < dev_type->num_outputs; cnl++) {
-			struct apply_node *cnl_node;
-			cnl_node =
-			    create_apply_node_with_owner(ctx, node->scope,
-							 APPLY_NODE_DEVICE_TYPE_OUTPUT,
-							 dev_type->
-							 outputs[cnl].name,
-							 NULL, node);
-			if (cnl == dev_type->self_output) {
-				cnl_node->is_default = true;
-			}
-			apply_node_depends(ctx, node, cnl_node);
-		}
-
-		for (size_t attr = 0; attr < dev_type->num_attributes; attr++) {
-			struct apply_node *attr_node;
-			attr_node =
-			    create_apply_node_with_owner(ctx, node->scope,
-							 APPLY_NODE_DEVICE_TYPE_ATTR,
-							 dev_type->attributes
-							 [attr].name, NULL,
-							 node);
-			attr_node->final.attribute = attr;
-			apply_node_depends(ctx, node, attr_node);
-		}
-	}
-}
-
-static bool apply_topological_sort(struct apply_context *ctx,
-				   struct apply_node **out)
-{
-	struct apply_node *result = NULL;
-	struct apply_node *result_tail = NULL;
-
-	while (ctx->terminal_nodes) {
-		struct apply_node *node;
-		node = ctx->terminal_nodes;
-		ctx->terminal_nodes = node->next;
-		node->next = NULL;
-
-		if (!result) {
-			result = node;
-			result_tail = node;
-		} else {
-			result_tail->next = node;
-			result_tail = node;
-		}
-
-		for (size_t i = 0; i < node->num_outgoing_edges; i++) {
-			struct apply_edge *edge;
-
-			edge = &node->outgoing_edges[i];
-			if (!edge->visited) {
-				edge->visited = true;
-
-				assert(edge->to->num_incoming_edges > 0);
-
-				edge->to->num_incoming_edges -= 1;
-				ctx->unvisited_edges -= 1;
-				if (edge->to->num_incoming_edges == 0) {
-					edge->to->next = ctx->terminal_nodes;
-					ctx->terminal_nodes = edge->to;
-				}
-			}
-		}
-	}
-
-	if (ctx->unvisited_edges != 0) {
-		// TODO: Improve error message!
-		printf
-		    ("Detected one or more circular dependencies in the config file.\n");
-		return false;
-	}
-
-	*out = result;
-	return true;
-}
-
-static struct scoped_hash *get_equivalent_scope(struct apply_context *ctx,
-						struct scoped_hash *target,
-						struct scoped_hash *root)
-{
-	assert(root->parent == NULL);
-	assert(target != NULL);
-
-	struct scoped_hash *eq_parent;
-	struct scope_entry entry;
-	struct apply_node *node;
-	int err;
-
-	if (target->parent == NULL) {
-		return root;
-	}
-
-	eq_parent = get_equivalent_scope(ctx, target->parent, root);
-
-	node = ctx->nodes[target->id];
-
-	assert(node->name);
-
-	err = scoped_hash_local_lookup(eq_parent, node->name, &entry);
-	assert(!err);
-
-	return entry.scope;
-}
-
-static scalar_value apply_eval_l_expr_value(struct apply_context *ctx,
-					    struct stage *stage,
-					    struct apply_node *expr,
-					    struct config_node *cnode)
-{
-	struct scope_entry entry;
-	struct apply_node *node;
-	int err;
-
-	err = config_eval_l_expr(expr->owner->scope, cnode, &entry);
-
-	if (err) {
-		printf("No such variable '");
-		print_l_expr(cnode);
-		printf("'.\n");
-		return SCALAR_OFF;
-	}
-
-	node = ctx->nodes[entry.id];
-
 	switch (node->type) {
-	case APPLY_NODE_DEVICE_ATTR:{
-			struct device *dev;
-			struct device_attribute_def *attr;
-			struct device_type *dev_type;
-
-			dev = node->owner->final.dev_data.dev;
-
-			for (size_t i = 0;
-			     i < node->owner->final.dev_data.num_attrs; i++) {
-				if (node->owner->final.dev_data.attrs[i].name ==
-				    node->name) {
-					return node->owner->final.
-					    dev_data.attrs[i].value;
-				}
+	case APPLY_NODE_DEVICE_TYPE:
+		if (!node->device_type.type) {
+			node->device_type.type
+				= register_device_type_scoped(ctx->stage,
+											  node->device_type.name->name,
+											  node->device_type.scope);
+			if (!node->device_type.type) {
+				return DISPATCH_ERROR;
 			}
-
-			dev_type = node->owner->owner->final.dev_type;
-			attr = &dev_type->attributes[node->final.attribute];
-
-			assert(attr->name == node->name);
-
-			return attr->def;
 		}
-		break;
+
+		if (!node->device_type.visited) {
+			apply_discover_device_type_members(ctx,
+											   node->device_type.type->scope,
+											   node->cnode->device_type.first_child,
+											   node);
+
+			node->device_type.visited = true;
+		}
+
+		if (node->device_type.missing_inputs     > 0 ||
+			node->device_type.missing_outputs    > 0 ||
+			node->device_type.missing_attributes > 0) {
+			return DISPATCH_YIELD;
+		}
+		node->device_type.complete = true;
+
+		node->entry.kind = SCOPE_ENTRY_DEVICE_TYPE;
+		node->entry.id = node->device_type.type->id;
+		node->entry.scope = node->device_type.type->scope;
+		node->entry_found = ENTRY_FOUND;
+
+		return DISPATCH_DONE;
+
+	case APPLY_NODE_DEVICE_TYPE_ATTR:
+		return DISPATCH_ERROR;
+
+	case APPLY_NODE_DEVICE_TYPE_OUTPUT: // fallthrough
+	case APPLY_NODE_DEVICE_TYPE_INPUT: {
+		struct apply_node *dev_type_node;
+
+		dev_type_node = node->device_type_input.owner;
+		assert(dev_type_node->type == APPLY_NODE_DEVICE_TYPE);
+
+		if (!node->device_type_input.type) {
+			node->device_type_input.type
+				= apply_discover_l_expr(ctx, dev_type_node->device_type.scope,
+										node->cnode->input.type, false);
+		}
+
+		struct apply_node *type_expr;
+		type_expr = node->device_type_input.type;
+
+		if (type_expr->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+		else if (type_expr->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		}
+
+		if (type_expr->entry.kind != SCOPE_ENTRY_TYPE) {
+			apply_error(type_expr->cnode, "Expression is not a type.");
+			return DISPATCH_ERROR;
+		}
+
+		type_id type;
+		struct device_type *dev_type;
+		struct atom *name;
+
+		type = type_expr->entry.id;
+		dev_type = dev_type_node->device_type.type;
+
+		if (node->type == APPLY_NODE_DEVICE_TYPE_OUTPUT) {
+			name = node->device_type_output.name;
+			device_type_add_output(ctx->stage, dev_type, name->name, type);
+
+			assert(dev_type_node->device_type.missing_outputs > 0);
+			dev_type_node->device_type.missing_outputs -= 1;
+		} else {
+			name = node->device_type_input.name;
+			device_type_add_input(ctx->stage, dev_type, name->name, type);
+
+			assert(dev_type_node->device_type.missing_inputs > 0);
+			dev_type_node->device_type.missing_inputs -= 1;
+		}
+
+		return DISPATCH_DONE;
+	}
+
+	case APPLY_NODE_DEVICE:
+		return DISPATCH_ERROR;
 
 	case APPLY_NODE_TYPE_DECL:
-		node = node->owner;
-
-		// fallthrough
-	case APPLY_NODE_TYPE:
-		return node->final.type.id;
-
-	default:
-		printf("'");
-		print_l_expr(cnode);
-		printf("' is not a value.\n");
-		return SCALAR_OFF;
-	}
-}
-
-static scalar_value apply_eval_expr_value(struct apply_context *ctx,
-					  struct stage *stage,
-					  struct apply_node *expr,
-					  struct config_node *cnode)
-{
-	switch (cnode->type) {
-	case CONFIG_NODE_NUMLIT:
-		return cnode->numlit;
-
-	case CONFIG_NODE_IDENT:{
-			scalar_value res;
-
-			res = apply_eval_l_expr_value(ctx, stage, expr, cnode);
-
-			return res;
+		if (node->type_decl.type->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		} else if (node->type_decl.type->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
 		}
-		break;
 
-	case CONFIG_NODE_BINARY_OP:
-		if (cnode->binary_op.op == CONFIG_OP_ACCESS ||
-		    cnode->binary_op.op == CONFIG_OP_SUBSCRIPT) {
-			return apply_eval_l_expr_value(ctx, stage, expr, cnode);
+		if (node->type_decl.type->entry.kind != SCOPE_ENTRY_TYPE) {
+			apply_error(node->type_decl.type->cnode,
+						"Not a type.");
+			return DISPATCH_ERROR;
+		}
+
+		register_type_name(ctx->stage,
+						   node->type_decl.type->entry.id,
+						   node->type_decl.scope,
+						   node->type_decl.name);
+		return DISPATCH_DONE;
+
+	case APPLY_NODE_TYPE_TUPLE: {
+		for (size_t i = 0; i < node->type_tuple.num_members; i++) {
+			struct apply_tuple_member *member;
+			member = &node->type_tuple.members[i];
+			if (member->type->entry_found == ENTRY_NOT_FOUND) {
+				return DISPATCH_ERROR;
+			} else if (member->type->entry_found == ENTRY_FOUND_WAITING) {
+				apply_debug("Waiting for member %zu (%.*s) type.",
+							i, ALIT(member->name));
+				return DISPATCH_YIELD;
+			}
+
+			if (member->type->entry.kind != SCOPE_ENTRY_TYPE) {
+				// @TODO: Better error message.
+				apply_error(member->type->cnode, "Not a type.");
+				return DISPATCH_ERROR;
+			}
+		}
+
+		struct type new_type = {0};
+		new_type.name = node->type_tuple.name;
+
+		if (node->type_tuple.named) {
+			new_type.kind = TYPE_KIND_NAMED_TUPLE;
+			new_type.named_tuple.length = node->type_tuple.num_members;
+			new_type.named_tuple.members
+				= calloc(new_type.named_tuple.length,
+						 sizeof(struct named_tuple_member));
 		} else {
-			scalar_value lhs, rhs;
-
-			lhs =
-			    apply_eval_expr_value(ctx, stage, expr,
-						  cnode->binary_op.lhs);
-			rhs =
-			    apply_eval_expr_value(ctx, stage, expr,
-						  cnode->binary_op.rhs);
-
-			switch (cnode->binary_op.op) {
-			case CONFIG_OP_ADD:
-				return lhs + rhs;
-			case CONFIG_OP_SUB:
-				return lhs - rhs;
-			case CONFIG_OP_MUL:
-				return lhs * rhs;
-			case CONFIG_OP_DIV:
-				return lhs / rhs;
-
-			default:
-				printf
-				    ("Cannot use the %s operand in an expression.",
-				     _binary_op_name(cnode->binary_op.op));
-			}
+			new_type.kind = TYPE_KIND_TUPLE;
+			new_type.tuple.length = node->type_tuple.num_members;
+			new_type.tuple.types
+				= calloc(new_type.tuple.length,
+						 sizeof(type_id));
 		}
 
-	default:
-		assert(false);
-		break;
-	}
-	// TODO: Implement
-	return 0;
-}
+		struct type *final_type;
 
-#if PRINT_APPLICATION_DEBUG
-// #define DEBUG_PRINT_APPLICATION(...) printf(__VA_ARGS__)
-#define DEBUG_PRINT_APPLICATION printf
-#else
-#define DEBUG_PRINT_APPLICATION(...)
-#endif
+		final_type = register_type(ctx->stage, new_type);
 
-static bool do_apply_config(struct apply_context *ctx,
-			    struct stage *stage, struct apply_node *action_list)
-{
-	while (action_list) {
-		struct apply_node *node;
-		node = action_list;
-		action_list = node->next;
-		node->next = NULL;
-
-		switch (node->type) {
-		case APPLY_NODE_DEVICE_TYPE_BUILTIN:
-			break;
-
-		case APPLY_NODE_DEVICE_TYPE_PRE:{
-				struct device_type *dev_type;
-				struct scoped_hash *scope;
-
-				scope =
-				    get_equivalent_scope(ctx,
-							 node->owner->
-							 scope->parent,
-							 &stage->root_scope);
-				dev_type =
-				    register_device_type_scoped(stage,
-								node->
-								owner->name->
-								name, scope);
-
-				node->owner->final.dev_type = dev_type;
-
-				DEBUG_PRINT_APPLICATION
-				    ("apply dev type pre %.*s\n",
-				     ALIT(node->owner->name));
-			} break;
-
-		case APPLY_NODE_DEVICE_TYPE:
-			assert(node->final.dev_type);
-			DEBUG_PRINT_APPLICATION("apply dev type %.*s\n",
-						ALIT(node->name));
-			break;
-
-		case APPLY_NODE_DEVICE_TYPE_INPUT:{
-				struct device_channel_def *cnl;
-
-				if (node->owner->type ==
-				    APPLY_NODE_DEVICE_TYPE_BUILTIN) {
-					continue;
-				}
-
-				struct config_node *type_cnode;
-				struct apply_node *type_node;
-
-				type_cnode = node->cnode->input.type;
-
-				assert(type_cnode->type == CONFIG_NODE_TYPE);
-				assert(type_cnode->apply_id < ctx->num_nodes)
-				type_node = ctx->nodes[type_cnode->apply_id];
-
-				cnl =
-				    device_type_add_input(stage,
-							  node->owner->
-							  final.dev_type,
-							  node->name->name,
-							  type_node->final.type.id);
-
-				node->final.channel = cnl->id;
-
-				DEBUG_PRINT_APPLICATION
-				    ("apply dev type input %.*s.%.*s\n",
-				     ALIT(node->owner->name), ALIT(node->name));
-			}
-			break;
-
-		case APPLY_NODE_DEVICE_TYPE_OUTPUT:{
-				struct device_channel_def *cnl;
-
-				if (node->owner->type ==
-				    APPLY_NODE_DEVICE_TYPE_BUILTIN) {
-					continue;
-				}
-
-				struct config_node *type_cnode;
-				struct apply_node *type_node;
-
-				type_cnode = node->cnode->output.type;
-
-				assert(type_cnode->type == CONFIG_NODE_TYPE);
-				assert(type_cnode->apply_id < ctx->num_nodes)
-				type_node = ctx->nodes[type_cnode->apply_id];
-
-				cnl =
-				    device_type_add_output(stage,
-							   node->owner->
-							   final.dev_type,
-							   node->name->name,
-							   type_node->final.type.id);
-
-				node->final.channel = cnl->id;
-
-				DEBUG_PRINT_APPLICATION
-				    ("apply dev type output %.*s.%.*s\n",
-				     ALIT(node->owner->name), ALIT(node->name));
-			}
-			break;
-
-		case APPLY_NODE_DEVICE_TYPE_ATTR:{
-				struct device_attribute_def *attr;
-				scalar_value default_value = SCALAR_OFF;
-
-				if (node->owner->type ==
-				    APPLY_NODE_DEVICE_TYPE_BUILTIN) {
-					continue;
-				}
-
-				if (node->cnode->attr.def_value) {
-					// TODO: Nodes should be able to not have a default
-					// value, requiering a value to be specified.
-					default_value =
-					    apply_eval_expr_value(ctx, stage,
-								  node,
-								  node->
-								  cnode->attr.def_value);
-				}
-
-				struct config_node *type_cnode;
-				struct apply_node *type_node;
-
-				type_cnode = node->cnode->attr.type;
-
-				assert(type_cnode->type == CONFIG_NODE_TYPE);
-				assert(type_cnode->apply_id < ctx->num_nodes)
-				type_node = ctx->nodes[type_cnode->apply_id];
-
-				attr =
-				    device_type_add_attribute(stage,
-							      node->
-							      owner->final.
-							      dev_type,
-							      node->name->name,
-								  default_value,
-								  type_node->final.type.id);
-
-				node->final.attribute = attr->id;
-
-				DEBUG_PRINT_APPLICATION
-				    ("apply dev type attr %.*s.%.*s (%i = %i) (%i)\n",
-				     ALIT(node->owner->name), ALIT(node->name),
-				     attr->id, default_value,
-					 type_node->final.type.id);
-			}
-			break;
-
-		case APPLY_NODE_DEVICE_PRE:
-			DEBUG_PRINT_APPLICATION("apply dev pre %.*s\n",
-						ALIT(node->name));
-			break;
-
-		case APPLY_NODE_DEVICE:{
-				DEBUG_PRINT_APPLICATION("apply dev %.*s\n",
-							ALIT(node->name));
-
-				struct device *dev;
-				struct device_type *dev_type;
-				struct scoped_hash *scope;
-
-				dev_type = node->owner->final.dev_type;
-
-				scope =
-				    get_equivalent_scope(ctx,
-							 node->scope->parent,
-							 &stage->root_scope);
-				dev =
-				    register_device_scoped(stage, dev_type->id,
-							   node->name, scope,
-							   node->final.
-							   dev_data.attrs,
-							   node->final.
-							   dev_data.num_attrs,
-							   NULL);
-
-				node->final.dev_data.dev = dev;
-			} break;
-
-		case APPLY_NODE_DEVICE_INPUT:{
-				struct device *dev;
-				dev = node->owner->final.dev_data.dev;
-				node->final.channel =
-				    device_get_input_channel_id(stage, dev,
-								node->name);
-
-				DEBUG_PRINT_APPLICATION
-				    ("apply dev input %.*s.%.*s (%.*s)\n",
-				     ALIT(node->owner->name), ALIT(node->name),
-				     ALIT(node->owner->owner->name));
-			} break;
-
-		case APPLY_NODE_DEVICE_OUTPUT:{
-				struct device *dev;
-				dev = node->owner->final.dev_data.dev;
-				node->final.channel =
-				    device_get_output_channel_id(stage, dev,
-								 node->name);
-
-				DEBUG_PRINT_APPLICATION
-				    ("apply dev output %.*s.%.*s (%.*s)\n",
-				     ALIT(node->owner->name), ALIT(node->name),
-				     ALIT(node->owner->owner->name));
-			} break;
-
-		case APPLY_NODE_DEVICE_ATTR:{
-				struct device_type *dev_type;
-				bool found = false;
-
-				dev_type = node->owner->owner->final.dev_type;
-
-				for (size_t i = 0; i < dev_type->num_attributes;
-				     i++) {
-					if (dev_type->attributes[i].name ==
-					    node->name) {
-						node->final.attribute = i;
-						found = true;
-					}
-				}
-
-				assert(found);
-
-				DEBUG_PRINT_APPLICATION
-				    ("apply dev attr %.*s.%.*s = %i (%.*s)\n",
-				     ALIT(node->owner->name), ALIT(node->name),
-				     node->final.attribute,
-				     ALIT(node->owner->owner->name));
-			}
-			break;
-
-		case APPLY_NODE_DEVICE_ASSIGN:{
-				struct device_attribute attribute = { 0 };
-				struct scope_entry lhs;
-				struct apply_node *attr, *dev;
-				int err;
-
-				err =
-				    config_eval_l_expr(node->owner->scope,
-						       node->cnode->
-						       binary_op.lhs, &lhs);
-
-				if (err) {
-					printf("Could not find l expr '");
-					print_l_expr(node->cnode->
-						     binary_op.lhs);
-					printf("'.");
-					continue;
-				}
-
-				attr = ctx->nodes[lhs.id];
-				dev = attr->owner;
-
-				attribute.name = attr->name;
-				attribute.value =
-				    apply_eval_expr_value(ctx, stage, node,
-							  node->
-							  cnode->binary_op.rhs);
-
-				dlist_append(dev->final.dev_data.attrs,
-					     dev->final.dev_data.num_attrs,
-					     &attribute);
-
-				DEBUG_PRINT_APPLICATION
-				    ("apply dev assign %.*s.%.*s = %i\n",
-				     ALIT(dev->name), ALIT(attribute.name),
-				     attribute.value);
-			}
-			break;
-
-		case APPLY_NODE_DEVICE_BIND:{
-				struct apply_node *lhs_node, *rhs_node;
-				struct apply_node *dev;
-				int err;
-
-				dev = node->owner;
-
-				err =
-				    find_channel_node_from_l_expr(ctx,
-								  dev->scope,
-								  dev,
-								  node->
-								  cnode->binary_op.
-								  lhs,
-								  BIND_CHANNEL_SIDE_LEFT,
-								  &lhs_node);
-
-				if (err) {
-					continue;
-				}
-
-				err =
-				    find_channel_node_from_l_expr(ctx,
-								  dev->scope,
-								  dev,
-								  node->
-								  cnode->binary_op.
-								  rhs,
-								  BIND_CHANNEL_SIDE_RIGHT,
-								  &rhs_node);
-
-				if (err) {
-					continue;
-				}
-
-				if (rhs_node->type == APPLY_NODE_DEVICE_ATTR) {
-					scalar_value val;
-
-					val =
-					    apply_eval_l_expr_value(ctx, stage,
-								    node,
-								    rhs_node->cnode);
-
-					channel_bind_constant(stage,
-							      lhs_node->
-							      final.channel,
-							      val);
-				} else {
-					channel_bind(stage,
-						     rhs_node->final.channel,
-						     lhs_node->final.channel);
-				}
-
-				DEBUG_PRINT_APPLICATION
-				    ("apply dev bind %.*s.%.*s <- %.*s.%.*s\n",
-				     ALIT(lhs_node->name),
-				     ALIT(lhs_node->owner->name),
-				     ALIT(rhs_node->name),
-				     ALIT(rhs_node->owner->name));
-			}
-			break;
-
-		case APPLY_NODE_TYPE: {
-			struct type *type = NULL;
-			struct config_node *type_expr;
-
-			type_expr = node->cnode->type_def.first_child;
-
-			switch (type_expr->type) {
-			case CONFIG_NODE_TUPLE: {
-
-				if (type_expr->tuple.named) {
-					struct config_node *tuple_member;
-					struct type tmp_type = {0};
-					struct named_tuple_member *members = arena_alloc(&stage->memory,
-											   sizeof(struct named_tuple_member) * node->final.type.num_members);
-					size_t i = 0;
-
-					tuple_member = type_expr->tuple.first_child;
-
-					DEBUG_PRINT_APPLICATION("named tuple members\n");
-					while (tuple_member) {
-						assert(tuple_member->type == CONFIG_NODE_TUPLE_ITEM);
-						assert(i < node->final.type.num_members);
-
-						struct apply_node *mbr = node->final.type.members[i];
-
-						members[i].name = tuple_member->tuple_item.name;
-						members[i].type = mbr->final.type.id;
-
-						DEBUG_PRINT_APPLICATION(" %zu: %u %.*s\n", i, members[i].type, ALIT(members[i].name));
-
-						i += 1;
-						tuple_member = tuple_member->next_sibling;
-					}
-
-					tmp_type.kind = TYPE_KIND_NAMED_TUPLE;
-					tmp_type.named_tuple.length = node->final.type.num_members;
-					tmp_type.named_tuple.members = members;
-
-					type = register_type(stage, tmp_type);
-
-					DEBUG_PRINT_APPLICATION("apply type (named tuple) %u\n", type->id);
-				} else {
-					struct config_node *tuple_member;
-					struct type tmp_type = {0};
-					type_id *members = arena_alloc(&stage->memory,
-												   sizeof(type_id) * node->final.type.num_members);
-
-					size_t i = 0;
-
-					tuple_member = type_expr->tuple.first_child;
-
-					DEBUG_PRINT_APPLICATION("tuple members\n");
-					while (tuple_member) {
-						assert(tuple_member->type == CONFIG_NODE_TUPLE_ITEM);
-						assert(i < node->final.type.num_members);
-
-						struct apply_node *mbr = node->final.type.members[i];
-
-						members[i] = mbr->final.type.id;
-
-						DEBUG_PRINT_APPLICATION(" %zu: %u\n", i, members[i]);
-
-						i += 1;
-						tuple_member = tuple_member->next_sibling;
-					}
-
-					tmp_type.kind = TYPE_KIND_TUPLE;
-					tmp_type.tuple.length = node->final.type.num_members;
-					tmp_type.tuple.types = members;
-
-					type = register_type(stage, tmp_type);
-
-					DEBUG_PRINT_APPLICATION("apply type (tuple) %u\n", type->id);
-				}
-			} break;
-
-			case CONFIG_NODE_BINARY_OP:
-			case CONFIG_NODE_IDENT: {
-				type = NULL;
-
-				DEBUG_PRINT_APPLICATION("apply type\n");
-			} break;
-
-			default:
-				print_error("config", "Invalid node in type.");
-				break;
-			};
-
-			assert(type != NULL);
-
-			node->final.type.id = type->id;
-
-		} break;
-
-		case APPLY_NODE_TYPE_DECL: {
-			struct scoped_hash *scope;
-
-			scope =
-				get_equivalent_scope(ctx,
-							node->parent_scope,
-							&stage->root_scope);
-
-			register_type_name(
-				stage,
-				node->owner->final.type.id,
-				scope,
-				node->name
-			);
-
-			node->final.type.id = node->owner->final.type.id;
-
-			DEBUG_PRINT_APPLICATION("apply type decl %.*s = %u\n", ALIT(node->name), node->final.type.id);
-		} break;
-
-		case APPLY_NODE_TYPE_BUILTIN:
-			break;
-
-		default:
-			//assert(false);
-			break;
+		if (!final_type) {
+			return DISPATCH_ERROR;
 		}
+
+		node->entry.kind = SCOPE_ENTRY_TYPE;
+		node->entry.id = final_type->id;
+		node->entry_found = ENTRY_FOUND;
+
+		return DISPATCH_DONE;
 	}
 
-	return true;
+	case APPLY_NODE_TYPE_SUBRANGE:
+		return DISPATCH_ERROR;
+
+	case APPLY_NODE_BINARY_OP:
+		return DISPATCH_ERROR;
+
+	case APPLY_NODE_ACCESS: {
+		assert(node->access.lhs != NULL);
+
+		if (node->access.lhs->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		} else if (node->access.lhs->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+
+		if (!node->access.rhs) {
+			if (!node->access.lhs->entry.scope) {
+				// @TODO: Add what expresseion does not have rhs to
+				// the error message, and what rhs is.
+				apply_error(node->access.lhs->cnode,
+							"Does not have the member.");
+				return DISPATCH_ERROR;
+			}
+			node->access.rhs
+				= apply_discover_l_expr(ctx,
+										node->access.lhs->entry.scope,
+										node->cnode->binary_op.rhs,
+										true);
+		}
+
+		if (node->access.rhs->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		} else if (node->access.rhs->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+
+		node->entry = node->access.rhs->entry;
+
+		return DISPATCH_DONE;
+	}
+
+	case APPLY_NODE_IDENT: {
+		int err;
+		if (node->ident.local_lookup) {
+			err = scoped_hash_local_lookup(node->ident.scope,
+										   node->ident.name,
+										   &node->entry);
+		} else {
+			err = scoped_hash_lookup(node->ident.scope,
+									 node->ident.name,
+									 &node->entry);
+		}
+		if (!err) {
+			node->entry_found = ENTRY_FOUND;
+		} else {
+			apply_debug("Waiting for ident '%.*s'%s.",
+						ALIT(node->ident.name),
+						node->ident.local_lookup
+						? " local lookup"
+						: "");
+		}
+		return (err == 0) ? DISPATCH_DONE : DISPATCH_YIELD;
+	}
+	}
+
+	printf("Encountered an unexpeted node '%s'!\n",
+		   apply_node_name(node->type));
+	return DISPATCH_ERROR;
 }
 
 int apply_config(struct stage *stage, struct config_node *node)
 {
-	struct apply_context ctx = { 0 };
-	struct apply_node *tn;
+	struct apply_context ctx = {0};
+	ctx.stage = stage;
 
-	ctx.scope.parent = 0;
-	ctx.scope.lookup.page_arena = &stage->memory;
-	ctx.scope.lookup.string_arena = &stage->memory;
+	apply_discover(&ctx, &ctx.stage->root_scope, node);
 
-	discover_built_ins(&ctx, stage);
-	discover_type_decls(&ctx, &ctx.scope, node);
-	discover_types(&ctx, &ctx.scope, node);
-	discover_device_types(&ctx, &ctx.scope, node);
-	discover_devices(&ctx, &ctx.scope, &ctx.scope, node, NULL);
-	discover_entries(&ctx, &ctx.scope, node);
-
-	if (!apply_topological_sort(&ctx, &tn)) {
-		return -1;
-	}
-
-#if PRINT_APPLY_ORDER
-	printf("Nodes:\n");
-	for (size_t i = 0; i < ctx.num_nodes; i++) {
+	while (ctx.queue) {
 		struct apply_node *node;
+		enum apply_dispatch_result result;
 
-		node = ctx.nodes[i];
+		node = pop_apply_node(&ctx);
 
-		print_apply_node_name(node);
-		if (node->is_default) {
-			printf(" (default)");
-		}
-		printf("\n");
+		#if APPLY_DEBUG
+		printf("Applying %s... ", apply_node_name(node->type));
+		#endif
 
-		for (size_t i = 0; i < node->num_outgoing_edges; i++) {
-			struct apply_node *dep;
+		result = apply_dispatch(&ctx, node);
 
-			dep = node->outgoing_edges[i].to;
-			printf("  ");
-			print_apply_node_name(dep);
-			printf("\n");
+		if (result == DISPATCH_ERROR) {
+			node->entry_found = ENTRY_NOT_FOUND;
+			apply_debug("ERROR");
+			printf("Failed to apply '%s'. Aborting.\n",
+				   apply_node_name(node->type));
+			return -1;
+		} else if (result == DISPATCH_YIELD) {
+			apply_debug("Yield");
+			push_apply_node(&ctx, node);
+		} else {
+			apply_debug("Ok");
 		}
 	}
-	struct apply_node *action_list = tn;
 
-	printf("========= Sorted =========");
-	while (action_list) {
-		struct apply_node *node;
-		node = action_list;
-		action_list = node->next;
-
-		print_apply_node_name(node);
-		printf("\n");
-	}
-#endif
-
-	do_apply_config(&ctx, stage, tn);
-
+	printf("Application done\n");
 
 	return 0;
 }

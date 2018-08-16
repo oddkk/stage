@@ -60,6 +60,12 @@ static void collapse_tree_nodes(struct config_node *tree) {
 		collapse_tree_nodes(tree->subscript_range.high);
 		break;
 
+	case CONFIG_NODE_SUBRANGE:
+		collapse_tree_nodes(tree->subscript_range.lhs);
+		collapse_tree_nodes(tree->subscript_range.low);
+		collapse_tree_nodes(tree->subscript_range.high);
+		break;
+
 
 	case CONFIG_NODE_INTERNAL_LIST: {
 		struct config_node *head, *tail;

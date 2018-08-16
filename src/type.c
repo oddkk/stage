@@ -73,6 +73,15 @@ void print_type(struct stage *stage, struct type *type)
 	printf("%.*s", ALIT(type->name));
 }
 
+void print_type_id(struct stage *stage, type_id id)
+{
+	if (id == TYPE_TEMPLATE) {
+		printf("(template)");
+	} else {
+		print_type(stage, get_type(stage, id));
+	}
+}
+
 void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
 {
 	switch (type->kind) {
@@ -134,6 +143,15 @@ void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
 		}
 		printf(")");
 		break;
+	}
+}
+
+void expand_type_id(struct stage *stage, type_id id, bool recurse_expand)
+{
+	if (id == TYPE_TEMPLATE) {
+		printf("(template)");
+	} else {
+		expand_type(stage, get_type(stage, id), recurse_expand);
 	}
 }
 

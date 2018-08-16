@@ -82,7 +82,9 @@ struct stage;
 int type_count_scalars(struct stage *, struct type *type);
 
 void print_type(struct stage *, struct type *type);
+void print_type_id(struct stage *, type_id id);
 void expand_type(struct stage *, struct type *type, bool recurse_expand);
+void expand_type_id(struct stage *, type_id id, bool recurse_expand);
 
 int register_type_name(struct stage *stage, type_id type, struct scoped_hash *scope, struct atom *name);
 
