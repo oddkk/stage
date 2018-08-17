@@ -134,10 +134,10 @@ struct device *register_device_pre_attrs(struct stage *stage, device_type_id typ
 
 	device->num_attribute_values = total_scalars;
 	device->attribute_values = calloc(device->num_attribute_values,
-									  sizeof(struct attribute_value));
+									  sizeof(scalar_value));
 
 	for (size_t i = 0; i < device->num_attribute_values; i++) {
-		device->attribute_values[i].value = SCALAR_OFF;
+		device->attribute_values[i] = SCALAR_OFF;
 	}
 
 	return device;
@@ -238,7 +238,65 @@ int device_assign_input_type_by_name(struct stage *stage,
 	return 0;
 }
 
-struct attribute_value *device_get_attr(struct stage *stage,
+struct value_ref device_get_attr_ref(struct stage *stage,
+									 struct device *device,
+									 struct atom *attr_name)
+{
+	struct value_ref result = {0};
+
+	struct device_type *dev_type;
+	dev_type = get_device_type(stage, device->type);
+
+	struct scope_entry entry;
+	int err;
+
+	err = scoped_hash_local_lookup(device->scope, attr_name, &entry);
+	if (err) {
+		print_error("device get attr",
+			    "The device of type '%.*s' has no attribute '%.*s'.",
+			    ALIT(dev_type->name), ALIT(attr_name));
+		return result;
+	}
+
+	return device_get_attr_from_entry(stage, device, entry);
+}
+
+
+struct value_ref device_get_attr_from_entry(struct stage *stage,
+											struct device *device,
+											struct scope_entry entry)
+{
+	struct value_ref result = {0};
+
+	if (entry.kind != SCOPE_ENTRY_DEVICE_ATTRIBUTE) {
+		struct device_type *dev_type;
+		dev_type = get_device_type(stage, device->type);
+
+		print_error("device get attr",
+			    "The element '%.*s' on the device '%.*s' is not an attribute.",
+			    ALIT(entry.name), ALIT(dev_type->name));
+		return result;
+	}
+
+	// @TODO: Check this attribute is from `device`.
+
+	assert(entry.id  <  device->num_attribute_values);
+	assert(entry.end <= device->num_attribute_values);
+
+	struct type *type;
+	type = get_type(stage, entry.type);
+
+	assert(type != NULL);
+	assert(entry.end - entry.id == type->num_scalars);
+
+
+	result.type = entry.type;
+	result.data = &device->attribute_values[entry.id];
+
+	return result;
+}
+
+scalar_value device_get_attr(struct stage *stage,
 					struct device *device,
 					struct atom *attr_name)
 {
@@ -253,17 +311,17 @@ struct attribute_value *device_get_attr(struct stage *stage,
 		print_error("device get attr",
 			    "The device of type '%.*s' has no attribute '%.*s'.",
 			    ALIT(type->name), ALIT(attr_name));
-		return NULL;
+		return SCALAR_OFF;
 	}
 
 	if (entry.kind != SCOPE_ENTRY_DEVICE_ATTRIBUTE) {
 		print_error("device get attr",
 			    "The element '%.*s' on the device '%.*s' is not an attribute.",
 			    ALIT(attr_name), ALIT(type->name));
-		return NULL;
+		return SCALAR_OFF;
 	}
 	assert(entry.id < type->num_attributes);
-	return &device->attribute_values[entry.id];
+	return device->attribute_values[entry.id];
 }
 
 channel_id device_get_channel_id(struct stage * stage,
@@ -398,12 +456,12 @@ void describe_device(struct stage *stage, struct device *dev)
 	fprintf(fp, " attributes:\n");
 	for (size_t i = 0; i < dev_type->num_attributes; ++i) {
 		struct device_attribute_def *attr;
-		struct attribute_value *value;
+		scalar_value *value;
 		attr = &dev_type->attributes[i];
 		value = &dev->attribute_values[i];
 		fprintf(fp, " - %i: %.*s = ", attr->id, ALIT(attr->name));
 		// @TODO: This cast should be removed!
-		print_typed_value(stage, attr->type, (scalar_value *)value,
+		print_typed_value(stage, attr->type, value,
 						  dev->num_attribute_values);
 		fprintf(fp, "\n");
 	}

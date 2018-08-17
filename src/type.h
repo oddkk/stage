@@ -72,6 +72,11 @@ struct value {
 	};
 };
 
+struct value_ref {
+	type_id type;
+	scalar_value *data;
+};
+
 struct typed_value {
 	struct type type;
 	struct value value;
@@ -107,6 +112,8 @@ void print_scalar(scalar_value val);
 int register_typed_member_in_scope(struct stage *, struct atom *name,
 								   type_id type, struct scoped_hash *scope,
 								   enum scope_entry_kind kind, int start_id);
+
+struct value_ref alloc_value(struct stage *, type_id);
 
 struct type_iterator {
 	type_id type;

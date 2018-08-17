@@ -3,7 +3,7 @@
 
 int device_constant_init(struct stage *stage, struct device_type *type, struct device *dev)
 {
-	struct attribute_value *val;
+	scalar_value val;
 	channel_id out_channel;
 
 	out_channel = device_get_output_channel_id_by_name(stage, dev, STR("out"));
@@ -14,7 +14,7 @@ int device_constant_init(struct stage *stage, struct device_type *type, struct d
 
 	val = device_get_attr(stage, dev, stage_atom(stage, STR("value")));
 
-	channel_bind_constant(stage, out_channel, val->value);
+	channel_bind_constant(stage, out_channel, val);
 
 	return 0;
 }

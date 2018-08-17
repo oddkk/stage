@@ -377,6 +377,19 @@ void print_scalar(scalar_value val)
 	}
 }
 
+struct value_ref alloc_value(struct stage *stage, type_id tid)
+{
+	struct type *type = get_type(stage, tid);
+	assert(type != NULL);
+
+	struct value_ref result = {0};
+	result.type = type->id;
+	result.data = calloc(type->num_scalars, sizeof(scalar_value));
+
+	return result;
+}
+
+
 int type_find_member(struct type_iterator *out,
 					 struct stage *stage,
 					 struct type_iterator iter,

@@ -29,6 +29,9 @@ enum apply_node_type {
 	APPLY_NODE_BINARY_OP,
 	APPLY_NODE_ACCESS,
 	APPLY_NODE_IDENT,
+	APPLY_NODE_NUMLIT,
+
+	APPLY_NODE_L_VALUE,
 };
 
 const char *apply_node_name(enum apply_node_type type) {
@@ -49,6 +52,9 @@ const char *apply_node_name(enum apply_node_type type) {
 		APPLY_NODE_NAME(BINARY_OP);
 		APPLY_NODE_NAME(ACCESS);
 		APPLY_NODE_NAME(IDENT);
+		APPLY_NODE_NAME(NUMLIT);
+
+		APPLY_NODE_NAME(L_VALUE);
 	}
 #undef APPLY_NODE_NAME
 	return "(unknown apply node)";
@@ -144,18 +150,19 @@ struct apply_node {
 			struct apply_node *lhs;
 			struct apply_node *low;
 			struct apply_node *high;
+
+			scalar_value value_low;
+			scalar_value value_high;
+
+			scalar_value buffer[2];
 		} type_subrange;
 
 		struct {
 			struct apply_node *lhs;
 			struct apply_node *rhs;
-			enum config_binary_op op;
-		} binary_op;
-
-		struct {
-			struct apply_node *lhs;
-			struct apply_node *rhs;
 			bool local_lookup;
+
+			scalar_value *dest;
 		} access;
 
 		struct {
@@ -164,6 +171,25 @@ struct apply_node {
 			bool local_lookup;
 		} ident;
 
+		struct {
+			struct apply_node *lhs;
+			struct apply_node *rhs;
+			enum config_binary_op op;
+
+			struct value_ref dest;
+		} binary_op;
+
+		struct {
+			scalar_value numlit;
+
+			struct value_ref dest;
+		} literal;
+
+		struct {
+			struct apply_node *expr;
+
+			struct value_ref dest;
+		} l_value;
 	};
 
 	enum entry_found_state entry_found;
@@ -294,9 +320,53 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 											  struct scoped_hash *scope,
 											  struct config_node *expr,
-											  type_id expected_type)
+											  struct value_ref dest)
 {
-	printf("type: %i\n", expected_type);
+	switch (expr->type) {
+	case CONFIG_NODE_BINARY_OP:
+		if (expr->binary_op.op == CONFIG_OP_ACCESS) {
+			struct apply_node *node;
+			node = alloc_apply_node(ctx, APPLY_NODE_L_VALUE, expr);
+			node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, false);
+			node->l_value.dest = dest;
+
+			push_apply_node(ctx, node);
+		} else {
+			printf("@TODO: Binary operators.");
+			/* struct apply_node *node; */
+			/* node = alloc_apply_node(ctx, APPLY_NODE_BINARY_OP, expr); */
+			/* node->l_value.dest = dest; */
+
+			/* push_apply_node(ctx, node); */
+		}
+		break;
+
+	case CONFIG_NODE_IDENT: {
+		struct apply_node *node;
+		node = alloc_apply_node(ctx, APPLY_NODE_L_VALUE, expr);
+		node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, false);
+		node->l_value.dest = dest;
+
+		push_apply_node(ctx, node);
+	} break;
+
+	case CONFIG_NODE_NUMLIT: {
+		struct apply_node *numlit;
+
+		numlit = alloc_apply_node(ctx, APPLY_NODE_NUMLIT, expr);
+		// @TODO: Support more complex literals.
+		numlit->literal.numlit = expr->numlit;
+		numlit->literal.dest = dest;
+
+		push_apply_node(ctx, numlit);
+
+		return numlit;
+	}
+
+	default:
+		apply_error(expr, "Invalid node in expression.");
+	}
+
 	printf("@TODO: Expr\n");
 	return NULL;
 }
@@ -443,21 +513,31 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 			}
 		} break;
 
-		case CONFIG_NODE_SUBRANGE:
+		case CONFIG_NODE_SUBRANGE: {
 			type = alloc_apply_node(ctx, APPLY_NODE_TYPE_SUBRANGE, type_node);
 			type->type_subrange.name = name;
 
 			type->type_subrange.lhs
 				= apply_discover_l_expr(ctx, scope, type_expr->subrange.lhs, false);
 
+			struct value_ref value_low;
+
+			value_low.type  = ctx->stage->standard_types.integer;
+			value_low.data  = &type->type_subrange.value_low;
+
 			type->type_subrange.low
 				= apply_discover_expr(ctx, scope, type_expr->subrange.low,
-									  ctx->stage->standard_types.integer);
+									  value_low);
+
+			struct value_ref value_high;
+
+			value_high.type = ctx->stage->standard_types.integer;
+			value_high.data = &type->type_subrange.value_high;
 
 			type->type_subrange.high
 				= apply_discover_expr(ctx, scope, type_expr->subrange.high,
-									  ctx->stage->standard_types.integer);
-			break;
+									  value_high);
+		} break;
 
 		default:
 			apply_error(type_expr, "Not a valid type.");
@@ -668,22 +748,45 @@ apply_dispatch(struct apply_context *ctx,
 		return DISPATCH_DONE;
 	}
 
-	case APPLY_NODE_DEVICE_ATTR:
-		if (node->device_attr.name->entry_found == ENTRY_FOUND_WAITING) {
+	case APPLY_NODE_DEVICE_ATTR: {
+		struct apply_node *name;
+		name = node->device_attr.name;
+
+		if (name->entry_found == ENTRY_FOUND_WAITING) {
+			apply_debug("Waiting for attribute name.");
 			return DISPATCH_YIELD;
 		}
-		else if (node->device_attr.name->entry_found == ENTRY_NOT_FOUND) {
+		else if (name->entry_found == ENTRY_NOT_FOUND) {
 			return DISPATCH_ERROR;
 		}
 
+		if (name->entry.kind != SCOPE_ENTRY_DEVICE_ATTRIBUTE) {
+			apply_error(name->cnode, "Not an attribute");
+			return DISPATCH_ERROR;
+		}
+
+		struct apply_node *dev;
+		dev = node->device_attr.device;
+
 		if (!node->device_attr.value) {
-			struct apply_node *dev;
-			dev = node->device_attr.device;
+			if (!dev->device.device) {
+				apply_debug("Wait for device.");
+				return DISPATCH_YIELD;
+			}
+
+			struct value_ref dest;
+			dest = device_get_attr_from_entry(ctx->stage,
+											  dev->device.device,
+											  name->entry);
+
+			if (!dest.data) {
+				return DISPATCH_ERROR;
+			}
 
 			node->device_attr.value
 				= apply_discover_expr(ctx, dev->device.device->scope,
 									  node->cnode->binary_op.rhs,
-									  node->device_attr.name->entry.type);
+									  dest);
 		}
 
 		if (node->device_attr.value->entry_found == ENTRY_FOUND_WAITING) {
@@ -693,7 +796,11 @@ apply_dispatch(struct apply_context *ctx,
 			return DISPATCH_ERROR;
 		}
 
-		return DISPATCH_ERROR;
+		assert(dev->device.missing_attrs > 0);
+		dev->device.missing_attrs -= 1;
+
+		return DISPATCH_DONE;
+	}
 
 	case APPLY_NODE_DEVICE: {
 		if (node->device.type->entry_found == ENTRY_NOT_FOUND) {
@@ -878,6 +985,7 @@ apply_dispatch(struct apply_context *ctx,
 			return DISPATCH_YIELD;
 		}
 
+		node->entry_found = node->access.rhs->entry_found;
 		node->entry = node->access.rhs->entry;
 
 		return DISPATCH_DONE;
@@ -905,6 +1013,21 @@ apply_dispatch(struct apply_context *ctx,
 		}
 		return (err == 0) ? DISPATCH_DONE : DISPATCH_YIELD;
 	}
+
+	case APPLY_NODE_L_VALUE: {
+		return DISPATCH_ERROR;
+	}
+
+	case APPLY_NODE_NUMLIT:
+		if (node->literal.dest.type == ctx->stage->standard_types.integer) {
+			node->literal.dest.data[0] = node->literal.numlit;
+			node->entry_found = ENTRY_FOUND;
+		} else {
+			printf("@TODO: Implement literal unification.");
+			node->entry_found = ENTRY_NOT_FOUND;
+		}
+
+		return DISPATCH_DONE;
 	}
 
 	printf("Encountered an unexpeted node '%s'!\n",

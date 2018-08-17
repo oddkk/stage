@@ -41,11 +41,11 @@ static void device_print_tick(struct stage *stage, struct device *dev) {
 
 static int device_print_template_init(struct stage *stage, struct device_type *type, struct device *dev)
 {
-	struct attribute_value *input_type;
+	scalar_value input_type;
 	int err;
 
 	input_type = device_get_attr(stage, dev, SATOM(stage, "T"));
-	err = device_assign_input_type_by_name(stage, dev, SATOM(stage, "in"), input_type->value);
+	err = device_assign_input_type_by_name(stage, dev, SATOM(stage, "in"), input_type);
 
 	return err;
 }
@@ -53,10 +53,10 @@ static int device_print_template_init(struct stage *stage, struct device_type *t
 static int device_print_init(struct stage *stage, struct device_type *type, struct device *dev)
 {
 	struct device_debug_print_data *data = calloc(1, sizeof(struct device_debug_print_data));
-	struct attribute_value *input_type;
+	scalar_value input_type;
 
 	input_type = device_get_attr(stage, dev, SATOM(stage, "T"));
-	data->type = get_type(stage, input_type->value);
+	data->type = get_type(stage, input_type);
 	data->buffer = 0;
 
 	data->last_value[0] = calloc(data->type->num_scalars, sizeof(scalar_value));

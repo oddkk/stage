@@ -7,10 +7,6 @@
 
 typedef unsigned int device_id;
 
-struct attribute_value {
-	scalar_value value;
-};
-
 struct device {
 	device_id id;
 	device_type_id type;
@@ -21,7 +17,7 @@ struct device {
 
 	void *data;
 	struct atom *name;
-	struct attribute_value *attribute_values;
+	scalar_value *attribute_values;
 	size_t num_attribute_values;
 	struct scoped_hash *scope;
 };
@@ -55,9 +51,15 @@ int device_assign_input_type_by_name(struct stage *stage,
 									 struct atom *name,
 									 type_id type);
 
-struct attribute_value *device_get_attr(struct stage *stage,
+scalar_value device_get_attr(struct stage *stage,
 					struct device *device,
 					struct atom *attr_name);
+
+struct value_ref device_get_attr_ref(struct stage *, struct device *,
+									 struct atom *attr_name);
+
+struct value_ref device_get_attr_from_entry(struct stage *, struct device *,
+											struct scope_entry);
 
 channel_id device_get_channel_by_name(struct stage *stage,
 				      struct device *device, struct atom *cnl);
