@@ -598,6 +598,16 @@ static void apply_discover(struct apply_context *ctx,
 			apply_discover_type_decl(ctx, scope, node);
 			break;
 
+		case CONFIG_NODE_NAMESPACE: {
+			struct scoped_hash *child_scope;
+
+			child_scope = scoped_hash_push(scope, SCOPE_ENTRY_NAMESPACE, 0);
+			scoped_hash_insert(scope, node->namespace.name, SCOPE_ENTRY_NAMESPACE,
+							   0, node, child_scope);
+
+			apply_discover(ctx, child_scope, node->namespace.first_child);
+		} break;
+
 		default:
 			apply_error(node, "Unexpected node.");
 			break;
@@ -611,6 +621,15 @@ enum apply_dispatch_result {
 	DISPATCH_ERROR = -1,
 };
 
+static int config_device_init(struct stage *stage,
+							  struct device_type *dev_type,
+							  struct device *dev)
+{
+	printf("Init %.*s (%.*s)\n", ALIT(dev->name), ALIT(dev_type->name));
+
+	return 0;
+}
+
 static enum apply_dispatch_result
 apply_dispatch(struct apply_context *ctx,
 			   struct apply_node *node)
@@ -622,6 +641,8 @@ apply_dispatch(struct apply_context *ctx,
 				= register_device_type_scoped(ctx->stage,
 											  node->device_type.name->name,
 											  node->device_type.scope);
+			node->device_type.type->user_data = node;
+			node->device_type.type->device_init = config_device_init;
 			if (!node->device_type.type) {
 				return DISPATCH_ERROR;
 			}

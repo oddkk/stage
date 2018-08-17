@@ -11,6 +11,10 @@ static void collapse_tree_nodes(struct config_node *tree) {
 		collapse_tree_nodes(tree->module.first_child);
 		break;
 
+	case CONFIG_NODE_NAMESPACE:
+		collapse_tree_nodes(tree->namespace.first_child);
+		break;
+
 	case CONFIG_NODE_DEVICE_TYPE:
 		collapse_tree_nodes(tree->device_type.first_child);
 		break;

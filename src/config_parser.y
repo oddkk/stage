@@ -106,7 +106,7 @@
 %token END 0
 %token DEVICETYPE "device_type" DEVICE "device" TYPE "type" INPUT "input"
 %token OUTPUT "output" DEFAULT "default" ATTR "attr" IDENTIFIER NUMLIT
-%token BIND "<-" RANGE ".." VERSION "version"
+%token BIND "<-" RANGE ".." VERSION "version" NAMESPACE "namespace"
 
 %type	<struct atom*> IDENTIFIER
 %type	<scalar_value> NUMLIT
@@ -114,7 +114,7 @@
 %type	<struct config_node*> device_type_body_stmt device device_body device_body_stmt
 %type	<struct config_node*> l_expr type_decl type enum_list enum_label tuple_decl tuple_list
 %type	<struct config_node*> named_tuple_list tuple_item named_tuple_item expr /* type_litteral_name */
-%type	<struct config_node*> subrange_type
+%type	<struct config_node*> subrange_type namespace
 %type	<struct tmp_range> range
 
 
@@ -145,6 +145,7 @@ module_stmt_list:
 module_stmt: 	device_type    { $$ = $1; }
 		|		device         { $$ = $1; }
 		|		type_decl      { $$ = $1; }
+		|		namespace      { $$ = $1; }
 		;
 device_type:	"device_type" IDENTIFIER '{' device_type_body '}' { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE_TYPE); $$->device_type.name = $2; $$->device_type.first_child = $4; }
 		;
@@ -225,6 +226,8 @@ expr:			NUMLIT             { $$ = alloc_node(ctx, CONFIG_NODE_NUMLIT); $$->numli
 		|		expr '[' expr ']'  { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_SUBSCRIPT; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		|		expr '[' range ']' { $$ = alloc_node(ctx, CONFIG_NODE_SUBSCRIPT_RANGE); $$->subscript_range.lhs = $1; $$->subscript_range.low = $3.low; $$->subscript_range.high = $3.high; }
 		;
+namespace: 		"namespace" IDENTIFIER '{' module_stmt_list '}' { $$ = alloc_node(ctx, CONFIG_NODE_NAMESPACE); $$->namespace.name = $2; $$->namespace.first_child = $4; }
+		;
 
 %%
 
@@ -270,6 +273,7 @@ re2c:define:YYFILL:naked = 1;
 "output"      { lloc_col(lloc, CURRENT_LEN); return OUTPUT; }
 "attr"        { lloc_col(lloc, CURRENT_LEN); return ATTR; }
 "default"     { lloc_col(lloc, CURRENT_LEN); return DEFAULT; }
+"namespace"   { lloc_col(lloc, CURRENT_LEN); return NAMESPACE; }
 ".."          { lloc_col(lloc, CURRENT_LEN); return RANGE; }
 "<-"          { lloc_col(lloc, CURRENT_LEN); return BIND; }
 

@@ -17,6 +17,7 @@ enum config_binary_op {
 
 enum config_node_type {
 	CONFIG_NODE_MODULE,
+	CONFIG_NODE_NAMESPACE,
 	CONFIG_NODE_DEVICE_TYPE,
 	CONFIG_NODE_DEVICE,
 	CONFIG_NODE_TYPE_DECL,
@@ -63,6 +64,10 @@ struct config_node {
 			struct config_node *first_child;
 			struct version version;
 		} module;
+		struct {
+			struct atom *name;
+			struct config_node *first_child;
+		} namespace;
 		struct {
 			struct atom *name;
 			struct config_node *first_child;
