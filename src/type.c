@@ -14,10 +14,10 @@ int type_count_scalars(struct stage *stage, struct type *type)
 		return 1;
 
 	case TYPE_KIND_STRING:
-		return -1;
+		return 1;
 
 	case TYPE_KIND_TYPE:
-		return -1;
+		return 1;
 
 	case TYPE_KIND_TUPLE:
 		for (size_t i = 0; i < type->tuple.length; i++) {
@@ -332,7 +332,6 @@ int register_typed_member_in_scope(struct stage *stage, struct atom *name,
 		break;
 	}
 
-	printf("Registering typed member %.*s\n", ALIT(name));
 	scoped_hash_insert_typed_ranged(scope, name, kind, start_id,
 									start_id + type->num_scalars,
 									type->id, NULL, new_scope);

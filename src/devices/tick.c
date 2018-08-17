@@ -33,5 +33,8 @@ struct device_type *register_device_type_tick(struct stage *stage)
 										 stage->standard_types.integer);
 
 	tick->self_output = channel_out->id;
+
+	finalize_device_type(tick);
+
 	return tick;
 }

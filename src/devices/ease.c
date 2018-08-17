@@ -68,5 +68,7 @@ struct device_type *register_device_type_ease(struct stage *stage)
 	ease->self_input = channel_in->id;
 	ease->self_output = channel_out->id;
 
+	finalize_device_type(ease);
+
 	return ease;
 }

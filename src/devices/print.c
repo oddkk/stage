@@ -88,6 +88,8 @@ struct device_type *register_device_type_print(struct stage *stage)
 
 	print->self_input = channel_in->id;
 
+	finalize_device_type(print);
+
 	return print;
 }
 

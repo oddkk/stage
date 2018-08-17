@@ -3,72 +3,6 @@
 #include "utils.h"
 #include <stdlib.h>
 
-struct device *register_device_scoped(struct stage *stage, device_type_id type,
-				      struct atom *name,
-				      struct scoped_hash *parent_scope,
-				      struct device_attribute *attributes,
-				      size_t num_attributes, void *data)
-{
-	return NULL;
-	/* if (device_type->num_attributes > 0) { */
-	/* 	device->attributes = */
-	/* 	    arena_alloc(&stage->memory, */
-	/* 			sizeof(struct attribute_value) * */
-	/* 			device_type->num_attributes); */
-
-	/* 	for (size_t i = 0; i < device_type->num_attributes; i++) { */
-	/* 		struct device_attribute_def *def; */
-	/* 		struct attribute_value *attr; */
-
-	/* 		def = &device_type->attributes[i]; */
-	/* 		attr = &device->attributes[i]; */
-
-	/* 		attr->value = def->def; */
-	/* 	} */
-
-	/* 	for (size_t i = 0; i < num_attributes; i++) { */
-	/* 		struct device_attribute *attr; */
-	/* 		struct scope_entry attr_entry; */
-
-	/* 		attr = &attributes[i]; */
-
-	/* 		err = */
-	/* 		    scoped_hash_local_lookup(device_type->scope, */
-	/* 					     attr->name, &attr_entry); */
-	/* 		if (err) { */
-	/* 			print_error("register device", */
-	/* 				    "Device of type '%.*s' does not have an attribute '%.*s'.\n", */
-	/* 				    ALIT(device_type->name), */
-	/* 				    ALIT(attr->name)); */
-	/* 			continue; */
-	/* 		} */
-	/* 		if (attr_entry.kind != SCOPE_ENTRY_DEVICE_ATTRIBUTE) { */
-	/* 			print_error("register device", */
-	/* 				    "Can not assign an attribute value to '%.*s' because it is not an attribute.\n", */
-	/* 				    ALIT(attr->name)); */
-	/* 			continue; */
-	/* 		} */
-
-	/* 		struct attribute_value *attr_val; */
-	/* 		attr_val = &device->attributes[attr_entry.id]; */
-
-	/* 		attr_val->value = attr->value; */
-	/* 	} */
-	/* } */
-
-	/* return device; */
-}
-
-struct device *register_device(struct stage *stage, device_type_id type,
-			       struct atom *name,
-			       struct device_attribute *attributes,
-			       size_t num_attributes, void *data)
-{
-	return register_device_scoped(stage, type, name,
-				      &stage->root_scope,
-				      attributes, num_attributes, data);
-}
-
 struct device *register_device_pre_attrs(struct stage *stage, device_type_id type,
 										 struct scoped_hash *parent_scope,
 										 struct atom *name)
@@ -78,6 +12,12 @@ struct device *register_device_pre_attrs(struct stage *stage, device_type_id typ
 
 	device_type = get_device_type(stage, type);
 	if (!device_type) {
+		return NULL;
+	}
+
+	if (!device_type->finalized) {
+		print_error("register device",
+					"Cannot register a device of a not-finalized device type.");
 		return NULL;
 	}
 
@@ -116,19 +56,18 @@ struct device *register_device_pre_attrs(struct stage *stage, device_type_id typ
 	}
 
 	int total_scalars = 0;
-	printf("attrs %zu\n", device_type->num_attributes);
 	for (size_t i = 0; i < device_type->num_attributes; i++) {
 		struct device_attribute_def *attr;
 		attr = &device_type->attributes[i];
 		int num_scalars;
 
-		printf("Registering attr %zu\n", i);
 		num_scalars
 			= register_typed_member_in_scope(stage, attr->name,
 											 attr->type,
 											 device->scope,
 											 SCOPE_ENTRY_DEVICE_ATTRIBUTE,
 											 total_scalars);
+
 		total_scalars += num_scalars;
 	}
 
@@ -136,27 +75,21 @@ struct device *register_device_pre_attrs(struct stage *stage, device_type_id typ
 	device->attribute_values = calloc(device->num_attribute_values,
 									  sizeof(scalar_value));
 
+	if (!device->attribute_values) {
+		printf("Could not allocate attributes. Out of memory\n");
+		return NULL;
+	}
+
 	for (size_t i = 0; i < device->num_attribute_values; i++) {
 		device->attribute_values[i] = SCALAR_OFF;
 	}
-
-	return device;
-
-}
-
-int finalize_device(struct stage *stage, struct device *device)
-{
-	struct device_type *device_type;
-	int err;
-
-	device_type = get_device_type(stage, device->type);
 
 	if (device_type->num_inputs > 0) {
 		device->input_types = calloc(device_type->num_inputs, sizeof(type_id));
 		if (!device->input_types) {
 			printf("Out of memory!");
 			// @TODO: Deallocate
-			return -1;
+			return NULL;
 		}
 
 		for (size_t i = 0; i < device_type->num_inputs; i++) {
@@ -169,13 +102,24 @@ int finalize_device(struct stage *stage, struct device *device)
 		if (!device->output_types) {
 			printf("Out of memory!");
 			// @TODO: Deallocate
-			return -1;
+			return NULL;
 		}
 
 		for (size_t i = 0; i < device_type->num_outputs; i++) {
 			device->output_types[i] = device_type->outputs[i].type;
 		}
 	}
+
+	return device;
+
+}
+
+int finalize_device(struct stage *stage, struct device *device)
+{
+	struct device_type *device_type;
+	int err = 0;
+
+	device_type = get_device_type(stage, device->type);
 
 	if (device_type->device_template_init) {
 		err = device_type->device_template_init(stage, device_type, device);
@@ -187,8 +131,80 @@ int finalize_device(struct stage *stage, struct device *device)
 		}
 	}
 
+	if (device_type->num_inputs > 0) {
+		for (size_t i = 0; i < device_type->num_inputs; i++) {
+			struct type *type;
+
+			if (device->input_types[i] == TYPE_TEMPLATE) {
+				print_error("finalize device",
+							"The type for the input '%.*s' for device "
+							"'%.*s' was not resolved.",
+							ALIT(device_type->inputs[i].name),
+							ALIT(device->name));
+				err = -1;
+				continue;
+			}
+
+			type = get_type(stage, device->input_types[i]);
+			if (!type) {
+				print_error("finalize device",
+							"Missing type for the input '%.*s' for device "
+							"'%.*s' was not resolved.",
+							ALIT(device_type->inputs[i].name),
+							ALIT(device->name));
+				err = -1;
+			} else if (type->templated) {
+				print_error("finalize device",
+							"The type for the input '%.*s' for device "
+							"'%.*s' was not resolved.",
+							ALIT(device_type->inputs[i].name),
+							ALIT(device->name));
+				err = -1;
+			}
+		}
+	}
+
+	if (device_type->num_outputs > 0) {
+		for (size_t i = 0; i < device_type->num_outputs; i++) {
+			struct type *type;
+
+			if (device->output_types[i] == TYPE_TEMPLATE) {
+				print_error("finalize device",
+							"The type for the output '%.*s' for device "
+							"'%.*s' was not resolved.",
+							ALIT(device_type->outputs[i].name),
+							ALIT(device->name));
+				err = -1;
+				continue;
+			}
+
+			type = get_type(stage, device->output_types[i]);
+			if (!type) {
+				print_error("finalize device",
+							"Missing type for the output '%.*s' for device "
+							"'%.*s' was not resolved.",
+							ALIT(device_type->outputs[i].name),
+							ALIT(device->name));
+				err = -1;
+			} else if (type->templated) {
+				print_error("finalize device",
+							"The type for the output '%.*s' for device "
+							"'%.*s' was not resolved.",
+							ALIT(device_type->outputs[i].name),
+							ALIT(device->name));
+				err = -1;
+			}
+		}
+	}
+
+	if (err) {
+		return err;
+	}
+
 	err = allocate_device_channels(stage, device->id);
 	if (err) {
+		printf("Could not allocated channels for device '%.*s'!\n",
+				ALIT(device_type->name));
 		// @TODO: Deallocate
 		return -1;
 	}
@@ -522,6 +538,7 @@ void describe_device(struct stage *stage, struct device *dev)
 		       cnl->device.channel_id == i &&
 			   cnl->device_channel != DEVICE_CHANNEL_NO) {
 			current_channel += 1;
+			cnl = &stage->channels[current_channel];
 		}
 
 		if (channel_begin == current_channel - 1) {

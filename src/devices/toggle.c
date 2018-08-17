@@ -107,5 +107,7 @@ struct device_type *register_device_type_toggle(struct stage *stage)
 
 	toggle->self_output = out->id;
 
+	finalize_device_type(toggle);
+
 	return toggle;
 }

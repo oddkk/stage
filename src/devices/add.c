@@ -64,5 +64,8 @@ struct device_type *register_device_type_add(struct stage *stage)
 										 stage->standard_types.integer);
 
 	add->self_output = channel_out->id;
+
+	finalize_device_type(add);
+
 	return add;
 }

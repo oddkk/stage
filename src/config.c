@@ -10,7 +10,7 @@
 
 #include <stdatomic.h>
 
-#define APPLY_DEBUG 1
+#define APPLY_DEBUG 0
 
 enum apply_node_type {
 	APPLY_NODE_DEVICE_TYPE,
@@ -218,7 +218,7 @@ static void apply_debug(const char *fmt, ...)
 	va_end(ap);
 }
 #else
-#define apply_debug(fmt, ...)
+#define apply_debug(...)
 #endif
 
 static void apply_error(struct config_node *node, const char *fmt, ...)
@@ -331,6 +331,8 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 			node->l_value.dest = dest;
 
 			push_apply_node(ctx, node);
+
+			return node;
 		} else {
 			printf("@TODO: Binary operators.");
 			/* struct apply_node *node; */
@@ -348,6 +350,8 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 		node->l_value.dest = dest;
 
 		push_apply_node(ctx, node);
+
+		return node;
 	} break;
 
 	case CONFIG_NODE_NUMLIT: {
@@ -804,6 +808,7 @@ apply_dispatch(struct apply_context *ctx,
 
 	case APPLY_NODE_DEVICE: {
 		if (node->device.type->entry_found == ENTRY_NOT_FOUND) {
+			apply_error(node->device.type->cnode, "Device type not found.");
 			return DISPATCH_ERROR;
 		} else if (node->device.type->entry_found == ENTRY_FOUND_WAITING) {
 			apply_debug("Waiting for device type.");
@@ -811,6 +816,7 @@ apply_dispatch(struct apply_context *ctx,
 		}
 
 		if (node->device.type->entry.kind != SCOPE_ENTRY_DEVICE_TYPE) {
+			apply_error(node->device.type->cnode, "Not a device type.");
 			return DISPATCH_ERROR;
 		}
 
@@ -818,7 +824,8 @@ apply_dispatch(struct apply_context *ctx,
 		dev_type = get_device_type(ctx->stage, node->device.type->entry.id);
 
 		if (!dev_type->finalized) {
-			apply_debug("Waiting for device type finalization.");
+			apply_debug("Waiting for device type finalization (%.*s).",
+						ALIT(dev_type->name));
 			return DISPATCH_YIELD;
 		}
 
@@ -840,6 +847,7 @@ apply_dispatch(struct apply_context *ctx,
 		}
 
 		if (node->device.not_found_attrs > 0) {
+			apply_error(node->cnode, "Missing %zu attributes\n", node->device.not_found_attrs);
 			return DISPATCH_ERROR;
 		}
 
@@ -858,6 +866,7 @@ apply_dispatch(struct apply_context *ctx,
 		err = finalize_device(ctx->stage, node->device.device);
 
 		if (err) {
+			apply_error(node->cnode, "Failed to finalized device.");
 			return DISPATCH_ERROR;
 		}
 
@@ -1015,7 +1024,34 @@ apply_dispatch(struct apply_context *ctx,
 	}
 
 	case APPLY_NODE_L_VALUE: {
-		return DISPATCH_ERROR;
+		struct apply_node *expr;
+
+		expr = node->l_value.expr;
+		if (expr->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		} else if (expr->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+
+		switch (expr->entry.kind) {
+		case SCOPE_ENTRY_TYPE:
+			assert(node->l_value.dest.type == ctx->stage->standard_types.type);
+			node->l_value.dest.data[0] = expr->entry.id;
+			break;
+
+		case SCOPE_ENTRY_DEVICE_ATTRIBUTE:
+			printf("@TODO: Implement evaluation of device attribute value into expr.\n");
+			break;
+
+		default:
+			// @TODO: Improve error message. Tell what the found
+			// variable is.
+			apply_error(node->cnode, "Cannot read this entry.");
+			return DISPATCH_ERROR;
+		}
+
+		node->entry_found = ENTRY_FOUND;
+		return DISPATCH_DONE;
 	}
 
 	case APPLY_NODE_NUMLIT:
@@ -1068,7 +1104,7 @@ int apply_config(struct stage *stage, struct config_node *node)
 		}
 	}
 
-	printf("Application done\n");
+	apply_debug("Application done\n");
 
 	return 0;
 }

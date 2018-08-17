@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 	}
 
 
-#if 1
+#if 0
 	printf
 	    ("============================ types ============================\n");
 	for (int i = 0; i < stage.num_types; i++) {
@@ -145,8 +145,6 @@ int main(int argc, char *argv[])
 		printf("\n");
 	}
 #endif
-
-	return 0;
 
 	stage.tick_period = NSEC / 1000;
 

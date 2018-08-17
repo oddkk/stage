@@ -33,5 +33,7 @@ struct device_type *register_device_type_constant(struct stage *stage)
 
 	constant->self_output = channel_out->id;
 
+	finalize_device_type(constant);
+
 	return constant;
 }

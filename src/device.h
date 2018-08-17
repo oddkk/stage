@@ -29,17 +29,6 @@ struct device_attribute {
 	scalar_value value;
 };
 
-struct device *register_device_scoped(struct stage *stage, device_type_id type,
-				      struct atom *name,
-				      struct scoped_hash *parent_scope,
-				      struct device_attribute *attributes,
-				      size_t num_attributes, void *data);
-
-struct device *register_device(struct stage *stage, device_type_id type,
-			       struct atom *name,
-			       struct device_attribute *attributes,
-			       size_t num_attributes, void *data);
-
 struct device *register_device_pre_attrs(struct stage *stage, device_type_id type,
 										 struct scoped_hash *parent_scope,
 										 struct atom *name);

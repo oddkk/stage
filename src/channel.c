@@ -186,17 +186,17 @@ static int init_device_channels(struct stage *stage, device_id dev_id,
 								struct scoped_hash *scope)
 {
 	int err = 0;
+	int subindex = 0;
 
 	for (size_t i = 0; i < num_channels; ++i) {
-		int subindex = 0;
-		channel_id first_id = begin;
-		err = scoped_hash_insert(scope, channel_defs[i].name,
-								 SCOPE_ENTRY_DEVICE_CHANNEL,
-								 first_id, NULL, NULL);
+		/* channel_id first_id = begin; */
+		/* err = scoped_hash_insert(scope, channel_defs[i].name, */
+		/* 						 SCOPE_ENTRY_DEVICE_CHANNEL, */
+		/* 						 first_id, NULL, NULL); */
 
-		if (err) {
-			break;
-		}
+		/* if (err) { */
+		/* 	break; */
+		/* } */
 
 		err = init_device_channels_for_type(stage, &begin, dev_id,
 											scope, channel_defs[i].name,
@@ -219,11 +219,13 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 
 	device = get_device(stage, dev_id);
 	if (!device) {
+		printf("Could not find device %i.", dev_id);
 		return -1;
 	}
 
 	dev_type = get_device_type(stage, device->type);
 	if (!dev_type) {
+		printf("Could not find device type %i.", device->type);
 		return -1;
 	}
 
@@ -243,6 +245,7 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 
 		t = get_type(stage, device->output_types[i]);
 		if (!t) {
+			printf("Could not find type %i.", device->output_types[i]);
 			return -1;
 		}
 
@@ -259,6 +262,7 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 							   dev_type->num_inputs, channel_begin,
 							   DEVICE_CHANNEL_INPUT, device->scope);
 	if (err) {
+		printf("Could not allocated input channels.\n");
 		return err;
 	}
 
@@ -268,6 +272,7 @@ int allocate_device_channels(struct stage *stage, device_id dev_id)
 							   channel_begin + num_input_scalars,
 							   DEVICE_CHANNEL_OUTPUT, device->scope);
 	if (err) {
+		printf("Could not allocated output channels.\n");
 		return err;
 	}
 
