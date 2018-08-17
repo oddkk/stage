@@ -10,7 +10,7 @@
 
 #include <stdatomic.h>
 
-#define APPLY_DEBUG 0
+#define APPLY_DEBUG 1
 
 enum apply_node_type {
 	APPLY_NODE_DEVICE_TYPE,
@@ -28,6 +28,7 @@ enum apply_node_type {
 
 	APPLY_NODE_BINARY_OP,
 	APPLY_NODE_ACCESS,
+	APPLY_NODE_BIND,
 	APPLY_NODE_IDENT,
 	APPLY_NODE_NUMLIT,
 
@@ -51,6 +52,7 @@ const char *apply_node_name(enum apply_node_type type) {
 
 		APPLY_NODE_NAME(BINARY_OP);
 		APPLY_NODE_NAME(ACCESS);
+		APPLY_NODE_NAME(BIND);
 		APPLY_NODE_NAME(IDENT);
 		APPLY_NODE_NAME(NUMLIT);
 
@@ -78,6 +80,8 @@ struct apply_node {
 
 	enum apply_node_type type;
 	struct config_node *cnode;
+
+	size_t generation;
 
 	union {
 		struct {
@@ -178,6 +182,11 @@ struct apply_node {
 
 			struct value_ref dest;
 		} binary_op;
+
+		struct {
+			struct apply_node *lhs;
+			struct apply_node *rhs;
+		} bind;
 
 		struct {
 			scalar_value numlit;
@@ -296,7 +305,7 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 			struct apply_node *node;
 			node = alloc_apply_node(ctx, APPLY_NODE_ACCESS, expr);
 			node->access.local_lookup = local_lookup;
-			node->access.lhs = apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, true);
+			node->access.lhs = apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, local_lookup);
 
 			push_apply_node(ctx, node);
 
@@ -437,6 +446,23 @@ static void apply_discover_device_type_members(struct apply_context *ctx,
 	}
 }
 
+static void apply_discover_bind(struct apply_context *ctx,
+								struct scoped_hash *scope,
+								struct config_node *bind_node)
+{
+	assert(bind_node->type == CONFIG_NODE_BINARY_OP);
+	assert(bind_node->binary_op.op == CONFIG_OP_BIND);
+
+	struct apply_node *node;
+
+	node = alloc_apply_node(ctx, APPLY_NODE_BIND, bind_node);
+	node->bind.lhs = apply_discover_l_expr(ctx, scope, bind_node->binary_op.lhs, false);
+	node->bind.rhs = apply_discover_l_expr(ctx, scope, bind_node->binary_op.rhs, false);
+
+	push_apply_node(ctx, node);
+
+}
+
 static void apply_discover_device_attrs(struct apply_context *ctx,
 										struct apply_node *device,
 										struct config_node *device_node)
@@ -461,6 +487,9 @@ static void apply_discover_device_attrs(struct apply_context *ctx,
 			device->device.missing_attrs += 1;
 
 			push_apply_node(ctx, attr);
+		} else if (member->type == CONFIG_NODE_BINARY_OP &&
+				   member->binary_op.op == CONFIG_OP_BIND) {
+				apply_discover_bind(ctx, device->device.device->scope, member);
 		}
 	}
 }
@@ -607,6 +636,13 @@ static void apply_discover(struct apply_context *ctx,
 
 			apply_discover(ctx, child_scope, node->namespace.first_child);
 		} break;
+
+		case CONFIG_NODE_BINARY_OP:
+			if (node->binary_op.op == CONFIG_OP_BIND) {
+				apply_discover_bind(ctx, scope, node);
+				break;
+			}
+			// fallthrough
 
 		default:
 			apply_error(node, "Unexpected node.");
@@ -1021,6 +1057,22 @@ apply_dispatch(struct apply_context *ctx,
 		return DISPATCH_DONE;
 	}
 
+	case APPLY_NODE_BIND: {
+		if (node->bind.lhs->entry_found == ENTRY_NOT_FOUND ||
+			node->bind.rhs->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		} else if (node->bind.lhs->entry_found == ENTRY_FOUND_WAITING ||
+				   node->bind.rhs->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+
+		channel_bind(ctx->stage,
+					 node->bind.rhs->entry.id,
+					 node->bind.lhs->entry.id);
+
+		return DISPATCH_DONE;
+	}
+
 	case APPLY_NODE_IDENT: {
 		int err;
 		if (node->ident.local_lookup) {
@@ -1099,14 +1151,31 @@ int apply_config(struct stage *stage, struct config_node *node)
 
 	apply_discover(&ctx, &ctx.stage->root_scope, node);
 
+	size_t generation = 0;
+	size_t last_successful_generation = 0;
+
 	while (ctx.queue) {
 		struct apply_node *node;
 		enum apply_dispatch_result result;
 
 		node = pop_apply_node(&ctx);
 
+		if (node->generation + 1 > generation) {
+			generation = node->generation + 1;
+
+			// Wait for 1 generations before aborting, to allow newly
+			// created nodes to be applied.
+			if (generation > last_successful_generation + 1) {
+				// @TODO: Print what was not applied.
+				printf("Failed to apply config. Some attributes where not applied.\n");
+				return -1;
+			}
+		}
+
+		node->generation = generation;
+
 		#if APPLY_DEBUG
-		printf("Applying %s... ", apply_node_name(node->type));
+		printf("%zu:Applying %s... ", node->generation, apply_node_name(node->type));
 		#endif
 
 		result = apply_dispatch(&ctx, node);
@@ -1121,6 +1190,7 @@ int apply_config(struct stage *stage, struct config_node *node)
 			apply_debug("Yield");
 			push_apply_node(&ctx, node);
 		} else {
+			last_successful_generation = generation;
 			apply_debug("Ok");
 		}
 	}
