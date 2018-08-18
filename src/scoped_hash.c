@@ -22,6 +22,11 @@ struct scope_entry *scoped_hash_insert(struct scoped_hash *scope, struct atom *n
 	}
 	entry_id = scope->num_entries - 1;
 
+
+	if (child_scope) {
+		child_scope->entry_id = entry_id;
+	}
+
 	if (name) {
 		err = id_lookup_table_insert(&scope->lookup, name->name, entry_id);
 		if (err < 0) {
@@ -150,6 +155,7 @@ struct scoped_hash *scoped_hash_push(struct scoped_hash *parent,
 	new_child->lookup.page_arena = parent->lookup.page_arena;
 	new_child->kind = kind;
 	new_child->id = id;
+	new_child->entry_id = -1;
 
 	dlist_append(parent->children, parent->num_children, &new_child);
 	child_id = parent->num_children - 1;

@@ -45,6 +45,8 @@ struct scoped_hash {
 	struct scoped_hash *children;
 	size_t num_children;
 
+	int entry_id;
+
 	bool array;
 	enum scope_entry_kind kind;
 	int id;
