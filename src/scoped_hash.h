@@ -25,7 +25,10 @@ struct scope_entry {
 	struct config_node *config_node;
 
 	int id;
-	int end;
+	/* int end; */
+	int length;
+	int repetitions;
+	int stride;
 
 	int type;
 };
@@ -47,20 +50,10 @@ struct scoped_hash {
 	int id;
 };
 
-int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
-		       enum scope_entry_kind kind, int id,
-		       struct config_node *node,
-		       struct scoped_hash *child_scope);
-
-int scoped_hash_insert_ranged(struct scoped_hash *scope, struct atom *name,
-							  enum scope_entry_kind kind, int id, int end,
-							  struct config_node *node,
-							  struct scoped_hash *child_scope);
-
-int scoped_hash_insert_typed_ranged(struct scoped_hash *scope, struct atom *name,
-									enum scope_entry_kind kind, int id, int end,
-									int type, struct config_node *node,
-									struct scoped_hash *child_scope);
+struct scope_entry *scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
+									   enum scope_entry_kind kind,
+									   struct config_node *node,
+									   struct scoped_hash *child_scope);
 
 struct scoped_hash *scoped_hash_namespace(struct scoped_hash *parent,
 										  struct atom *name);

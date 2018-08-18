@@ -29,6 +29,7 @@ enum apply_node_type {
 	APPLY_NODE_BINARY_OP,
 	APPLY_NODE_ACCESS,
 	APPLY_NODE_ACCESS_INDEX,
+	APPLY_NODE_ACCESS_INDEX_RANGE,
 	APPLY_NODE_BIND,
 	APPLY_NODE_IDENT,
 	APPLY_NODE_NUMLIT,
@@ -54,6 +55,7 @@ const char *apply_node_name(enum apply_node_type type) {
 		APPLY_NODE_NAME(BINARY_OP);
 		APPLY_NODE_NAME(ACCESS);
 		APPLY_NODE_NAME(ACCESS_INDEX);
+		APPLY_NODE_NAME(ACCESS_INDEX_RANGE);
 		APPLY_NODE_NAME(BIND);
 		APPLY_NODE_NAME(IDENT);
 		APPLY_NODE_NAME(NUMLIT);
@@ -159,8 +161,6 @@ struct apply_node {
 
 			scalar_value value_low;
 			scalar_value value_high;
-
-			scalar_value buffer[2];
 		} type_subrange;
 
 		struct {
@@ -176,6 +176,16 @@ struct apply_node {
 
 			scalar_value value_index;
 		} access_index;
+
+		struct {
+			struct apply_node *lhs;
+			struct apply_node *low_index;
+			struct apply_node *high_index;
+			bool local_lookup;
+
+			scalar_value value_low_index;
+			scalar_value value_high_index;
+		} access_index_range;
 
 		struct {
 			struct scoped_hash *scope;
@@ -289,6 +299,47 @@ static struct apply_node *pop_apply_node(struct apply_context *ctx)
 	return result;
 }
 
+/* static void print_l_expr(struct config_node *expr) */
+/* { */
+/* 	switch (expr->type) { */
+/* 	case CONFIG_NODE_IDENT: */
+/* 		if (expr->ident) { */
+/* 			printf("%.*s", ALIT(expr->ident)); */
+/* 		} else { */
+/* 			printf("_"); */
+/* 		} */
+/* 		break; */
+
+/* 	case CONFIG_NODE_BINARY_OP: */
+/* 		print_l_expr(expr->binary_op.lhs); */
+
+/* 		if (expr->binary_op.op == CONFIG_OP_SUBSCRIPT) { */
+/* 			printf("["); */
+/* 			printf("(expr)"); */
+/* 			printf("]"); */
+/* 		} else if (expr->binary_op.op == CONFIG_OP_ACCESS) { */
+/* 			printf("."); */
+/* 			print_l_expr(expr->binary_op.rhs); */
+/* 		} else { */
+/* 			printf("(non l-expr)"); */
+/* 		} */
+/* 		break; */
+
+/* 	case CONFIG_NODE_SUBSCRIPT_RANGE: */
+/* 		print_l_expr(expr->subscript_range.lhs); */
+
+/* 		printf("["); */
+/* 		printf("(expr)..(expr)"); */
+/* 		printf("]"); */
+
+/* 		break; */
+
+/* 	default: */
+/* 		printf("(non l-expr)"); */
+/* 		break; */
+/* 	} */
+/* } */
+
 static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 											  struct scoped_hash *scope,
 											  struct config_node *expr,
@@ -328,7 +379,8 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 			struct apply_node *node;
 			node = alloc_apply_node(ctx, APPLY_NODE_ACCESS_INDEX, expr);
 			node->access_index.local_lookup = local_lookup;
-			node->access_index.lhs = apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, local_lookup);
+			node->access_index.lhs
+				= apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, local_lookup);
 
 			struct value_ref index_ref = {0};
 			index_ref.data = &node->access_index.value_index;
@@ -345,9 +397,30 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 		}
 	} break;
 
-	case CONFIG_NODE_SUBSCRIPT_RANGE:
-		printf("@TODO: Subscript range\n");
-		break;
+	case CONFIG_NODE_SUBSCRIPT_RANGE: {
+		struct apply_node *node;
+		node = alloc_apply_node(ctx, APPLY_NODE_ACCESS_INDEX_RANGE, expr);
+		node->access_index_range.lhs
+				= apply_discover_l_expr(ctx, scope, expr->subscript_range.lhs, local_lookup);
+
+		struct value_ref low_index_ref = {0};
+		low_index_ref.type = ctx->stage->standard_types.integer;
+		low_index_ref.data = &node->access_index_range.value_low_index;
+
+		node->access_index_range.low_index
+				= apply_discover_expr(ctx, scope, expr->subscript_range.low, low_index_ref);
+
+		struct value_ref high_index_ref = {0};
+		high_index_ref.type = ctx->stage->standard_types.integer;
+		high_index_ref.data = &node->access_index_range.value_high_index;
+
+		node->access_index_range.high_index
+				= apply_discover_expr(ctx, scope, expr->subscript_range.high, high_index_ref);
+
+		push_apply_node(ctx, node);
+
+		return node;
+	} break;
 
 	default:
 		apply_error(expr, "Invalid node '%s' in l-expression.");
@@ -1054,6 +1127,7 @@ apply_dispatch(struct apply_context *ctx,
 		if (node->access.lhs->entry_found == ENTRY_NOT_FOUND) {
 			return DISPATCH_ERROR;
 		} else if (node->access.lhs->entry_found == ENTRY_FOUND_WAITING) {
+			apply_debug("Waiting for lhs.");
 			return DISPATCH_YIELD;
 		}
 
@@ -1075,6 +1149,7 @@ apply_dispatch(struct apply_context *ctx,
 		if (node->access.rhs->entry_found == ENTRY_NOT_FOUND) {
 			return DISPATCH_ERROR;
 		} else if (node->access.rhs->entry_found == ENTRY_FOUND_WAITING) {
+			apply_debug("Waiting for rhs.");
 			return DISPATCH_YIELD;
 		}
 
@@ -1106,6 +1181,74 @@ apply_dispatch(struct apply_context *ctx,
 			return DISPATCH_YIELD;
 		}
 
+		node->entry.repetitions = node->access_index.lhs->entry.repetitions;
+		node->entry_found = ENTRY_FOUND;
+
+		return DISPATCH_DONE;
+	}
+
+	case APPLY_NODE_ACCESS_INDEX_RANGE: {
+		struct apply_node *lhs_node;
+		struct apply_node *low_node;
+		struct apply_node *high_node;
+
+		lhs_node = node->access_index_range.lhs;
+		low_node = node->access_index_range.low_index;
+		high_node = node->access_index_range.high_index;
+
+		assert(lhs_node != NULL);
+		assert(low_node != NULL);
+		assert(high_node != NULL);
+
+		if (lhs_node->entry_found  == ENTRY_NOT_FOUND ||
+			low_node->entry_found  == ENTRY_NOT_FOUND ||
+			high_node->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		} else if (lhs_node->entry_found  == ENTRY_FOUND_WAITING ||
+				   low_node->entry_found  == ENTRY_FOUND_WAITING ||
+				   high_node->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+
+		int err;
+
+		scalar_value low;
+		scalar_value high;
+
+		low  = node->access_index_range.value_low_index;
+		high = node->access_index_range.value_high_index;
+
+		if (!lhs_node->entry.scope->array) {
+			apply_error(lhs_node->cnode,
+						"Not an array.");
+			return DISPATCH_ERROR;
+		}
+
+		struct type *array_type;
+		struct type *member_type;
+
+		array_type = get_type(ctx->stage, lhs_node->entry.type);
+		if (!array_type) {
+			return DISPATCH_ERROR;
+		}
+		if (array_type->kind != TYPE_KIND_ARRAY) {
+			apply_error(lhs_node->cnode, "Not an array.");
+			return DISPATCH_ERROR;
+		}
+
+		member_type = get_type(ctx->stage, array_type->array.type);
+		if (!member_type) {
+			return DISPATCH_ERROR;
+		}
+
+		err = scoped_hash_lookup_index(lhs_node->entry.scope,
+									   low, &node->entry);
+
+		if (err) {
+			return DISPATCH_YIELD;
+		}
+
+		node->entry.repetitions = array_type->array.length;
 		node->entry_found = ENTRY_FOUND;
 
 		return DISPATCH_DONE;
@@ -1120,9 +1263,65 @@ apply_dispatch(struct apply_context *ctx,
 			return DISPATCH_YIELD;
 		}
 
-		channel_bind(ctx->stage,
-					 node->bind.rhs->entry.id,
-					 node->bind.lhs->entry.id);
+		if (node->bind.lhs->entry.kind != SCOPE_ENTRY_DEVICE_CHANNEL) {
+			apply_error(node->bind.lhs->cnode, "Not a channel.");
+			return DISPATCH_ERROR;
+		}
+
+		if (node->bind.lhs->entry.kind != SCOPE_ENTRY_DEVICE_CHANNEL) {
+			apply_error(node->bind.rhs->cnode, "Not a channel.");
+			return DISPATCH_ERROR;
+		}
+
+		/* struct type *lhs_type, *rhs_type; */
+
+		/* lhs_type = get_type(ctx->stage, node->bind.lhs->entry.type); */
+		/* rhs_type = get_type(ctx->stage, node->bind.rhs->entry.type); */
+
+		/* if (!lhs_type || !rhs_type) { */
+		/* 	return DISPATCH_ERROR; */
+		/* } */
+
+		/* if (lhs_type */
+
+		// @TODO: This will not work if one of the sides is
+		// subscript-ranged and the other is not.
+		if (node->bind.lhs->entry.length      != node->bind.rhs->entry.length ||
+			node->bind.lhs->entry.repetitions != node->bind.rhs->entry.repetitions) {
+			apply_error(node->cnode, "Number of channels on the left and right does not match.");
+			return DISPATCH_ERROR;
+		}
+
+		size_t lhs_begin = node->bind.lhs->entry.id;
+		size_t rhs_begin = node->bind.rhs->entry.id;
+
+		/* size_t repetitions = node->bind.lhs->entry.repetitions; */
+		size_t length = node->bind.lhs->entry.length;
+		size_t stride = node->bind.lhs->entry.stride;
+
+		assert(stride >= length);
+
+		for (size_t i = 0; i < length; i++) {
+			channel_bind(ctx->stage,
+						 rhs_begin + i,
+						 lhs_begin + i);
+		}
+
+		/* size_t lhs_channels = node->bind.lhs->entry.end - node->bind.lhs->entry.id; */
+		/* size_t rhs_channels = node->bind.rhs->entry.end - node->bind.rhs->entry.id; */
+
+		/* if (lhs_channels != rhs_channels) { */
+		/* 	apply_error(node->cnode, "Number of channels on the left and right does not match (%zu != %zu).", */
+		/* 				lhs_channels, rhs_channels); */
+
+		/* 	return DISPATCH_ERROR; */
+		/* } */
+
+		/* for (size_t i = 0; i < lhs_channels; i++) { */
+		/* 	channel_bind(ctx->stage, */
+		/* 				node->bind.rhs->entry.id + i, */
+		/* 				node->bind.lhs->entry.id + i); */
+		/* } */
 
 		return DISPATCH_DONE;
 	}

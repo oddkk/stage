@@ -175,13 +175,17 @@ void expand_type_id(struct stage *stage, type_id id, bool recurse_expand)
 
 int register_type_name(struct stage *stage, type_id type, struct scoped_hash *scope, struct atom *name)
 {
-	int result;
 	assert(scope);
 	assert(name);
 
-	result = scoped_hash_insert(scope, name, SCOPE_ENTRY_TYPE, type, NULL, NULL);
+	struct scope_entry *entry;
+	entry = scoped_hash_insert(scope, name, SCOPE_ENTRY_TYPE, NULL, NULL);
+	if (!entry) {
+		return -1;
+	}
+	entry->id = type;
 
-	return result;
+	return 0;
 }
 
 struct type *register_type(struct stage *stage, struct type def)
@@ -375,9 +379,16 @@ int register_typed_member_in_scope(struct stage *stage, struct atom *name,
 		break;
 	}
 
-	scoped_hash_insert_typed_ranged(scope, name, kind, start_id,
-									start_id + type->num_scalars,
-									type->id, NULL, new_scope);
+	struct scope_entry *entry;
+	entry = scoped_hash_insert(scope, name, kind, NULL, new_scope);
+	if (!entry) {
+		printf("Failed to register typed member\n");
+		return -1;
+	}
+
+	entry->id = start_id;
+	entry->length = type->num_scalars;
+	entry->type = type->id;
 
 	return type->num_scalars;
 }

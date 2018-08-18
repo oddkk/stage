@@ -3,55 +3,36 @@
 #include "atom.h"
 #include "utils.h"
 
-int scoped_hash_insert_typed_ranged(struct scoped_hash *scope, struct atom *name,
-									enum scope_entry_kind kind, int id, int end,
-									int type, struct config_node *node,
-									struct scoped_hash *child_scope)
+struct scope_entry *scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
+									   enum scope_entry_kind kind,
+									   struct config_node *node,
+									   struct scoped_hash *child_scope)
 {
-	struct scope_entry new_entry;
+	struct scope_entry new_entry = {0};
 	int entry_id;
 	int err;
 
 	new_entry.name = name;
 	new_entry.kind = kind;
-	new_entry.id = id;
-	new_entry.end = end;
-	new_entry.type = type;
 	new_entry.scope = child_scope;
 
 	err = dlist_append(scope->entries, scope->num_entries, &new_entry);
 	if (err < 0) {
-		return -1;
+		return NULL;
 	}
 	entry_id = scope->num_entries - 1;
 
 	if (name) {
 		err = id_lookup_table_insert(&scope->lookup, name->name, entry_id);
 		if (err < 0) {
-			return -2;
+			return NULL;
 		}
 	} else if (!scope->array) {
 		print_error("scoped hash insert", "Missing name for entry.");
-		return -3;
+		return NULL;
 	}
 
-	return 0;
-}
-
-int scoped_hash_insert_ranged(struct scoped_hash *scope, struct atom *name,
-							  enum scope_entry_kind kind, int id, int end,
-							  struct config_node *node,
-							  struct scoped_hash *child_scope)
-{
-	return scoped_hash_insert_typed_ranged(scope, name, kind, id, end, -1, node, child_scope);
-}
-
-int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
-		       enum scope_entry_kind kind, int id,
-		       struct config_node *node,
-		       struct scoped_hash *child_scope)
-{
-	return scoped_hash_insert_typed_ranged(scope, name, kind, id, -1, -1, node, child_scope);
+	return &scope->entries[entry_id];
 }
 
 struct scoped_hash *scoped_hash_namespace(struct scoped_hash *parent,
@@ -73,10 +54,10 @@ struct scoped_hash *scoped_hash_namespace(struct scoped_hash *parent,
 	}
 
 	child_scope = scoped_hash_push(parent, SCOPE_ENTRY_NAMESPACE, 0);
-	err = scoped_hash_insert(parent, name, SCOPE_ENTRY_NAMESPACE, 0,
-							 NULL, child_scope);
 
-	if (err) {
+	struct scope_entry *res;
+	res = scoped_hash_insert(parent, name, SCOPE_ENTRY_NAMESPACE, NULL, child_scope);
+	if (!res) {
 		return NULL;
 	}
 

@@ -77,12 +77,17 @@ static int init_device_channels_for_type(struct stage *stage,
 
 	switch (type->kind) {
 	case TYPE_KIND_SCALAR: {
-		int err;
-		err = scoped_hash_insert(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
-								 *begin, NULL, NULL);
-		if (err) {
+		struct scope_entry *entry;
+		entry = scoped_hash_insert(scope, name,
+								   SCOPE_ENTRY_DEVICE_CHANNEL, NULL, NULL);
+		if (!entry) {
 			return -1;
 		}
+		entry->id = *begin;
+		entry->length = 1;
+		entry->repetitions = 1;
+		entry->stride = 1;
+		entry->type = type->id;
 
 		init_scalar_device_channel(stage, begin,
 								   dev_id, channel, subindex,
@@ -108,11 +113,21 @@ static int init_device_channels_for_type(struct stage *stage,
 										  kind);
 		}
 
-		channel_id last_channel = *begin - 1;
+		channel_id last_channel = *begin;
 
-		scoped_hash_insert_ranged(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
-								  first_channel, last_channel,
-								  NULL, tuple_scope);
+		struct scope_entry *entry;
+		entry =
+			scoped_hash_insert(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
+											NULL, tuple_scope);
+		if (!entry) {
+			return -1;
+		}
+
+		entry->id = first_channel;
+		entry->length = last_channel - first_channel;
+		entry->repetitions = 1;
+		entry->stride = entry->length;
+		entry->type = type->id;
 	} break;
 
 	case TYPE_KIND_NAMED_TUPLE: {
@@ -138,11 +153,21 @@ static int init_device_channels_for_type(struct stage *stage,
 										  member->type,
 										  kind);
 		}
-		channel_id last_channel = *begin - 1;
+		channel_id last_channel = *begin;
 
-		scoped_hash_insert_ranged(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
-								  first_channel, last_channel,
-								  NULL, tuple_scope);
+		struct scope_entry *entry;
+		entry =
+			scoped_hash_insert(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
+											NULL, tuple_scope);
+		if (!entry) {
+			return -1;
+		}
+
+		entry->id = first_channel;
+		entry->length = last_channel - first_channel;
+		entry->repetitions = 1;
+		entry->stride = entry->length;
+		entry->type = type->id;
 	} break;
 
 	case TYPE_KIND_ARRAY: {
@@ -159,11 +184,21 @@ static int init_device_channels_for_type(struct stage *stage,
 										  type->array.type,
 										  kind);
 		}
-		channel_id last_channel = *begin - 1;
+		channel_id last_channel = *begin;
 
-		scoped_hash_insert_ranged(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
-								  first_channel, last_channel,
-								  NULL, array_scope);
+		struct scope_entry *entry;
+		entry =
+			scoped_hash_insert(scope, name, SCOPE_ENTRY_DEVICE_CHANNEL,
+											NULL, array_scope);
+		if (!entry) {
+			return -1;
+		}
+
+		entry->id = first_channel;
+		entry->length = last_channel - first_channel;
+		entry->repetitions = 1;
+		entry->stride = entry->length;
+		entry->type = type->id;
 	} break;
 
 	case TYPE_KIND_STRING:

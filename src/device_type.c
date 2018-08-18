@@ -12,7 +12,6 @@ struct device_attribute_def *device_type_add_attribute(struct stage *stage, stru
 							scalar_value def,
 							type_id type)
 {
-	int err;
 	struct device_attribute_def attr;
 
 	if (dev_type->finalized) {
@@ -25,18 +24,19 @@ struct device_attribute_def *device_type_add_attribute(struct stage *stage, stru
 	attr.def = def;
 	attr.type = type;
 
-	err =
+	struct scope_entry *entry;
+	entry =
 	    scoped_hash_insert(dev_type->scope, attr.name,
-			       SCOPE_ENTRY_DEVICE_ATTRIBUTE, attr.id, NULL,
-			       NULL);
-
-	if (err) {
+			       SCOPE_ENTRY_DEVICE_ATTRIBUTE, NULL, NULL);
+	if (!entry) {
 		print_error("device type add attribute",
 			    "Failed to add attribute '%.*s' to device type '%.*s' because "
 			    "this attribute already exists.", LIT(name),
 			    ALIT(dev_type->name));
 		return NULL;
 	}
+
+	entry->id = attr.id;
 
 	dlist_append(dev_type->attributes, dev_type->num_attributes, &attr);
 
@@ -48,7 +48,6 @@ struct device_channel_def *device_type_add_input(struct stage *stage,
 						 struct string name,
 						 type_id type)
 {
-	int err;
 	struct device_channel_def input;
 	bool self = false;
 
@@ -67,17 +66,19 @@ struct device_channel_def *device_type_add_input(struct stage *stage,
 
 	input.name = atom_create(&stage->atom_table, name);
 
-	err =
+	struct scope_entry *entry;
+	entry =
 	    scoped_hash_insert(dev_type->scope, input.name,
-			       SCOPE_ENTRY_DEVICE_INPUT, input.id, NULL, NULL);
-
-	if (err) {
+			       SCOPE_ENTRY_DEVICE_INPUT, NULL, NULL);
+	if (!entry) {
 		print_error("device type add input",
 			    "Failed to add input '%.*s' to device type '%.*s' because "
 			    "this input already exists.", LIT(name),
 			    ALIT(dev_type->name));
 		return NULL;
 	}
+
+	entry->id = input.id;
 
 	dlist_append(dev_type->inputs, dev_type->num_inputs, &input);
 
@@ -93,7 +94,6 @@ struct device_channel_def *device_type_add_output(struct stage *stage,
 						  struct string name,
 						  type_id type)
 {
-	int err;
 	struct device_channel_def output;
 	bool self = false;
 
@@ -112,18 +112,18 @@ struct device_channel_def *device_type_add_output(struct stage *stage,
 
 	output.name = atom_create(&stage->atom_table, name);
 
-	err =
+	struct scope_entry *entry;
+	entry =
 	    scoped_hash_insert(dev_type->scope, output.name,
-			       SCOPE_ENTRY_DEVICE_OUTPUT, output.id, NULL,
-			       NULL);
-
-	if (err) {
+			       SCOPE_ENTRY_DEVICE_OUTPUT, NULL, NULL);
+	if (!entry) {
 		print_error("device type add output",
 			    "Failed to add output '%.*s' to device type '%.*s' because "
 			    "this output already exists.", LIT(name),
 			    ALIT(dev_type->name));
 		return NULL;
 	}
+	entry->id = output.id;
 
 	dlist_append(dev_type->outputs, dev_type->num_outputs, &output);
 
@@ -224,14 +224,14 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 		return 0;
 	}
 
-	err = scoped_hash_insert(parent_scope,
-				 atom_create(&stage->atom_table, name),
-				 SCOPE_ENTRY_DEVICE_TYPE, dev_type->id,
-				 NULL, dev_type->scope);
-
-	if (err) {
+	struct scope_entry *entry;
+	entry = scoped_hash_insert(parent_scope, satom(stage, name),
+							   SCOPE_ENTRY_DEVICE_TYPE, NULL,
+							   dev_type->scope);
+	if (!entry) {
 		return 0;
 	}
+	entry->id = dev_type->id;
 
 	return dev_type;
 }

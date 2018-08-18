@@ -50,9 +50,16 @@ struct device *register_device_pre_attrs(struct stage *stage, device_type_id typ
 	//device->scope->instance = device_type->scope;
 
 	if (device->name) {
-		scoped_hash_insert(parent_scope, device->name,
-				   SCOPE_ENTRY_DEVICE, device->id, NULL,
-				   device->scope);
+		struct scope_entry *entry;
+		entry =
+			scoped_hash_insert(parent_scope, device->name,
+							   SCOPE_ENTRY_DEVICE, NULL,
+							   device->scope);
+		if (!entry) {
+			print_error("register device", "Failed to insert device into scope.");
+			return NULL;
+		}
+		entry->id = device->id;
 	}
 
 	int total_scalars = 0;
@@ -296,14 +303,13 @@ struct value_ref device_get_attr_from_entry(struct stage *stage,
 
 	// @TODO: Check this attribute is from `device`.
 
-	assert(entry.id  <  device->num_attribute_values);
-	assert(entry.end <= device->num_attribute_values);
+	assert(entry.id + entry.length <= device->num_attribute_values);
 
 	struct type *type;
 	type = get_type(stage, entry.type);
 
 	assert(type != NULL);
-	assert(entry.end - entry.id == type->num_scalars);
+	assert(entry.length == type->num_scalars);
 
 
 	result.type = entry.type;
