@@ -27,8 +27,6 @@ static void device_launchpad_tick(struct stage *stage, struct device *dev)
 		.revents = 0,
 	};
 
-	/* printf("tick\n"); */
-
 	uint8_t buffer[3];
 	int poll_err;
 	while ((poll_err = poll(&fds, 1, 0)) > 0) {
@@ -60,12 +58,12 @@ static void device_launchpad_tick(struct stage *stage, struct device *dev)
 	for (size_t i = 0; i < 64; i++) {
 		scalar_value r, g;
 		r = eval_channel(stage, data->channel_button_color + i * 2);
-		g = eval_channel(stage, data->channel_button_color + i * 2);
+		g = eval_channel(stage, data->channel_button_color + i * 2 + 1);
 
 		uint8_t button_color = (r & 0x03) | ((g & 0x03) << 4);
 		if (button_color != data->last_button_color[i]) {
 			uint8_t key = (uint8_t)(i % 8) | ((uint8_t)(i / 8) << 4);
-			uint8_t packet[4] = {0x90, key, button_color & 0x03};
+			uint8_t packet[4] = {0x90, key, button_color};
 
 			write(data->fd, packet, sizeof(packet));
 
@@ -81,8 +79,10 @@ static scalar_value device_launchpad_out(struct stage *stage, channel_id cnl_id,
 	device = get_device(stage, cnl->device.id);
 	data = (struct device_launchpad_data *)device->data;
 
-	// @TODO: Multiple outputs
-	return !!(data->button_state & 0x1);
+	scalar_value res = (scalar_value)!!(data->button_state &
+										(1UL << (uint64_t)cnl->device.channel_subindex));
+
+	return res;
 }
 
 static int device_launchpad_init(struct stage *stage, struct device_type *type, struct device *dev)
@@ -99,7 +99,9 @@ static int device_launchpad_init(struct stage *stage, struct device_type *type, 
 	channel_id button_down;
 	button_down = device_get_output_channel_id_by_name(stage, dev, STR("button_down"));
 
-	channel_bind_callback(stage, button_down, device_launchpad_out);
+	for (size_t i = 0; i < 64; i++) {
+		channel_bind_callback(stage, button_down + i, device_launchpad_out);
+	}
 	register_device_tick_callback(stage, dev, 1, device_launchpad_tick);
 
 	data->channel_button_color
@@ -133,7 +135,7 @@ struct device_type *register_device_type_midi(struct stage *stage) {
 	button_state_array_type
 		= register_array_type(stage, NULL, stage->standard_types.integer, 8);
 	button_state_array_type
-		= register_array_type(stage, NULL, stage->standard_types.integer, 8);
+		= register_array_type(stage, NULL, button_state_array_type->id, 8);
 
 	struct device_channel_def *button_down;
 	button_down
