@@ -1,19 +1,21 @@
 #include "../stage.h"
 #include "../device.h"
+#include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 struct device_ease {
-	scalar_value current;
+	float current;
 
 	channel_id channel_in;
 	channel_id channel_out;
 };
 
-static scalar_value lerp(scalar_value A, scalar_value B, float t)
+static float lerp(float A, float B, float t)
 {
-	scalar_value result;
+	float result;
 
-	result = (1.0 - t) * (float)A + t * (float)B;
+	result = (1.0f - t) * A + t * B;
 
 	return result;
 }
@@ -28,9 +30,9 @@ static scalar_value device_ease_eval(struct stage *stage, channel_id cnl_id, str
 	data = (struct device_ease*)device->data;
 	in = eval_channel(stage, data->channel_in);
 
-	data->current = lerp(data->current, in, 0.25f);
+	data->current = lerp(data->current, in, 0.0025f);
 
-	return in;
+	return roundf(data->current);
 }
 
 static int device_ease_init(struct stage *stage, struct device_type *type, struct device *dev)
