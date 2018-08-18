@@ -49,6 +49,24 @@ int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
 	return scoped_hash_insert_typed_ranged(scope, name, kind, id, -1, -1, node, child_scope);
 }
 
+struct scoped_hash *scoped_hash_insert_namespace(struct scoped_hash *parent,
+												 struct atom *name,
+												 struct config_node *node)
+{
+	struct scoped_hash *child_scope;
+	int err;
+
+	child_scope = scoped_hash_push(parent, SCOPE_ENTRY_NAMESPACE, 0);
+	err = scoped_hash_insert(parent, name, SCOPE_ENTRY_NAMESPACE, 0,
+							 node, child_scope);
+
+	if (err) {
+		return NULL;
+	}
+
+	return child_scope;
+}
+
 int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name,
 			     struct scope_entry *result)
 {

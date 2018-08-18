@@ -61,6 +61,10 @@ int scoped_hash_insert_typed_ranged(struct scoped_hash *scope, struct atom *name
 									int type, struct config_node *node,
 									struct scoped_hash *child_scope);
 
+struct scoped_hash *scoped_hash_insert_namespace(struct scoped_hash *parent,
+												 struct atom *name,
+												 struct config_node *node);
+
 int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name,
 		       struct scope_entry *result);
 int scoped_hash_lookup_owner(struct scoped_hash *scope, struct atom *name,

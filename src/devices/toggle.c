@@ -36,7 +36,7 @@ scalar_value device_toggle_eval(struct stage *stage, channel_id cnl_id, struct c
 			hysterisis = 0;
 		}
 
-		if (!data->input_high && in > threshold + hysterisis) {
+		if (!data->input_high && in >= threshold + hysterisis) {
 			data->input_high = true;
 			data->state = !data->state;
 

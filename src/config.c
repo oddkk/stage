@@ -10,7 +10,7 @@
 
 #include <stdatomic.h>
 
-#define APPLY_DEBUG 1
+#define APPLY_DEBUG 0
 
 enum apply_node_type {
 	APPLY_NODE_DEVICE_TYPE,
@@ -630,9 +630,12 @@ static void apply_discover(struct apply_context *ctx,
 		case CONFIG_NODE_NAMESPACE: {
 			struct scoped_hash *child_scope;
 
-			child_scope = scoped_hash_push(scope, SCOPE_ENTRY_NAMESPACE, 0);
-			scoped_hash_insert(scope, node->namespace.name, SCOPE_ENTRY_NAMESPACE,
-							   0, node, child_scope);
+			child_scope = scoped_hash_insert_namespace(scope,
+													   node->namespace.name,
+													   node);
+			/* child_scope = scoped_hash_push(scope, SCOPE_ENTRY_NAMESPACE, 0); */
+			/* scoped_hash_insert(scope, node->namespace.name, SCOPE_ENTRY_NAMESPACE, */
+			/* 				   0, node, child_scope); */
 
 			apply_discover(ctx, child_scope, node->namespace.first_child);
 		} break;
@@ -894,8 +897,6 @@ apply_dispatch(struct apply_context *ctx,
 				apply_debug("Failed to register device.");
 				return DISPATCH_ERROR;
 			}
-
-			node->device.device->data = node;
 		}
 
 		if (!node->device.visited) {
