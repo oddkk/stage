@@ -25,9 +25,14 @@ int scoped_hash_insert_typed_ranged(struct scoped_hash *scope, struct atom *name
 	}
 	entry_id = scope->num_entries - 1;
 
-	err = id_lookup_table_insert(&scope->lookup, name->name, entry_id);
-	if (err < 0) {
-		return -2;
+	if (name) {
+		err = id_lookup_table_insert(&scope->lookup, name->name, entry_id);
+		if (err < 0) {
+			return -2;
+		}
+	} else if (!scope->array) {
+		print_error("scoped hash insert", "Missing name for entry.");
+		return -3;
 	}
 
 	return 0;
@@ -128,6 +133,20 @@ int scoped_hash_lookup(struct scoped_hash *scope, struct atom *name,
 		       struct scope_entry *result)
 {
 	return scoped_hash_lookup_owner(scope, name, result, NULL);
+}
+
+int scoped_hash_lookup_index(struct scoped_hash *scope, size_t i, struct scope_entry *result)
+{
+	if (!scope->array) {
+		return -1;
+	}
+
+	if (i >= scope->num_entries) {
+		return -2;
+	}
+
+	*result = scope->entries[i];
+	return 0;
 }
 
 struct scoped_hash *scoped_hash_push(struct scoped_hash *parent,

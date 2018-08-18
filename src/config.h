@@ -138,5 +138,5 @@ int parse_config_file(struct string filename, struct atom_table *table,
 
 int apply_config(struct stage *, struct config_node *);
 
-void config_print_tree(struct config_node *node);
+void config_tree_print(struct config_node *node);
 #endif

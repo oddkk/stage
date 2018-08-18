@@ -28,6 +28,7 @@ enum apply_node_type {
 
 	APPLY_NODE_BINARY_OP,
 	APPLY_NODE_ACCESS,
+	APPLY_NODE_ACCESS_INDEX,
 	APPLY_NODE_BIND,
 	APPLY_NODE_IDENT,
 	APPLY_NODE_NUMLIT,
@@ -52,6 +53,7 @@ const char *apply_node_name(enum apply_node_type type) {
 
 		APPLY_NODE_NAME(BINARY_OP);
 		APPLY_NODE_NAME(ACCESS);
+		APPLY_NODE_NAME(ACCESS_INDEX);
 		APPLY_NODE_NAME(BIND);
 		APPLY_NODE_NAME(IDENT);
 		APPLY_NODE_NAME(NUMLIT);
@@ -165,9 +167,15 @@ struct apply_node {
 			struct apply_node *lhs;
 			struct apply_node *rhs;
 			bool local_lookup;
-
-			scalar_value *dest;
 		} access;
+
+		struct {
+			struct apply_node *lhs;
+			struct apply_node *index;
+			bool local_lookup;
+
+			scalar_value value_index;
+		} access_index;
 
 		struct {
 			struct scoped_hash *scope;
@@ -281,6 +289,11 @@ static struct apply_node *pop_apply_node(struct apply_context *ctx)
 	return result;
 }
 
+static struct apply_node *apply_discover_expr(struct apply_context *ctx,
+											  struct scoped_hash *scope,
+											  struct config_node *expr,
+											  struct value_ref dest);
+
 static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 												struct scoped_hash *scope,
 												struct config_node *expr,
@@ -310,7 +323,24 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 			push_apply_node(ctx, node);
 
 			return node;
-		} else {
+		}
+		else if (expr->binary_op.op == CONFIG_OP_SUBSCRIPT) {
+			struct apply_node *node;
+			node = alloc_apply_node(ctx, APPLY_NODE_ACCESS_INDEX, expr);
+			node->access_index.local_lookup = local_lookup;
+			node->access_index.lhs = apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, local_lookup);
+
+			struct value_ref index_ref = {0};
+			index_ref.data = &node->access_index.value_index;
+			index_ref.type = ctx->stage->standard_types.integer;
+
+			node->access_index.index = apply_discover_expr(ctx, scope, expr->binary_op.rhs, index_ref);
+
+			push_apply_node(ctx, node);
+
+			return node;
+		}
+		else {
 			apply_error(expr, "Invalid node in l-expression.");
 		}
 	} break;
@@ -1050,6 +1080,33 @@ apply_dispatch(struct apply_context *ctx,
 
 		node->entry_found = node->access.rhs->entry_found;
 		node->entry = node->access.rhs->entry;
+
+		return DISPATCH_DONE;
+	}
+
+	case APPLY_NODE_ACCESS_INDEX: {
+		assert(node->access_index.lhs != NULL);
+		assert(node->access_index.index != NULL);
+
+		if (node->access_index.lhs->entry_found   == ENTRY_NOT_FOUND ||
+			node->access_index.index->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		} else if (node->access_index.lhs->entry_found   == ENTRY_FOUND_WAITING ||
+				   node->access_index.index->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+
+		int err;
+
+		err =
+			scoped_hash_lookup_index(node->access_index.lhs->entry.scope,
+									 node->access_index.value_index, &node->entry);
+
+		if (err) {
+			return DISPATCH_YIELD;
+		}
+
+		node->entry_found = ENTRY_FOUND;
 
 		return DISPATCH_DONE;
 	}

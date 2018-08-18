@@ -22,6 +22,7 @@ enum type_kind {
 	TYPE_KIND_TYPE = 2,
 	TYPE_KIND_TUPLE = 3,
 	TYPE_KIND_NAMED_TUPLE = 4,
+	TYPE_KIND_ARRAY = 5,
 };
 
 struct scalar_type {
@@ -101,6 +102,9 @@ struct type *register_tuple_type(struct stage *stage, struct atom *name,
 
 struct type *register_named_tuple_type(struct stage *stage, struct atom *name,
 				 struct named_tuple_member * members, size_t num_members);
+
+struct type *register_array_type(struct stage *stage, struct atom *name,
+								 type_id type, size_t length);
 
 int assign_value(struct value *dest, struct type *dest_type, struct value *src,
 		 struct type *src_type);

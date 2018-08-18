@@ -42,6 +42,7 @@ struct scoped_hash {
 	struct scoped_hash *children;
 	size_t num_children;
 
+	bool array;
 	enum scope_entry_kind kind;
 	int id;
 };
@@ -71,6 +72,9 @@ int scoped_hash_lookup_owner(struct scoped_hash *scope, struct atom *name,
 			     struct scoped_hash **owner);
 int scoped_hash_local_lookup(struct scoped_hash *scope, struct atom *name,
 			     struct scope_entry *result);
+
+int scoped_hash_lookup_index(struct scoped_hash *, size_t i, struct scope_entry *result);
+
 struct scoped_hash *scoped_hash_push(struct scoped_hash *parent,
 				     enum scope_entry_kind kind, int id);
 

@@ -58,6 +58,12 @@ int type_count_scalars(struct stage *stage, struct type *type)
 			count += ret;
 		}
 		return count;
+
+	case TYPE_KIND_ARRAY: {
+		struct type *child;
+		child = get_type(stage, type->array.type);
+		return type->array.length * child->num_scalars;
+	}
 	}
 	print_error("type", "Type '%.*s' has invalid kind %i", ALIT(type->name),
 		    type->kind);
@@ -143,6 +149,18 @@ void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
 		}
 		printf(")");
 		break;
+
+	case TYPE_KIND_ARRAY: {
+		struct type *child;
+		child = get_type(stage, type->array.type);
+		if (recurse_expand) {
+			expand_type(stage, child, recurse_expand);
+		} else {
+			print_type(stage, child);
+		}
+		printf("[%zu]", type->array.length);
+
+	} break;
 	}
 }
 
@@ -206,6 +224,19 @@ struct type *register_type(struct stage *stage, struct type def)
 	case TYPE_KIND_TYPE:
 		break;
 
+	case TYPE_KIND_ARRAY: {
+		if (type->array.type == TYPE_TEMPLATE) {
+			type->templated = true;
+			break;
+		}
+
+		struct type *child;
+		child = get_type(stage, type->array.type);
+		if (child->templated) {
+			type->templated = true;
+		}
+	} break;
+
 	case TYPE_KIND_TUPLE:
 		for (size_t i = 0; i < type->tuple.length; i++) {
 			if (type->named_tuple.members[i].type == TYPE_TEMPLATE) {
@@ -241,9 +272,7 @@ struct type *register_type(struct stage *stage, struct type def)
 struct type *register_scalar_type(struct stage *stage, struct atom *name,
 				  scalar_value min, scalar_value max)
 {
-	struct type new_type;
-
-	zero_memory(&new_type, sizeof(struct type));
+	struct type new_type = {0};
 
 	new_type.name = name;
 	new_type.kind = TYPE_KIND_SCALAR;
@@ -256,9 +285,7 @@ struct type *register_scalar_type(struct stage *stage, struct atom *name,
 struct type *register_tuple_type(struct stage *stage, struct atom *name,
 				 type_id * subtypes, size_t num_subtypes)
 {
-	struct type new_type;
-
-	zero_memory(&new_type, sizeof(struct type));
+	struct type new_type = {0};
 
 	new_type.name = name;
 	new_type.kind = TYPE_KIND_TUPLE;
@@ -277,9 +304,7 @@ struct type *register_tuple_type(struct stage *stage, struct atom *name,
 struct type *register_named_tuple_type(struct stage *stage, struct atom *name,
 				 struct named_tuple_member * members, size_t num_members)
 {
-	struct type new_type;
-
-	zero_memory(&new_type, sizeof(struct type));
+	struct type new_type = {0};
 
 	new_type.name = name;
 	new_type.kind = TYPE_KIND_NAMED_TUPLE;
@@ -289,6 +314,20 @@ struct type *register_named_tuple_type(struct stage *stage, struct atom *name,
 		arena_alloc(&stage->memory, sizeof(struct named_tuple_member) * num_members);
 
 	memcpy(new_type.tuple.types, members, sizeof(struct named_tuple_member) * num_members);
+
+	return register_type(stage, new_type);
+}
+
+struct type *register_array_type(struct stage *stage, struct atom *name,
+								 type_id type, size_t length)
+{
+	struct type new_type = {0};
+
+	new_type.name = name;
+	new_type.kind = TYPE_KIND_ARRAY;
+
+	new_type.array.type = type;
+	new_type.array.length = length;
 
 	return register_type(stage, new_type);
 }
@@ -305,7 +344,7 @@ int register_typed_member_in_scope(struct stage *stage, struct atom *name,
 
 	switch (type->kind) {
 	case TYPE_KIND_TUPLE:
-		printf("@TODO: Implement register in scope for unnamed tuples.");
+		printf("@TODO: Implement register in scope for unnamed tuples.\n");
 		break;
 
 	case TYPE_KIND_NAMED_TUPLE: {
@@ -327,6 +366,10 @@ int register_typed_member_in_scope(struct stage *stage, struct atom *name,
 		}
 		assert(subindex == type->num_scalars);
 	} break;
+
+	case TYPE_KIND_ARRAY:
+		printf("@TODO: Implement register in scope for arrays.\n");
+		break;
 
 	default:
 		break;
@@ -410,6 +453,10 @@ int type_find_member(struct type_iterator *out,
 		printf("@TODO: Name of unnamed tuples\n");
 		return -2;
 
+	case TYPE_KIND_ARRAY:
+		printf("@TODO: Name of array indicies\n");
+		return -2;
+
 	case TYPE_KIND_NAMED_TUPLE: {
 		int subindex = iter.subindex;
 		for (size_t i = 0; i < type->named_tuple.length; i++) {
@@ -485,6 +532,20 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 		}
 		printf(")");
 		break;
+
+	case TYPE_KIND_ARRAY: {
+		printf("[");
+		for (size_t i = 0; i < type->array.length; i++) {
+			if (i > 0) {
+				printf(",\n");
+			}
+			scalars_read
+				+= print_typed_value_internal(stage, type->array.type,
+											  &values[scalars_read],
+											  num_values - scalars_read);
+		}
+		printf("]");
+	} break;
 	}
 
 	return scalars_read;

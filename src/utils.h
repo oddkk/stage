@@ -18,4 +18,6 @@ void zero_memory(void *data, size_t length);
 
 #define zero_struct(s) zero_memory(&s, sizeof(s));
 
+#define ARRAY_LENGTH(a) (sizeof(a) / sizeof(a[0]))
+
 #endif

@@ -1,6 +1,7 @@
 #include "../stage.h"
 #include "../device.h"
 #include "../scoped_hash.h"
+#include "../utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,9 +12,10 @@
 
 struct device_launchpad_data {
 	channel_id channel_button_color;
-	scalar_value last_button_color;
 	uint64_t button_state;
 	int fd;
+
+	scalar_value last_button_color[64];
 };
 
 static void device_launchpad_tick(struct stage *stage, struct device *dev)
@@ -55,15 +57,20 @@ static void device_launchpad_tick(struct stage *stage, struct device *dev)
 		return;
 	}
 
-	scalar_value button_color;
-	button_color = eval_channel(stage, data->channel_button_color);
+	for (size_t i = 0; i < 64; i++) {
+		scalar_value r, g;
+		r = eval_channel(stage, data->channel_button_color + i * 2);
+		g = eval_channel(stage, data->channel_button_color + i * 2);
 
-	if (button_color != data->last_button_color) {
-		uint8_t packet[4] = {0x90, 0x00, button_color & 0x03};
+		uint8_t button_color = (r & 0x03) | ((g & 0x03) << 4);
+		if (button_color != data->last_button_color[i]) {
+			uint8_t key = (uint8_t)(i % 8) | ((uint8_t)(i / 8) << 4);
+			uint8_t packet[4] = {0x90, key, button_color & 0x03};
 
-		write(data->fd, packet, sizeof(packet));
+			write(data->fd, packet, sizeof(packet));
 
-		data->last_button_color = button_color;
+			data->last_button_color[i] = button_color;
+		}
 	}
 }
 
@@ -122,14 +129,39 @@ struct device_type *register_device_type_midi(struct stage *stage) {
 									  STR("launchpad"),
 									  ns_novation);
 
-	struct device_channel_def *button_down;
+	struct type *button_state_array_type;
+	button_state_array_type
+		= register_array_type(stage, NULL, stage->standard_types.integer, 8);
+	button_state_array_type
+		= register_array_type(stage, NULL, stage->standard_types.integer, 8);
 
+	struct device_channel_def *button_down;
 	button_down
 		= device_type_add_output(stage, launchpad, STR("button_down"),
-								 stage->standard_types.integer);
+								 button_state_array_type->id);
+
+	struct named_tuple_member button_color_members[] = {
+		{.name = SATOM(stage, "red"),   .type = stage->standard_types.integer},
+		{.name = SATOM(stage, "green"), .type = stage->standard_types.integer},
+	};
+	struct type *button_color_type;
+	button_color_type
+		= register_named_tuple_type(stage, SATOM(stage, "button_color"),
+									button_color_members,
+									ARRAY_LENGTH(button_color_members));
+	register_type_name(stage,
+					   button_color_type->id,
+					   ns_novation,
+					   button_color_type->name);
+
+	struct type *button_color_array_type;
+	button_color_array_type
+		= register_array_type(stage, NULL, button_color_type->id, 8);
+	button_color_array_type
+		= register_array_type(stage, NULL, button_color_array_type->id, 8);
 
 	device_type_add_input(stage, launchpad, STR("button_color"),
-						  stage->standard_types.integer);
+						  button_color_array_type->id);
 
 	launchpad->device_init = device_launchpad_init;
 
