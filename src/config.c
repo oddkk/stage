@@ -630,12 +630,8 @@ static void apply_discover(struct apply_context *ctx,
 		case CONFIG_NODE_NAMESPACE: {
 			struct scoped_hash *child_scope;
 
-			child_scope = scoped_hash_insert_namespace(scope,
-													   node->namespace.name,
-													   node);
-			/* child_scope = scoped_hash_push(scope, SCOPE_ENTRY_NAMESPACE, 0); */
-			/* scoped_hash_insert(scope, node->namespace.name, SCOPE_ENTRY_NAMESPACE, */
-			/* 				   0, node, child_scope); */
+			child_scope
+				= scoped_hash_namespace(scope, node->namespace.name);
 
 			apply_discover(ctx, child_scope, node->namespace.first_child);
 		} break;

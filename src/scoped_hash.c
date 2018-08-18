@@ -49,16 +49,27 @@ int scoped_hash_insert(struct scoped_hash *scope, struct atom *name,
 	return scoped_hash_insert_typed_ranged(scope, name, kind, id, -1, -1, node, child_scope);
 }
 
-struct scoped_hash *scoped_hash_insert_namespace(struct scoped_hash *parent,
-												 struct atom *name,
-												 struct config_node *node)
+struct scoped_hash *scoped_hash_namespace(struct scoped_hash *parent,
+										  struct atom *name)
 {
 	struct scoped_hash *child_scope;
 	int err;
 
+	struct scope_entry entry;
+	err = scoped_hash_local_lookup(parent, name, &entry);
+
+	if (!err) {
+		if (entry.kind != SCOPE_ENTRY_NAMESPACE) {
+			printf("'%.*s' is not a namespace.\n", ALIT(name));
+			return NULL;
+		}
+
+		return entry.scope;
+	}
+
 	child_scope = scoped_hash_push(parent, SCOPE_ENTRY_NAMESPACE, 0);
 	err = scoped_hash_insert(parent, name, SCOPE_ENTRY_NAMESPACE, 0,
-							 node, child_scope);
+							 NULL, child_scope);
 
 	if (err) {
 		return NULL;

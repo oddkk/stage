@@ -109,13 +109,11 @@ struct device_type *register_device_type_midi(struct stage *stage) {
 	struct scoped_hash *ns_midi;
 	struct scoped_hash *ns_novation;
 
-	ns_midi = scoped_hash_insert_namespace(&stage->root_scope,
-										   SATOM(stage, "midi"),
-										   NULL);
+	ns_midi
+		= scoped_hash_namespace(&stage->root_scope, SATOM(stage, "midi"));
 
-	ns_novation = scoped_hash_insert_namespace(ns_midi,
-											   SATOM(stage, "novation"),
-											   NULL);
+	ns_novation
+		= scoped_hash_namespace(ns_midi, SATOM(stage, "novation"));
 
 	struct device_type *launchpad;
 
