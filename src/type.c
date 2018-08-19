@@ -74,9 +74,9 @@ void print_type(struct stage *stage, struct type *type)
 {
 	if (!type->name) {
 		expand_type(stage, type, false);
+	} else {
+		printf("%.*s", ALIT(type->name));
 	}
-
-	printf("%.*s", ALIT(type->name));
 }
 
 void print_type_id(struct stage *stage, type_id id)
