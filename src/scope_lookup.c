@@ -317,7 +317,7 @@ int scope_lookup_range(struct scope_lookup *ctx, size_t begin, size_t end)
 		return -1;
 	}
 
-	if (end >= type->array.length) {
+	if (end > type->array.length) {
 		printf("The range is outside the array bounds.\n");
 		return -1;
 	}
@@ -349,7 +349,7 @@ int scope_lookup_range(struct scope_lookup *ctx, size_t begin, size_t end)
 	step->stride = length;
 	step->repetitions = 1;
 
-	ctx->type = type;
+	ctx->type = member_type;
 	ctx->scope = NULL;
 	ctx->local_lookup = true;
 
@@ -417,7 +417,11 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 
 		low += rep * step->stride;
 
-		assert(low + step->length < high);
+		if (low + step->length > high) {
+			print_steps(ctx);
+		}
+
+		assert(low + step->length <= high);
 		high = low + step->length;
 
 		next_it = low + (step->stride);

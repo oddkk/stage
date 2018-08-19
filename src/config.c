@@ -426,6 +426,7 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 	case CONFIG_NODE_SUBSCRIPT_RANGE: {
 		struct apply_node *node;
 		node = alloc_apply_node(ctx, APPLY_NODE_ACCESS_INDEX_RANGE, expr);
+		node->access_index_range.lookup = lookup;
 		node->access_index_range.lhs
 				= apply_discover_l_expr(ctx, scope, expr->subscript_range.lhs, lookup);
 		node->access_index_range.scope = scope;
