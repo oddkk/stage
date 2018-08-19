@@ -3,3 +3,4 @@
 *.y.c
 *.y.re2c
 *.y.output
+/test/build/

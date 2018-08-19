@@ -21,12 +21,22 @@
 #include <stdlib.h>
 
 /* enable clock_* functions */
+#ifndef __USE_POSIX199309
 #define __USE_POSIX199309
+#endif
+
+#ifndef __USE_XOPEN2K
 #define __USE_XOPEN2K
+#endif
+
 #include <time.h>
 #include <errno.h>
 
 #define NSEC (1000000000)
+
+#ifdef STAGE_TEST
+#define main _main
+#endif
 
 static struct timespec timespec_add(struct timespec begin, struct timespec end)
 {
@@ -174,3 +184,7 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
+
+#ifdef STAGE_TEST
+#undef main
+#endif

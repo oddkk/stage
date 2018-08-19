@@ -8,5 +8,7 @@ clean:
 
 indent:
 	@indent src/*.c src/*.h
+test:
+	@perl ./test/run_tests.pl
 
-.PHONY: build indent
+.PHONY: build indent test

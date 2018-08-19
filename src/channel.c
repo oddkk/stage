@@ -85,8 +85,6 @@ static int init_device_channels_for_type(struct stage *stage,
 		}
 		entry->id = *begin;
 		entry->length = 1;
-		entry->repetitions = 1;
-		entry->stride = 1;
 		entry->type = type->id;
 
 		init_scalar_device_channel(stage, begin,
@@ -125,8 +123,6 @@ static int init_device_channels_for_type(struct stage *stage,
 
 		entry->id = first_channel;
 		entry->length = last_channel - first_channel;
-		entry->repetitions = 1;
-		entry->stride = entry->length;
 		entry->type = type->id;
 	} break;
 
@@ -165,8 +161,6 @@ static int init_device_channels_for_type(struct stage *stage,
 
 		entry->id = first_channel;
 		entry->length = last_channel - first_channel;
-		entry->repetitions = 1;
-		entry->stride = entry->length;
 		entry->type = type->id;
 	} break;
 
@@ -196,8 +190,6 @@ static int init_device_channels_for_type(struct stage *stage,
 
 		entry->id = first_channel;
 		entry->length = last_channel - first_channel;
-		entry->repetitions = 1;
-		entry->stride = entry->length;
 		entry->type = type->id;
 	} break;
 

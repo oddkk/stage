@@ -25,10 +25,7 @@ struct scope_entry {
 	struct config_node *config_node;
 
 	int id;
-	/* int end; */
 	int length;
-	int repetitions;
-	int stride;
 
 	int type;
 };

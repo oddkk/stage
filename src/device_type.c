@@ -232,6 +232,7 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 		return 0;
 	}
 	entry->id = dev_type->id;
+	entry->length = 1;
 
 	return dev_type;
 }
