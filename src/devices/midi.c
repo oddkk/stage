@@ -90,7 +90,7 @@ static int device_launchpad_init(struct stage *stage, struct device_type *type, 
 	struct device_launchpad_data *data = calloc(1, sizeof(struct device_launchpad_data));
 	dev->data = data;
 
-	data->fd = open("/dev/midi1", O_RDWR, 0);
+	data->fd = open("/dev/midi", O_RDWR, 0);
 	if (data->fd < 0) {
 		perror("open");
 		return -1;
