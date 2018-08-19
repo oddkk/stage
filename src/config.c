@@ -309,47 +309,6 @@ static void apply_error(struct config_node *node, const char *fmt, ...)
 	va_end(ap);
 }
 
-static struct apply_node *alloc_apply_node(struct apply_context *ctx, enum apply_node_type type, struct config_node *cnode)
-{
-	struct apply_node *node;
-	node = calloc(1, sizeof(struct apply_node));
-	node->type = type;
-	node->cnode = cnode;
-	node->state = DISPATCH_YIELD;
-	return node;
-}
-
-static void push_apply_node(struct apply_context *ctx, struct apply_node *node)
-{
-	// Only append the node if it is not already queued.
-	if (node->next == NULL) {
-		// @TODO: Make this concurrent-safe
-		if (ctx->queue_tail) {
-			assert(ctx->queue);
-			ctx->queue_tail->next = node;
-		} else {
-			assert(!ctx->queue);
-			ctx->queue = node;
-		}
-		ctx->queue_tail = node;
-	}
-}
-
-static struct apply_node *pop_apply_node(struct apply_context *ctx)
-{
-	struct apply_node *result;
-
-	result = ctx->queue;
-	// @TODO: Make this concurrent-safe
-	ctx->queue = result->next;
-	result->next = NULL;
-	if (ctx->queue_tail == result) {
-		ctx->queue_tail = NULL;
-	}
-
-	return result;
-}
-
 static void print_l_expr(struct config_node *expr)
 {
 	switch (expr->type) {
@@ -389,6 +348,67 @@ static void print_l_expr(struct config_node *expr)
 		fprintf(stderr, "(non l-expr)");
 		break;
 	}
+}
+
+
+static bool apply_expect_lookup_result(enum scope_entry_kind expected,
+									   enum scope_entry_kind found,
+									   struct apply_node *node)
+{
+	if (expected != found) {
+		apply_begin_error(node->cnode);
+		fprintf(stderr, "'");
+		print_l_expr(node->cnode);
+		fprintf(stderr, "' is a %s, but a %s was expected.",
+				humanreadable_scope_entry(found),
+				humanreadable_scope_entry(expected));
+		apply_end_error(node->cnode);
+
+		return false;
+	}
+
+	return true;
+}
+
+static struct apply_node *alloc_apply_node(struct apply_context *ctx, enum apply_node_type type, struct config_node *cnode)
+{
+	struct apply_node *node;
+	node = calloc(1, sizeof(struct apply_node));
+	node->type = type;
+	node->cnode = cnode;
+	node->state = DISPATCH_YIELD;
+	return node;
+}
+
+static void push_apply_node(struct apply_context *ctx, struct apply_node *node)
+{
+	// Only append the node if it is not already queued.
+	if (node->next == NULL) {
+		// @TODO: Make this concurrent-safe
+		if (ctx->queue_tail) {
+			assert(ctx->queue);
+			ctx->queue_tail->next = node;
+		} else {
+			assert(!ctx->queue);
+			ctx->queue = node;
+		}
+		ctx->queue_tail = node;
+	}
+}
+
+static struct apply_node *pop_apply_node(struct apply_context *ctx)
+{
+	struct apply_node *result;
+
+	result = ctx->queue;
+	// @TODO: Make this concurrent-safe
+	ctx->queue = result->next;
+	result->next = NULL;
+	if (ctx->queue_tail == result) {
+		ctx->queue_tail = NULL;
+	}
+
+	return result;
 }
 
 static struct apply_node *apply_discover_expr(struct apply_context *ctx,
@@ -928,8 +948,9 @@ apply_dispatch(struct apply_context *ctx,
 
 		WAIT_FOR(type_expr);
 
-		if (node->device_type_attribute.type_lookup.kind != SCOPE_ENTRY_TYPE) {
-			apply_error(type_expr->cnode, "Expression is not a type.");
+		if (!apply_expect_lookup_result(SCOPE_ENTRY_TYPE,
+										node->device_type_attribute.type_lookup.kind,
+										node->device_type_attribute.type)) {
 			return DISPATCH_ERROR;
 		}
 
@@ -977,8 +998,9 @@ apply_dispatch(struct apply_context *ctx,
 
 		WAIT_FOR(type_expr);
 
-		if (node->device_type_input.type_lookup.kind != SCOPE_ENTRY_TYPE) {
-			apply_error(type_expr->cnode, "Expression is not a type.");
+		if (!apply_expect_lookup_result(SCOPE_ENTRY_TYPE,
+										node->device_type_input.type_lookup.kind,
+										node->device_type_input.type)) {
 			return DISPATCH_ERROR;
 		}
 
@@ -1071,13 +1093,9 @@ apply_dispatch(struct apply_context *ctx,
 	case APPLY_NODE_DEVICE: {
 		WAIT_FOR(node->device.type);
 
-		if (node->device.type_lookup.kind != SCOPE_ENTRY_DEVICE_TYPE) {
-			apply_begin_error(node->device.type->cnode);
-			fprintf(stderr, "'");
-			print_l_expr(node->device.type->cnode);
-			fprintf(stderr, "' is a %s, but a device type was expected.",
-					humanreadable_scope_entry(node->device.type_lookup.kind));
-			apply_end_error(node->device.type->cnode);
+		if (!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_TYPE,
+										node->device.type_lookup.kind,
+										node->device.type)) {
 			return DISPATCH_ERROR;
 		}
 
@@ -1165,8 +1183,9 @@ apply_dispatch(struct apply_context *ctx,
 		struct scope_lookup_range range;
 		int err;
 
-		if (node->type_l_expr.lookup.kind != SCOPE_ENTRY_TYPE) {
-			apply_error(node->cnode, "Not a type.");
+		if (!apply_expect_lookup_result(SCOPE_ENTRY_TYPE,
+										node->type_l_expr.lookup.kind,
+										node->type_l_expr.expr)) {
 			return DISPATCH_ERROR;
 		}
 
@@ -1323,13 +1342,15 @@ apply_dispatch(struct apply_context *ctx,
 		WAIT_FOR(node->bind.lhs);
 		WAIT_FOR(node->bind.rhs);
 
-		if (node->bind.lookup_lhs.kind != SCOPE_ENTRY_DEVICE_CHANNEL) {
-			apply_error(node->bind.lhs->cnode, "Not a channel.");
+		if (!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_CHANNEL,
+										node->bind.lookup_lhs.kind,
+										node->bind.lhs)) {
 			return DISPATCH_ERROR;
 		}
 
-		if (node->bind.lookup_rhs.kind != SCOPE_ENTRY_DEVICE_CHANNEL) {
-			apply_error(node->bind.rhs->cnode, "Not a channel.");
+		if (!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_CHANNEL,
+										node->bind.lookup_rhs.kind,
+										node->bind.rhs)) {
 			return DISPATCH_ERROR;
 		}
 
