@@ -22,6 +22,7 @@ enum apply_node_type {
 
 	APPLY_NODE_TYPE_DECL,
 
+	APPLY_NODE_TYPE_L_EXPR,
 	APPLY_NODE_TYPE_TUPLE,
 	APPLY_NODE_TYPE_SUBRANGE,
 
@@ -48,6 +49,7 @@ const char *apply_node_name(enum apply_node_type type) {
 
 		APPLY_NODE_NAME(TYPE_DECL);
 
+		APPLY_NODE_NAME(TYPE_L_EXPR);
 		APPLY_NODE_NAME(TYPE_TUPLE);
 		APPLY_NODE_NAME(TYPE_SUBRANGE);
 
@@ -76,7 +78,7 @@ struct apply_node;
 struct apply_tuple_member {
 	struct atom *name;
 	struct apply_node *type;
-	struct scope_lookup type_lookup;
+	type_id type_id;
 };
 
 struct apply_node {
@@ -155,10 +157,19 @@ struct apply_node {
 		} type_decl;
 
 		struct {
+			struct apply_node *expr;
+			struct scope_lookup lookup;
+
+			type_id type;
+		} type_l_expr;
+
+		struct {
 			struct atom *name;
 			bool named;
 			struct apply_tuple_member *members;
 			size_t num_members;
+
+			type_id type;
 		} type_tuple;
 
 		struct {
@@ -171,6 +182,8 @@ struct apply_node {
 			scalar_value value_high;
 
 			struct scope_lookup lhs_lookup;
+
+			type_id type;
 		} type_subrange;
 
 		struct {
@@ -243,12 +256,7 @@ struct apply_node {
 		} l_value;
 	};
 
-	/* struct scope_entry entry; */
 	enum entry_found_state entry_found;
-};
-
-struct apply_queue_entry {
-	int _dc;
 };
 
 struct apply_context {
@@ -740,10 +748,16 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 		return type;
 
 	} else {
-		struct scope_lookup *lookup;
-		// @TODO: Is this a good idea?
-		lookup = calloc(1, sizeof(struct scope_lookup));
-		return apply_discover_l_expr(ctx, scope, type_node, lookup);
+		struct apply_node *node;
+		node = alloc_apply_node(ctx, APPLY_NODE_TYPE_L_EXPR, type_node);
+		node->type_l_expr.lookup
+			= scope_lookup_init(ctx->stage, scope);
+		node->type_l_expr.expr
+			= apply_discover_l_expr(ctx, scope, type_node, &node->type_l_expr.lookup);
+
+		push_apply_node(ctx, node);
+
+		return node;
 	}
 }
 
@@ -807,6 +821,27 @@ static void apply_discover(struct apply_context *ctx,
 			apply_error(node, "Unexpected node.");
 			break;
 		}
+	}
+}
+
+static int apply_resolve_type_id(struct apply_node *node, type_id *type)
+{
+	switch (node->type) {
+	case APPLY_NODE_TYPE_L_EXPR:
+		*type = node->type_l_expr.type;
+		return 0;
+
+	case APPLY_NODE_TYPE_TUPLE:
+		*type = node->type_tuple.type;
+		return 0;
+
+	case APPLY_NODE_TYPE_SUBRANGE:
+		*type = node->type_subrange.type;
+		return 0;
+
+	default:
+		apply_error(node->cnode, "Not a type.");
+		return -1;
 	}
 }
 
@@ -1120,95 +1155,124 @@ apply_dispatch(struct apply_context *ctx,
 		return DISPATCH_DONE;
 	}
 
-	case APPLY_NODE_TYPE_DECL:
+	case APPLY_NODE_TYPE_DECL: {
+		struct apply_node *type_node;
+		type_node = node->type_decl.type;
+
 		if (node->type_decl.type->entry_found == ENTRY_NOT_FOUND) {
 			return DISPATCH_ERROR;
 		} else if (node->type_decl.type->entry_found == ENTRY_FOUND_WAITING) {
 			return DISPATCH_YIELD;
 		}
 
-		// @TODO: Fix
-		return DISPATCH_ERROR;
+		type_id type;
+		int err;
 
-		/* if (node->type_decl.type->entry.kind != SCOPE_ENTRY_TYPE) { */
-		/* 	apply_error(node->type_decl.type->cnode, */
-		/* 				"Not a type."); */
-		/* 	return DISPATCH_ERROR; */
-		/* } */
+		err = apply_resolve_type_id(type_node, &type);
+		if (err) {
+			return DISPATCH_ERROR;
+		}
 
-		/* register_type_name(ctx->stage, */
-		/* 				   node->type_decl.type->entry.id, */
-		/* 				   node->type_decl.scope, */
-		/* 				   node->type_decl.name); */
-		/* return DISPATCH_DONE; */
+		register_type_name(ctx->stage, type,
+						   node->type_decl.scope,
+						   node->type_decl.name);
+
+		node->entry_found = ENTRY_FOUND;
+
+		return DISPATCH_DONE;
+	}
+
+
+	case APPLY_NODE_TYPE_L_EXPR: {
+		if (node->type_l_expr.expr->entry_found == ENTRY_NOT_FOUND) {
+			return DISPATCH_ERROR;
+		} else if (node->type_l_expr.expr->entry_found == ENTRY_FOUND_WAITING) {
+			return DISPATCH_YIELD;
+		}
+
+		struct scope_lookup_range range;
+		int err;
+
+		if (node->type_l_expr.lookup.kind != SCOPE_ENTRY_TYPE) {
+			apply_error(node->cnode, "Not a type.");
+			return DISPATCH_ERROR;
+		}
+
+		err = scope_lookup_result_single(node->type_l_expr.lookup, &range);
+		if (err) {
+			return DISPATCH_ERROR;
+		}
+
+		node->entry_found = ENTRY_FOUND;
+
+		return DISPATCH_DONE;
+	}
 
 	case APPLY_NODE_TYPE_TUPLE: {
-		// @TODO: Fix!
-		return DISPATCH_ERROR;
+		for (size_t i = 0; i < node->type_tuple.num_members; i++) {
+			struct apply_tuple_member *member;
+			member = &node->type_tuple.members[i];
+			if (member->type->entry_found == ENTRY_NOT_FOUND) {
+				return DISPATCH_ERROR;
+			} else if (member->type->entry_found == ENTRY_FOUND_WAITING) {
+				apply_debug("Waiting for member %zu (%.*s) type.",
+							i, ALIT(member->name));
+				return DISPATCH_YIELD;
+			}
 
-	/* 	for (size_t i = 0; i < node->type_tuple.num_members; i++) { */
-	/* 		struct apply_tuple_member *member; */
-	/* 		member = &node->type_tuple.members[i]; */
-	/* 		if (member->type->entry_found == ENTRY_NOT_FOUND) { */
-	/* 			return DISPATCH_ERROR; */
-	/* 		} else if (member->type->entry_found == ENTRY_FOUND_WAITING) { */
-	/* 			apply_debug("Waiting for member %zu (%.*s) type.", */
-	/* 						i, ALIT(member->name)); */
-	/* 			return DISPATCH_YIELD; */
-	/* 		} */
+			type_id type;
+			int err;
+			err = apply_resolve_type_id(member->type, &type);
+			if (err) {
+				return DISPATCH_ERROR;
+			}
+		}
 
-	/* 		/\* if (member->type->entry.kind != SCOPE_ENTRY_TYPE) { *\/ */
-	/* 		/\* 	// @TODO: Better error message. *\/ */
-	/* 		/\* 	apply_error(member->type->cnode, "Not a type."); *\/ */
-	/* 		/\* 	return DISPATCH_ERROR; *\/ */
-	/* 		/\* } *\/ */
-	/* 	} */
+		struct type new_type = {0};
+		new_type.name = node->type_tuple.name;
 
-	/* 	struct type new_type = {0}; */
-	/* 	new_type.name = node->type_tuple.name; */
+		if (node->type_tuple.named) {
+			new_type.kind = TYPE_KIND_NAMED_TUPLE;
+			new_type.named_tuple.length = node->type_tuple.num_members;
+			new_type.named_tuple.members
+				= calloc(new_type.named_tuple.length,
+						 sizeof(struct named_tuple_member));
+			for (size_t i = 0; i < new_type.named_tuple.length; i++) {
+				struct named_tuple_member *new_member;
+				struct apply_tuple_member *member;
+				new_member = &new_type.named_tuple.members[i];
+				member = &node->type_tuple.members[i];
 
-	/* 	if (node->type_tuple.named) { */
-	/* 		new_type.kind = TYPE_KIND_NAMED_TUPLE; */
-	/* 		new_type.named_tuple.length = node->type_tuple.num_members; */
-	/* 		new_type.named_tuple.members */
-	/* 			= calloc(new_type.named_tuple.length, */
-	/* 					 sizeof(struct named_tuple_member)); */
-	/* 		for (size_t i = 0; i < new_type.named_tuple.length; i++) { */
-	/* 			struct named_tuple_member *new_member; */
-	/* 			struct apply_tuple_member *member; */
-	/* 			new_member = &new_type.named_tuple.members[i]; */
-	/* 			member = &node->type_tuple.members[i]; */
+				new_member->name = member->name;
+				new_member->type = member->type_id;
+			}
+		} else {
+			new_type.kind = TYPE_KIND_TUPLE;
+			new_type.tuple.length = node->type_tuple.num_members;
+			new_type.tuple.types
+				= calloc(new_type.tuple.length,
+						 sizeof(type_id));
+			for (size_t i = 0; i < new_type.tuple.length; i++) {
+				struct apply_tuple_member *member;
 
-	/* 			new_member->name = member->name; */
-	/* 			new_member->type = member->type->entry.id; */
-	/* 		} */
-	/* 	} else { */
-	/* 		new_type.kind = TYPE_KIND_TUPLE; */
-	/* 		new_type.tuple.length = node->type_tuple.num_members; */
-	/* 		new_type.tuple.types */
-	/* 			= calloc(new_type.tuple.length, */
-	/* 					 sizeof(type_id)); */
-	/* 		for (size_t i = 0; i < new_type.tuple.length; i++) { */
-	/* 			struct apply_tuple_member *member; */
+				member = &node->type_tuple.members[i];
+				new_type.tuple.types[i] = member->type_id;
+			}
+		}
 
-	/* 			member = &node->type_tuple.members[i]; */
-	/* 			new_type.tuple.types[i] = member->type->entry.id; */
-	/* 		} */
-	/* 	} */
+		struct type *final_type;
 
-	/* 	struct type *final_type; */
+		final_type = register_type(ctx->stage, new_type);
 
-	/* 	final_type = register_type(ctx->stage, new_type); */
+		if (!final_type) {
+			return DISPATCH_ERROR;
+		}
 
-	/* 	if (!final_type) { */
-	/* 		return DISPATCH_ERROR; */
-	/* 	} */
+		node->type_tuple.type = final_type->id;
 
-	/* 	node->entry.kind = SCOPE_ENTRY_TYPE; */
-	/* 	node->entry.id = final_type->id; */
-	/* 	node->entry_found = ENTRY_FOUND; */
+		node->entry_found = ENTRY_FOUND;
 
-	/* 	return DISPATCH_DONE; */
+		return DISPATCH_DONE;
 	}
 
 	case APPLY_NODE_TYPE_SUBRANGE:
