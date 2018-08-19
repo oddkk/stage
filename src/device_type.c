@@ -172,19 +172,11 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 						*parent_scope)
 {
 	struct device_type *dev_type;
-	int old_id, err;
+	int err;
 
 	if (name.length == 0) {
 		print_error("register device type",
 			    "Device type must have name.", LIT(name));
-		return 0;
-	}
-
-	old_id = id_lookup_table_lookup(&stage->device_types_lookup, name);
-	if (old_id >= 0) {
-		print_error("register device type",
-			    "Cannot register device '%.*s' because "
-			    "the name is already registered.", LIT(name));
 		return 0;
 	}
 
@@ -216,19 +208,18 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 
 	stage->device_types[dev_type->id] = dev_type;
 
-	err =
-	    id_lookup_table_insert(&stage->device_types_lookup, name,
-				   dev_type->id);
-
-	if (err) {
-		return 0;
-	}
-
 	struct scope_entry *entry;
 	entry = scoped_hash_insert(parent_scope, satom(stage, name),
 							   SCOPE_ENTRY_DEVICE_TYPE, NULL,
 							   dev_type->scope);
 	if (!entry) {
+		struct scope_entry conflict;
+		err = scoped_hash_lookup(parent_scope, satom(stage, name), &conflict);
+		assert(!err);
+		print_error("register device type",
+					"Cannot register '%.*s', because there already "
+					"exists a %s with the same name in this scope.",
+					LIT(name), humanreadable_scope_entry(conflict.kind));
 		return 0;
 	}
 	entry->id = dev_type->id;

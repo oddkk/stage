@@ -27,11 +27,6 @@ int stage_init(struct stage *stage)
 		return -1;
 	}
 
-	stage->device_types_lookup.string_arena = &stage->memory;
-	stage->device_types_lookup.page_arena = &stage->memory;
-	stage->types_lookup.string_arena = &stage->memory;
-	stage->types_lookup.page_arena = &stage->memory;
-
 	stage->cap_channels = 1024;
 	stage->channels =
 	    arena_alloc(&stage->memory,

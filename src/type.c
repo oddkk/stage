@@ -181,6 +181,14 @@ int register_type_name(struct stage *stage, type_id type, struct scoped_hash *sc
 	struct scope_entry *entry;
 	entry = scoped_hash_insert(scope, name, SCOPE_ENTRY_TYPE, NULL, NULL);
 	if (!entry) {
+		struct scope_entry conflict;
+		int err;
+		err = scoped_hash_lookup(scope, name, &conflict);
+		assert(!err);
+		print_error("register type",
+					"Cannot register '%.*s', because there already "
+					"exists a %s with the same name in this scope.",
+					ALIT(name), humanreadable_scope_entry(conflict.kind));
 		return -1;
 	}
 	entry->id = type;
@@ -191,7 +199,6 @@ int register_type_name(struct stage *stage, type_id type, struct scoped_hash *sc
 struct type *register_type(struct stage *stage, struct type def)
 {
 	struct type *type;
-	int error;
 
 	if (stage->num_types + 1 >= stage->cap_types) {
 		struct type **new_array;
@@ -213,12 +220,6 @@ struct type *register_type(struct stage *stage, struct type def)
 	type->id = stage->num_types++;
 
 	stage->types[type->id] = type;
-
-	if (type->name) {
-		error =
-			id_lookup_table_insert(&stage->types_lookup, type->name->name,
-					type->id);
-	}
 
 	type->num_scalars = type_count_scalars(stage, type);
 
