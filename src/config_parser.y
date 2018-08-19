@@ -114,7 +114,7 @@
 %type	<struct config_node*> device_type_body_stmt device device_body device_body_stmt
 %type	<struct config_node*> l_expr type_decl type enum_list enum_label tuple_decl tuple_list
 %type	<struct config_node*> named_tuple_list tuple_item named_tuple_item expr /* type_litteral_name */
-%type	<struct config_node*> subrange_type namespace
+%type	<struct config_node*> subrange_type namespace bind_stmt
 %type	<struct tmp_range> range
 
 
@@ -142,10 +142,11 @@ module_stmt_list:
 				module_stmt_list module_stmt { $$ = $1; append_child(&$$, $2); }
 		|		%empty                       { $$ = NULL; }
 		;
-module_stmt: 	device_type    { $$ = $1; }
-		|		device         { $$ = $1; }
-		|		type_decl      { $$ = $1; }
-		|		namespace      { $$ = $1; }
+module_stmt: 	device_type
+		|		device
+		|		type_decl
+		|		namespace
+		|		bind_stmt
 		;
 device_type:	"device_type" IDENTIFIER '{' device_type_body '}' { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE_TYPE); $$->device_type.name = $2; $$->device_type.first_child = $4; }
 		;
@@ -160,20 +161,24 @@ device_type_body_stmt:
 		|		"output" "default" IDENTIFIER ':' type ';' { $$ = alloc_node(ctx, CONFIG_NODE_OUTPUT);    $$->output.name = $3; $$->output.type = $5; $$->output.def = true; }
 		|		"attr" IDENTIFIER ':' type   ';'           { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; }
 		|		"attr" IDENTIFIER ':' type   '=' expr ';'  { $$ = alloc_node(ctx, CONFIG_NODE_ATTR);      $$->attr.name = $2;   $$->attr.type = $4; $$->attr.def_value = $6; }
-		|		l_expr "<-" l_expr ';'                     { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		bind_stmt
 		|		l_expr '=' expr ';'                     { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ASSIGN; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		|		device                                     { $$ = $1; }
 		|		type_decl                                  { $$ = $1; }
 		;
 device:			"device" l_expr '{' device_body '}'            { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE); $$->device.type = $2;                       $$->device.first_child = $4; }
 		|		"device" l_expr IDENTIFIER '{' device_body '}' { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE); $$->device.type = $2; $$->device.name = $3; $$->device.first_child = $5; }
+		|		"device" l_expr ';'                            { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE); $$->device.type = $2;                       $$->device.first_child = NULL; }
+		|		"device" l_expr IDENTIFIER ';'                 { $$ = alloc_node(ctx, CONFIG_NODE_DEVICE); $$->device.type = $2; $$->device.name = $3; $$->device.first_child = NULL; }
 		;
 device_body:	device_body device_body_stmt { $$ = $1; append_child(&$$, $2); }
 		|		%empty                       { $$ = NULL; }
 		;
 device_body_stmt:
 				l_expr '=' expr ';'          { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ASSIGN; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
-		|		l_expr "<-" l_expr ';'       { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND;   $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		|		bind_stmt                    { $$ = $1; }
+		;
+bind_stmt:		l_expr "<-" l_expr ';'       { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND;   $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		;
 l_expr:			IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = $1; }
 		|		'_'                          { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); }
