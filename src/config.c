@@ -1342,23 +1342,62 @@ apply_dispatch(struct apply_context *ctx,
 		int err;
 		struct scope_lookup_range lhs_range;
 		struct scope_lookup_range rhs_range;
-		while ((err = scope_lookup_iterate(node->bind.lookup_lhs,
-										   &lhs_i, &lhs_range)) == LOOKUP_FOUND &&
-			   (err = scope_lookup_iterate(node->bind.lookup_rhs,
-										   &rhs_i, &rhs_range)) == LOOKUP_FOUND) {
-			if (lhs_range.length != rhs_range.length) {
-				apply_error(node->cnode, "Left and right side does not match.");
+
+		size_t lhs_instances, rhs_instances;
+
+		lhs_instances = scope_lookup_instances(node->bind.lookup_lhs);
+		rhs_instances = scope_lookup_instances(node->bind.lookup_rhs);
+
+		if (lhs_instances == rhs_instances) {
+			while ((err = scope_lookup_iterate(node->bind.lookup_lhs,
+											&lhs_i, &lhs_range)) == LOOKUP_FOUND &&
+				(err = scope_lookup_iterate(node->bind.lookup_rhs,
+											&rhs_i, &rhs_range)) == LOOKUP_FOUND) {
+				if (lhs_range.length != rhs_range.length) {
+					apply_error(node->cnode, "Left and right side does not match.");
+					return DISPATCH_ERROR;
+				}
+
+				for (size_t i = 0; i < lhs_range.length; i++) {
+					channel_bind(ctx->stage,
+								rhs_range.begin + i,
+								lhs_range.begin + i);
+				}
+			}
+		}
+		else if (rhs_instances == 1) {
+			err = scope_lookup_iterate(node->bind.lookup_rhs,
+									   &rhs_i, &rhs_range);
+
+			if (err) {
+				apply_error(node->cnode, "Could not iterate.");
 				return DISPATCH_ERROR;
 			}
 
-			for (size_t i = 0; i < lhs_range.length; i++) {
-				channel_bind(ctx->stage,
-							 rhs_range.begin + i,
-							 lhs_range.begin + i);
+			while ((err = scope_lookup_iterate(node->bind.lookup_lhs,
+											   &lhs_i, &lhs_range)) == LOOKUP_FOUND) {
+				if (lhs_range.length != rhs_range.length) {
+					apply_error(node->cnode, "Left and right side does not match.");
+					return DISPATCH_ERROR;
+				}
+
+				for (size_t i = 0; i < lhs_range.length; i++) {
+					channel_bind(ctx->stage,
+								rhs_range.begin + i,
+								lhs_range.begin + i);
+				}
 			}
+		}
+		else {
+			apply_error(node->cnode,
+						"Missmatched number of instances, "
+						"%zu on the left and %zu on the right.",
+						lhs_instances, rhs_instances);
+			return DISPATCH_ERROR;
 		}
 
 		if (err != LOOKUP_END) {
+			apply_error(node->cnode, "Could not iterate.");
 			return DISPATCH_ERROR;
 		}
 

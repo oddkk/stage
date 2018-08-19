@@ -434,3 +434,13 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 	out->length = high - low;
 	return LOOKUP_FOUND;
 }
+
+size_t scope_lookup_instances(struct scope_lookup ctx)
+{
+	size_t instances = 1;
+	for (size_t i = 0; i < ctx.num_steps; i++) {
+		struct scope_lookup_step *step = &ctx.steps[i];
+		instances *= step->repetitions;
+	}
+	return instances;
+}
