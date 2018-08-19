@@ -431,19 +431,23 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 				= apply_discover_l_expr(ctx, scope, expr->subscript_range.lhs, lookup);
 		node->access_index_range.scope = scope;
 
-		struct value_ref low_index_ref = {0};
-		low_index_ref.type = ctx->stage->standard_types.integer;
-		low_index_ref.data = &node->access_index_range.value_low_index;
+		if (expr->subscript_range.low) {
+			struct value_ref low_index_ref = {0};
+			low_index_ref.type = ctx->stage->standard_types.integer;
+			low_index_ref.data = &node->access_index_range.value_low_index;
 
-		node->access_index_range.low_index
-				= apply_discover_expr(ctx, scope, expr->subscript_range.low, low_index_ref);
+			node->access_index_range.low_index
+					= apply_discover_expr(ctx, scope, expr->subscript_range.low, low_index_ref);
+		}
 
-		struct value_ref high_index_ref = {0};
-		high_index_ref.type = ctx->stage->standard_types.integer;
-		high_index_ref.data = &node->access_index_range.value_high_index;
+		if (expr->subscript_range.high) {
+			struct value_ref high_index_ref = {0};
+			high_index_ref.type = ctx->stage->standard_types.integer;
+			high_index_ref.data = &node->access_index_range.value_high_index;
 
-		node->access_index_range.high_index
+			node->access_index_range.high_index
 				= apply_discover_expr(ctx, scope, expr->subscript_range.high, high_index_ref);
+		}
 
 		push_apply_node(ctx, node);
 
@@ -1282,26 +1286,28 @@ apply_dispatch(struct apply_context *ctx,
 		high_node = node->access_index_range.high_index;
 
 		assert(lhs_node != NULL);
-		assert(low_node != NULL);
-		assert(high_node != NULL);
 
 		if (lhs_node->entry_found  == ENTRY_NOT_FOUND ||
-			low_node->entry_found  == ENTRY_NOT_FOUND ||
-			high_node->entry_found == ENTRY_NOT_FOUND) {
+			(low_node  && low_node->entry_found  == ENTRY_NOT_FOUND) ||
+			(high_node && high_node->entry_found == ENTRY_NOT_FOUND)) {
 			return DISPATCH_ERROR;
 		} else if (lhs_node->entry_found  == ENTRY_FOUND_WAITING ||
-				   low_node->entry_found  == ENTRY_FOUND_WAITING ||
-				   high_node->entry_found == ENTRY_FOUND_WAITING) {
+				   (low_node  && low_node->entry_found  == ENTRY_FOUND_WAITING) ||
+				   (high_node && high_node->entry_found == ENTRY_FOUND_WAITING)) {
 			return DISPATCH_YIELD;
 		}
 
 		int err;
 
-		scalar_value low;
-		scalar_value high;
+		size_t low = 0;
+		size_t high = SCOPE_LOOKUP_RANGE_END;
 
-		low  = node->access_index_range.value_low_index;
-		high = node->access_index_range.value_high_index;
+		if (node->access_index_range.low_index) {
+			low  = node->access_index_range.value_low_index;
+		}
+		if (node->access_index_range.high_index) {
+			high = node->access_index_range.value_high_index;
+		}
 
 		err = scope_lookup_range(node->access_index_range.lookup, low, high);
 

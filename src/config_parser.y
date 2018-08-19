@@ -219,7 +219,10 @@ named_tuple_item:
 		;
 
 
-range:			expr ".." expr     { $$.low = $1; $$.high = $3; }
+range:			expr ".." expr     { $$.low = $1;   $$.high = $3; }
+		|		expr ".."          { $$.low = $1;   $$.high = NULL; }
+		|		     ".." expr     { $$.low = NULL; $$.high = $2; }
+		|		     ".."          { $$.low = NULL; $$.high = NULL; }
 		;
 expr:			NUMLIT             { $$ = alloc_node(ctx, CONFIG_NODE_NUMLIT); $$->numlit = $1; }
 		|		IDENTIFIER         { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = $1; }

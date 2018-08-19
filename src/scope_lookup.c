@@ -317,6 +317,10 @@ int scope_lookup_range(struct scope_lookup *ctx, size_t begin, size_t end)
 		return -1;
 	}
 
+	if (end == SCOPE_LOOKUP_RANGE_END) {
+		end = type->array.length;
+	}
+
 	if (end > type->array.length) {
 		printf("The range is outside the array bounds.\n");
 		return -1;

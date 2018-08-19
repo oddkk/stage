@@ -28,6 +28,8 @@ struct scope_lookup {
 
 struct scope_lookup scope_lookup_init(struct stage *, struct scoped_hash *root_scope);
 
+#define SCOPE_LOOKUP_RANGE_END (size_t)(-1)
+
 int scope_lookup_ident(struct scope_lookup *, struct atom *name);
 int scope_lookup_index(struct scope_lookup *, size_t i);
 int scope_lookup_range(struct scope_lookup *, size_t begin, size_t end);
