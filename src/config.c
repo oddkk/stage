@@ -370,6 +370,16 @@ static bool apply_expect_lookup_result(enum scope_entry_kind expected,
 	return true;
 }
 
+static void apply_l_expr_not_found(char *expected,
+								   struct apply_node *node)
+{
+	apply_begin_error(node->cnode);
+	fprintf(stderr, "Could not find the %s '", expected);
+	print_l_expr(node->cnode);
+	fprintf(stderr, "'.");
+	apply_end_error(node->cnode);
+}
+
 static struct apply_node *alloc_apply_node(struct apply_context *ctx, enum apply_node_type type, struct config_node *cnode)
 {
 	struct apply_node *node;
@@ -1482,6 +1492,49 @@ apply_dispatch(struct apply_context *ctx,
 	return DISPATCH_ERROR;
 }
 
+void apply_print_missing_error(struct apply_context *ctx, struct apply_node *node)
+{
+	switch (node->type) {
+	case APPLY_NODE_DEVICE:
+		if (node->device.type->state != DISPATCH_DONE) {
+			apply_l_expr_not_found("device type", node->device.type);
+		}
+		break;
+	case APPLY_NODE_DEVICE_ATTR:
+		if (node->device_attr.name->state != DISPATCH_DONE) {
+			apply_l_expr_not_found("value", node->device_attr.name);
+		}
+		break;
+
+	case APPLY_NODE_TYPE_DECL:
+		break;
+
+	case APPLY_NODE_TYPE_L_EXPR:
+		if (node->type_l_expr.expr->state != DISPATCH_DONE) {
+			apply_l_expr_not_found("type", node->type_l_expr.expr);
+		}
+		break;
+
+	case APPLY_NODE_BIND:
+		if (node->bind.lhs->state != DISPATCH_DONE) {
+			apply_l_expr_not_found("channel(s)", node->bind.lhs);
+		}
+		if (node->bind.rhs->state != DISPATCH_DONE) {
+			apply_l_expr_not_found("channel(s)", node->bind.rhs);
+		}
+		break;
+
+	case APPLY_NODE_L_VALUE:
+		if (node->l_value.expr->state != DISPATCH_DONE) {
+			apply_l_expr_not_found("value", node->l_value.expr);
+		}
+		break;
+
+	default:
+		break;
+	}
+}
+
 int apply_config(struct stage *stage, struct config_node *node)
 {
 	struct apply_context ctx = {0};
@@ -1504,8 +1557,13 @@ int apply_config(struct stage *stage, struct config_node *node)
 			// Wait for 1 generations before aborting, to allow newly
 			// created nodes to be applied.
 			if (generation > last_successful_generation + 1) {
-				// @TODO: Print what was not applied.
-				printf("Failed to apply config. Some attributes where not applied.\n");
+				push_apply_node(&ctx, node);
+
+				 while (ctx.queue) {
+					node = pop_apply_node(&ctx);
+					apply_print_missing_error(&ctx, node);
+				}
+
 				return -1;
 			}
 		}
