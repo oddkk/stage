@@ -72,4 +72,6 @@ struct scoped_hash *scoped_hash_push(struct scoped_hash *parent,
 
 void scoped_hash_print(struct scoped_hash *hash, int indent);
 
+char *humanreadable_scope_entry(enum scope_entry_kind);
+
 #endif

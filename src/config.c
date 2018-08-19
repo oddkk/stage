@@ -67,10 +67,10 @@ const char *apply_node_name(enum apply_node_type type) {
 	return "(unknown apply node)";
 }
 
-enum entry_found_state {
-	ENTRY_FOUND_WAITING = 0,
-	ENTRY_NOT_FOUND = -1,
-	ENTRY_FOUND = 1,
+enum apply_dispatch_result {
+	DISPATCH_DONE  = 0,
+	DISPATCH_YIELD = 1,
+	DISPATCH_ERROR = -1,
 };
 
 struct apply_node;
@@ -256,7 +256,7 @@ struct apply_node {
 		} l_value;
 	};
 
-	enum entry_found_state entry_found;
+	enum apply_dispatch_result state;
 };
 
 struct apply_context {
@@ -265,6 +265,14 @@ struct apply_context {
 
 	struct stage *stage;
 };
+
+static inline enum apply_dispatch_result apply_node_state(struct apply_node *node)
+{
+	return node->state;
+}
+
+#define WAIT_FOR(node) if (apply_node_state(node) != DISPATCH_DONE) { return apply_node_state(node); }
+
 
 #if APPLY_DEBUG
 static void apply_debug(const char *fmt, ...)
@@ -280,14 +288,24 @@ static void apply_debug(const char *fmt, ...)
 #define apply_debug(...)
 #endif
 
+static void apply_begin_error(struct config_node *node)
+{
+	fprintf(stderr, "%zu:%zu: ", node->from.line, node->from.column);
+}
+
+static void apply_end_error(struct config_node *node)
+{
+	fprintf(stderr, "\n");
+}
+
 static void apply_error(struct config_node *node, const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	fprintf(stderr, "%zu:%zu: ", node->from.line, node->from.column);
+	apply_begin_error(node);
 	vfprintf(stderr, fmt, ap);
-	fprintf(stderr, "\n");
+	apply_end_error(node);
 	va_end(ap);
 }
 
@@ -297,6 +315,7 @@ static struct apply_node *alloc_apply_node(struct apply_context *ctx, enum apply
 	node = calloc(1, sizeof(struct apply_node));
 	node->type = type;
 	node->cnode = cnode;
+	node->state = DISPATCH_YIELD;
 	return node;
 }
 
@@ -331,46 +350,46 @@ static struct apply_node *pop_apply_node(struct apply_context *ctx)
 	return result;
 }
 
-/* static void print_l_expr(struct config_node *expr) */
-/* { */
-/* 	switch (expr->type) { */
-/* 	case CONFIG_NODE_IDENT: */
-/* 		if (expr->ident) { */
-/* 			printf("%.*s", ALIT(expr->ident)); */
-/* 		} else { */
-/* 			printf("_"); */
-/* 		} */
-/* 		break; */
+static void print_l_expr(struct config_node *expr)
+{
+	switch (expr->type) {
+	case CONFIG_NODE_IDENT:
+		if (expr->ident) {
+			fprintf(stderr, "%.*s", ALIT(expr->ident));
+		} else {
+			fprintf(stderr, "_");
+		}
+		break;
 
-/* 	case CONFIG_NODE_BINARY_OP: */
-/* 		print_l_expr(expr->binary_op.lhs); */
+	case CONFIG_NODE_BINARY_OP:
+		print_l_expr(expr->binary_op.lhs);
 
-/* 		if (expr->binary_op.op == CONFIG_OP_SUBSCRIPT) { */
-/* 			printf("["); */
-/* 			printf("(expr)"); */
-/* 			printf("]"); */
-/* 		} else if (expr->binary_op.op == CONFIG_OP_ACCESS) { */
-/* 			printf("."); */
-/* 			print_l_expr(expr->binary_op.rhs); */
-/* 		} else { */
-/* 			printf("(non l-expr)"); */
-/* 		} */
-/* 		break; */
+		if (expr->binary_op.op == CONFIG_OP_SUBSCRIPT) {
+			fprintf(stderr, "[");
+			fprintf(stderr, "(expr)");
+			fprintf(stderr, "]");
+		} else if (expr->binary_op.op == CONFIG_OP_ACCESS) {
+			fprintf(stderr, ".");
+			print_l_expr(expr->binary_op.rhs);
+		} else {
+			fprintf(stderr, "(non l-expr)");
+		}
+		break;
 
-/* 	case CONFIG_NODE_SUBSCRIPT_RANGE: */
-/* 		print_l_expr(expr->subscript_range.lhs); */
+	case CONFIG_NODE_SUBSCRIPT_RANGE:
+		print_l_expr(expr->subscript_range.lhs);
 
-/* 		printf("["); */
-/* 		printf("(expr)..(expr)"); */
-/* 		printf("]"); */
+		fprintf(stderr, "[");
+		fprintf(stderr, "(expr)..(expr)");
+		fprintf(stderr, "]");
 
-/* 		break; */
+		break;
 
-/* 	default: */
-/* 		printf("(non l-expr)"); */
-/* 		break; */
-/* 	} */
-/* } */
+	default:
+		fprintf(stderr, "(non l-expr)");
+		break;
+	}
+}
 
 static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 											  struct scoped_hash *scope,
@@ -824,32 +843,24 @@ static void apply_discover(struct apply_context *ctx,
 	}
 }
 
-static int apply_resolve_type_id(struct apply_node *node, type_id *type)
+static type_id apply_resolve_type_id(struct apply_node *node)
 {
 	switch (node->type) {
 	case APPLY_NODE_TYPE_L_EXPR:
-		*type = node->type_l_expr.type;
-		return 0;
+		return node->type_l_expr.type;
 
 	case APPLY_NODE_TYPE_TUPLE:
-		*type = node->type_tuple.type;
-		return 0;
+		return node->type_tuple.type;
 
 	case APPLY_NODE_TYPE_SUBRANGE:
-		*type = node->type_subrange.type;
-		return 0;
+		return node->type_subrange.type;
 
 	default:
-		apply_error(node->cnode, "Not a type.");
+		assert(!"Invalid node in type.");
 		return -1;
 	}
 }
 
-enum apply_dispatch_result {
-	DISPATCH_DONE  = 0,
-	DISPATCH_YIELD = 1,
-	DISPATCH_ERROR = -1,
-};
 
 static int config_device_init(struct stage *stage,
 							  struct device_type *dev_type,
@@ -895,8 +906,6 @@ apply_dispatch(struct apply_context *ctx,
 		node->device_type.complete = true;
 		finalize_device_type(node->device_type.type);
 
-		node->entry_found = ENTRY_FOUND;
-
 		return DISPATCH_DONE;
 
 	case APPLY_NODE_DEVICE_TYPE_ATTR: {
@@ -917,12 +926,7 @@ apply_dispatch(struct apply_context *ctx,
 		struct apply_node *type_expr;
 		type_expr = node->device_type_attribute.type;
 
-		if (type_expr->entry_found == ENTRY_FOUND_WAITING) {
-			return DISPATCH_YIELD;
-		}
-		else if (type_expr->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		}
+		WAIT_FOR(type_expr);
 
 		if (node->device_type_attribute.type_lookup.kind != SCOPE_ENTRY_TYPE) {
 			apply_error(type_expr->cnode, "Expression is not a type.");
@@ -971,12 +975,7 @@ apply_dispatch(struct apply_context *ctx,
 		struct apply_node *type_expr;
 		type_expr = node->device_type_input.type;
 
-		if (type_expr->entry_found == ENTRY_FOUND_WAITING) {
-			return DISPATCH_YIELD;
-		}
-		else if (type_expr->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		}
+		WAIT_FOR(type_expr);
 
 		if (node->device_type_input.type_lookup.kind != SCOPE_ENTRY_TYPE) {
 			apply_error(type_expr->cnode, "Expression is not a type.");
@@ -1015,13 +1014,7 @@ apply_dispatch(struct apply_context *ctx,
 		struct apply_node *name;
 		name = node->device_attr.name;
 
-		if (name->entry_found == ENTRY_FOUND_WAITING) {
-			apply_debug("Waiting for attribute name.");
-			return DISPATCH_YIELD;
-		}
-		else if (name->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		}
+		WAIT_FOR(name);
 
 		/* if (node->device_type_input.type_lookup.kind != SCOPE_ENTRY_TYPE) { */
 		/* 	apply_error(node->device_type_input.type->cnode, */
@@ -1067,12 +1060,7 @@ apply_dispatch(struct apply_context *ctx,
 									  dest);
 		}
 
-		if (node->device_attr.value->entry_found == ENTRY_FOUND_WAITING) {
-			return DISPATCH_YIELD;
-		}
-		else if (node->device_attr.value->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		}
+		WAIT_FOR(node->device_attr.value);
 
 		assert(dev->device.missing_attrs > 0);
 		dev->device.missing_attrs -= 1;
@@ -1081,16 +1069,15 @@ apply_dispatch(struct apply_context *ctx,
 	}
 
 	case APPLY_NODE_DEVICE: {
-		if (node->device.type->entry_found == ENTRY_NOT_FOUND) {
-			apply_error(node->device.type->cnode, "Device type not found.");
-			return DISPATCH_ERROR;
-		} else if (node->device.type->entry_found == ENTRY_FOUND_WAITING) {
-			apply_debug("Waiting for device type.");
-			return DISPATCH_YIELD;
-		}
+		WAIT_FOR(node->device.type);
 
 		if (node->device.type_lookup.kind != SCOPE_ENTRY_DEVICE_TYPE) {
-			apply_error(node->device.type->cnode, "Not a device type.");
+			apply_begin_error(node->device.type->cnode);
+			fprintf(stderr, "'");
+			print_l_expr(node->device.type->cnode);
+			fprintf(stderr, "' is a %s, but a device type was expected.",
+					humanreadable_scope_entry(node->device.type_lookup.kind));
+			apply_end_error(node->device.type->cnode);
 			return DISPATCH_ERROR;
 		}
 
@@ -1159,36 +1146,21 @@ apply_dispatch(struct apply_context *ctx,
 		struct apply_node *type_node;
 		type_node = node->type_decl.type;
 
-		if (node->type_decl.type->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		} else if (node->type_decl.type->entry_found == ENTRY_FOUND_WAITING) {
-			return DISPATCH_YIELD;
-		}
+		WAIT_FOR(node->type_decl.type);
 
 		type_id type;
-		int err;
-
-		err = apply_resolve_type_id(type_node, &type);
-		if (err) {
-			return DISPATCH_ERROR;
-		}
+		type = apply_resolve_type_id(type_node);
 
 		register_type_name(ctx->stage, type,
 						   node->type_decl.scope,
 						   node->type_decl.name);
-
-		node->entry_found = ENTRY_FOUND;
 
 		return DISPATCH_DONE;
 	}
 
 
 	case APPLY_NODE_TYPE_L_EXPR: {
-		if (node->type_l_expr.expr->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		} else if (node->type_l_expr.expr->entry_found == ENTRY_FOUND_WAITING) {
-			return DISPATCH_YIELD;
-		}
+		WAIT_FOR(node->type_l_expr.expr);
 
 		struct scope_lookup_range range;
 		int err;
@@ -1203,8 +1175,6 @@ apply_dispatch(struct apply_context *ctx,
 			return DISPATCH_ERROR;
 		}
 
-		node->entry_found = ENTRY_FOUND;
-
 		return DISPATCH_DONE;
 	}
 
@@ -1212,20 +1182,11 @@ apply_dispatch(struct apply_context *ctx,
 		for (size_t i = 0; i < node->type_tuple.num_members; i++) {
 			struct apply_tuple_member *member;
 			member = &node->type_tuple.members[i];
-			if (member->type->entry_found == ENTRY_NOT_FOUND) {
-				return DISPATCH_ERROR;
-			} else if (member->type->entry_found == ENTRY_FOUND_WAITING) {
-				apply_debug("Waiting for member %zu (%.*s) type.",
-							i, ALIT(member->name));
-				return DISPATCH_YIELD;
-			}
+
+			WAIT_FOR(member->type);
 
 			type_id type;
-			int err;
-			err = apply_resolve_type_id(member->type, &type);
-			if (err) {
-				return DISPATCH_ERROR;
-			}
+			type = apply_resolve_type_id(member->type);
 		}
 
 		struct type new_type = {0};
@@ -1270,8 +1231,6 @@ apply_dispatch(struct apply_context *ctx,
 
 		node->type_tuple.type = final_type->id;
 
-		node->entry_found = ENTRY_FOUND;
-
 		return DISPATCH_DONE;
 	}
 
@@ -1284,12 +1243,7 @@ apply_dispatch(struct apply_context *ctx,
 	case APPLY_NODE_ACCESS: {
 		assert(node->access.lhs != NULL);
 
-		if (node->access.lhs->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		} else if (node->access.lhs->entry_found == ENTRY_FOUND_WAITING) {
-			apply_debug("Waiting for lhs.");
-			return DISPATCH_YIELD;
-		}
+		WAIT_FOR(node->access.lhs);
 
 		if (!node->access.rhs) {
 			node->access.rhs
@@ -1299,14 +1253,7 @@ apply_dispatch(struct apply_context *ctx,
 										node->access.lookup);
 		}
 
-		if (node->access.rhs->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		} else if (node->access.rhs->entry_found == ENTRY_FOUND_WAITING) {
-			apply_debug("Waiting for rhs.");
-			return DISPATCH_YIELD;
-		}
-
-		node->entry_found = node->access.rhs->entry_found;
+		WAIT_FOR(node->access.rhs);
 
 		return DISPATCH_DONE;
 	}
@@ -1315,22 +1262,15 @@ apply_dispatch(struct apply_context *ctx,
 		assert(node->access_index.lhs != NULL);
 		assert(node->access_index.index != NULL);
 
-		if (node->access_index.lhs->entry_found   == ENTRY_NOT_FOUND ||
-			node->access_index.index->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		} else if (node->access_index.lhs->entry_found   == ENTRY_FOUND_WAITING ||
-				   node->access_index.index->entry_found == ENTRY_FOUND_WAITING) {
-			return DISPATCH_YIELD;
-		}
+		WAIT_FOR(node->access_index.lhs);
+		WAIT_FOR(node->access_index.index);
 
 		int err;
 
 		err = scope_lookup_index(node->access_index.lookup,
 								 node->access_index.value_index);
 
-		if (!err) {
-			node->entry_found = ENTRY_FOUND;
-		} else {
+		if (err) {
 			apply_debug("Waiting for ident '%.*s'%s.",
 						ALIT(node->ident.name),
 						node->ident.local_lookup
@@ -1351,33 +1291,25 @@ apply_dispatch(struct apply_context *ctx,
 
 		assert(lhs_node != NULL);
 
-		if (lhs_node->entry_found  == ENTRY_NOT_FOUND ||
-			(low_node  && low_node->entry_found  == ENTRY_NOT_FOUND) ||
-			(high_node && high_node->entry_found == ENTRY_NOT_FOUND)) {
-			return DISPATCH_ERROR;
-		} else if (lhs_node->entry_found  == ENTRY_FOUND_WAITING ||
-				   (low_node  && low_node->entry_found  == ENTRY_FOUND_WAITING) ||
-				   (high_node && high_node->entry_found == ENTRY_FOUND_WAITING)) {
-			return DISPATCH_YIELD;
-		}
+		WAIT_FOR(lhs_node);
+		if (low_node)  { WAIT_FOR(low_node);  }
+		if (high_node) { WAIT_FOR(high_node); }
 
 		int err;
 
 		size_t low = 0;
 		size_t high = SCOPE_LOOKUP_RANGE_END;
 
-		if (node->access_index_range.low_index) {
+		if (low_node) {
 			low  = node->access_index_range.value_low_index;
 		}
-		if (node->access_index_range.high_index) {
+		if (high_node) {
 			high = node->access_index_range.value_high_index;
 		}
 
 		err = scope_lookup_range(node->access_index_range.lookup, low, high);
 
-		if (!err) {
-			node->entry_found = ENTRY_FOUND;
-		} else {
+		if (err) {
 			apply_debug("Waiting for ident '%.*s'%s.",
 						ALIT(node->ident.name),
 						node->ident.local_lookup
@@ -1388,13 +1320,8 @@ apply_dispatch(struct apply_context *ctx,
 	}
 
 	case APPLY_NODE_BIND: {
-		if (node->bind.lhs->entry_found == ENTRY_NOT_FOUND ||
-			node->bind.rhs->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		} else if (node->bind.lhs->entry_found == ENTRY_FOUND_WAITING ||
-				   node->bind.rhs->entry_found == ENTRY_FOUND_WAITING) {
-			return DISPATCH_YIELD;
-		}
+		WAIT_FOR(node->bind.lhs);
+		WAIT_FOR(node->bind.rhs);
 
 		if (node->bind.lookup_lhs.kind != SCOPE_ENTRY_DEVICE_CHANNEL) {
 			apply_error(node->bind.lhs->cnode, "Not a channel.");
@@ -1478,27 +1405,22 @@ apply_dispatch(struct apply_context *ctx,
 		int err;
 		err = scope_lookup_ident(node->ident.lookup, node->ident.name);
 
-		if (!err) {
-			node->entry_found = ENTRY_FOUND;
-		} else {
+		if (err) {
 			apply_debug("Waiting for ident '%.*s'%s.",
 						ALIT(node->ident.name),
 						node->ident.local_lookup
 						? " local lookup"
 						: "");
+			return DISPATCH_YIELD;
 		}
-		return (err == 0) ? DISPATCH_DONE : DISPATCH_YIELD;
+		return DISPATCH_DONE;
 	}
 
 	case APPLY_NODE_L_VALUE: {
 		struct apply_node *expr;
 
 		expr = node->l_value.expr;
-		if (expr->entry_found == ENTRY_NOT_FOUND) {
-			return DISPATCH_ERROR;
-		} else if (expr->entry_found == ENTRY_FOUND_WAITING) {
-			return DISPATCH_YIELD;
-		}
+		WAIT_FOR(expr);
 
 		// @TODO: Fix
 		return DISPATCH_ERROR;
@@ -1520,17 +1442,15 @@ apply_dispatch(struct apply_context *ctx,
 		/* 	return DISPATCH_ERROR; */
 		/* } */
 
-		node->entry_found = ENTRY_FOUND;
 		return DISPATCH_DONE;
 	}
 
 	case APPLY_NODE_NUMLIT:
 		if (node->literal.dest.type == ctx->stage->standard_types.integer) {
 			node->literal.dest.data[0] = node->literal.numlit;
-			node->entry_found = ENTRY_FOUND;
 		} else {
 			printf("@TODO: Implement literal unification.");
-			node->entry_found = ENTRY_NOT_FOUND;
+			return DISPATCH_ERROR;
 		}
 
 		return DISPATCH_DONE;
@@ -1577,8 +1497,9 @@ int apply_config(struct stage *stage, struct config_node *node)
 
 		result = apply_dispatch(&ctx, node);
 
+		node->state = result;
+
 		if (result == DISPATCH_ERROR) {
-			node->entry_found = ENTRY_NOT_FOUND;
 			apply_debug("ERROR");
 			printf("Failed to apply '%s'. Aborting.\n",
 				   apply_node_name(node->type));

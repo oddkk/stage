@@ -175,3 +175,18 @@ void scoped_hash_print(struct scoped_hash *hash, int indent)
 		}
 	}
 }
+
+char *humanreadable_scope_entry(enum scope_entry_kind kind)
+{
+	switch (kind) {
+	case SCOPE_ENTRY_NONE: return "(none)";
+	case SCOPE_ENTRY_NAMESPACE: return "namespace";
+	case SCOPE_ENTRY_TYPE: return "type";
+	case SCOPE_ENTRY_DEVICE: return "device";
+	case SCOPE_ENTRY_DEVICE_TYPE: return "device type";
+	case SCOPE_ENTRY_DEVICE_CHANNEL: return "device channel";
+	case SCOPE_ENTRY_DEVICE_INPUT: return "device input";
+	case SCOPE_ENTRY_DEVICE_OUTPUT: return "device output";
+	case SCOPE_ENTRY_DEVICE_ATTRIBUTE: return "device attribute";
+	}
+}
