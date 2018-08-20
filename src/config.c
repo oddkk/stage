@@ -1582,7 +1582,7 @@ apply_dispatch(struct apply_context *ctx,
 		if (node->literal.dest.type == ctx->stage->standard_types.integer) {
 			node->literal.dest.data[0] = node->literal.numlit;
 		} else {
-			printf("@TODO: Implement literal unification.");
+			printf("@TODO: Implement literal unification.\n");
 			return DISPATCH_ERROR;
 		}
 
@@ -1656,9 +1656,9 @@ int apply_config(struct stage *stage, struct config_node *node)
 		if (node->generation + 1 > generation) {
 			generation = node->generation + 1;
 
-			// Wait for 1 generations before aborting, to allow newly
+			// Wait for 2 generations before aborting, to allow newly
 			// created nodes to be applied.
-			if (generation > last_successful_generation + 1) {
+			if (generation > last_successful_generation + 2) {
 				push_apply_node(&ctx, node);
 
 				 while (ctx.queue) {
