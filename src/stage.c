@@ -151,21 +151,21 @@ static bool print_full_entry_name_internal(struct stage *stage,
 			printf("%.*s", ALIT(dev_type->name));
 		} break;
 
-	case SCOPE_ENTRY_DEVICE_INPUT:{
-			struct device_type *dev_type;
-			assert(entry->parent);
-			dev_type = get_device_type(stage, entry->parent->id);
-			assert(entry->id < dev_type->num_inputs);
-			printf("%.*s", ALIT(dev_type->inputs[entry->id].name));
-		} break;
+	/* case SCOPE_ENTRY_DEVICE_INPUT:{ */
+	/* 		struct device_type *dev_type; */
+	/* 		assert(entry->parent); */
+	/* 		dev_type = get_device_type(stage, entry->parent->id); */
+	/* 		assert(entry->id < dev_type->num_inputs); */
+	/* 		printf("%.*s", ALIT(dev_type->inputs[entry->id].name)); */
+	/* 	} break; */
 
-	case SCOPE_ENTRY_DEVICE_OUTPUT:{
-			struct device_type *dev_type;
-			assert(entry->parent);
-			dev_type = get_device_type(stage, entry->parent->id);
-			assert(entry->id < dev_type->num_outputs);
-			printf("%.*s", ALIT(dev_type->outputs[entry->id].name));
-		} break;
+	/* case SCOPE_ENTRY_DEVICE_OUTPUT:{ */
+	/* 		struct device_type *dev_type; */
+	/* 		assert(entry->parent); */
+	/* 		dev_type = get_device_type(stage, entry->parent->id); */
+	/* 		assert(entry->id < dev_type->num_outputs); */
+	/* 		printf("%.*s", ALIT(dev_type->outputs[entry->id].name)); */
+	/* 	} break; */
 
 	default:
 		printf("(@TODO complete print_full_entry_name)");

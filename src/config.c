@@ -647,7 +647,6 @@ static void apply_discover_device_type_members(struct apply_context *ctx,
 		} break;
 
 		default:
-			apply_error(node, "Unexpected node in device type.");
 			break;
 		}
 	}
@@ -680,11 +679,16 @@ static void apply_discover_bind(struct apply_context *ctx,
 
 }
 
+static void apply_discover_device(struct apply_context *ctx,
+								  struct scoped_hash *scope,
+								  struct config_node *device_node);
+
 static void apply_discover_device_attrs(struct apply_context *ctx,
 										struct apply_node *device,
-										struct config_node *device_node)
+										struct config_node *first_member,
+										bool from_device_type)
 {
-	for (struct config_node *member = device_node->device.first_child;
+	for (struct config_node *member = first_member;
 		 member;
 		 member = member->next_sibling) {
 
@@ -706,9 +710,25 @@ static void apply_discover_device_attrs(struct apply_context *ctx,
 			device->device.missing_attrs += 1;
 
 			push_apply_node(ctx, attr);
-		} else if (member->type == CONFIG_NODE_BINARY_OP &&
+		}
+	}
+}
+
+static void apply_discover_device_members(struct apply_context *ctx,
+										struct apply_node *device,
+										struct config_node *first_member,
+										bool from_device_type)
+{
+	for (struct config_node *member = first_member;
+		 member;
+		 member = member->next_sibling) {
+
+		if (member->type == CONFIG_NODE_BINARY_OP &&
 				   member->binary_op.op == CONFIG_OP_BIND) {
-				apply_discover_bind(ctx, device->device.device->scope, member);
+			apply_discover_bind(ctx, device->device.device->scope, member);
+		}
+		else if (member->type == CONFIG_NODE_DEVICE) {
+			apply_discover_device(ctx, device->device.device->scope, member);
 		}
 	}
 }
@@ -920,12 +940,95 @@ static type_id apply_resolve_type_id(struct apply_node *node)
 	}
 }
 
+struct config_device_type_data {
+	struct apply_node *device_type_node;
+};
+
+struct config_device_context {
+	struct apply_context *ctx;
+	struct apply_node *device;
+};
+
+static int apply_message_pump(struct apply_context *ctx);
+
+struct tmp_config_device_context {
+	struct apply_context tmp_apply_context;
+
+	struct apply_context *ctx;
+	struct apply_node *device_node;
+	struct apply_node *device_type_node;
+
+	struct config_node *device_type_first_child;
+};
+
+static void config_device_initialize_context(struct tmp_config_device_context *ctx,
+											 struct stage *stage,
+											 struct device_type *dev_type,
+											 struct device *dev,
+											 void *context)
+{
+	if (context) {
+		struct config_device_context *config_ctx;
+		config_ctx = (struct config_device_context *)context;
+
+		ctx->ctx = config_ctx->ctx;
+		ctx->device_node = config_ctx->device;
+	} else{
+		ctx->ctx = &ctx->tmp_apply_context;
+		ctx->ctx->stage = stage;
+
+		ctx->device_node = alloc_apply_node(ctx->ctx, APPLY_NODE_DEVICE, NULL);
+		ctx->device_node->device.device = dev;
+		ctx->device_node->device.name = dev->name;
+		ctx->device_node->device.visited = false;
+	}
+
+	struct config_device_type_data *device_type_data;
+	device_type_data = (struct config_device_type_data *)dev_type->user_data;
+
+	ctx->device_type_node
+		= device_type_data->device_type_node;
+
+	ctx->device_type_first_child
+		= ctx->device_type_node->cnode->device_type.first_child;
+}
+
+static int config_device_pre_init(struct stage *stage,
+							  struct device_type *dev_type,
+							  struct device *dev,
+							  void *context)
+{
+	struct tmp_config_device_context ctx;
+	zero_struct(ctx);
+
+	config_device_initialize_context(&ctx, stage, dev_type, dev, context);
+
+	apply_discover_device_attrs(ctx.ctx, ctx.device_node,
+								ctx.device_type_first_child, true);
+
+	if (!context) {
+		return apply_message_pump(ctx.ctx);
+	}
+
+	return 0;
+}
 
 static int config_device_init(struct stage *stage,
 							  struct device_type *dev_type,
-							  struct device *dev)
+							  struct device *dev,
+							  void *context)
 {
-	printf("Init %.*s (%.*s)\n", ALIT(dev->name), ALIT(dev_type->name));
+	struct tmp_config_device_context ctx;
+	zero_struct(ctx);
+
+	config_device_initialize_context(&ctx, stage, dev_type, dev, context);
+
+	apply_discover_device_members(ctx.ctx, ctx.device_node,
+								  ctx.device_type_first_child, true);
+
+	if (!context) {
+		return apply_message_pump(ctx.ctx);
+	}
 
 	return 0;
 }
@@ -941,11 +1044,18 @@ apply_dispatch(struct apply_context *ctx,
 				= register_device_type_scoped(ctx->stage,
 											  node->device_type.name->name,
 											  node->device_type.scope);
-			node->device_type.type->user_data = node;
-			node->device_type.type->device_init = config_device_init;
 			if (!node->device_type.type) {
 				return DISPATCH_ERROR;
 			}
+
+			struct config_device_type_data *data;
+			data = calloc(1, sizeof(struct config_device_type_data));
+			data->device_type_node = node;
+
+			node->device_type.type->user_data = data;
+			node->device_type.type->device_context_init = config_device_init;
+			node->device_type.type->device_context_pre_init = config_device_pre_init;
+			node->device_type.type->takes_context = true;
 		}
 
 		if (!node->device_type.visited) {
@@ -1159,10 +1269,17 @@ apply_dispatch(struct apply_context *ctx,
 			return DISPATCH_YIELD;
 		}
 
+		struct config_device_context device_context = {0};
+
+		device_context.device = node;
+		device_context.ctx = ctx;
+
 		if (!node->device.device) {
 			node->device.device
-				= register_device_pre_attrs(ctx->stage, dev_type->id,
-											node->device.scope, node->device.name);
+				= register_device_pre_attrs_with_context(ctx->stage, dev_type->id,
+														 node->device.scope,
+														 node->device.name,
+														 &device_context);
 			if (!node->device.device) {
 				apply_debug("Failed to register device.");
 				return DISPATCH_ERROR;
@@ -1170,13 +1287,9 @@ apply_dispatch(struct apply_context *ctx,
 		}
 
 		if (!node->device.visited) {
-			apply_discover_device_attrs(ctx, node, node->cnode);
+			apply_discover_device_attrs(ctx, node, node->cnode->device.first_child, false);
+			apply_discover_device_members(ctx, node, node->cnode->device.first_child, false);
 			node->device.visited = true;
-		}
-
-		if (node->device.not_found_attrs > 0) {
-			apply_error(node->cnode, "Missing %zu attributes\n", node->device.not_found_attrs);
-			return DISPATCH_ERROR;
 		}
 
 		if (node->device.missing_attrs > 0) {
@@ -1190,7 +1303,8 @@ apply_dispatch(struct apply_context *ctx,
 			attr = node->device.attrs[i];
 		}
 
-		err = finalize_device(ctx->stage, node->device.device);
+		err = finalize_device_with_context(ctx->stage, node->device.device,
+										   &device_context);
 
 		if (err) {
 			apply_error(node->cnode, "Failed to finalized device.");
@@ -1474,19 +1588,22 @@ apply_dispatch(struct apply_context *ctx,
 		struct scope_lookup_range rhs_range;
 
 		size_t lhs_instances, rhs_instances;
+		size_t lhs_instance_size, rhs_instance_size;
 
 		lhs_instances = scope_lookup_instances(node->bind.lookup_lhs);
 		rhs_instances = scope_lookup_instances(node->bind.lookup_rhs);
 
-		if (lhs_instances == rhs_instances) {
+		lhs_instance_size = scope_lookup_instance_size(node->bind.lookup_lhs);
+		rhs_instance_size = scope_lookup_instance_size(node->bind.lookup_rhs);
+
+		if (lhs_instances == rhs_instances &&
+			lhs_instance_size == rhs_instance_size) {
 			while ((err = scope_lookup_iterate(node->bind.lookup_lhs,
 											&lhs_i, &lhs_range)) == LOOKUP_FOUND &&
 				(err = scope_lookup_iterate(node->bind.lookup_rhs,
 											&rhs_i, &rhs_range)) == LOOKUP_FOUND) {
-				if (lhs_range.length != rhs_range.length) {
-					apply_error(node->cnode, "Left and right side does not match.");
-					return DISPATCH_ERROR;
-				}
+
+				assert(lhs_range.length == rhs_range.length);
 
 				for (size_t i = 0; i < lhs_range.length; i++) {
 					channel_bind(ctx->stage,
@@ -1495,7 +1612,8 @@ apply_dispatch(struct apply_context *ctx,
 				}
 			}
 		}
-		else if (rhs_instances == 1) {
+		else if (rhs_instances == 1 &&
+				 lhs_instance_size == rhs_instance_size) {
 			err = scope_lookup_iterate(node->bind.lookup_rhs,
 									   &rhs_i, &rhs_range);
 
@@ -1506,16 +1624,36 @@ apply_dispatch(struct apply_context *ctx,
 
 			while ((err = scope_lookup_iterate(node->bind.lookup_lhs,
 											   &lhs_i, &lhs_range)) == LOOKUP_FOUND) {
-				if (lhs_range.length != rhs_range.length) {
-					apply_error(node->cnode, "Left and right side does not match.");
-					return DISPATCH_ERROR;
-				}
+
+				assert(lhs_range.length == rhs_range.length);
 
 				for (size_t i = 0; i < lhs_range.length; i++) {
 					channel_bind(ctx->stage,
 								rhs_range.begin + i,
 								lhs_range.begin + i);
 				}
+			}
+		}
+		else if (rhs_instances == 1 &&
+				 lhs_instance_size == 1 &&
+				 lhs_instances == rhs_instance_size) {
+			err = scope_lookup_iterate(node->bind.lookup_rhs,
+									   &rhs_i, &rhs_range);
+
+			if (err) {
+				apply_error(node->cnode, "Could not iterate.");
+				return DISPATCH_ERROR;
+			}
+
+			size_t i = 0;
+			while ((err = scope_lookup_iterate(node->bind.lookup_lhs,
+											   &lhs_i, &lhs_range)) == LOOKUP_FOUND) {
+
+				channel_bind(ctx->stage,
+							rhs_range.begin + i,
+							lhs_range.begin);
+
+				i += 1;
 			}
 		}
 		else {
@@ -1637,21 +1775,16 @@ void apply_print_missing_error(struct apply_context *ctx, struct apply_node *nod
 	}
 }
 
-int apply_config(struct stage *stage, struct config_node *node)
+static int apply_message_pump(struct apply_context *ctx)
 {
-	struct apply_context ctx = {0};
-	ctx.stage = stage;
-
-	apply_discover(&ctx, &ctx.stage->root_scope, node);
-
 	size_t generation = 0;
 	size_t last_successful_generation = 0;
 
-	while (ctx.queue) {
+	while (ctx->queue) {
 		struct apply_node *node;
 		enum apply_dispatch_result result;
 
-		node = pop_apply_node(&ctx);
+		node = pop_apply_node(ctx);
 
 		if (node->generation + 1 > generation) {
 			generation = node->generation + 1;
@@ -1659,11 +1792,11 @@ int apply_config(struct stage *stage, struct config_node *node)
 			// Wait for 2 generations before aborting, to allow newly
 			// created nodes to be applied.
 			if (generation > last_successful_generation + 2) {
-				push_apply_node(&ctx, node);
+				push_apply_node(ctx, node);
 
-				 while (ctx.queue) {
-					node = pop_apply_node(&ctx);
-					apply_print_missing_error(&ctx, node);
+				 while (ctx->queue) {
+					node = pop_apply_node(ctx);
+					apply_print_missing_error(ctx, node);
 				}
 
 				return -1;
@@ -1676,7 +1809,7 @@ int apply_config(struct stage *stage, struct config_node *node)
 		printf("%zu:Applying %s... ", node->generation, apply_node_name(node->type));
 		#endif
 
-		result = apply_dispatch(&ctx, node);
+		result = apply_dispatch(ctx, node);
 
 		node->state = result;
 
@@ -1687,7 +1820,7 @@ int apply_config(struct stage *stage, struct config_node *node)
 			return -1;
 		} else if (result == DISPATCH_YIELD) {
 			apply_debug("Yield");
-			push_apply_node(&ctx, node);
+			push_apply_node(ctx, node);
 		} else {
 			last_successful_generation = generation;
 			apply_debug("Ok");
@@ -1697,4 +1830,14 @@ int apply_config(struct stage *stage, struct config_node *node)
 	apply_debug("Application done\n");
 
 	return 0;
+}
+
+int apply_config(struct stage *stage, struct config_node *node)
+{
+	struct apply_context ctx = {0};
+	ctx.stage = stage;
+
+	apply_discover(&ctx, &ctx.stage->root_scope, node);
+
+	return apply_message_pump(&ctx);
 }

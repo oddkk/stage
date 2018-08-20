@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
 	}
 
 
-#if 0
+#if 1
 	printf
 	    ("============================ types ============================\n");
 	for (int i = 0; i < stage.num_types; i++) {
@@ -127,9 +127,9 @@ int main(int argc, char *argv[])
 
 		type = get_type(&stage, i);
 
-		print_type(&stage, type);
+		print_type(stdout, &stage, type);
 		printf(" ");
-		expand_type(&stage, type, false);
+		expand_type(stdout, &stage, type, false);
 		//expand_type(&stage, type, true);
 		printf("\n");
 	}

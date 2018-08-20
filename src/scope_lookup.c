@@ -448,3 +448,8 @@ size_t scope_lookup_instances(struct scope_lookup ctx)
 	}
 	return instances;
 }
+
+size_t scope_lookup_instance_size(struct scope_lookup ctx)
+{
+	return ctx.steps[ctx.num_steps - 1].length;
+}

@@ -33,7 +33,13 @@ struct device *register_device_pre_attrs(struct stage *stage, device_type_id typ
 										 struct scoped_hash *parent_scope,
 										 struct atom *name);
 
+struct device *register_device_pre_attrs_with_context(struct stage *stage, device_type_id type,
+													  struct scoped_hash *parent_scope,
+													  struct atom *name,
+													  void *context);
+
 int finalize_device(struct stage *stage, struct device *dev);
+int finalize_device_with_context(struct stage *stage, struct device *device, void *context);
 
 int device_assign_input_type_by_name(struct stage *stage,
 									 struct device *dev,

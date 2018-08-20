@@ -3,9 +3,18 @@
 #include "utils.h"
 #include <stdlib.h>
 
+
 struct device *register_device_pre_attrs(struct stage *stage, device_type_id type,
-										 struct scoped_hash *parent_scope,
-										 struct atom *name)
+													  struct scoped_hash *parent_scope,
+													  struct atom *name)
+{
+	return register_device_pre_attrs_with_context(stage, type, parent_scope, name, NULL);
+}
+
+struct device *register_device_pre_attrs_with_context(struct stage *stage, device_type_id type,
+													  struct scoped_hash *parent_scope,
+													  struct atom *name,
+													  void *context)
 {
 	struct device *device;
 	struct device_type *device_type;
@@ -117,25 +126,50 @@ struct device *register_device_pre_attrs(struct stage *stage, device_type_id typ
 		}
 	}
 
+	int err = 0;
+
+	if (device_type->takes_context && device_type->device_context_pre_init != NULL) {
+		err = device_type->device_context_pre_init(stage, device_type, device, context);
+	} else if (device_type->device_pre_init != NULL) {
+		err = device_type->device_pre_init(stage, device_type, device);
+	}
+
+	if (err) {
+		printf("Could not initialize device '%.*s'!\n",
+			   ALIT(device_type->name));
+		// @TODO: Deallocate
+		return NULL;
+	}
+
 	return device;
 
 }
 
 int finalize_device(struct stage *stage, struct device *device)
 {
+	return finalize_device_with_context(stage, device, NULL);
+}
+
+int finalize_device_with_context(struct stage *stage, struct device *device, void *context)
+{
 	struct device_type *device_type;
 	int err = 0;
 
 	device_type = get_device_type(stage, device->type);
 
-	if (device_type->device_template_init) {
+	if (device_type->takes_context && device_type->device_context_template_init != NULL) {
+		err = device_type->device_context_template_init(stage, device_type, device, context);
+	} else if (device_type->device_template_init != NULL) {
 		err = device_type->device_template_init(stage, device_type, device);
-		if (err) {
-			printf("Could not initialize device templates for '%.*s'!\n",
-				   ALIT(device_type->name));
-			// @TODO: Deallocate
-			return -1;
-		}
+	}
+
+	if (err < 0) {
+		printf("Could not initialize device templates for '%.*s'!\n",
+			   ALIT(device_type->name));
+		// @TODO: Deallocate
+		return -1;
+	} else if (err > 0) {
+		return err;
 	}
 
 	if (device_type->num_inputs > 0) {
@@ -216,14 +250,19 @@ int finalize_device(struct stage *stage, struct device *device)
 		return -1;
 	}
 
-	if (device_type->device_init) {
+	if (device_type->takes_context && device_type->device_context_init != NULL) {
+		err = device_type->device_context_init(stage, device_type, device, context);
+	} else if (device_type->device_init != NULL) {
 		err = device_type->device_init(stage, device_type, device);
-		if (err) {
-			printf("Could not initialize device for '%.*s'!\n",
-				   ALIT(device_type->name));
-			// @TODO: Deallocate
-			return -1;
-		}
+	}
+
+	if (err < 0) {
+		printf("Could not initialize device '%.*s'!\n",
+			   ALIT(device_type->name));
+		// @TODO: Deallocate
+		return -1;
+	} else if (err > 0) {
+		return err;
 	}
 
 	return 0;

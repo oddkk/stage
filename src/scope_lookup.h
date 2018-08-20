@@ -49,6 +49,7 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 						 struct scope_lookup_range *out);
 
 size_t scope_lookup_instances(struct scope_lookup);
+size_t scope_lookup_instance_size(struct scope_lookup);
 
 void print_steps(struct scope_lookup ctx);
 
