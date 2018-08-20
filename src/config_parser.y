@@ -112,8 +112,8 @@
 %type	<scalar_value> NUMLIT
 %type	<struct config_node*> module module_stmt_list module_stmt device_type device_type_body
 %type	<struct config_node*> device_type_body_stmt device device_body device_body_stmt
-%type	<struct config_node*> l_expr type_decl type enum_list enum_label tuple_decl tuple_list
-%type	<struct config_node*> named_tuple_list tuple_item named_tuple_item expr /* type_litteral_name */
+%type	<struct config_node*> l_expr type_decl type type_l_expr array_type enum_list enum_label
+%type	<struct config_node*> tuple_decl tuple_list named_tuple_list tuple_item named_tuple_item expr /* type_litteral_name */
 %type	<struct config_node*> subrange_type namespace bind_stmt
 %type	<struct tmp_range> range
 
@@ -188,13 +188,22 @@ l_expr:			IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDENT)
 		;
 type_decl:		"type" IDENTIFIER '=' type ';'   { $$ = alloc_node(ctx, CONFIG_NODE_TYPE_DECL); $$->type_decl.name = $2; $$->type_decl.type = $4; };
 
-type: 			l_expr                       { $$ = $1; }
+type: 			type_l_expr                  { $$ = $1; }
+		|		array_type                   { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $1; }
 		|		subrange_type                { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $1; }
 		|		'{' enum_list '}'            { $$ = NULL; printf("TODO: enumlist\n"); }
 		|		'(' tuple_decl ')'           { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $2; }
 		;
 
-subrange_type:	l_expr '{' range '}'         { $$ = alloc_node(ctx, CONFIG_NODE_SUBRANGE); $$->subrange.lhs = $1; $$->subrange.low = $3.low; $$->subrange.high = $3.high; }
+type_l_expr:	IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = $1; }
+		|		'_'                          { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); }
+		|		type_l_expr '.' type_l_expr  { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ACCESS; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		;
+
+array_type:		type '[' expr ']'            { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_SUBSCRIPT; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		;
+
+subrange_type:	type_l_expr '{' range '}'    { $$ = alloc_node(ctx, CONFIG_NODE_SUBRANGE); $$->subrange.lhs = $1; $$->subrange.low = $3.low; $$->subrange.high = $3.high; }
 		;
 enum_list: 		enum_label                   { $$ = NULL; }
 		| 		enum_list ',' enum_label     { $$ = NULL; }
@@ -212,10 +221,10 @@ named_tuple_list:
 				named_tuple_item                      { $$ = make_list(ctx, $1, NULL); }
 		|		named_tuple_list ',' named_tuple_item { $$ = make_list(ctx, $3, $1); }
 		;
-tuple_item: 	type                         { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = NULL; $$->tuple_item.type = $1; }
+tuple_item: 	type_l_expr                  { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = NULL; $$->tuple_item.type = $1; }
 		;
 named_tuple_item:
-				IDENTIFIER ':' type          { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = $1; $$->tuple_item.type = $3; }
+				IDENTIFIER ':' type_l_expr   { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = $1; $$->tuple_item.type = $3; }
 		;
 
 

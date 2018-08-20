@@ -24,6 +24,7 @@ enum apply_node_type {
 
 	APPLY_NODE_TYPE_L_EXPR,
 	APPLY_NODE_TYPE_TUPLE,
+	APPLY_NODE_TYPE_ARRAY,
 	APPLY_NODE_TYPE_SUBRANGE,
 
 	APPLY_NODE_BINARY_OP,
@@ -51,6 +52,7 @@ const char *apply_node_name(enum apply_node_type type) {
 
 		APPLY_NODE_NAME(TYPE_L_EXPR);
 		APPLY_NODE_NAME(TYPE_TUPLE);
+		APPLY_NODE_NAME(TYPE_ARRAY);
 		APPLY_NODE_NAME(TYPE_SUBRANGE);
 
 		APPLY_NODE_NAME(BINARY_OP);
@@ -171,6 +173,15 @@ struct apply_node {
 
 			type_id type;
 		} type_tuple;
+
+		struct {
+			struct atom *name;
+			struct apply_node *type_node;
+			struct apply_node *length_node;
+
+			scalar_value length;
+			type_id type;
+		} type_array;
 
 		struct {
 			struct atom *name;
@@ -786,8 +797,27 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 									  value_high);
 		} break;
 
+		case CONFIG_NODE_BINARY_OP:
+			if (type_expr->binary_op.op == CONFIG_OP_SUBSCRIPT) {
+				type = alloc_apply_node(ctx, APPLY_NODE_TYPE_ARRAY, type_node);
+				type->type_array.name = name;
+
+				type->type_array.type_node
+					= apply_discover_type(ctx, scope, type_expr->binary_op.lhs, NULL);
+
+				struct value_ref value_length;
+
+				value_length.type = ctx->stage->standard_types.integer;
+				value_length.data = &type->type_array.length;
+
+				type->type_array.length_node
+					= apply_discover_expr(ctx, scope, type_expr->binary_op.rhs, value_length);
+				break;
+			}
+			// fallthrough
+
 		default:
-			apply_error(type_expr, "Not a valid type.");
+			assert(!"Not a valid type.");
 		}
 
 		if (type) {
@@ -881,6 +911,9 @@ static type_id apply_resolve_type_id(struct apply_node *node)
 
 	case APPLY_NODE_TYPE_TUPLE:
 		return node->type_tuple.type;
+
+	case APPLY_NODE_TYPE_ARRAY:
+		return node->type_array.type;
 
 	case APPLY_NODE_TYPE_SUBRANGE:
 		return node->type_subrange.type;
@@ -998,9 +1031,8 @@ apply_dispatch(struct apply_context *ctx,
 		// @TODO: This should use input or output.
 		if (!node->device_type_input.type) {
 			node->device_type_input.type
-				= apply_discover_l_expr(ctx, dev_type_node->device_type.scope,
-										node->cnode->input.type,
-										&node->device_type_input.type_lookup);
+				= apply_discover_type(ctx, dev_type_node->device_type.scope,
+									  node->cnode->input.type, NULL);
 		}
 
 		struct apply_node *type_expr;
@@ -1008,18 +1040,20 @@ apply_dispatch(struct apply_context *ctx,
 
 		WAIT_FOR(type_expr);
 
-		if (!apply_expect_lookup_result(SCOPE_ENTRY_TYPE,
-										node->device_type_input.type_lookup.kind,
-										node->device_type_input.type)) {
-			return DISPATCH_ERROR;
-		}
+		type_id type = apply_resolve_type_id(type_expr);
 
-		int err;
-		struct scope_lookup_range type_res;
-		err = scope_lookup_result_single(node->device_type_input.type_lookup, &type_res);
-		assert(type_res.length == 1);
+		/* if (!apply_expect_lookup_result(SCOPE_ENTRY_TYPE, */
+		/* 								node->device_type_input.type_lookup.kind, */
+		/* 								node->device_type_input.type)) { */
+		/* 	return DISPATCH_ERROR; */
+		/* } */
 
-		type_id type = type_res.begin;
+		/* int err; */
+		/* struct scope_lookup_range type_res; */
+		/* err = scope_lookup_result_single(node->device_type_input.type_lookup, &type_res); */
+		/* assert(type_res.length == 1); */
+
+		/* type_id type = type_res.begin; */
 		struct device_type *dev_type;
 		struct atom *name;
 
@@ -1204,6 +1238,13 @@ apply_dispatch(struct apply_context *ctx,
 			return DISPATCH_ERROR;
 		}
 
+		if (range.length != 1) {
+			apply_error(node->cnode, "Expected 1 type, got %zu.", range.length);
+			return DISPATCH_ERROR;
+		}
+
+		node->type_l_expr.type = range.begin;
+
 		return DISPATCH_DONE;
 	}
 
@@ -1259,6 +1300,32 @@ apply_dispatch(struct apply_context *ctx,
 		}
 
 		node->type_tuple.type = final_type->id;
+
+		return DISPATCH_DONE;
+	}
+
+	case APPLY_NODE_TYPE_ARRAY: {
+		WAIT_FOR(node->type_array.type_node);
+		WAIT_FOR(node->type_array.length_node);
+
+		struct type *final_type;
+		struct atom *name;
+		type_id member_type;
+		size_t length;
+
+		name        = node->type_array.name;
+		member_type = apply_resolve_type_id(node->type_array.type_node);
+		length      = node->type_array.length;
+
+		final_type = register_array_type(ctx->stage, name, member_type, length);
+
+		if (!final_type) {
+			// @TODO: Print child type
+			apply_error(node->cnode, "Could not register the type.");
+			return DISPATCH_ERROR;
+		}
+
+		node->type_array.type = final_type->id;
 
 		return DISPATCH_DONE;
 	}
