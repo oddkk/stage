@@ -6,6 +6,7 @@
 #include "atom.h"
 #include "scoped_hash.h"
 #include <limits.h>
+#include <stdio.h>
 
 typedef unsigned int type_id;
 
@@ -87,10 +88,10 @@ struct stage;
 
 int type_count_scalars(struct stage *, struct type *type);
 
-void print_type(struct stage *, struct type *type);
-void print_type_id(struct stage *, type_id id);
-void expand_type(struct stage *, struct type *type, bool recurse_expand);
-void expand_type_id(struct stage *, type_id id, bool recurse_expand);
+void print_type(FILE *fp, struct stage *, struct type *type);
+void print_type_id(FILE *fp, struct stage *, type_id id);
+void expand_type(FILE *fp, struct stage *, struct type *type, bool recurse_expand);
+void expand_type_id(FILE *fp, struct stage *, type_id id, bool recurse_expand);
 
 int register_type_name(struct stage *stage, type_id type, struct scoped_hash *scope, struct atom *name);
 
@@ -130,5 +131,7 @@ int type_find_member(struct type_iterator *out,
 					 struct atom *name);
 
 void print_typed_value(struct stage *, type_id tid, scalar_value *values, size_t num_values);
+
+char *humanreadable_type_kind(enum type_kind);
 
 #endif

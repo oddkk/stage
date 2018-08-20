@@ -243,7 +243,7 @@ void describe_device_type(struct stage *stage, struct device_type *dev_type)
 		struct device_attribute_def *attr;
 		attr = &dev_type->attributes[i];
 		fprintf(fp, " - %i: %.*s ", attr->id, ALIT(attr->name));
-		print_type_id(stage, attr->type);
+		print_type_id(fp, stage, attr->type);
 		fprintf(fp, "\n");
 	}
 
@@ -252,7 +252,7 @@ void describe_device_type(struct stage *stage, struct device_type *dev_type)
 		struct device_channel_def *input;
 		input = &dev_type->inputs[i];
 		fprintf(fp, " - %i: %.*s ", input->id, ALIT(input->name));
-		print_type_id(stage, input->type);
+		print_type_id(fp, stage, input->type);
 		fprintf(fp, "\n");
 	}
 
@@ -261,7 +261,7 @@ void describe_device_type(struct stage *stage, struct device_type *dev_type)
 		struct device_channel_def *output;
 		output = &dev_type->outputs[i];
 		fprintf(fp, " - %i: %.*s ", output->id, ALIT(output->name));
-		print_type_id(stage, output->type);
+		print_type_id(fp, stage, output->type);
 		fprintf(fp, "\n");
 	}
 }

@@ -192,8 +192,6 @@ struct apply_node {
 			scalar_value value_low;
 			scalar_value value_high;
 
-			struct scope_lookup lhs_lookup;
-
 			type_id type;
 		} type_subrange;
 
@@ -773,10 +771,8 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 			type = alloc_apply_node(ctx, APPLY_NODE_TYPE_SUBRANGE, type_node);
 			type->type_subrange.name = name;
 
-			type->type_subrange.lhs_lookup
-				= scope_lookup_init(ctx->stage, scope);
 			type->type_subrange.lhs
-				= apply_discover_l_expr(ctx, scope, type_expr->subrange.lhs, &type->type_subrange.lhs_lookup);
+				= apply_discover_type(ctx, scope, type_expr->subrange.lhs, NULL);
 
 			struct value_ref value_low;
 
@@ -1331,7 +1327,46 @@ apply_dispatch(struct apply_context *ctx,
 	}
 
 	case APPLY_NODE_TYPE_SUBRANGE:
-		return DISPATCH_ERROR;
+		WAIT_FOR(node->type_subrange.lhs);
+		WAIT_FOR(node->type_subrange.low);
+		WAIT_FOR(node->type_subrange.high);
+
+		struct atom *name = node->type_subrange.name;
+		scalar_value low  = node->type_subrange.value_low;
+		scalar_value high = node->type_subrange.value_high;
+
+		type_id parent_type_id;
+		struct type *parent_type;
+
+		parent_type_id = apply_resolve_type_id(node->type_subrange.lhs);
+		parent_type = get_type(ctx->stage, parent_type_id);
+
+		if (parent_type->kind != TYPE_KIND_SCALAR) {
+			apply_error(node->cnode, "Cannot make a subrange-type of a %s.",
+						humanreadable_type_kind(parent_type->kind));
+		}
+
+		if (low  < parent_type->scalar.min ||
+			high > parent_type->scalar.max) {
+			apply_begin_error(node->cnode);
+
+			fprintf(stderr,
+					"The range of %.*s, {%u..%u}, "
+					"is outside than the range of the parent, ",
+					LIT(name ? name->name : STR("the new type")), low, high);
+			print_type(stderr, ctx->stage, parent_type);
+			fprintf(stderr, ", {%u..%u}.",
+					parent_type->scalar.min,
+					parent_type->scalar.max);
+			apply_end_error(node->cnode);
+		}
+
+		struct type *final_type;
+
+		final_type = register_scalar_type(ctx->stage, name, low, high);
+
+		node->type_subrange.type = final_type->id;
+		return DISPATCH_DONE;
 
 	case APPLY_NODE_BINARY_OP:
 		return DISPATCH_ERROR;

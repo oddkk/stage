@@ -70,41 +70,41 @@ int type_count_scalars(struct stage *stage, struct type *type)
 	return -1;
 }
 
-void print_type(struct stage *stage, struct type *type)
+void print_type(FILE *fp, struct stage *stage, struct type *type)
 {
 	if (!type->name) {
-		expand_type(stage, type, false);
+		expand_type(fp, stage, type, false);
 	} else {
-		printf("%.*s", ALIT(type->name));
+		fprintf(fp, "%.*s", ALIT(type->name));
 	}
 }
 
-void print_type_id(struct stage *stage, type_id id)
+void print_type_id(FILE *fp, struct stage *stage, type_id id)
 {
 	if (id == TYPE_TEMPLATE) {
-		printf("(template)");
+		fprintf(fp, "(template)");
 	} else {
-		print_type(stage, get_type(stage, id));
+		print_type(fp, stage, get_type(stage, id));
 	}
 }
 
-void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
+void expand_type(FILE *fp, struct stage *stage, struct type *type, bool recurse_expand)
 {
 	switch (type->kind) {
 	case TYPE_KIND_SCALAR:
-		printf("int{%i..%i}", type->scalar.min, type->scalar.max);
+		fprintf(fp, "int{%i..%i}", type->scalar.min, type->scalar.max);
 		break;
 
 	case TYPE_KIND_STRING:
-		printf("string");
+		fprintf(fp, "string");
 		break;
 
 	case TYPE_KIND_TYPE:
-		printf("type");
+		fprintf(fp, "type");
 		break;
 
 	case TYPE_KIND_TUPLE:
-		printf("(");
+		fprintf(fp, "(");
 		for (size_t i = 0; i < type->tuple.length; i++) {
 			type_id child_type_id;
 			struct type *child;
@@ -113,20 +113,20 @@ void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
 			child = stage->types[child_type_id];
 
 			if (i != 0) {
-				printf(", ");
+				fprintf(fp, ", ");
 			}
 
 			if (recurse_expand) {
-				expand_type(stage, child, recurse_expand);
+				expand_type(fp, stage, child, recurse_expand);
 			} else {
-				print_type(stage, child);
+				print_type(fp, stage, child);
 			}
 		}
-		printf(")");
+		fprintf(fp, ")");
 		break;
 
 	case TYPE_KIND_NAMED_TUPLE:
-		printf("(");
+		fprintf(fp, "(");
 		for (size_t i = 0; i < type->tuple.length; i++) {
 			type_id child_type_id;
 			struct type *child;
@@ -137,39 +137,39 @@ void expand_type(struct stage *stage, struct type *type, bool recurse_expand)
 			child = stage->types[child_type_id];
 
 			if (i != 0) {
-				printf(", ");
+				fprintf(fp, ", ");
 			}
 
-			printf("%.*s: ", ALIT(name));
+			fprintf(fp, "%.*s: ", ALIT(name));
 			if (recurse_expand) {
-				expand_type(stage, child, recurse_expand);
+				expand_type(fp, stage, child, recurse_expand);
 			} else {
-				print_type(stage, child);
+				print_type(fp, stage, child);
 			}
 		}
-		printf(")");
+		fprintf(fp, ")");
 		break;
 
 	case TYPE_KIND_ARRAY: {
 		struct type *child;
 		child = get_type(stage, type->array.type);
 		if (recurse_expand) {
-			expand_type(stage, child, recurse_expand);
+			expand_type(fp, stage, child, recurse_expand);
 		} else {
-			print_type(stage, child);
+			print_type(fp, stage, child);
 		}
-		printf("[%zu]", type->array.length);
+		fprintf(fp, "[%zu]", type->array.length);
 
 	} break;
 	}
 }
 
-void expand_type_id(struct stage *stage, type_id id, bool recurse_expand)
+void expand_type_id(FILE *fp, struct stage *stage, type_id id, bool recurse_expand)
 {
 	if (id == TYPE_TEMPLATE) {
-		printf("(template)");
+		fprintf(fp, "(template)");
 	} else {
-		expand_type(stage, get_type(stage, id), recurse_expand);
+		expand_type(fp, stage, get_type(stage, id), recurse_expand);
 	}
 }
 
@@ -510,7 +510,7 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 		if (values[0] == SCALAR_OFF) {
 			printf("none");
 		} else {
-			print_type_id(stage, values[0]);
+			print_type_id(stdout, stage, values[0]);
 		}
 		scalars_read = 1;
 		printf(")");
@@ -566,4 +566,17 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 void print_typed_value(struct stage *stage, type_id tid, scalar_value *values, size_t num_values)
 {
 	print_typed_value_internal(stage, tid, values, num_values);
+}
+
+char *humanreadable_type_kind(enum type_kind kind)
+{
+	switch (kind) {
+	case TYPE_KIND_SCALAR:      return "scalar";
+	case TYPE_KIND_STRING:      return "string";
+	case TYPE_KIND_TYPE:        return "type";
+	case TYPE_KIND_TUPLE:       return "tuple";
+	case TYPE_KIND_NAMED_TUPLE: return "named tuple";
+	case TYPE_KIND_ARRAY:       return "array";
+	}
+	assert(!"Invalid type kind.");
 }
