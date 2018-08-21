@@ -408,17 +408,21 @@ int channel_bind(struct stage *stage, channel_id src, channel_id dest)
 	dest_channel = &stage->channels[dest];
 
 	if (dest_channel->connection_type != CHANNEL_CONNECTION_UNCONNECTED) {
-		print_error("bind channel",
-			    "Can not bind channel %i to channel %i becuase "
-			    "the destination channel is already bound.", src,
-			    dest);
+		printf("[bind channel] Can not bind channel %i (", src);
+		channel_describe(stage, src);
+		printf(") to channel %i (", dest);
+		channel_describe(stage, dest);
+		printf(") becuase the destination channel is already bound.\n");
 		return -1;
 	}
 
 	if (has_cycle(stage, src, dest)) {
-		print_error("bind channel",
-			    "Can not bind channel %i to channel %i becuase "
-			    "this would result in a cycle.", src, dest, dest);
+		// @TODO: Print the cycle.
+		printf("[bind channel] Can not bind channel %i (", src);
+		channel_describe(stage, src);
+		printf(") to channel %i (", dest);
+		channel_describe(stage, dest);
+		printf(") becuase this would result in a cycle.\n");
 		return -1;
 	}
 
