@@ -177,8 +177,10 @@ device_body:	device_body device_body_stmt { $$ = $1; append_child(&$$, $2); }
 device_body_stmt:
 				l_expr '=' expr ';'          { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ASSIGN; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		|		bind_stmt                    { $$ = $1; }
+		|		device                       { $$ = $1; }
 		;
-bind_stmt:		l_expr "<-" l_expr ';'       { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND;   $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+bind_stmt:		l_expr "<-" expr ';'         { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND;   $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+		//		|		l_expr "<-"   expr ';'       { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_BIND;   $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		;
 l_expr:			IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = $1; }
 		|		'_'                          { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); }

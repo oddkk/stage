@@ -56,6 +56,7 @@ struct device *register_device_pre_attrs_with_context(struct stage *stage, devic
 
 	device->scope =
 	    scoped_hash_push(parent_scope, SCOPE_ENTRY_DEVICE, device->id);
+	device->scope->owner = device->id;
 	//device->scope->instance = device_type->scope;
 
 	if (device->name) {
@@ -154,6 +155,10 @@ int finalize_device_with_context(struct stage *stage, struct device *device, voi
 {
 	struct device_type *device_type;
 	int err = 0;
+
+	if (device->finalized) {
+		return 0;
+	}
 
 	device_type = get_device_type(stage, device->type);
 
@@ -264,7 +269,7 @@ int finalize_device_with_context(struct stage *stage, struct device *device, voi
 	} else if (err > 0) {
 		return err;
 	}
-
+	device->finalized = true;
 	return 0;
 }
 
@@ -541,8 +546,8 @@ void describe_device(struct stage *stage, struct device *dev)
 		channel_begin = current_channel;
 
 		while (stage->channels[current_channel].device.id == dev->id &&
-		       stage->channels[current_channel].device.channel_id ==
-		       i) {
+		       stage->channels[current_channel].device.channel_id == i &&
+			   stage->channels[current_channel].device_channel == DEVICE_CHANNEL_INPUT) {
 			current_channel += 1;
 		}
 
@@ -558,7 +563,8 @@ void describe_device(struct stage *stage, struct device *dev)
 		c_channel = channel_begin;
 		while (c_channel < stage->num_channels &&
 		       stage->channels[c_channel].device.id == dev->id &&
-		       stage->channels[c_channel].device.channel_id == i) {
+		       stage->channels[c_channel].device.channel_id == i &&
+			   stage->channels[c_channel].device_channel == DEVICE_CHANNEL_INPUT) {
 			fprintf(fp, "  - %i <- ", c_channel);
 			channel_describe_connection(stage, c_channel);
 			c_channel += 1;
@@ -581,7 +587,7 @@ void describe_device(struct stage *stage, struct device *dev)
 
 		while (cnl->device.id == dev->id &&
 		       cnl->device.channel_id == i &&
-			   cnl->device_channel != DEVICE_CHANNEL_NO) {
+			   cnl->device_channel != DEVICE_CHANNEL_OUTPUT) {
 			current_channel += 1;
 			cnl = &stage->channels[current_channel];
 		}
@@ -598,7 +604,8 @@ void describe_device(struct stage *stage, struct device *dev)
 		c_channel = channel_begin;
 		while (c_channel < stage->num_channels &&
 		       stage->channels[c_channel].device.id == dev->id &&
-		       stage->channels[c_channel].device.channel_id == i) {
+		       stage->channels[c_channel].device.channel_id == i &&
+			   stage->channels[current_channel].device_channel == DEVICE_CHANNEL_OUTPUT) {
 			fprintf(fp, "  - %i <- ", c_channel);
 			channel_describe_connection(stage, c_channel);
 			c_channel += 1;

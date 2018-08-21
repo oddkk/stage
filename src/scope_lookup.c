@@ -15,6 +15,7 @@ struct scope_lookup scope_lookup_init(struct stage *stage, struct scoped_hash *r
 		lookup.scope = &lookup.stage->root_scope;
 	}
 	lookup.kind = lookup.scope->kind;
+	lookup.owner = -1;
 
 	return lookup;
 }
@@ -70,6 +71,7 @@ static int scope_lookup_entry(struct scope_lookup *ctx, struct scope_entry entry
 	}
 
 	ctx->kind  = entry.kind;
+	ctx->owner = entry.owner;
 	ctx->scope = entry.scope;
 
 	// ctx->type -> next_type (implication)
@@ -302,6 +304,10 @@ int scope_lookup_range(struct scope_lookup *ctx, size_t begin, size_t end)
 		}
 
 		ctx->kind = ctx->scope->kind;
+
+		if (ctx->scope->owner != -1) {
+			ctx->owner = ctx->scope->owner;
+		}
 	}
 
 	if (type->kind != TYPE_KIND_ARRAY) {
@@ -391,6 +397,7 @@ int scope_lookup_result_single(struct scope_lookup ctx, struct scope_lookup_rang
 
 	result->begin = ctx.steps[0].offset;
 	result->length = ctx.steps[0].length;
+	result->owner = ctx.owner;
 	return 0;
 }
 
@@ -398,10 +405,12 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 						 struct scope_lookup_range *out)
 {
 	size_t low, high, it, next_it;
+	int owner;
 	low = 0;
 	high = -1;
 	it = *iter;
 	next_it = it;
+	owner = -1;
 
 	for (size_t i = 0; i < ctx.num_steps; i++) {
 		struct scope_lookup_step *step = &ctx.steps[i];
@@ -436,6 +445,10 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 	*iter = next_it;
 	out->begin = low;
 	out->length = high - low;
+	if (owner == -1) {
+		owner = ctx.owner;
+	}
+	out->owner = owner;
 	return LOOKUP_FOUND;
 }
 
@@ -452,4 +465,17 @@ size_t scope_lookup_instances(struct scope_lookup ctx)
 size_t scope_lookup_instance_size(struct scope_lookup ctx)
 {
 	return ctx.steps[ctx.num_steps - 1].length;
+}
+
+void describe_lookup_result_type(FILE *fp, struct scope_lookup ctx)
+{
+	if (ctx.type) {
+		print_type(fp, ctx.stage, ctx.type);
+	}
+	for (int i = (int)ctx.num_steps - 1; i >= 0; i--) {
+		struct scope_lookup_step *step = &ctx.steps[i];
+		if (step->repetitions > 1) {
+			fprintf(fp, "[%u]", step->repetitions);
+		}
+	}
 }

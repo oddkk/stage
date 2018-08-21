@@ -26,6 +26,7 @@ struct scope_entry {
 
 	int id;
 	int length;
+	int owner;
 
 	int type;
 };
@@ -47,6 +48,7 @@ struct scoped_hash {
 	bool array;
 	enum scope_entry_kind kind;
 	int id;
+	int owner;
 };
 
 struct scope_entry *scoped_hash_insert(struct scoped_hash *scope, struct atom *name,

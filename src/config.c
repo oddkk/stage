@@ -478,7 +478,8 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 			index_ref.data = &node->access_index.value_index;
 			index_ref.type = ctx->stage->standard_types.integer;
 
-			node->access_index.index = apply_discover_expr(ctx, scope, expr->binary_op.rhs, index_ref);
+			node->access_index.index
+				= apply_discover_expr(ctx, scope, expr->binary_op.rhs, index_ref);
 
 			push_apply_node(ctx, node);
 
@@ -537,6 +538,7 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 		if (expr->binary_op.op == CONFIG_OP_ACCESS) {
 			struct apply_node *node;
 			node = alloc_apply_node(ctx, APPLY_NODE_L_VALUE, expr);
+			node->l_value.lookup = scope_lookup_init(ctx->stage, scope);
 			node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, &node->l_value.lookup);
 			node->l_value.dest = dest;
 
@@ -556,6 +558,7 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 	case CONFIG_NODE_IDENT: {
 		struct apply_node *node;
 		node = alloc_apply_node(ctx, APPLY_NODE_L_VALUE, expr);
+		node->l_value.lookup = scope_lookup_init(ctx->stage, scope);
 		node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, &node->l_value.lookup);
 		node->l_value.dest = dest;
 
@@ -1693,8 +1696,73 @@ apply_dispatch(struct apply_context *ctx,
 		expr = node->l_value.expr;
 		WAIT_FOR(expr);
 
+		struct type *dest_type;
+		dest_type = get_type(ctx->stage, node->l_value.dest.type);
+
+		assert(dest_type);
+
+		switch (node->l_value.lookup.kind) {
+		case SCOPE_ENTRY_TYPE: {
+			if (dest_type->kind != TYPE_KIND_TYPE) {
+				return DISPATCH_ERROR;
+			}
+			struct scope_lookup_range range;
+			int err
+				= scope_lookup_result_single(node->l_value.lookup, &range);
+
+			if (err) {
+				apply_error(expr->cnode, "Failed to lookup.\n");
+				return DISPATCH_ERROR;
+			}
+
+			assert(range.length == 1);
+
+			node->l_value.dest.data[0] = range.begin;
+		} break;
+
+		case SCOPE_ENTRY_DEVICE_ATTRIBUTE: {
+			struct scope_lookup_range range;
+			int err;
+
+			size_t src_size = scope_lookup_instance_size(node->l_value.lookup);
+
+			if (src_size != dest_type->num_scalars) {
+				apply_begin_error(node->l_value.expr->cnode);
+				fprintf(stderr, "Cannot assign a ");
+				describe_lookup_result_type(stderr, node->l_value.lookup);
+				fprintf(stderr, " to a ");
+				print_type(stderr, ctx->stage, dest_type);
+
+				return DISPATCH_ERROR;
+			}
+
+			err = scope_lookup_result_single(node->l_value.lookup, &range);
+			if (err) {
+				apply_error(expr->cnode, "Failed to lookup.\n");
+				return DISPATCH_ERROR;
+			}
+
+			struct device *dev;
+			dev = get_device(ctx->stage, range.owner);
+			assert(dev);
+
+			if (!dev->finalized) {
+				return DISPATCH_YIELD;
+			}
+
+			for (size_t i = 0; i < range.length; i++) {
+				node->l_value.dest.data[i] = dev->attribute_values[range.begin + i];
+			}
+		} break;
+
+		default:
+			printf("@TODO: Finish l-value");
+			return DISPATCH_ERROR;
+			break;
+		}
+
 		// @TODO: Fix
-		return DISPATCH_ERROR;
+		return DISPATCH_DONE;
 
 		/* switch (expr->entry.kind) { */
 		/* case SCOPE_ENTRY_TYPE: */

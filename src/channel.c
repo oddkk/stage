@@ -85,6 +85,7 @@ static int init_device_channels_for_type(struct stage *stage,
 		}
 		entry->id = *begin;
 		entry->length = 1;
+		entry->owner = dev_id;
 		entry->type = type->id;
 
 		init_scalar_device_channel(stage, begin,
@@ -98,6 +99,7 @@ static int init_device_channels_for_type(struct stage *stage,
 
 		tuple_scope = scoped_hash_push(scope, SCOPE_ENTRY_DEVICE_CHANNEL, first_channel);
 		tuple_scope->array = true;
+		tuple_scope->owner = dev_id;
 
 		if (!tuple_scope) {
 			break;
@@ -123,6 +125,7 @@ static int init_device_channels_for_type(struct stage *stage,
 
 		entry->id = first_channel;
 		entry->length = last_channel - first_channel;
+		entry->owner = dev_id;
 		entry->type = type->id;
 	} break;
 
@@ -132,6 +135,7 @@ static int init_device_channels_for_type(struct stage *stage,
 
 		tuple_scope = scoped_hash_push(scope, SCOPE_ENTRY_DEVICE_CHANNEL, first_channel);
 		tuple_scope->array = true;
+		tuple_scope->owner = dev_id;
 
 		if (!tuple_scope) {
 			break;
@@ -161,6 +165,7 @@ static int init_device_channels_for_type(struct stage *stage,
 
 		entry->id = first_channel;
 		entry->length = last_channel - first_channel;
+		entry->owner = dev_id;
 		entry->type = type->id;
 	} break;
 
@@ -170,6 +175,7 @@ static int init_device_channels_for_type(struct stage *stage,
 
 		array_scope = scoped_hash_push(scope, SCOPE_ENTRY_DEVICE_CHANNEL, first_channel);
 		array_scope->array = true;
+		array_scope->owner = dev_id;
 
 		for (size_t i = 0; i < type->array.length; i++) {
 			init_device_channels_for_type(stage, begin, dev_id,
@@ -190,6 +196,7 @@ static int init_device_channels_for_type(struct stage *stage,
 
 		entry->id = first_channel;
 		entry->length = last_channel - first_channel;
+		entry->owner = dev_id;
 		entry->type = type->id;
 	} break;
 

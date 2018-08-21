@@ -39,6 +39,7 @@ int stage_init(struct stage *stage)
 	stage->root_scope.parent = 0;
 	stage->root_scope.lookup.page_arena = &stage->memory;
 	stage->root_scope.lookup.string_arena = &stage->memory;
+	stage->root_scope.owner = -1;
 
 	register_default_types(stage);
 	register_device_types(stage);

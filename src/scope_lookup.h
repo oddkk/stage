@@ -3,6 +3,7 @@
 
 #include "scoped_hash.h"
 #include "type.h"
+#include <stdio.h>
 
 struct stage;
 
@@ -22,6 +23,8 @@ struct scope_lookup {
 
 	bool local_lookup;
 
+	int owner;
+
 	struct scope_lookup_step *steps;
 	size_t num_steps;
 };
@@ -37,6 +40,7 @@ int scope_lookup_range(struct scope_lookup *, size_t begin, size_t end);
 struct scope_lookup_range {
 	size_t begin;
 	size_t length;
+	int owner;
 };
 
 int scope_lookup_result_single(struct scope_lookup ctx, struct scope_lookup_range *result);
@@ -52,5 +56,7 @@ size_t scope_lookup_instances(struct scope_lookup);
 size_t scope_lookup_instance_size(struct scope_lookup);
 
 void print_steps(struct scope_lookup ctx);
+
+void describe_lookup_result_type(FILE *fp, struct scope_lookup ctx);
 
 #endif

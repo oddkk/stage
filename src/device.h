@@ -20,6 +20,7 @@ struct device {
 	scalar_value *attribute_values;
 	size_t num_attribute_values;
 	struct scoped_hash *scope;
+	bool finalized;
 };
 
 struct stage;

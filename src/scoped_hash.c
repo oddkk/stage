@@ -15,6 +15,7 @@ struct scope_entry *scoped_hash_insert(struct scoped_hash *scope, struct atom *n
 	new_entry.name = name;
 	new_entry.kind = kind;
 	new_entry.scope = child_scope;
+	new_entry.owner = scope->owner;
 
 	err = dlist_append(scope->entries, scope->num_entries, &new_entry);
 	if (err < 0) {
@@ -155,6 +156,7 @@ struct scoped_hash *scoped_hash_push(struct scoped_hash *parent,
 	new_child->lookup.page_arena = parent->lookup.page_arena;
 	new_child->kind = kind;
 	new_child->id = id;
+	new_child->owner = parent->owner;
 	new_child->entry_id = -1;
 
 	dlist_append(parent->children, parent->num_children, &new_child);
