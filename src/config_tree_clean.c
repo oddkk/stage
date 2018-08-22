@@ -17,11 +17,13 @@ static void collapse_tree_nodes(struct config_node *tree) {
 
 	case CONFIG_NODE_DEVICE_TYPE:
 		collapse_tree_nodes(tree->device_type.first_child);
+		collapse_tree_nodes(tree->device_type.params);
 		break;
 
 	case CONFIG_NODE_DEVICE:
 		collapse_tree_nodes(tree->device.type);
 		collapse_tree_nodes(tree->device.first_child);
+		collapse_tree_nodes(tree->device.args);
 		break;
 
 	case CONFIG_NODE_TYPE_DECL:
@@ -68,6 +70,14 @@ static void collapse_tree_nodes(struct config_node *tree) {
 		collapse_tree_nodes(tree->subscript_range.lhs);
 		collapse_tree_nodes(tree->subscript_range.low);
 		collapse_tree_nodes(tree->subscript_range.high);
+		break;
+
+	case CONFIG_NODE_TUPLE_LIT:
+		collapse_tree_nodes(tree->tuple_lit.first_child);
+		break;
+
+	case CONFIG_NODE_TUPLE_LIT_ITEM:
+		collapse_tree_nodes(tree->tuple_lit_item.expr);
 		break;
 
 

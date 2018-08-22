@@ -51,6 +51,11 @@ static void _config_print_tree(struct config_node *node, int depth)
 		printf("device_type\n");
 		_print_indent(depth + 1);
 		printf("name: %.*s\n", LIT(node->device_type.name->name));
+
+		_print_indent(depth + 1);
+		printf("params:\n");
+		_config_print_tree(node->device_type.params, depth + 2);
+
 		_config_print_tree(node->device_type.first_child, depth + 1);
 		break;
 	case CONFIG_NODE_DEVICE:
@@ -66,6 +71,10 @@ static void _config_print_tree(struct config_node *node, int depth)
 		_print_indent(depth + 1);
 		printf("type:\n");
 		_config_print_tree(node->device.type, depth + 2);
+
+		_print_indent(depth + 1);
+		printf("arguments:\n");
+		_config_print_tree(node->device.args, depth + 1);
 
 		_config_print_tree(node->device.first_child, depth + 1);
 		break;
@@ -95,7 +104,9 @@ static void _config_print_tree(struct config_node *node, int depth)
 		_print_indent(depth + 1);
 		printf("name: %.*s\n", ALIT(node->tuple_item.name));
 
-		_config_print_tree(node->tuple_item.type, depth + 1);
+		_print_indent(depth + 1);
+		printf("type:\n");
+		_config_print_tree(node->tuple_item.type, depth + 2);
 		break;
 
 	case CONFIG_NODE_ATTR:
@@ -210,6 +221,20 @@ static void _config_print_tree(struct config_node *node, int depth)
 
 	case CONFIG_NODE_NUMLIT:
 		printf("numlit %i\n", node->numlit);
+		break;
+
+	case CONFIG_NODE_TUPLE_LIT:
+		printf("tuple litteral%s:\n", node->tuple.named ? " (named)" : "");
+		_config_print_tree(node->tuple_lit.first_child, depth + 1);
+		break;
+
+	case CONFIG_NODE_TUPLE_LIT_ITEM:
+		printf("tuple litteral item\n");
+
+		_print_indent(depth + 1);
+		printf("name: %.*s\n", ALIT(node->tuple_lit_item.name));
+
+		_config_print_tree(node->tuple_lit_item.expr, depth + 1);
 		break;
 
 	case CONFIG_NODE_NAMESPACE:
