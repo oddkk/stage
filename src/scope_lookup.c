@@ -398,6 +398,7 @@ int scope_lookup_result_single(struct scope_lookup ctx, struct scope_lookup_rang
 	result->begin = ctx.steps[0].offset;
 	result->length = ctx.steps[0].length;
 	result->owner = ctx.owner;
+	result->type = ctx.type;
 	return 0;
 }
 
@@ -449,6 +450,7 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 		owner = ctx.owner;
 	}
 	out->owner = owner;
+	out->type = ctx.type;
 	return LOOKUP_FOUND;
 }
 

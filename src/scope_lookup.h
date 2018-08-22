@@ -38,6 +38,7 @@ int scope_lookup_index(struct scope_lookup *, size_t i);
 int scope_lookup_range(struct scope_lookup *, size_t begin, size_t end);
 
 struct scope_lookup_range {
+	struct type *type;
 	size_t begin;
 	size_t length;
 	int owner;
