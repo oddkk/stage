@@ -34,6 +34,8 @@ enum config_node_type {
 	CONFIG_NODE_SUBRANGE,
 	CONFIG_NODE_IDENT,
 	CONFIG_NODE_NUMLIT,
+	CONFIG_NODE_TUPLE_LIT,
+	CONFIG_NODE_TUPLE_LIT_ITEM,
 
 	CONFIG_NODE_INTERNAL_LIST,
 };
@@ -71,12 +73,14 @@ struct config_node {
 		struct {
 			struct atom *name;
 			struct config_node *first_child;
+			struct config_node *params;
 			int id;
 		} device_type;
 		struct {
 			struct config_node *type;
 			struct atom *name;
 			struct config_node *first_child;
+			struct config_node *args;
 			int id;
 		} device;
 		struct {
@@ -124,6 +128,14 @@ struct config_node {
 			struct config_node *low;
 			struct config_node *high;
 		} subrange;
+		struct {
+			struct config_node *first_child;
+			bool named;
+		} tuple_lit;
+		struct {
+			struct atom *name;
+			struct config_node *expr;
+		} tuple_lit_item;
 		struct {
 			struct config_node *head;
 			struct config_node *tail;
