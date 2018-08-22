@@ -588,6 +588,11 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 	return NULL;
 }
 
+static struct apply_node *apply_discover_type_tuple(struct apply_context *ctx,
+													struct scoped_hash *scope,
+													struct config_node *type_expr,
+													struct atom *name);
+
 static void apply_discover_device_type(struct apply_context *ctx,
 									   struct scoped_hash *scope,
 									   struct config_node *device_type_node)
@@ -758,6 +763,46 @@ static void apply_discover_device(struct apply_context *ctx,
 static struct apply_node *apply_discover_type(struct apply_context *ctx,
 											  struct scoped_hash *scope,
 											  struct config_node *type_node,
+											  struct atom *name);
+
+static struct apply_node *apply_discover_type_tuple(struct apply_context *ctx,
+													struct scoped_hash *scope,
+													struct config_node *type_expr,
+													struct atom *name)
+{
+	struct apply_node *type = NULL;
+	bool named;
+
+	assert(type_expr->type == CONFIG_NODE_TUPLE);
+
+	type = alloc_apply_node(ctx, APPLY_NODE_TYPE_TUPLE, type_expr);
+	type->type_tuple.name = name;
+
+	named = type_expr->tuple.named;
+	type->type_tuple.named = named;
+
+	for (struct config_node *member = type_expr->tuple.first_child;
+		 member;
+		 member = member->next_sibling) {
+		assert(member->type == CONFIG_NODE_TUPLE_ITEM);
+
+		struct apply_tuple_member new_member = {0};
+
+		if (named) {
+			new_member.name = member->tuple_item.name;
+		}
+		new_member.type = apply_discover_type(ctx, scope, member->tuple_item.type, new_member.name);
+
+		dlist_append(type->type_tuple.members, type->type_tuple.num_members, &new_member);
+	}
+
+	push_apply_node(ctx, type);
+	return type;
+}
+
+static struct apply_node *apply_discover_type(struct apply_context *ctx,
+											  struct scoped_hash *scope,
+											  struct config_node *type_node,
 											  struct atom *name)
 {
 	if (type_node->type == CONFIG_NODE_TYPE) {
@@ -767,27 +812,7 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 
 		switch (type_expr->type) {
 		case CONFIG_NODE_TUPLE: {
-			bool named;
-			type = alloc_apply_node(ctx, APPLY_NODE_TYPE_TUPLE, type_node);
-			type->type_tuple.name = name;
-
-			named = type_expr->tuple.named;
-			type->type_tuple.named = named;
-
-			for (struct config_node *member = type_expr->tuple.first_child;
-				 member;
-				 member = member->next_sibling) {
-				assert(member->type == CONFIG_NODE_TUPLE_ITEM);
-
-				struct apply_tuple_member new_member = {0};
-
-				if (named) {
-					new_member.name = member->tuple_item.name;
-				}
-				new_member.type = apply_discover_type(ctx, scope, member->tuple_item.type, new_member.name);
-
-				dlist_append(type->type_tuple.members, type->type_tuple.num_members, &new_member);
-			}
+			type = apply_discover_type_tuple(ctx, scope, type_expr, name);
 		} break;
 
 		case CONFIG_NODE_SUBRANGE: {
@@ -814,6 +839,8 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 			type->type_subrange.high
 				= apply_discover_expr(ctx, scope, type_expr->subrange.high,
 									  value_high);
+
+			push_apply_node(ctx, type);
 		} break;
 
 		case CONFIG_NODE_BINARY_OP:
@@ -831,16 +858,14 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 
 				type->type_array.length_node
 					= apply_discover_expr(ctx, scope, type_expr->binary_op.rhs, value_length);
+
+				push_apply_node(ctx, type);
 				break;
 			}
 			// fallthrough
 
 		default:
 			assert(!"Not a valid type.");
-		}
-
-		if (type) {
-			push_apply_node(ctx, type);
 		}
 
 		return type;
