@@ -43,6 +43,7 @@ struct stage {
 	size_t cap_types;
 
 	struct {
+		type_id none;
 		type_id type;
 		type_id integer;
 		type_id string;

@@ -10,6 +10,10 @@ int type_count_scalars(struct stage *stage, struct type *type)
 	int count = 0;
 	switch (type->kind) {
 
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		return -1;
+
 	case TYPE_KIND_SCALAR:
 		return 1;
 
@@ -91,6 +95,10 @@ void print_type_id(FILE *fp, struct stage *stage, type_id id)
 void expand_type(FILE *fp, struct stage *stage, struct type *type, bool recurse_expand)
 {
 	switch (type->kind) {
+	case TYPE_KIND_NONE:
+		fprintf(fp, "none");
+		break;
+
 	case TYPE_KIND_SCALAR:
 		fprintf(fp, "int{%i..%i}", type->scalar.min, type->scalar.max);
 		break;
@@ -196,7 +204,7 @@ int register_type_name(struct stage *stage, type_id type, struct scoped_hash *sc
 	return 0;
 }
 
-struct type *register_type(struct stage *stage, struct type def)
+static struct type *alloc_type(struct stage *stage)
 {
 	struct type *type;
 
@@ -216,14 +224,30 @@ struct type *register_type(struct stage *stage, struct type def)
 	}
 
 	type = arena_alloc(&stage->memory, sizeof(struct type));
-	*type = def;
+
 	type->id = stage->num_types++;
 
 	stage->types[type->id] = type;
 
+	return type;
+}
+
+struct type *register_type(struct stage *stage, struct type def)
+{
+	struct type *type;
+	type = alloc_type(stage);
+
+	def.id = type->id;
+	*type = def;
+
+
 	type->num_scalars = type_count_scalars(stage, type);
 
 	switch (type->kind) {
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		break;
+
 	case TYPE_KIND_SCALAR:
 	case TYPE_KIND_STRING:
 	case TYPE_KIND_TYPE:
@@ -348,6 +372,10 @@ int register_typed_member_in_scope(struct stage *stage, struct atom *name,
 	struct scoped_hash *new_scope = NULL;
 
 	switch (type->kind) {
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		break;
+
 	case TYPE_KIND_TUPLE:
 		printf("@TODO: Implement register in scope for unnamed tuples.\n");
 		break;
@@ -402,6 +430,12 @@ int assign_value(struct value *dest, struct type *dest_type, struct value *src,
 
 void register_default_types(struct stage *stage)
 {
+	struct type *none_type = alloc_type(stage);
+	none_type->kind = TYPE_KIND_NONE;
+	none_type->name = atom_create(&stage->atom_table, STR("none"));
+	stage->standard_types.none = none_type->id;
+	assert(stage->standard_types.none == 0);
+
 	stage->standard_types.integer =
 	    register_scalar_type(stage,
 				 atom_create(&stage->atom_table, STR("int")),
@@ -456,6 +490,10 @@ int type_find_member(struct type_iterator *out,
 	}
 
 	switch (type->kind) {
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		return -2;
+
 	case TYPE_KIND_SCALAR:
 	case TYPE_KIND_STRING:
 	case TYPE_KIND_TYPE:
@@ -496,6 +534,10 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 	int scalars_read = 0;
 
 	switch (type->kind) {
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		break;
+
 	case TYPE_KIND_SCALAR:
 		print_scalar(values[0]);
 		scalars_read = 1;
@@ -568,9 +610,18 @@ void print_typed_value(struct stage *stage, type_id tid, scalar_value *values, s
 	print_typed_value_internal(stage, tid, values, num_values);
 }
 
+void print_value_ref(struct stage *stage, struct value_ref val)
+{
+	struct type *type;
+	type = get_type(stage, val.type);
+
+	print_typed_value(stage, val.type, val.data, type->num_scalars);
+}
+
 char *humanreadable_type_kind(enum type_kind kind)
 {
 	switch (kind) {
+	case TYPE_KIND_NONE:        return "none";
 	case TYPE_KIND_SCALAR:      return "scalar";
 	case TYPE_KIND_STRING:      return "string";
 	case TYPE_KIND_TYPE:        return "type";
