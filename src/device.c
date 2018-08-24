@@ -53,15 +53,6 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 	device->name = name;
 	device->data = NULL;
 
-	int err = 0;
-
-	device->args = alloc_value(stage, device_type->params);
-	err = consolidate_typed_value_into(stage, device_type->params, args, &device->args);
-
-	if (err) {
-		return NULL;
-	}
-
 	device->id = stage->num_devices++;
 	stage->devices[device->id] = device;
 
@@ -82,6 +73,44 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 		}
 		entry->id = device->id;
 	}
+
+	int err = 0;
+
+	if (device_type->params != 0) {
+
+		device->args = alloc_value(stage, device_type->params);
+		err = consolidate_typed_value_into(stage, device_type->params, args, &device->args);
+
+		if (err) {
+			return NULL;
+		}
+
+		struct type *args_type;
+		args_type = get_type(stage, device->args.type);
+
+		assert(args_type->kind == TYPE_KIND_NAMED_TUPLE);
+
+		size_t args_num_scalars = 0;
+		for (size_t i = 0; i < args_type->named_tuple.length; i++) {
+			struct named_tuple_member *arg;
+			arg = &args_type->named_tuple.members[i];
+
+			err = register_typed_member_in_scope(stage,
+												 arg->name, arg->type,
+												 device->scope,
+												 SCOPE_ENTRY_DEVICE_ATTRIBUTE,
+												 args_num_scalars);
+
+			if (err < 0) {
+				return NULL;
+			}
+
+			args_num_scalars += err;
+		}
+	}
+
+	err = 0;
+
 
 	if (device_type->num_inputs > 0) {
 		device->input_types = calloc(device_type->num_inputs, sizeof(type_id));
