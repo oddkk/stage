@@ -562,7 +562,7 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 		printf("(");
 		for (size_t i = 0; i < type->tuple.length; i++) {
 			if (i > 0) {
-				printf(",\n");
+				printf(", ");
 			}
 			scalars_read
 				+= print_typed_value_internal(stage, type->tuple.types[i],
@@ -576,7 +576,7 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 		printf("(");
 		for (size_t i = 0; i < type->named_tuple.length; i++) {
 			if (i > 0) {
-				printf(",\n");
+				printf(", ");
 			}
 			printf("%.*s : ", ALIT(type->named_tuple.members[i].name));
 			scalars_read
@@ -591,7 +591,7 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 		printf("[");
 		for (size_t i = 0; i < type->array.length; i++) {
 			if (i > 0) {
-				printf(",\n");
+				printf(", ");
 			}
 			scalars_read
 				+= print_typed_value_internal(stage, type->array.type,
@@ -605,86 +605,418 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 	return scalars_read;
 }
 
-/* static void consolidate_types_fail(struct stage *stage, struct type *expected, struct type *input) */
-/* { */
-/* 	fprintf(stderr, "Can not consolidate a %s, '", */
-/* 		   humanreadable_type_kind(expected->kind)); */
-/* 	print_type(stderr, stage, expected); */
-/* 	fprintf(stderr, "', with a %s, '", */
-/* 		   humanreadable_type_kind(input->kind)); */
-/* 	print_type(stderr, stage, input); */
-/* 	fprintf(stderr, "'.\n"); */
-/* } */
+static void consolidate_types_fail(struct stage *stage, struct type *expected, struct type *input)
+{
+	fprintf(stderr, "Can not consolidate a %s, '",
+		   humanreadable_type_kind(expected->kind));
+	print_type(stderr, stage, expected);
+	fprintf(stderr, "', with a %s, '",
+		   humanreadable_type_kind(input->kind));
+	print_type(stderr, stage, input);
+	fprintf(stderr, "'.\n");
+}
 
-/* int consolidate_types(struct stage *stage, type_id expected, type_id input, type_id *result) */
-/* { */
-/* 	if (input == expected) { */
-/* 		*result = expected; */
-/* 		return 0; */
-/* 	} */
+int consolidate_types(struct stage *stage, type_id expected, type_id input, type_id *result)
+{
+	if (input == expected) {
+		*result = expected;
+		return 0;
+	}
 
-/* 	struct type *expected_type; */
-/* 	struct type *input_type; */
+	struct type *expected_type;
+	struct type *input_type;
 
-/* 	expected_type = get_type(stage, expected); */
-/* 	input_type    = get_type(stage, input); */
+	expected_type = get_type(stage, expected);
+	input_type    = get_type(stage, input);
 
-/* 	switch (expected_type->kind) { */
-/* 	case TYPE_KIND_NONE: */
-/* 		assert(!"None type used!"); */
-/* 		return -1; */
+	switch (expected_type->kind) {
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		return -1;
 
-/* 	case TYPE_KIND_SCALAR: */
-/* 		if (input_type->kind == TYPE_KIND_SCALAR) { */
-/* 			*result = expected_type; */
-/* 			return 0; */
-/* 		} else { */
-/* 			consolidate_types_fail(stage, expected_type, input_type); */
-/* 			return -1; */
-/* 		} */
+	case TYPE_KIND_SCALAR:
+		if (input_type->kind == TYPE_KIND_SCALAR) {
+			*result = expected_type->id;
+			return 0;
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
 
-/* 	case TYPE_KIND_STRING: */
-/* 		printf("@TODO: Strings\n"); */
-/* 		return -1; */
+	case TYPE_KIND_STRING:
+		printf("@TODO: Strings\n");
+		return -1;
 
-/* 	case TYPE_KIND_TYPE: */
-/* 		if (input_type->kind == TYPE_KIND_SCALAR) { */
-/* 			*result = expected_type; */
-/* 			return 0; */
-/* 		} else { */
-/* 			consolidate_types_fail(stage, expected_type, input_type); */
-/* 			return -1; */
-/* 		} */
-/* 	} */
+	case TYPE_KIND_TYPE:
+		if (input_type->kind == TYPE_KIND_TYPE) {
+			*result = expected_type->id;
+			return 0;
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
 
-/* 	case TYPE_KIND_TUPLE: */
-/* 		if (input_type->kind == TYPE_KIND_TUPLE) { */
-/* 			if (input_type->tuple.length > expected_type->tuple.length) { */
-/* 				// @TODO: Better error message? */
-/* 				consolidate_types_fail(stage, expected_type, input_type); */
-/* 				return -1; */
-/* 			} */
+	case TYPE_KIND_TUPLE:
+		if (input_type->kind == TYPE_KIND_TUPLE) {
+			if (input_type->tuple.length != expected_type->tuple.length) {
+				// @TODO: Better error message?
+				consolidate_types_fail(stage, expected_type, input_type);
+				return -1;
+			}
 
-/* 			type_id *new_members; */
-/* 			new_members = calloc(expected_type->tuple.length, sizeof(type_id)); */
+			type_id *new_members;
+			new_members = calloc(expected_type->tuple.length, sizeof(type_id));
+			bool different = false;
 
-/* 			for (size_t i = 0; i < expected_type->tuple.length; i++) { */
-/* 				int err; */
-/* 				err = consolidate_types(stage, */
-/* 										expected_type->tuple.types[i], */
-/* 										input_type->tuple.types[i], */
-/* 										&new_members[i]); */
-/* 			} */
-/* 			*result = expected_type; */
-/* 			return 0; */
-/* 		} else { */
-/* 			consolidate_types_fail(stage, expected_type, input_type); */
-/* 			return -1; */
-/* 		} */
-/* 	} */
+			for (size_t i = 0; i < expected_type->tuple.length; i++) {
+				int err;
+				err = consolidate_types(stage,
+										expected_type->tuple.types[i],
+										input_type->tuple.types[i],
+										&new_members[i]);
 
-/* 	return 0; */
-/* } */
+				if (err) {
+					free(new_members);
+					return -1;
+				}
+
+				if (new_members[i] != expected_type->tuple.types[i]) {
+					different = true;
+				}
+			}
+			if (different) {
+				struct type *new_type;
+				new_type = register_tuple_type(stage, NULL, new_members,
+											   expected_type->tuple.length);
+				*result = new_type->id;
+			} else {
+				*result = expected_type->id;
+			}
+			free(new_members);
+			return 0;
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_NAMED_TUPLE:
+		if (input_type->kind == TYPE_KIND_NAMED_TUPLE) {
+			if (input_type->named_tuple.length != expected_type->named_tuple.length) {
+				// @TODO: Better error message?
+				consolidate_types_fail(stage, expected_type, input_type);
+				return -1;
+			}
+
+			struct named_tuple_member *new_members;
+			new_members = calloc(expected_type->named_tuple.length,
+								 sizeof(struct named_tuple_member));
+
+			bool different = false;
+
+			for (size_t i = 0; i < expected_type->named_tuple.length; i++) {
+				struct named_tuple_member *expected_member;
+				struct named_tuple_member *input_member;
+
+				expected_member = &expected_type->named_tuple.members[i];
+				input_member = NULL;
+
+				for (size_t j = 0; j < input_type->named_tuple.length; j++) {
+					if (input_type->named_tuple.members[j].name == expected_member->name) {
+						input_member = &input_type->named_tuple.members[j];
+						break;
+					}
+				}
+
+				if (input_member == NULL) {
+					fprintf(stderr, "Missing the member '%.*s' from '",
+							ALIT(expected_member->name));
+					print_type(stderr, stage, input_type);
+					fprintf(stderr, "' to match '");
+					print_type(stderr, stage, expected_type);
+					fprintf(stderr, "'.\n");
+					free(new_members);
+					return -1;
+				}
+
+				new_members[i].name = expected_member->name;
+
+				int err;
+				err = consolidate_types(stage,
+										expected_type->tuple.types[i],
+										input_type->tuple.types[i],
+										&new_members[i].type);
+
+				if (err) {
+					free(new_members);
+					return -1;
+				}
+
+				if (new_members[i].type != expected_member->type) {
+					different = true;
+				}
+			}
+
+			if (different) {
+				struct type *new_type;
+				new_type = register_named_tuple_type(stage, NULL, new_members,
+													 expected_type->named_tuple.length);
+				*result = new_type->id;
+			} else {
+				*result = expected_type->id;
+			}
+			free(new_members);
+			return 0;
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_ARRAY:
+		if (input_type->kind == TYPE_KIND_ARRAY) {
+			if (expected_type->array.length != input_type->array.length) {
+				// @TODO: Better error message?
+				consolidate_types_fail(stage, expected_type, input_type);
+				return -1;
+			}
+
+			int err;
+			err = consolidate_types(stage,
+									expected_type->array.type,
+									input_type->array.type,
+									result);
+
+			return err;
+
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+
+
+
+
+int consolidate_typed_value_into(struct stage *stage, type_id expected, struct value_ref input, struct value_ref *result)
+{
+	assert(result->type == expected);
+	assert(result->data != NULL);
+
+
+	struct type *expected_type;
+	struct type *input_type;
+
+	expected_type = get_type(stage, expected);
+	input_type    = get_type(stage, input.type);
+
+	if (expected_type == input_type) {
+		memcpy(result->data, input.data,
+			   expected_type->num_scalars * sizeof(scalar_value));
+		return 0;
+	}
+
+
+	switch (expected_type->kind) {
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		return -1;
+
+	case TYPE_KIND_SCALAR:
+		if (input_type->kind == TYPE_KIND_SCALAR) {
+			result->data[0] = input.data[0];
+			return 0;
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_STRING:
+		printf("@TODO: Strings\n");
+		return -1;
+
+	case TYPE_KIND_TYPE:
+		if (input_type->kind == TYPE_KIND_TYPE) {
+			result->data[0] = input.data[0];
+			return 0;
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_TUPLE:
+		if (input_type->kind == TYPE_KIND_TUPLE) {
+			if (input_type->tuple.length != expected_type->tuple.length) {
+				// @TODO: Better error message?
+				consolidate_types_fail(stage, expected_type, input_type);
+				return -1;
+			}
+
+			size_t expected_num_scalars = 0;
+			size_t input_num_scalars = 0;
+			for (size_t i = 0; i < expected_type->tuple.length; i++) {
+				struct type *member_type;
+				member_type = get_type(stage,
+									   expected_type->tuple.types[i]);
+
+				struct type *input_member_type;
+				input_member_type = get_type(stage,
+									   input_type->tuple.types[i]);
+
+
+				struct value_ref member_value = {0};
+				member_value.type = member_type->id;
+				member_value.data = &result->data[expected_num_scalars];
+
+				struct value_ref input_value = {0};
+				input_value.type = input_member_type->id;
+				input_value.data = &input.data[input_num_scalars];
+
+				int err;
+				err = consolidate_typed_value_into(stage, member_type->id,
+												   input_value, &member_value);
+
+				if (err) {
+					return -1;
+				}
+
+				expected_num_scalars += member_type->num_scalars;
+				input_num_scalars += input_member_type->num_scalars;
+			}
+
+			return 0;
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_NAMED_TUPLE:
+		if (input_type->kind == TYPE_KIND_NAMED_TUPLE) {
+			if (input_type->named_tuple.length != expected_type->named_tuple.length) {
+				// @TODO: Better error message?
+				consolidate_types_fail(stage, expected_type, input_type);
+				return -1;
+			}
+
+			size_t expected_num_scalars = 0;
+			for (size_t i = 0; i < expected_type->named_tuple.length; i++) {
+				struct named_tuple_member *expected_member;
+				struct named_tuple_member *input_member = NULL;
+				struct type *input_member_type = NULL;
+				size_t input_num_scalars = 0;
+
+				expected_member = &expected_type->named_tuple.members[i];
+
+				struct type *member_type;
+				member_type = get_type(stage,
+									   expected_type->named_tuple.members[i].type);
+
+				if (!member_type) {
+					return -1;
+				}
+
+				for (size_t j = 0; j < input_type->named_tuple.length; j++) {
+					struct type *tmp_input_member_type;
+					tmp_input_member_type = get_type(stage,
+												 input_type->named_tuple.members[j].type);
+
+					if (input_type->named_tuple.members[j].name == expected_member->name) {
+						input_member = &input_type->named_tuple.members[j];
+						input_member_type = tmp_input_member_type;
+						break;
+					}
+
+					if (!tmp_input_member_type) {
+						return -1;
+					}
+
+					input_num_scalars += tmp_input_member_type->num_scalars;
+				}
+
+				if (input_member == NULL) {
+					fprintf(stderr, "Missing the member '%.*s' from '",
+							ALIT(expected_member->name));
+					print_type(stderr, stage, input_type);
+					fprintf(stderr, "' to match '");
+					print_type(stderr, stage, expected_type);
+					fprintf(stderr, "'.\n");
+					return -1;
+				}
+
+				struct value_ref member_value = {0};
+				member_value.type = member_type->id;
+				member_value.data = &result->data[expected_num_scalars];
+
+				struct value_ref input_value = {0};
+				input_value.type = input_member_type->id;
+				input_value.data = &input.data[input_num_scalars];
+
+
+				int err;
+				err = consolidate_typed_value_into(stage, member_type->id,
+												   input_value, &member_value);
+
+				if (err) {
+					return -1;
+				}
+
+				expected_num_scalars += member_type->num_scalars;
+			}
+
+			return 0;
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_ARRAY:
+		if (input_type->kind == TYPE_KIND_ARRAY) {
+			if (expected_type->array.length != input_type->array.length) {
+				// @TODO: Better error message?
+				consolidate_types_fail(stage, expected_type, input_type);
+				return -1;
+			}
+
+			struct type *expected_member_type;
+			expected_member_type = get_type(stage, expected_type->array.type);
+
+			struct type *input_member_type;
+			input_member_type = get_type(stage, input_type->array.type);
+
+
+			for (size_t i = 0; i < expected_type->array.length; i++) {
+				struct value_ref member_value = {0};
+				member_value.type = expected_member_type->id;
+				member_value.data = &result->data[i * expected_member_type->num_scalars];
+
+				struct value_ref input_value = {0};
+				input_value.type = input_member_type->id;
+				input_value.data = &input.data[i * input_member_type->num_scalars];
+
+
+				int err;
+				err = consolidate_typed_value_into(stage, expected_member_type->id,
+												   input_value, &member_value);
+
+				if (err) {
+					return -1;
+				}
+			}
+
+			return 0;
+
+		} else {
+			consolidate_types_fail(stage, expected_type, input_type);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+
 
 /* int consolidate_typed_value_into_type(struct stage *stage, type_id expected_type_id, */
 /* 									  struct value_ref input, struct value_ref *result) */
@@ -692,15 +1024,15 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 /* 	struct type *expected_type; */
 /* 	struct type *input_type; */
 
+/* 	assert(result->type == expected_type_id); */
+/* 	assert(result->data != NULL); */
+
 /* 	expected_type = get_type(stage, expected_type_id); */
-/* 	input_type    = get_type(stage, input_type_id); */
+/* 	input_type    = get_type(stage, input.type); */
 
 /* 	if (expected_type == input_type) { */
-/* 		result->type = expected_type->id; */
-/* 		result->data = calloc(expected_type->num_scalars, sizeof(scalar_value)); */
-
-/* 		memcpy(result->data, input.data, expected_type->num_scalars * sizeof(scalar_value)); */
-
+/* 		memcpy(result->data, input.data, */
+/* 			   expected_type->num_scalars * sizeof(scalar_value)); */
 /* 		return 0; */
 /* 	} */
 
@@ -711,6 +1043,16 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 
 /* 	case TYPE_KIND_SCALAR: */
 /* 		// @TODO: Wrapping of scalars (min, max) */
+/* 		result->data[0] = input->data[0]; */
+/* 		break; */
+
+/* 	case TYPE_KIND_TYPE: */
+/* 		result->data[0] = input->data[0]; */
+/* 		break; */
+
+/* 	case TYPE_KIND_STRING: */
+/* 		printf("@TODO: Consolidate string\n"); */
+/* 		return -1; */
 
 
 /* 	} */

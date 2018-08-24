@@ -52,7 +52,15 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 	device->type = type;
 	device->name = name;
 	device->data = NULL;
-	device->args = args;
+
+	int err = 0;
+
+	device->args = alloc_value(stage, device_type->params);
+	err = consolidate_typed_value_into(stage, device_type->params, args, &device->args);
+
+	if (err) {
+		return NULL;
+	}
 
 	device->id = stage->num_devices++;
 	stage->devices[device->id] = device;
@@ -100,8 +108,6 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 			device->output_types[i] = device_type->outputs[i].type;
 		}
 	}
-
-	int err = 0;
 
 	if (device_type->takes_context && device_type->device_context_template_init != NULL) {
 		err = device_type->device_context_template_init(stage, device_type, device, context);

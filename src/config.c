@@ -1341,8 +1341,6 @@ apply_dispatch(struct apply_context *ctx,
 								"Failed to evaluate literal.");
 					return DISPATCH_ERROR;
 				}
-
-				print_value_ref(ctx->stage, args);
 			}
 
 			// @TODO: Fill args
