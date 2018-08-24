@@ -26,7 +26,7 @@ struct device_type *register_device_type_tick(struct stage *stage)
 	struct device_type *tick;
 	struct device_channel_def *channel_out;
 
-	tick = register_device_type(stage, STR("tick"));
+	tick = register_device_type(stage, STR("tick"), 0);
 	tick->device_init = device_tick_init;
 
 	channel_out = device_type_add_output(stage, tick, STR("out"),

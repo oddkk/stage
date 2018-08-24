@@ -131,7 +131,11 @@ int type_find_member(struct type_iterator *out,
 					 struct type_iterator iter,
 					 struct atom *name);
 
+int consolidate_typed_value_into_type(struct stage *, type_id expected_type,
+									  struct value_ref input, struct value_ref *result);
+
 void print_typed_value(struct stage *, type_id tid, scalar_value *values, size_t num_values);
+void print_value_ref(struct stage *, struct value_ref);
 
 char *humanreadable_type_kind(enum type_kind);
 

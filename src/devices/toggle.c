@@ -94,7 +94,7 @@ struct device_type *register_device_type_toggle(struct stage *stage)
 	struct device_type *toggle;
 	struct device_channel_def *out;
 
-	toggle = register_device_type(stage, STR("toggle"));
+	toggle = register_device_type(stage, STR("toggle"), 0);
 	toggle->device_init = device_toggle_init;
 
 	out = device_type_add_output(stage, toggle, STR("out"), stage->standard_types.integer);

@@ -4,17 +4,19 @@
 #include <stdlib.h>
 
 
-struct device *register_device_pre_attrs(struct stage *stage, device_type_id type,
-													  struct scoped_hash *parent_scope,
-													  struct atom *name)
+struct device *register_device(struct stage *stage, device_type_id type,
+							   struct scoped_hash *parent_scope,
+							   struct atom *name,
+							   struct value_ref args)
 {
-	return register_device_pre_attrs_with_context(stage, type, parent_scope, name, NULL);
+	return register_device_with_context(stage, type, parent_scope, name, args, NULL);
 }
 
-struct device *register_device_pre_attrs_with_context(struct stage *stage, device_type_id type,
-													  struct scoped_hash *parent_scope,
-													  struct atom *name,
-													  void *context)
+struct device *register_device_with_context(struct stage *stage, device_type_id type,
+											struct scoped_hash *parent_scope,
+											struct atom *name,
+											struct value_ref args,
+											void *context)
 {
 	struct device *device;
 	struct device_type *device_type;
@@ -50,6 +52,7 @@ struct device *register_device_pre_attrs_with_context(struct stage *stage, devic
 	device->type = type;
 	device->name = name;
 	device->data = NULL;
+	device->args = args;
 
 	device->id = stage->num_devices++;
 	stage->devices[device->id] = device;
@@ -70,35 +73,6 @@ struct device *register_device_pre_attrs_with_context(struct stage *stage, devic
 			return NULL;
 		}
 		entry->id = device->id;
-	}
-
-	int total_scalars = 0;
-	for (size_t i = 0; i < device_type->num_attributes; i++) {
-		struct device_attribute_def *attr;
-		attr = &device_type->attributes[i];
-		int num_scalars;
-
-		num_scalars
-			= register_typed_member_in_scope(stage, attr->name,
-											 attr->type,
-											 device->scope,
-											 SCOPE_ENTRY_DEVICE_ATTRIBUTE,
-											 total_scalars);
-
-		total_scalars += num_scalars;
-	}
-
-	device->num_attribute_values = total_scalars;
-	device->attribute_values = calloc(device->num_attribute_values,
-									  sizeof(scalar_value));
-
-	if (!device->attribute_values) {
-		printf("Could not allocate attributes. Out of memory\n");
-		return NULL;
-	}
-
-	for (size_t i = 0; i < device->num_attribute_values; i++) {
-		device->attribute_values[i] = SCALAR_OFF;
 	}
 
 	if (device_type->num_inputs > 0) {
@@ -129,52 +103,17 @@ struct device *register_device_pre_attrs_with_context(struct stage *stage, devic
 
 	int err = 0;
 
-	if (device_type->takes_context && device_type->device_context_pre_init != NULL) {
-		err = device_type->device_context_pre_init(stage, device_type, device, context);
-	} else if (device_type->device_pre_init != NULL) {
-		err = device_type->device_pre_init(stage, device_type, device);
-	}
-
-	if (err) {
-		printf("Could not initialize device '%.*s'!\n",
-			   ALIT(device_type->name));
-		// @TODO: Deallocate
-		return NULL;
-	}
-
-	return device;
-
-}
-
-int finalize_device(struct stage *stage, struct device *device)
-{
-	return finalize_device_with_context(stage, device, NULL);
-}
-
-int finalize_device_with_context(struct stage *stage, struct device *device, void *context)
-{
-	struct device_type *device_type;
-	int err = 0;
-
-	if (device->finalized) {
-		return 0;
-	}
-
-	device_type = get_device_type(stage, device->type);
-
 	if (device_type->takes_context && device_type->device_context_template_init != NULL) {
 		err = device_type->device_context_template_init(stage, device_type, device, context);
 	} else if (device_type->device_template_init != NULL) {
 		err = device_type->device_template_init(stage, device_type, device);
 	}
 
-	if (err < 0) {
+	if (err) {
 		printf("Could not initialize device templates for '%.*s'!\n",
 			   ALIT(device_type->name));
 		// @TODO: Deallocate
-		return -1;
-	} else if (err > 0) {
-		return err;
+		return NULL;
 	}
 
 	if (device_type->num_inputs > 0) {
@@ -244,7 +183,7 @@ int finalize_device_with_context(struct stage *stage, struct device *device, voi
 	}
 
 	if (err) {
-		return err;
+		return NULL;
 	}
 
 	err = allocate_device_channels(stage, device->id);
@@ -252,7 +191,7 @@ int finalize_device_with_context(struct stage *stage, struct device *device, voi
 		printf("Could not allocated channels for device '%.*s'!\n",
 				ALIT(device_type->name));
 		// @TODO: Deallocate
-		return -1;
+		return NULL;
 	}
 
 	if (device_type->takes_context && device_type->device_context_init != NULL) {
@@ -261,16 +200,15 @@ int finalize_device_with_context(struct stage *stage, struct device *device, voi
 		err = device_type->device_init(stage, device_type, device);
 	}
 
-	if (err < 0) {
+	if (err) {
 		printf("Could not initialize device '%.*s'!\n",
 			   ALIT(device_type->name));
 		// @TODO: Deallocate
-		return -1;
-	} else if (err > 0) {
-		return err;
+		return NULL;
 	}
-	device->finalized = true;
-	return 0;
+
+	return device;
+
 }
 
 int device_assign_input_type_by_name(struct stage *stage,
@@ -305,89 +243,27 @@ int device_assign_input_type_by_name(struct stage *stage,
 	return 0;
 }
 
-struct value_ref device_get_attr_ref(struct stage *stage,
-									 struct device *device,
-									 struct atom *attr_name)
+struct scope_lookup device_lookup(struct stage *stage, struct device *device)
 {
-	struct value_ref result = {0};
-
-	struct device_type *dev_type;
-	dev_type = get_device_type(stage, device->type);
-
-	struct scope_entry entry;
-	int err;
-
-	err = scoped_hash_local_lookup(device->scope, attr_name, &entry);
-	if (err) {
-		print_error("device get attr",
-			    "The device of type '%.*s' has no attribute '%.*s'.",
-			    ALIT(dev_type->name), ALIT(attr_name));
-		return result;
-	}
-
-	return device_get_attr_from_entry(stage, device, entry);
+	return scope_lookup_init(stage, device->scope);
 }
 
-
-struct value_ref device_get_attr_from_entry(struct stage *stage,
+struct value_ref device_get_arg_from_lookup(struct stage *stage,
 											struct device *device,
-											struct scope_entry entry)
+											struct scope_lookup_range range)
 {
 	struct value_ref result = {0};
 
-	if (entry.kind != SCOPE_ENTRY_DEVICE_ATTRIBUTE) {
-		struct device_type *dev_type;
-		dev_type = get_device_type(stage, device->type);
+	struct type *args_type;
+	args_type = get_type(stage, device->args.type);
 
-		print_error("device get attr",
-			    "The element '%.*s' on the device '%.*s' is not an attribute.",
-			    ALIT(entry.name), ALIT(dev_type->name));
-		return result;
-	}
+	assert(range.owner != device->id);
+	assert(range.begin + range.length < args_type->num_scalars);
 
-	// @TODO: Check this attribute is from `device`.
-
-	assert(entry.id + entry.length <= device->num_attribute_values);
-
-	struct type *type;
-	type = get_type(stage, entry.type);
-
-	assert(type != NULL);
-	assert(entry.length == type->num_scalars);
-
-
-	result.type = entry.type;
-	result.data = &device->attribute_values[entry.id];
+	result.type = range.type->id;
+	result.data = &device->args.data[range.begin];
 
 	return result;
-}
-
-scalar_value device_get_attr(struct stage *stage,
-					struct device *device,
-					struct atom *attr_name)
-{
-	struct device_type *type;	// @TODO: Is this necessary?
-	struct scope_entry entry;
-	int err;
-
-	type = stage->device_types[device->type];
-
-	err = scoped_hash_local_lookup(device->scope, attr_name, &entry);
-	if (err) {
-		print_error("device get attr",
-			    "The device of type '%.*s' has no attribute '%.*s'.",
-			    ALIT(type->name), ALIT(attr_name));
-		return SCALAR_OFF;
-	}
-
-	if (entry.kind != SCOPE_ENTRY_DEVICE_ATTRIBUTE) {
-		print_error("device get attr",
-			    "The element '%.*s' on the device '%.*s' is not an attribute.",
-			    ALIT(attr_name), ALIT(type->name));
-		return SCALAR_OFF;
-	}
-	assert(entry.id < type->num_attributes);
-	return device->attribute_values[entry.id];
 }
 
 channel_id device_get_channel_id(struct stage * stage,
@@ -519,16 +395,9 @@ void describe_device(struct stage *stage, struct device *dev)
 	print_full_entry_name(stage, dev->scope);
 	fprintf(fp, "\n type: %.*s\n", ALIT(dev_type->name));
 
-	fprintf(fp, " attributes:\n");
-	for (size_t i = 0; i < dev_type->num_attributes; ++i) {
-		struct device_attribute_def *attr;
-		scalar_value *value;
-		attr = &dev_type->attributes[i];
-		value = &dev->attribute_values[i];
-		fprintf(fp, " - %i: %.*s = ", attr->id, ALIT(attr->name));
-		// @TODO: This cast should be removed!
-		print_typed_value(stage, attr->type, value,
-						  dev->num_attribute_values);
+	fprintf(fp, " arguments:\n");
+	if (dev->args.type) {
+		print_value_ref(stage, dev->args);
 		fprintf(fp, "\n");
 	}
 

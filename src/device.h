@@ -4,6 +4,7 @@
 #include "device_type.h"
 #include "channel.h"
 #include "type.h"
+#include "scope_lookup.h"
 
 typedef unsigned int device_id;
 
@@ -17,45 +18,32 @@ struct device {
 
 	void *data;
 	struct atom *name;
-	scalar_value *attribute_values;
-	size_t num_attribute_values;
+	struct value_ref args;
 	struct scoped_hash *scope;
-	bool finalized;
 };
 
 struct stage;
 
-struct device_attribute {
-	struct atom *name;
-	scalar_value value;
-};
+struct device *register_device(struct stage *stage, device_type_id type,
+							   struct scoped_hash *parent_scope,
+							   struct atom *name,
+							   struct value_ref args);
 
-struct device *register_device_pre_attrs(struct stage *stage, device_type_id type,
-										 struct scoped_hash *parent_scope,
-										 struct atom *name);
-
-struct device *register_device_pre_attrs_with_context(struct stage *stage, device_type_id type,
-													  struct scoped_hash *parent_scope,
-													  struct atom *name,
-													  void *context);
-
-int finalize_device(struct stage *stage, struct device *dev);
-int finalize_device_with_context(struct stage *stage, struct device *device, void *context);
+struct device *register_device_with_context(struct stage *stage, device_type_id type,
+											struct scoped_hash *parent_scope,
+											struct atom *name,
+											struct value_ref args,
+											void *context);
 
 int device_assign_input_type_by_name(struct stage *stage,
 									 struct device *dev,
 									 struct atom *name,
 									 type_id type);
 
-scalar_value device_get_attr(struct stage *stage,
-					struct device *device,
-					struct atom *attr_name);
+struct scope_lookup device_lookup(struct stage *, struct device *);
 
-struct value_ref device_get_attr_ref(struct stage *, struct device *,
-									 struct atom *attr_name);
-
-struct value_ref device_get_attr_from_entry(struct stage *, struct device *,
-											struct scope_entry);
+struct value_ref device_get_attr_from_lookup(struct stage *, struct device *,
+											 struct scope_lookup_range);
 
 channel_id device_get_channel_by_name(struct stage *stage,
 				      struct device *device, struct atom *cnl);

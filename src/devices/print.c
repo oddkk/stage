@@ -1,5 +1,6 @@
 #include "../stage.h"
 #include "../device.h"
+#include "../utils.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -44,7 +45,8 @@ static int device_print_template_init(struct stage *stage, struct device_type *t
 	scalar_value input_type;
 	int err;
 
-	input_type = device_get_attr(stage, dev, SATOM(stage, "T"));
+	// @TODO: Implement
+	input_type = stage->standard_types.integer; // device_get_attr(stage, dev, SATOM(stage, "T"));
 	err = device_assign_input_type_by_name(stage, dev, SATOM(stage, "in"), input_type);
 
 	return err;
@@ -53,11 +55,12 @@ static int device_print_template_init(struct stage *stage, struct device_type *t
 static int device_print_init(struct stage *stage, struct device_type *type, struct device *dev)
 {
 	struct device_debug_print_data *data = calloc(1, sizeof(struct device_debug_print_data));
-	scalar_value input_type;
+	/* scalar_value input_type; */
 
-	input_type = device_get_attr(stage, dev, SATOM(stage, "T"));
-	data->type = get_type(stage, input_type);
-	data->buffer = 0;
+	// @TODO: Implement
+	/* input_type = device_get_attr(stage, dev, SATOM(stage, "T")); */
+	data->type = get_type(stage, stage->standard_types.integer); //input_type);
+	/* data->buffer = 0; */
 
 	data->last_value[0] = calloc(data->type->num_scalars, sizeof(scalar_value));
 	data->last_value[1] = calloc(data->type->num_scalars, sizeof(scalar_value));
@@ -76,13 +79,16 @@ struct device_type *register_device_type_print(struct stage *stage)
 	struct device_type *print;
 	struct device_channel_def *channel_in;
 
-	print = register_device_type(stage, STR("debug_print"));
+	type_id params_type;
+	struct device_type_param params[] = {
+		{ .name=STR("T"), .type=stage->standard_types.type },
+	};
+
+	params_type = make_device_type_params_type(stage, params, ARRAY_LENGTH(params));
+
+	print = register_device_type(stage, STR("debug_print"), params_type);
 	print->device_init = device_print_init;
 	print->device_template_init = device_print_template_init;
-
-	device_type_add_attribute(stage, print, STR("T"),
-							  stage->standard_types.integer,
-							  stage->standard_types.type);
 
 	channel_in = device_type_add_input(stage, print, STR("in"), TYPE_TEMPLATE);
 

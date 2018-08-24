@@ -797,7 +797,7 @@ static struct apply_node *apply_discover_type_tuple(struct apply_context *ctx,
 		if (named) {
 			new_member.name = member->tuple_item.name;
 		}
-		new_member.type = apply_discover_type(ctx, scope, member->tuple_item.type, new_member.name);
+		new_member.type = apply_discover_type(ctx, scope, member->tuple_item.type, NULL);
 
 		dlist_append(type->type_tuple.members, type->type_tuple.num_members, &new_member);
 	}
@@ -1194,11 +1194,16 @@ apply_dispatch(struct apply_context *ctx,
 		WAIT_FOR(node->device_type.params);
 
 		if (!node->device_type.type) {
-			// @TODO: Implement parameters
+			type_id params_type_id = 0;
+			if (node->device_type.params) {
+				params_type_id = apply_resolve_type_id(node->device_type.params);
+			}
+
 			node->device_type.type
 				= register_device_type_scoped(ctx->stage,
 											  node->device_type.name->name,
-											  0, node->device_type.scope);
+											  params_type_id,
+											  node->device_type.scope);
 			if (!node->device_type.type) {
 				return DISPATCH_ERROR;
 			}

@@ -40,8 +40,7 @@ struct device_type {
 	device_type_id id;
 	struct atom *name;
 
-	struct device_attribute_def *attributes;
-	size_t num_attributes;
+	type_id params;
 
 	struct device_channel_def *inputs;
 	size_t num_inputs;
@@ -57,12 +56,10 @@ struct device_type {
 	bool takes_context;
 	union {
 		struct {
-			device_init_callback device_pre_init;
 			device_init_callback device_template_init;
 			device_init_callback device_init;
 		};
 		struct {
-			device_init_context_callback device_context_pre_init;
 			device_init_context_callback device_context_template_init;
 			device_init_context_callback device_context_init;
 		};
@@ -71,15 +68,8 @@ struct device_type {
 	device_output_eval_callback eval;
 
 	bool finalized;
-
 	void *user_data;
 };
-
-struct device_attribute_def *device_type_add_attribute(struct stage *, struct device_type
-						       *dev_type,
-						       struct string name,
-													   scalar_value def,
-													   type_id type);
 
 struct device_channel_def *device_type_add_input(struct stage *,
 						 struct device_type *dev_type,
@@ -100,14 +90,24 @@ int device_type_get_output_id(struct stage *,
 							  struct atom *name);
 
 struct device_type *register_device_type(struct stage *stage,
-					 struct string name);
+										 struct string name,
+										 type_id params);
 
 struct device_type *register_device_type_scoped(struct stage *stage,
-						struct string name,
-						struct scoped_hash
-						*parent_scope);
+												struct string name,
+												type_id params,
+												struct scoped_hash *parent_scope);
 
-void finalize_device_type(struct device_type *);
+struct device_type_param {
+	struct string name;
+	type_id type;
+};
+
+type_id make_device_type_params_type(struct stage *stage,
+									struct device_type_param *params,
+									size_t num_params);
+
+void finalize_device_type(struct device_type *dev_type);
 
 void describe_device_type(struct stage *stage, struct device_type *dev_type);
 

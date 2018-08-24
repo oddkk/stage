@@ -6,29 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-struct device_attribute_def *device_type_add_attribute(struct stage *stage, struct device_type
-						       *dev_type,
-						       struct string name,
-							scalar_value def,
-							type_id type)
-{
-	struct device_attribute_def attr;
-
-	if (dev_type->finalized) {
-		printf("Cannot alter a finalized device type.\n");
-		return NULL;
-	}
-
-	attr.id = dev_type->num_attributes;
-	attr.name = atom_create(&stage->atom_table, name);;
-	attr.def = def;
-	attr.type = type;
-
-	dlist_append(dev_type->attributes, dev_type->num_attributes, &attr);
-
-	return &dev_type->attributes[attr.id];
-}
-
 struct device_channel_def *device_type_add_input(struct stage *stage,
 						 struct device_type *dev_type,
 						 struct string name,
@@ -118,15 +95,17 @@ int device_type_get_output_id(struct stage *stage,
 }
 
 struct device_type *register_device_type(struct stage *stage,
-					 struct string name)
+										 struct string name,
+										 type_id params)
 {
-	return register_device_type_scoped(stage, name, &stage->root_scope);
+	return register_device_type_scoped(stage, name, params,
+									   &stage->root_scope);
 }
 
 struct device_type *register_device_type_scoped(struct stage *stage,
-						struct string name,
-						struct scoped_hash
-						*parent_scope)
+												struct string name,
+												type_id params,
+												struct scoped_hash *parent_scope)
 {
 	struct device_type *dev_type;
 	int err;
@@ -157,6 +136,7 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 
 	dev_type->id = stage->num_device_types++;
 	dev_type->name = atom_create(&stage->atom_table, name);
+	dev_type->params = params;
 	dev_type->scope =
 	    scoped_hash_push(parent_scope, SCOPE_ENTRY_DEVICE_TYPE,
 			     dev_type->id);
@@ -190,19 +170,40 @@ void finalize_device_type(struct device_type *dev_type)
 	dev_type->finalized = true;
 }
 
+type_id make_device_type_params_type(struct stage *stage,
+									struct device_type_param *params,
+									size_t num_params)
+{
+	struct type new_type = {0};
+
+	new_type.kind = TYPE_KIND_NAMED_TUPLE;
+	new_type.named_tuple.length = num_params;
+	new_type.named_tuple.members
+		= calloc(num_params, sizeof(struct named_tuple_member));
+
+	for (size_t i = 0; i < num_params; i++) {
+		new_type.named_tuple.members[i].name = satom(stage, params[i].name);
+		new_type.named_tuple.members[i].type = params[i].type;
+	}
+
+	struct type *result;
+	result = register_type(stage, new_type);
+
+	if (!result) {
+		return 0;
+	}
+
+	return result->id;
+}
+
 void describe_device_type(struct stage *stage, struct device_type *dev_type)
 {
 	FILE *fp = stdout;
 	fprintf(fp, "device type %.*s\n", ALIT(dev_type->name));
 
-	fprintf(stdout, " attributes:\n");
-	for (size_t i = 0; i < dev_type->num_attributes; ++i) {
-		struct device_attribute_def *attr;
-		attr = &dev_type->attributes[i];
-		fprintf(fp, " - %i: %.*s ", attr->id, ALIT(attr->name));
-		print_type_id(fp, stage, attr->type);
-		fprintf(fp, "\n");
-	}
+	fprintf(stdout, " parameters:\n");
+	print_type_id(fp, stage, dev_type->params);
+	fprintf(fp, "\n");
 
 	fprintf(stdout, " inputs:\n");
 	for (size_t i = 0; i < dev_type->num_inputs; ++i) {

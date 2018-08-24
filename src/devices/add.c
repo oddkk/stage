@@ -1,5 +1,6 @@
 #include "../stage.h"
 #include "../device.h"
+#include "../utils.h"
 #include <stdlib.h>
 
 struct device_add_data {
@@ -52,7 +53,13 @@ struct device_type *register_device_type_add(struct stage *stage)
 	struct device_type *add;
 	struct device_channel_def *channel_out;
 
-	add = register_device_type(stage, STR("add"));
+	type_id params_type;
+	struct device_type_param params[] = {
+		{ .name=STR("T"), .type=stage->standard_types.type },
+	};
+	params_type = make_device_type_params_type(stage, params, ARRAY_LENGTH(params));
+
+	add = register_device_type(stage, STR("add"), params_type);
 	add->device_init = device_add_init;
 
 	device_type_add_input(stage, add, STR("left"),

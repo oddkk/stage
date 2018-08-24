@@ -253,10 +253,10 @@ named_tuple_list:
 				named_tuple_item                      { $$ = make_list(ctx, $1, NULL); }
 		|		named_tuple_list ',' named_tuple_item { $$ = make_list(ctx, $3, $1); }
 		;
-tuple_item: 	type_l_expr                  { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = NULL; $$->tuple_item.type = $1; }
+tuple_item: 	type                         { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = NULL; $$->tuple_item.type = $1; }
 		;
 named_tuple_item:
-				IDENTIFIER ':' type_l_expr   { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = $1; $$->tuple_item.type = $3; }
+				IDENTIFIER ':' type          { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_ITEM); $$->tuple_item.name = $1; $$->tuple_item.type = $3; }
 		;
 
 

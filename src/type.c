@@ -605,6 +605,117 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 	return scalars_read;
 }
 
+/* static void consolidate_types_fail(struct stage *stage, struct type *expected, struct type *input) */
+/* { */
+/* 	fprintf(stderr, "Can not consolidate a %s, '", */
+/* 		   humanreadable_type_kind(expected->kind)); */
+/* 	print_type(stderr, stage, expected); */
+/* 	fprintf(stderr, "', with a %s, '", */
+/* 		   humanreadable_type_kind(input->kind)); */
+/* 	print_type(stderr, stage, input); */
+/* 	fprintf(stderr, "'.\n"); */
+/* } */
+
+/* int consolidate_types(struct stage *stage, type_id expected, type_id input, type_id *result) */
+/* { */
+/* 	if (input == expected) { */
+/* 		*result = expected; */
+/* 		return 0; */
+/* 	} */
+
+/* 	struct type *expected_type; */
+/* 	struct type *input_type; */
+
+/* 	expected_type = get_type(stage, expected); */
+/* 	input_type    = get_type(stage, input); */
+
+/* 	switch (expected_type->kind) { */
+/* 	case TYPE_KIND_NONE: */
+/* 		assert(!"None type used!"); */
+/* 		return -1; */
+
+/* 	case TYPE_KIND_SCALAR: */
+/* 		if (input_type->kind == TYPE_KIND_SCALAR) { */
+/* 			*result = expected_type; */
+/* 			return 0; */
+/* 		} else { */
+/* 			consolidate_types_fail(stage, expected_type, input_type); */
+/* 			return -1; */
+/* 		} */
+
+/* 	case TYPE_KIND_STRING: */
+/* 		printf("@TODO: Strings\n"); */
+/* 		return -1; */
+
+/* 	case TYPE_KIND_TYPE: */
+/* 		if (input_type->kind == TYPE_KIND_SCALAR) { */
+/* 			*result = expected_type; */
+/* 			return 0; */
+/* 		} else { */
+/* 			consolidate_types_fail(stage, expected_type, input_type); */
+/* 			return -1; */
+/* 		} */
+/* 	} */
+
+/* 	case TYPE_KIND_TUPLE: */
+/* 		if (input_type->kind == TYPE_KIND_TUPLE) { */
+/* 			if (input_type->tuple.length > expected_type->tuple.length) { */
+/* 				// @TODO: Better error message? */
+/* 				consolidate_types_fail(stage, expected_type, input_type); */
+/* 				return -1; */
+/* 			} */
+
+/* 			type_id *new_members; */
+/* 			new_members = calloc(expected_type->tuple.length, sizeof(type_id)); */
+
+/* 			for (size_t i = 0; i < expected_type->tuple.length; i++) { */
+/* 				int err; */
+/* 				err = consolidate_types(stage, */
+/* 										expected_type->tuple.types[i], */
+/* 										input_type->tuple.types[i], */
+/* 										&new_members[i]); */
+/* 			} */
+/* 			*result = expected_type; */
+/* 			return 0; */
+/* 		} else { */
+/* 			consolidate_types_fail(stage, expected_type, input_type); */
+/* 			return -1; */
+/* 		} */
+/* 	} */
+
+/* 	return 0; */
+/* } */
+
+/* int consolidate_typed_value_into_type(struct stage *stage, type_id expected_type_id, */
+/* 									  struct value_ref input, struct value_ref *result) */
+/* { */
+/* 	struct type *expected_type; */
+/* 	struct type *input_type; */
+
+/* 	expected_type = get_type(stage, expected_type_id); */
+/* 	input_type    = get_type(stage, input_type_id); */
+
+/* 	if (expected_type == input_type) { */
+/* 		result->type = expected_type->id; */
+/* 		result->data = calloc(expected_type->num_scalars, sizeof(scalar_value)); */
+
+/* 		memcpy(result->data, input.data, expected_type->num_scalars * sizeof(scalar_value)); */
+
+/* 		return 0; */
+/* 	} */
+
+/* 	switch (expected_type->kind) { */
+/* 	case TYPE_KIND_NONE: */
+/* 		assert(!"None type used!"); */
+/* 		break; */
+
+/* 	case TYPE_KIND_SCALAR: */
+/* 		// @TODO: Wrapping of scalars (min, max) */
+
+
+/* 	} */
+/* } */
+
 void print_typed_value(struct stage *stage, type_id tid, scalar_value *values, size_t num_values)
 {
 	print_typed_value_internal(stage, tid, values, num_values);

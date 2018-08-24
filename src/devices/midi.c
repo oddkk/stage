@@ -90,7 +90,7 @@ static int device_launchpad_init(struct stage *stage, struct device_type *type, 
 	struct device_launchpad_data *data = calloc(1, sizeof(struct device_launchpad_data));
 	dev->data = data;
 
-	data->fd = open("/dev/midi2", O_RDWR, 0);
+	data->fd = open("/dev/midi", O_RDWR, 0);
 	if (data->fd < 0) {
 		perror("open");
 		return -1;
@@ -126,9 +126,17 @@ struct device_type *register_device_type_midi(struct stage *stage) {
 
 	struct device_type *launchpad;
 
+	type_id params_type = 0;
+	/* struct device_type_param params[] = { */
+	/* 	{ .name=STR("midi_file"), .type=stage->standard_types.string }, */
+	/* }; */
+
+	/* params_type = make_device_type_params_type(stage, params, ARRAY_LENGTH(params)); */
+
 	launchpad
 		= register_device_type_scoped(stage,
 									  STR("launchpad"),
+									  params_type,
 									  ns_novation);
 
 	struct type *button_state_array_type;

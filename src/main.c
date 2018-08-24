@@ -108,10 +108,10 @@ int main(int argc, char *argv[])
 	/* dev = register_device_pre_attrs(&stage, 0, &stage.root_scope, SATOM(&stage, "c"), NULL); */
 	/* finalize_device(&stage, dev); */
 
-	parse_config_file(STR("config/simple.conf"), &stage.atom_table,
+	parse_config_file(STR("config/super_simple.conf"), &stage.atom_table,
 			  &stage.memory, &node);
 
-	/* config_tree_print(node); */
+	config_tree_print(node);
 
 	err = apply_config(&stage, node);
 	if (err) {
@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
 	}
 
 
-#if 0
+#if 1
 	printf
 	    ("============================ types ============================\n");
 	for (int i = 0; i < stage.num_types; i++) {
