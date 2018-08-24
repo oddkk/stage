@@ -34,6 +34,7 @@ enum apply_node_type {
 	APPLY_NODE_IDENT,
 	APPLY_NODE_NUMLIT,
 	APPLY_NODE_TUPLE_LIT,
+	APPLY_NODE_ARRAY_LIT,
 
 	APPLY_NODE_L_VALUE,
 };
@@ -62,6 +63,7 @@ const char *apply_node_name(enum apply_node_type type) {
 		APPLY_NODE_NAME(IDENT);
 		APPLY_NODE_NAME(NUMLIT);
 		APPLY_NODE_NAME(TUPLE_LIT);
+		APPLY_NODE_NAME(ARRAY_LIT);
 
 		APPLY_NODE_NAME(L_VALUE);
 	}
@@ -172,7 +174,6 @@ struct apply_node {
 			struct apply_node *type_node;
 			struct apply_node *length_node;
 
-			scalar_value length;
 			type_id type;
 		} type_array;
 
@@ -251,6 +252,12 @@ struct apply_node {
 			bool named;
 			type_id type;
 		} tuple_lit;
+
+		struct {
+			struct apply_node **items;
+			size_t length;
+			type_id type;
+		} array_lit;
 
 		struct {
 			struct apply_node *expr;
@@ -580,12 +587,32 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 		struct apply_node *numlit;
 
 		numlit = alloc_apply_node(ctx, APPLY_NODE_NUMLIT, expr);
-		// @TODO: Support more complex literals.
 		numlit->literal.numlit = expr->numlit;
 
 		push_apply_node(ctx, numlit);
 
 		return numlit;
+	}
+
+	case CONFIG_NODE_ARRAY_LIT: {
+		struct apply_node *arraylit;
+
+		arraylit = alloc_apply_node(ctx, APPLY_NODE_ARRAY_LIT, expr);
+
+		for (struct config_node *item = expr->array_lit.first_child;
+			 item;
+			 item = item->next_sibling) {
+			struct apply_node *item_node;
+			item_node = apply_discover_expr(ctx, scope, item);
+
+			dlist_append(arraylit->array_lit.items, arraylit->array_lit.length, &item_node);
+
+			push_apply_node(ctx, item_node);
+		}
+
+		push_apply_node(ctx, arraylit);
+
+		return arraylit;
 	}
 
 	case CONFIG_NODE_TUPLE_LIT:
@@ -692,37 +719,6 @@ static void apply_discover_bind(struct apply_context *ctx,
 static void apply_discover_device(struct apply_context *ctx,
 								  struct scoped_hash *scope,
 								  struct config_node *device_node);
-
-/* static void apply_discover_device_attrs(struct apply_context *ctx, */
-/* 										struct apply_node *device, */
-/* 										struct config_node *first_member, */
-/* 										bool from_device_type) */
-/* { */
-/* 	for (struct config_node *member = first_member; */
-/* 		 member; */
-/* 		 member = member->next_sibling) { */
-
-/* 		if (member->type == CONFIG_NODE_BINARY_OP && */
-/* 			member->binary_op.op == CONFIG_OP_ASSIGN) { */
-/* 			struct config_node *lhs; */
-/* 			lhs = member->binary_op.lhs; */
-
-/* 			struct apply_node *attr; */
-/* 			attr = alloc_apply_node(ctx, APPLY_NODE_DEVICE_ATTR, member); */
-/* 			attr->device_attr.device = device; */
-
-/* 			attr->device_attr.lookup */
-/* 				= scope_lookup_init(ctx->stage, device->device.device->scope); */
-/* 			attr->device_attr.name */
-/* 				= apply_discover_l_expr(ctx, device->device.device->scope, lhs, &attr->device_attr.lookup); */
-
-/* 			dlist_append(device->device.attrs, device->device.num_attrs, &attr); */
-/* 			device->device.missing_attrs += 1; */
-
-/* 			push_apply_node(ctx, attr); */
-/* 		} */
-/* 	} */
-/* } */
 
 static void apply_discover_device_members(struct apply_context *ctx,
 										struct apply_node *device,
@@ -972,6 +968,9 @@ static type_id apply_resolve_expr_type_id(struct apply_context *ctx, struct appl
 	case APPLY_NODE_TUPLE_LIT:
 		return node->tuple_lit.type;
 
+	case APPLY_NODE_ARRAY_LIT:
+		return node->array_lit.type;
+
 	default:
 		assert(!"Invalid node in expr.");
 		return -1;
@@ -1080,6 +1079,37 @@ int apply_eval_expr(struct apply_context *ctx,
 			return -1;
 		}
 		break;
+
+	case APPLY_NODE_ARRAY_LIT:
+		if (out_type->kind == TYPE_KIND_ARRAY) {
+			if (expr->array_lit.length != out_type->array.length) {
+				return -1;
+				apply_error(expr->cnode, "Array lengths does not match.");
+			}
+
+			struct type *out_member_type;
+			out_member_type = get_type(ctx->stage, out_type->array.type);
+
+			for (size_t i = 0; i < out_type->array.length; i++) {
+				struct value_ref val;
+				val.data = &out->data[out_member_type->num_scalars * i];
+				val.type = out_member_type->id;
+
+				int err;
+				err = apply_eval_expr(ctx, expr->array_lit.items[i], &val);
+
+				if (err) {
+					return err;
+				}
+			}
+
+		} else {
+			apply_error(expr->cnode, "Cannot put an array into %s",
+						humanreadable_type_kind(out_type->kind));
+			return -1;
+		}
+		break;
+
 
 	case APPLY_NODE_L_VALUE: {
 		int err;
@@ -1256,18 +1286,6 @@ apply_dispatch(struct apply_context *ctx,
 
 		type_id type = apply_resolve_type_id(type_expr);
 
-		/* if (!apply_expect_lookup_result(SCOPE_ENTRY_TYPE, */
-		/* 								node->device_type_input.type_lookup.kind, */
-		/* 								node->device_type_input.type)) { */
-		/* 	return DISPATCH_ERROR; */
-		/* } */
-
-		/* int err; */
-		/* struct scope_lookup_range type_res; */
-		/* err = scope_lookup_result_single(node->device_type_input.type_lookup, &type_res); */
-		/* assert(type_res.length == 1); */
-
-		/* type_id type = type_res.begin; */
 		struct device_type *dev_type;
 		struct atom *name;
 
@@ -1343,7 +1361,6 @@ apply_dispatch(struct apply_context *ctx,
 				}
 			}
 
-			// @TODO: Fill args
 			node->device.device
 				= register_device_with_context(ctx->stage, dev_type->id,
 											   node->device.scope,
@@ -1356,7 +1373,6 @@ apply_dispatch(struct apply_context *ctx,
 			}
 		}
 
-		/* apply_discover_device_attrs(ctx, node, node->cnode->device.first_child, false); */
 		apply_discover_device_members(ctx, node, node->cnode->device.first_child, false);
 
 
@@ -1470,11 +1486,16 @@ apply_dispatch(struct apply_context *ctx,
 		struct type *final_type;
 		struct atom *name;
 		type_id member_type;
-		size_t length;
+		scalar_value length;
 
 		name        = node->type_array.name;
 		member_type = apply_resolve_type_id(node->type_array.type_node);
-		length      = node->type_array.length;
+
+		struct value_ref length_value = {0};
+		length_value.data = &length;
+		length_value.type = ctx->stage->standard_types.integer;
+		int err;
+		err = apply_eval_expr(ctx, node->type_array.length_node, &length_value);
 
 		final_type = register_array_type(ctx->stage, name, member_type, length);
 
@@ -1628,8 +1649,6 @@ apply_dispatch(struct apply_context *ctx,
 										node->bind.rhs)) {
 			return DISPATCH_ERROR;
 		}
-
-		/* print_steps(node->bind.lookup_lhs); */
 
 		size_t lhs_i = 0, rhs_i = 0;
 		int err;
@@ -1795,6 +1814,46 @@ apply_dispatch(struct apply_context *ctx,
 		}
 
 		node->tuple_lit.type = type->id;
+
+		return DISPATCH_DONE;
+	}
+
+	case APPLY_NODE_ARRAY_LIT: {
+		for (size_t i = 0; i < node->array_lit.length; i++) {
+			struct apply_node *item;
+			item = node->array_lit.items[i];
+			WAIT_FOR(item);
+		}
+
+		type_id type = 0;
+		for (size_t i = 0; i < node->array_lit.length; i++) {
+			struct apply_node *item;
+			type_id item_type;
+
+			item = node->array_lit.items[i];
+			item_type = apply_resolve_expr_type_id(ctx, item);
+
+			if (type == 0) {
+				type = item_type;
+			} else {
+				if (!types_compatible(ctx->stage, type, item_type)) {
+					apply_begin_error(node->cnode);
+					fprintf(stderr,
+							"All the entries if an array has to have the same type. "
+							"The array contains both '");
+					print_type_id(stderr, ctx->stage, type);
+					fprintf(stderr, "' and '");
+					print_type_id(stderr, ctx->stage, item_type);
+					fprintf(stderr, "'.");
+					apply_end_error(node->cnode);
+					return DISPATCH_ERROR;
+				}
+			}
+		}
+
+		struct type *new_type;
+		new_type = register_array_type(ctx->stage, NULL, type, node->array_lit.length);
+		node->array_lit.type = new_type->id;
 
 		return DISPATCH_DONE;
 	}

@@ -254,7 +254,8 @@ struct type *register_type(struct stage *stage, struct type def)
 		break;
 
 	case TYPE_KIND_ARRAY: {
-		if (type->array.type == TYPE_TEMPLATE) {
+		if (type->array.type == TYPE_TEMPLATE ||
+			type->array.length_templated) {
 			type->templated = true;
 			break;
 		}
@@ -1016,6 +1017,106 @@ int consolidate_typed_value_into(struct stage *stage, type_id expected, struct v
 	return 0;
 }
 
+bool types_compatible(struct stage *stage, type_id t1, type_id t2)
+{
+	if (t1 == t2) {
+		return true;
+	}
+
+	struct type *type1;
+	struct type *type2;
+
+	type1 = get_type(stage, t1);
+	type2 = get_type(stage, t2);
+
+
+	switch (type1->kind) {
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		return -1;
+
+	case TYPE_KIND_SCALAR:
+		return (type2->kind == TYPE_KIND_SCALAR);
+
+	case TYPE_KIND_STRING:
+		printf("@TODO: Strings\n");
+		return false;
+
+	case TYPE_KIND_TYPE:
+		return (type2->kind == TYPE_KIND_TYPE);
+
+	case TYPE_KIND_TUPLE:
+		if (type2->kind == TYPE_KIND_TUPLE) {
+			if (type1->tuple.length != type2->tuple.length) {
+				return false;
+			}
+
+			for (size_t i = 0; i < type1->tuple.length; i++) {
+				if (!types_compatible(stage,
+									  type1->tuple.types[i],
+									  type2->tuple.types[i])) {
+					return false;
+				}
+			}
+
+			return true;
+
+		} else {
+			return false;
+		}
+
+	case TYPE_KIND_NAMED_TUPLE:
+		if (type2->kind == TYPE_KIND_NAMED_TUPLE) {
+			if (type1->named_tuple.length != type2->named_tuple.length) {
+				return false;
+			}
+
+			for (size_t i = 0; i < type1->named_tuple.length; i++) {
+				struct named_tuple_member *type1_member;
+				struct named_tuple_member *type2_member = NULL;
+
+				type1_member = &type1->named_tuple.members[i];
+
+				for (size_t j = 0; j < type2->named_tuple.length; j++) {
+					if (type2->named_tuple.members[j].name == type1_member->name) {
+						type2_member = &type2->named_tuple.members[j];
+						break;
+					}
+				}
+
+				if (type2_member == NULL) {
+					return false;
+				}
+
+				if (!types_compatible(stage,
+									  type1_member->type,
+									  type2_member->type)) {
+					return false;
+				}
+			}
+
+			return true;
+		} else {
+			return false;
+		}
+
+	case TYPE_KIND_ARRAY:
+		if (type2->kind == TYPE_KIND_ARRAY) {
+			if (type1->array.length != type2->array.length) {
+				return false;
+			}
+
+			return types_compatible(stage,
+									type1->array.type,
+									type2->array.type);
+
+		} else {
+			return false;
+		}
+	}
+
+	return false;
+}
 
 
 /* int consolidate_typed_value_into_type(struct stage *stage, type_id expected_type_id, */

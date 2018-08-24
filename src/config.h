@@ -36,6 +36,7 @@ enum config_node_type {
 	CONFIG_NODE_NUMLIT,
 	CONFIG_NODE_TUPLE_LIT,
 	CONFIG_NODE_TUPLE_LIT_ITEM,
+	CONFIG_NODE_ARRAY_LIT,
 
 	CONFIG_NODE_INTERNAL_LIST,
 };
@@ -136,6 +137,9 @@ struct config_node {
 			struct atom *name;
 			struct config_node *expr;
 		} tuple_lit_item;
+		struct {
+			struct config_node *first_child;
+		} array_lit;
 		struct {
 			struct config_node *head;
 			struct config_node *tail;

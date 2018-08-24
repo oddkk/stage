@@ -118,6 +118,7 @@
 %type	<struct config_node*> device_body_stmt_list
 %type	<struct config_node*> tuple_lit tuple_lit_body tuple_lit_item
 %type	<struct config_node*> named_tuple_lit named_tuple_lit_body named_tuple_lit_item
+%type	<struct config_node*> array_lit array_lit_body
 %type	<struct tmp_range> range
 
 
@@ -269,6 +270,7 @@ expr:			NUMLIT             { $$ = alloc_node(ctx, CONFIG_NODE_NUMLIT); $$->numli
 		|		IDENTIFIER         { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = $1; }
 		|		tuple_lit
 		|		named_tuple_lit
+		|		array_lit
 		|		expr '.' expr      { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ACCESS;    $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		|		expr '+' expr      { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ADD;       $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		|		expr '-' expr      { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_SUB;       $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
@@ -296,6 +298,13 @@ tuple_lit_body:
 		|		tuple_lit_body ',' tuple_lit_item { $$ = make_list(ctx, $3, $1); }
 		;
 tuple_lit_item:	expr                         { $$ = alloc_node(ctx, CONFIG_NODE_TUPLE_LIT_ITEM); $$->tuple_lit_item.name = NULL; $$->tuple_lit_item.expr = $1; }
+		;
+
+array_lit:		'[' array_lit_body ']' { $$ = alloc_node(ctx, CONFIG_NODE_ARRAY_LIT); $$->array_lit.first_child = $2; }
+		;
+array_lit_body:
+				expr                    { $$ = make_list(ctx, $1, NULL); }
+		|		array_lit_body ',' expr { $$ = make_list(ctx, $3, $1); }
 		;
 
 namespace: 		"namespace" IDENTIFIER '{' module_stmt_list '}' { $$ = alloc_node(ctx, CONFIG_NODE_NAMESPACE); $$->namespace.name = $2; $$->namespace.first_child = $4; }

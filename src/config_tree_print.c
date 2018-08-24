@@ -237,6 +237,12 @@ static void _config_print_tree(struct config_node *node, int depth)
 		_config_print_tree(node->tuple_lit_item.expr, depth + 1);
 		break;
 
+	case CONFIG_NODE_ARRAY_LIT:
+		printf("array litteral:\n");
+
+		_config_print_tree(node->array_lit.first_child, depth + 1);
+		break;
+
 	case CONFIG_NODE_NAMESPACE:
 		printf("namespace %.*s\n", ALIT(node->namespace.name));
 		_config_print_tree(node->namespace.first_child, depth + 1);

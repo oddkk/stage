@@ -80,6 +80,10 @@ static void collapse_tree_nodes(struct config_node *tree) {
 		collapse_tree_nodes(tree->tuple_lit_item.expr);
 		break;
 
+	case CONFIG_NODE_ARRAY_LIT:
+		collapse_tree_nodes(tree->array_lit.first_child);
+		break;
+
 
 	case CONFIG_NODE_INTERNAL_LIST: {
 		struct config_node *head, *tail;

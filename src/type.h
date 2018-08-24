@@ -55,6 +55,7 @@ struct type {
 		struct {
 			type_id type;
 			size_t length;
+			bool length_templated;
 		} array;
 		struct {
 			size_t id;
@@ -133,6 +134,8 @@ int type_find_member(struct type_iterator *out,
 
 int consolidate_typed_value_into(struct stage *, type_id expected_type,
 								 struct value_ref input, struct value_ref *result);
+
+bool types_compatible(struct stage *, type_id t1, type_id t2);
 
 /* int consolidate_typed_value_into_type(struct stage *, type_id expected_type, */
 /* 									  struct value_ref input, struct value_ref *result); */
