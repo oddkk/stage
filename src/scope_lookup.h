@@ -38,6 +38,7 @@ int scope_lookup_index(struct scope_lookup *, size_t i);
 int scope_lookup_range(struct scope_lookup *, size_t begin, size_t end);
 
 struct scope_lookup_range {
+	enum scope_entry_kind kind;
 	struct type *type;
 	size_t begin;
 	size_t length;
@@ -55,6 +56,8 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 
 size_t scope_lookup_instances(struct scope_lookup);
 size_t scope_lookup_instance_size(struct scope_lookup);
+
+int eval_lookup_result(struct stage *stage, struct scope_lookup_range, struct value_ref *out);
 
 void print_steps(struct scope_lookup ctx);
 

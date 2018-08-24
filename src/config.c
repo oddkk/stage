@@ -13,12 +13,11 @@
 
 enum apply_node_type {
 	APPLY_NODE_DEVICE_TYPE,
-	APPLY_NODE_DEVICE_TYPE_ATTR,
 	APPLY_NODE_DEVICE_TYPE_INPUT,
 	APPLY_NODE_DEVICE_TYPE_OUTPUT,
 
 	APPLY_NODE_DEVICE,
-	APPLY_NODE_DEVICE_ATTR,
+	/* APPLY_NODE_DEVICE_ATTR, */
 
 	APPLY_NODE_TYPE_DECL,
 
@@ -34,6 +33,7 @@ enum apply_node_type {
 	APPLY_NODE_BIND,
 	APPLY_NODE_IDENT,
 	APPLY_NODE_NUMLIT,
+	APPLY_NODE_TUPLE_LIT,
 
 	APPLY_NODE_L_VALUE,
 };
@@ -42,11 +42,10 @@ const char *apply_node_name(enum apply_node_type type) {
 #define APPLY_NODE_NAME(name) case APPLY_NODE_##name: return #name;
 	switch (type) {
 		APPLY_NODE_NAME(DEVICE_TYPE);
-		APPLY_NODE_NAME(DEVICE_TYPE_ATTR);
 		APPLY_NODE_NAME(DEVICE_TYPE_INPUT);
 		APPLY_NODE_NAME(DEVICE_TYPE_OUTPUT);
 		APPLY_NODE_NAME(DEVICE);
-		APPLY_NODE_NAME(DEVICE_ATTR);
+		/* APPLY_NODE_NAME(DEVICE_ATTR); */
 
 		APPLY_NODE_NAME(TYPE_DECL);
 
@@ -62,6 +61,7 @@ const char *apply_node_name(enum apply_node_type type) {
 		APPLY_NODE_NAME(BIND);
 		APPLY_NODE_NAME(IDENT);
 		APPLY_NODE_NAME(NUMLIT);
+		APPLY_NODE_NAME(TUPLE_LIT);
 
 		APPLY_NODE_NAME(L_VALUE);
 	}
@@ -83,6 +83,12 @@ struct apply_tuple_member {
 	type_id type_id;
 };
 
+struct apply_tuple_lit_member {
+	struct atom *name;
+	struct apply_node *expr;
+	type_id type_id;
+};
+
 struct apply_node {
 	struct apply_node *next;
 
@@ -96,22 +102,13 @@ struct apply_node {
 			struct scoped_hash *scope;
 			struct device_type *type;
 			struct atom *name;
+			struct apply_node *params;
 			bool visited;
 			bool complete;
 
 			size_t missing_inputs;
 			size_t missing_outputs;
-			size_t missing_attributes;
 		} device_type;
-
-		struct {
-			struct atom *name;
-			struct apply_node *owner;
-			struct apply_node *type;
-			struct apply_node *def;
-
-			struct scope_lookup type_lookup;
-		} device_type_attribute;
 
 		struct {
 			struct atom *name;
@@ -136,11 +133,7 @@ struct apply_node {
 			struct scoped_hash *scope;
 			struct apply_node *type;
 			struct scope_lookup type_lookup;
-
-			struct apply_node **attrs;
-			size_t num_attrs;
-			size_t not_found_attrs;
-			size_t missing_attrs;
+			struct apply_node *args;
 		} device;
 
 		struct {
@@ -237,10 +230,7 @@ struct apply_node {
 			struct apply_node *lhs;
 			struct apply_node *rhs;
 			enum config_binary_op op;
-
-			struct scope_lookup *lookup;
-
-			struct value_ref dest;
+			type_id type;
 		} binary_op;
 
 		struct {
@@ -253,15 +243,18 @@ struct apply_node {
 
 		struct {
 			scalar_value numlit;
-
-			struct value_ref dest;
 		} literal;
+
+		struct {
+			struct apply_tuple_lit_member *members;
+			size_t num_members;
+			bool named;
+			type_id type;
+		} tuple_lit;
 
 		struct {
 			struct apply_node *expr;
 			struct scope_lookup lookup;
-
-			struct value_ref dest;
 		} l_value;
 	};
 
@@ -432,8 +425,7 @@ static struct apply_node *pop_apply_node(struct apply_context *ctx)
 
 static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 											  struct scoped_hash *scope,
-											  struct config_node *expr,
-											  struct value_ref dest);
+											  struct config_node *expr);
 
 static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 												struct scoped_hash *scope,
@@ -474,12 +466,8 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 			node->access_index.lhs
 				= apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, lookup);
 
-			struct value_ref index_ref = {0};
-			index_ref.data = &node->access_index.value_index;
-			index_ref.type = ctx->stage->standard_types.integer;
-
 			node->access_index.index
-				= apply_discover_expr(ctx, scope, expr->binary_op.rhs, index_ref);
+				= apply_discover_expr(ctx, scope, expr->binary_op.rhs);
 
 			push_apply_node(ctx, node);
 
@@ -499,21 +487,13 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 		node->access_index_range.scope = scope;
 
 		if (expr->subscript_range.low) {
-			struct value_ref low_index_ref = {0};
-			low_index_ref.type = ctx->stage->standard_types.integer;
-			low_index_ref.data = &node->access_index_range.value_low_index;
-
 			node->access_index_range.low_index
-					= apply_discover_expr(ctx, scope, expr->subscript_range.low, low_index_ref);
+					= apply_discover_expr(ctx, scope, expr->subscript_range.low);
 		}
 
 		if (expr->subscript_range.high) {
-			struct value_ref high_index_ref = {0};
-			high_index_ref.type = ctx->stage->standard_types.integer;
-			high_index_ref.data = &node->access_index_range.value_high_index;
-
 			node->access_index_range.high_index
-				= apply_discover_expr(ctx, scope, expr->subscript_range.high, high_index_ref);
+				= apply_discover_expr(ctx, scope, expr->subscript_range.high);
 		}
 
 		push_apply_node(ctx, node);
@@ -528,10 +508,41 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 	return NULL;
 }
 
+static struct apply_node *apply_discover_tuple_lit(struct apply_context *ctx,
+												   struct scoped_hash *scope,
+												   struct config_node *expr)
+{
+	assert(expr->type == CONFIG_NODE_TUPLE_LIT);
+
+	struct apply_node *node;
+
+	node = alloc_apply_node(ctx, APPLY_NODE_TUPLE_LIT, expr);
+	node->tuple_lit.named = expr->tuple_lit.named;
+
+	for (struct config_node *item = expr->tuple_lit.first_child;
+		 item;
+		 item = item->next_sibling) {
+		assert(item->type == CONFIG_NODE_TUPLE_LIT_ITEM);
+
+		struct apply_tuple_lit_member *member;
+		int id;
+		id = dlist_alloc(node->tuple_lit.members, node->tuple_lit.num_members);
+		member = &node->tuple_lit.members[id];
+
+		if (node->tuple_lit.named) {
+			member->name = item->tuple_lit_item.name;
+		}
+		member->expr = apply_discover_expr(ctx, scope, item->tuple_lit_item.expr);
+	}
+
+	push_apply_node(ctx, node);
+
+	return node;
+}
+
 static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 											  struct scoped_hash *scope,
-											  struct config_node *expr,
-											  struct value_ref dest)
+											  struct config_node *expr)
 {
 	switch (expr->type) {
 	case CONFIG_NODE_BINARY_OP:
@@ -540,7 +551,6 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 			node = alloc_apply_node(ctx, APPLY_NODE_L_VALUE, expr);
 			node->l_value.lookup = scope_lookup_init(ctx->stage, scope);
 			node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, &node->l_value.lookup);
-			node->l_value.dest = dest;
 
 			push_apply_node(ctx, node);
 
@@ -560,7 +570,6 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 		node = alloc_apply_node(ctx, APPLY_NODE_L_VALUE, expr);
 		node->l_value.lookup = scope_lookup_init(ctx->stage, scope);
 		node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, &node->l_value.lookup);
-		node->l_value.dest = dest;
 
 		push_apply_node(ctx, node);
 
@@ -573,12 +582,14 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 		numlit = alloc_apply_node(ctx, APPLY_NODE_NUMLIT, expr);
 		// @TODO: Support more complex literals.
 		numlit->literal.numlit = expr->numlit;
-		numlit->literal.dest = dest;
 
 		push_apply_node(ctx, numlit);
 
 		return numlit;
 	}
+
+	case CONFIG_NODE_TUPLE_LIT:
+		return apply_discover_tuple_lit(ctx, scope, expr);
 
 	default:
 		apply_error(expr, "Invalid node in expression.");
@@ -604,6 +615,10 @@ static void apply_discover_device_type(struct apply_context *ctx,
 	device_type = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE, device_type_node);
 	device_type->device_type.name = device_type_node->device_type.name;
 	device_type->device_type.scope = scope;
+	if (device_type_node->device_type.params) {
+		device_type->device_type.params
+			= apply_discover_type_tuple(ctx, scope, device_type_node->device_type.params, NULL);
+	}
 
 	push_apply_node(ctx, device_type);
 }
@@ -615,19 +630,6 @@ static void apply_discover_device_type_members(struct apply_context *ctx,
 {
 	for (; node; node = node->next_sibling) {
 		switch (node->type) {
-		case CONFIG_NODE_ATTR: {
-			struct apply_node *attr;
-
-			attr = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE_ATTR, node);
-			attr->device_type_attribute.owner = device_type;
-			attr->device_type_attribute.name = node->attr.name;
-			attr->device_type_attribute.type_lookup
-				= scope_lookup_init(ctx->stage, scope);
-			device_type->device_type.missing_attributes += 1;
-
-			push_apply_node(ctx, attr);
-		} break;
-
 		case CONFIG_NODE_INPUT: {
 			struct apply_node *input;
 
@@ -691,36 +693,36 @@ static void apply_discover_device(struct apply_context *ctx,
 								  struct scoped_hash *scope,
 								  struct config_node *device_node);
 
-static void apply_discover_device_attrs(struct apply_context *ctx,
-										struct apply_node *device,
-										struct config_node *first_member,
-										bool from_device_type)
-{
-	for (struct config_node *member = first_member;
-		 member;
-		 member = member->next_sibling) {
+/* static void apply_discover_device_attrs(struct apply_context *ctx, */
+/* 										struct apply_node *device, */
+/* 										struct config_node *first_member, */
+/* 										bool from_device_type) */
+/* { */
+/* 	for (struct config_node *member = first_member; */
+/* 		 member; */
+/* 		 member = member->next_sibling) { */
 
-		if (member->type == CONFIG_NODE_BINARY_OP &&
-			member->binary_op.op == CONFIG_OP_ASSIGN) {
-			struct config_node *lhs;
-			lhs = member->binary_op.lhs;
+/* 		if (member->type == CONFIG_NODE_BINARY_OP && */
+/* 			member->binary_op.op == CONFIG_OP_ASSIGN) { */
+/* 			struct config_node *lhs; */
+/* 			lhs = member->binary_op.lhs; */
 
-			struct apply_node *attr;
-			attr = alloc_apply_node(ctx, APPLY_NODE_DEVICE_ATTR, member);
-			attr->device_attr.device = device;
+/* 			struct apply_node *attr; */
+/* 			attr = alloc_apply_node(ctx, APPLY_NODE_DEVICE_ATTR, member); */
+/* 			attr->device_attr.device = device; */
 
-			attr->device_attr.lookup
-				= scope_lookup_init(ctx->stage, device->device.device->scope);
-			attr->device_attr.name
-				= apply_discover_l_expr(ctx, device->device.device->scope, lhs, &attr->device_attr.lookup);
+/* 			attr->device_attr.lookup */
+/* 				= scope_lookup_init(ctx->stage, device->device.device->scope); */
+/* 			attr->device_attr.name */
+/* 				= apply_discover_l_expr(ctx, device->device.device->scope, lhs, &attr->device_attr.lookup); */
 
-			dlist_append(device->device.attrs, device->device.num_attrs, &attr);
-			device->device.missing_attrs += 1;
+/* 			dlist_append(device->device.attrs, device->device.num_attrs, &attr); */
+/* 			device->device.missing_attrs += 1; */
 
-			push_apply_node(ctx, attr);
-		}
-	}
-}
+/* 			push_apply_node(ctx, attr); */
+/* 		} */
+/* 	} */
+/* } */
 
 static void apply_discover_device_members(struct apply_context *ctx,
 										struct apply_node *device,
@@ -756,6 +758,10 @@ static void apply_discover_device(struct apply_context *ctx,
 		= scope_lookup_init(ctx->stage, scope);
 	device->device.type
 		= apply_discover_l_expr(ctx, scope, device_node->device.type, &device->device.type_lookup);
+	if (device_node->device.args) {
+		device->device.args
+			= apply_discover_tuple_lit(ctx, scope, device_node->device.args);
+	}
 
 	push_apply_node(ctx, device);
 }
@@ -822,23 +828,11 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 			type->type_subrange.lhs
 				= apply_discover_type(ctx, scope, type_expr->subrange.lhs, NULL);
 
-			struct value_ref value_low;
-
-			value_low.type  = ctx->stage->standard_types.integer;
-			value_low.data  = &type->type_subrange.value_low;
-
 			type->type_subrange.low
-				= apply_discover_expr(ctx, scope, type_expr->subrange.low,
-									  value_low);
-
-			struct value_ref value_high;
-
-			value_high.type = ctx->stage->standard_types.integer;
-			value_high.data = &type->type_subrange.value_high;
+				= apply_discover_expr(ctx, scope, type_expr->subrange.low);
 
 			type->type_subrange.high
-				= apply_discover_expr(ctx, scope, type_expr->subrange.high,
-									  value_high);
+				= apply_discover_expr(ctx, scope, type_expr->subrange.high);
 
 			push_apply_node(ctx, type);
 		} break;
@@ -851,13 +845,8 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 				type->type_array.type_node
 					= apply_discover_type(ctx, scope, type_expr->binary_op.lhs, NULL);
 
-				struct value_ref value_length;
-
-				value_length.type = ctx->stage->standard_types.integer;
-				value_length.data = &type->type_array.length;
-
 				type->type_array.length_node
-					= apply_discover_expr(ctx, scope, type_expr->binary_op.rhs, value_length);
+					= apply_discover_expr(ctx, scope, type_expr->binary_op.rhs);
 
 				push_apply_node(ctx, type);
 				break;
@@ -968,6 +957,161 @@ static type_id apply_resolve_type_id(struct apply_node *node)
 	}
 }
 
+static type_id apply_resolve_expr_type_id(struct apply_context *ctx, struct apply_node *node)
+{
+	switch (node->type) {
+	case APPLY_NODE_NUMLIT:
+		return ctx->stage->standard_types.integer;
+
+	case APPLY_NODE_L_VALUE:
+		return node->l_value.lookup.type->id;
+
+	case APPLY_NODE_BINARY_OP:
+		return node->binary_op.type;
+
+	case APPLY_NODE_TUPLE_LIT:
+		return node->tuple_lit.type;
+
+	default:
+		assert(!"Invalid node in expr.");
+		return -1;
+	}
+}
+
+int apply_eval_expr(struct apply_context *ctx,
+					struct apply_node *expr,
+					struct value_ref *out)
+{
+	struct type *out_type;
+	out_type = get_type(ctx->stage, out->type);
+
+	assert(out_type && out_type->kind != TYPE_KIND_NONE);
+
+	switch (expr->type) {
+	case APPLY_NODE_NUMLIT:
+		if (out_type->kind == TYPE_KIND_SCALAR) {
+			out->data[0] = expr->literal.numlit;
+
+		} else {
+			apply_error(expr->cnode, "Cannot put a scalar into %s",
+						humanreadable_type_kind(out_type->kind));
+			return -1;
+		}
+		break;
+
+	case APPLY_NODE_TUPLE_LIT:
+		if (out_type->kind == TYPE_KIND_TUPLE) {
+			if (expr->tuple_lit.num_members != out_type->tuple.length) {
+				return -1;
+				apply_error(expr->cnode, "Tuple lengths does not match.");
+			}
+
+			size_t num_scalars = 0;
+			for (size_t i = 0; i < out_type->tuple.length; i++) {
+				struct apply_tuple_lit_member *member;
+				struct type *out_member_type;
+
+				member = &expr->tuple_lit.members[i];
+				out_member_type = get_type(ctx->stage, out_type->tuple.types[i]);
+
+				struct value_ref val;
+				val.data = &out->data[num_scalars];
+				val.type = out_member_type->id;
+
+				int err;
+				err = apply_eval_expr(ctx, member->expr, &val);
+
+				if (err) {
+					return err;
+				}
+
+				num_scalars += out_member_type->num_scalars;
+			}
+
+		} else if (expr->tuple_lit.named && out_type->kind == TYPE_KIND_NAMED_TUPLE) {
+			if (expr->tuple_lit.num_members != out_type->named_tuple.length) {
+				apply_error(expr->cnode, "Tuple lengths does not match.");
+				return -1;
+			}
+
+			size_t num_scalars = 0;
+			for (size_t i = 0; i < out_type->tuple.length; i++) {
+				struct named_tuple_member *out_member;
+				struct type *out_member_type;
+				out_member = &out_type->named_tuple.members[i];
+				out_member_type = get_type(ctx->stage, out_member->type);
+
+				struct apply_tuple_lit_member *member = NULL;
+
+				for (size_t j = 0; j < expr->tuple_lit.num_members; j++) {
+					if (out_member->name == expr->tuple_lit.members[j].name) {
+						member = &expr->tuple_lit.members[j];
+						break;
+					}
+				}
+
+				if (!member) {
+					apply_begin_error(expr->cnode);
+					fprintf(stderr, "Missing '%.*s' for type '",
+							ALIT(out_member->name));
+					print_type(stderr, ctx->stage, out_member_type);
+					fprintf(stderr, "'.");
+					apply_end_error(expr->cnode);
+				}
+
+				struct value_ref val;
+				val.data = &out->data[num_scalars];
+				val.type = out_member_type->id;
+
+				int err;
+				err = apply_eval_expr(ctx, member->expr, &val);
+
+				if (err) {
+					return err;
+				}
+
+				num_scalars += out_member_type->num_scalars;
+			}
+
+		} else {
+			apply_error(expr->cnode, "Cannot put a %stuple into %s",
+						expr->tuple_lit.named ? "named" : "",
+						humanreadable_type_kind(out_type->kind));
+			return -1;
+		}
+		break;
+
+	case APPLY_NODE_L_VALUE: {
+		int err;
+		struct scope_lookup_range res;
+		err = scope_lookup_result_single(expr->l_value.lookup, &res);
+
+		if (err) {
+			apply_error(expr->cnode, "Failed to look up.");
+			return DISPATCH_ERROR;
+		}
+
+		// @TODO: Support multiple results (repetitions).
+		err = eval_lookup_result(ctx->stage, res, out);
+
+		if (err) {
+			apply_error(expr->cnode, "Failed to lookup.");
+			return DISPATCH_ERROR;
+		}
+
+	} break;
+
+	case APPLY_NODE_BINARY_OP:
+		printf("@TODO: Binary op in eval expr\n");
+		break;
+
+	default:
+		assert(!"Invalid node in expression.");
+	}
+
+	return 0;
+}
+
 struct config_device_type_data {
 	struct apply_node *device_type_node;
 };
@@ -1021,26 +1165,6 @@ static void config_device_initialize_context(struct tmp_config_device_context *c
 		= ctx->device_type_node->cnode->device_type.first_child;
 }
 
-static int config_device_pre_init(struct stage *stage,
-							  struct device_type *dev_type,
-							  struct device *dev,
-							  void *context)
-{
-	struct tmp_config_device_context ctx;
-	zero_struct(ctx);
-
-	config_device_initialize_context(&ctx, stage, dev_type, dev, context);
-
-	apply_discover_device_attrs(ctx.ctx, ctx.device_node,
-								ctx.device_type_first_child, true);
-
-	if (!context) {
-		return apply_message_pump(ctx.ctx);
-	}
-
-	return 0;
-}
-
 static int config_device_init(struct stage *stage,
 							  struct device_type *dev_type,
 							  struct device *dev,
@@ -1067,11 +1191,14 @@ apply_dispatch(struct apply_context *ctx,
 {
 	switch (node->type) {
 	case APPLY_NODE_DEVICE_TYPE:
+		WAIT_FOR(node->device_type.params);
+
 		if (!node->device_type.type) {
+			// @TODO: Implement parameters
 			node->device_type.type
 				= register_device_type_scoped(ctx->stage,
 											  node->device_type.name->name,
-											  node->device_type.scope);
+											  0, node->device_type.scope);
 			if (!node->device_type.type) {
 				return DISPATCH_ERROR;
 			}
@@ -1082,7 +1209,6 @@ apply_dispatch(struct apply_context *ctx,
 
 			node->device_type.type->user_data = data;
 			node->device_type.type->device_context_init = config_device_init;
-			node->device_type.type->device_context_pre_init = config_device_pre_init;
 			node->device_type.type->takes_context = true;
 		}
 
@@ -1096,64 +1222,13 @@ apply_dispatch(struct apply_context *ctx,
 		}
 
 		if (node->device_type.missing_inputs     > 0 ||
-			node->device_type.missing_outputs    > 0 ||
-			node->device_type.missing_attributes > 0) {
+			node->device_type.missing_outputs    > 0) {
 			return DISPATCH_YIELD;
 		}
 		node->device_type.complete = true;
 		finalize_device_type(node->device_type.type);
 
 		return DISPATCH_DONE;
-
-	case APPLY_NODE_DEVICE_TYPE_ATTR: {
-		struct apply_node *dev_type_node;
-
-		dev_type_node = node->device_type_attribute.owner;
-		assert(dev_type_node->type == APPLY_NODE_DEVICE_TYPE);
-
-		if (!node->device_type_attribute.type) {
-			node->device_type_attribute.type_lookup
-				= scope_lookup_init(ctx->stage, dev_type_node->device_type.scope);
-			node->device_type_attribute.type
-				= apply_discover_l_expr(ctx, dev_type_node->device_type.scope,
-										node->cnode->attr.type,
-										&node->device_type_attribute.type_lookup);
-		}
-
-		struct apply_node *type_expr;
-		type_expr = node->device_type_attribute.type;
-
-		WAIT_FOR(type_expr);
-
-		if (!apply_expect_lookup_result(SCOPE_ENTRY_TYPE,
-										node->device_type_attribute.type_lookup.kind,
-										node->device_type_attribute.type)) {
-			return DISPATCH_ERROR;
-		}
-
-		int err;
-		struct scope_lookup_range type_res;
-		err = scope_lookup_result_single(node->device_type_attribute.type_lookup, &type_res);
-		assert(type_res.length == 1);
-
-		type_id type = type_res.begin;
-		struct device_type *dev_type;
-		struct atom *name;
-
-		dev_type = dev_type_node->device_type.type;
-
-		name = node->device_type_attribute.name;
-		struct device_attribute_def *res;
-		res = device_type_add_attribute(ctx->stage, dev_type, name->name, 0, type);
-		if (!res) {
-			return DISPATCH_ERROR;
-		}
-
-		assert(dev_type_node->device_type.missing_attributes > 0);
-		dev_type_node->device_type.missing_attributes -= 1;
-
-		return DISPATCH_DONE;
-	}
 
 	case APPLY_NODE_DEVICE_TYPE_OUTPUT: // fallthrough
 	case APPLY_NODE_DEVICE_TYPE_INPUT: {
@@ -1210,66 +1285,11 @@ apply_dispatch(struct apply_context *ctx,
 		return DISPATCH_DONE;
 	}
 
-	case APPLY_NODE_DEVICE_ATTR: {
-		struct apply_node *name;
-		name = node->device_attr.name;
-
-		WAIT_FOR(name);
-
-		/* if (node->device_type_input.type_lookup.kind != SCOPE_ENTRY_TYPE) { */
-		/* 	apply_error(node->device_type_input.type->cnode, */
-		/* 				"Expression is not an attribute."); */
-		/* 	return DISPATCH_ERROR; */
-		/* } */
-
-		struct apply_node *dev;
-		dev = node->device_attr.device;
-
-		if (!node->device_attr.value) {
-			if (!dev->device.device) {
-				apply_debug("Wait for device.");
-				return DISPATCH_YIELD;
-			}
-
-			struct scope_lookup_range range;
-			struct value_ref dest;
-
-			// @TODO: Check the type.
-
-			int err =
-				scope_lookup_result_single(node->device_attr.lookup, &range);
-			if (err) {
-				apply_error(node->device_attr.name->cnode, "Not found.");
-				return DISPATCH_ERROR;
-			}
-
-			if (!node->device_attr.lookup.type) {
-				apply_error(node->device_attr.name->cnode,
-							"Not a typed value.");
-			}
-			dest.type = node->device_attr.lookup.type->id;
-			dest.data = &dev->device.device->attribute_values[range.begin];
-
-			if (!dest.data) {
-				return DISPATCH_ERROR;
-			}
-
-			node->device_attr.value
-				= apply_discover_expr(ctx, dev->device.device->scope,
-									  node->cnode->binary_op.rhs,
-									  dest);
-		}
-
-		WAIT_FOR(node->device_attr.value);
-
-		assert(dev->device.missing_attrs > 0);
-		dev->device.missing_attrs -= 1;
-
-		return DISPATCH_DONE;
-	}
-
 	case APPLY_NODE_DEVICE: {
 		WAIT_FOR(node->device.type);
+		if (node->device.args) {
+			WAIT_FOR(node->device.args);
+		}
 
 		if (!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_TYPE,
 										node->device.type_lookup.kind,
@@ -1303,41 +1323,39 @@ apply_dispatch(struct apply_context *ctx,
 		device_context.ctx = ctx;
 
 		if (!node->device.device) {
+			struct value_ref args = {0};
+
+			if (node->device.args) {
+				type_id args_type_id;
+				args_type_id = apply_resolve_expr_type_id(ctx, node->device.args);
+				args = alloc_value(ctx->stage, args_type_id);
+
+				err = apply_eval_expr(ctx, node->device.args, &args);
+				if (err) {
+					apply_error(node->device.args->cnode,
+								"Failed to evaluate literal.");
+					return DISPATCH_ERROR;
+				}
+
+				print_value_ref(ctx->stage, args);
+			}
+
+			// @TODO: Fill args
 			node->device.device
-				= register_device_pre_attrs_with_context(ctx->stage, dev_type->id,
-														 node->device.scope,
-														 node->device.name,
-														 &device_context);
+				= register_device_with_context(ctx->stage, dev_type->id,
+											   node->device.scope,
+											   node->device.name,
+											   args,
+											   &device_context);
 			if (!node->device.device) {
 				apply_debug("Failed to register device.");
 				return DISPATCH_ERROR;
 			}
 		}
 
-		if (!node->device.visited) {
-			apply_discover_device_attrs(ctx, node, node->cnode->device.first_child, false);
-			apply_discover_device_members(ctx, node, node->cnode->device.first_child, false);
-			node->device.visited = true;
-		}
+		/* apply_discover_device_attrs(ctx, node, node->cnode->device.first_child, false); */
+		apply_discover_device_members(ctx, node, node->cnode->device.first_child, false);
 
-		if (node->device.missing_attrs > 0) {
-			apply_debug("Waiting for %zu missing attributes.",
-						node->device.missing_attrs);
-			return DISPATCH_YIELD;
-		}
-
-		for (size_t i = 0; i < node->device.num_attrs; i++) {
-			struct apply_node *attr;
-			attr = node->device.attrs[i];
-		}
-
-		err = finalize_device_with_context(ctx->stage, node->device.device,
-										   &device_context);
-
-		if (err) {
-			apply_error(node->cnode, "Failed to finalized device.");
-			return DISPATCH_ERROR;
-		}
 
 		return DISPATCH_DONE;
 	}
@@ -1387,14 +1405,14 @@ apply_dispatch(struct apply_context *ctx,
 	}
 
 	case APPLY_NODE_TYPE_TUPLE: {
+		// @TODO: This should handle unnamed types
 		for (size_t i = 0; i < node->type_tuple.num_members; i++) {
 			struct apply_tuple_member *member;
 			member = &node->type_tuple.members[i];
 
 			WAIT_FOR(member->type);
 
-			type_id type;
-			type = apply_resolve_type_id(member->type);
+			member->type_id = apply_resolve_type_id(member->type);
 		}
 
 		struct type new_type = {0};
@@ -1716,108 +1734,67 @@ apply_dispatch(struct apply_context *ctx,
 	}
 
 	case APPLY_NODE_L_VALUE: {
-		struct apply_node *expr;
-
-		expr = node->l_value.expr;
-		WAIT_FOR(expr);
-
-		struct type *dest_type;
-		dest_type = get_type(ctx->stage, node->l_value.dest.type);
-
-		assert(dest_type);
-
-		switch (node->l_value.lookup.kind) {
-		case SCOPE_ENTRY_TYPE: {
-			if (dest_type->kind != TYPE_KIND_TYPE) {
-				return DISPATCH_ERROR;
-			}
-			struct scope_lookup_range range;
-			int err
-				= scope_lookup_result_single(node->l_value.lookup, &range);
-
-			if (err) {
-				apply_error(expr->cnode, "Failed to lookup.\n");
-				return DISPATCH_ERROR;
-			}
-
-			assert(range.length == 1);
-
-			node->l_value.dest.data[0] = range.begin;
-		} break;
-
-		case SCOPE_ENTRY_DEVICE_ATTRIBUTE: {
-			struct scope_lookup_range range;
-			int err;
-
-			size_t src_size = scope_lookup_instance_size(node->l_value.lookup);
-
-			if (src_size != dest_type->num_scalars) {
-				apply_begin_error(node->l_value.expr->cnode);
-				fprintf(stderr, "Cannot assign a ");
-				describe_lookup_result_type(stderr, node->l_value.lookup);
-				fprintf(stderr, " to a ");
-				print_type(stderr, ctx->stage, dest_type);
-
-				return DISPATCH_ERROR;
-			}
-
-			err = scope_lookup_result_single(node->l_value.lookup, &range);
-			if (err) {
-				apply_error(expr->cnode, "Failed to lookup.\n");
-				return DISPATCH_ERROR;
-			}
-
-			struct device *dev;
-			dev = get_device(ctx->stage, range.owner);
-			assert(dev);
-
-			if (!dev->finalized) {
-				return DISPATCH_YIELD;
-			}
-
-			for (size_t i = 0; i < range.length; i++) {
-				node->l_value.dest.data[i] = dev->attribute_values[range.begin + i];
-			}
-		} break;
-
-		default:
-			printf("@TODO: Finish l-value");
-			return DISPATCH_ERROR;
-			break;
-		}
-
-		// @TODO: Fix
-		return DISPATCH_DONE;
-
-		/* switch (expr->entry.kind) { */
-		/* case SCOPE_ENTRY_TYPE: */
-		/* 	assert(node->l_value.dest.type == ctx->stage->standard_types.type); */
-		/* 	node->l_value.dest.data[0] = expr->entry.id; */
-		/* 	break; */
-
-		/* case SCOPE_ENTRY_DEVICE_ATTRIBUTE: */
-		/* 	printf("@TODO: Implement evaluation of device attribute value into expr.\n"); */
-		/* 	break; */
-
-		/* default: */
-		/* 	// @TODO: Improve error message. Tell what the found */
-		/* 	// variable is. */
-		/* 	apply_error(node->cnode, "Cannot read this entry."); */
-		/* 	return DISPATCH_ERROR; */
-		/* } */
-
+		WAIT_FOR(node->l_value.expr);
 		return DISPATCH_DONE;
 	}
 
 	case APPLY_NODE_NUMLIT:
-		if (node->literal.dest.type == ctx->stage->standard_types.integer) {
-			node->literal.dest.data[0] = node->literal.numlit;
-		} else {
-			printf("@TODO: Implement literal unification.\n");
-			return DISPATCH_ERROR;
+		return DISPATCH_DONE;
+
+
+	case APPLY_NODE_TUPLE_LIT: {
+		size_t num_scalars = 0;
+		for (size_t i = 0; i < node->tuple_lit.num_members; i++) {
+			struct apply_tuple_lit_member *member;
+			member = &node->tuple_lit.members[i];
+
+			WAIT_FOR(member->expr);
+
+			if (member->type_id == 0) {
+				member->type_id = apply_resolve_expr_type_id(ctx, member->expr);
+			}
+
+			struct type *member_type;
+
+			member_type = get_type(ctx->stage, member->type_id);
+			num_scalars += member_type->num_scalars;
 		}
 
+		struct type *type;
+
+		if (node->tuple_lit.named) {
+			struct named_tuple_member *type_members;
+			type_members = calloc(node->tuple_lit.num_members, sizeof(struct named_tuple_member));
+
+			for (size_t i = 0; i < node->tuple_lit.num_members; i++) {
+				struct apply_tuple_lit_member *member;
+				member = &node->tuple_lit.members[i];
+
+				type_members[i].name = member->name;
+				type_members[i].type = member->type_id;
+			}
+
+			type = register_named_tuple_type(ctx->stage, NULL, type_members,
+											 node->tuple_lit.num_members);
+		} else {
+			type_id *type_members;
+			type_members = calloc(node->tuple_lit.num_members, sizeof(type_id));
+
+			for (size_t i = 0; i < node->tuple_lit.num_members; i++) {
+				struct apply_tuple_lit_member *member;
+				member = &node->tuple_lit.members[i];
+
+				type_members[i] = member->type_id;
+			}
+
+			type = register_tuple_type(ctx->stage, NULL, type_members,
+									   node->tuple_lit.num_members);
+		}
+
+		node->tuple_lit.type = type->id;
+
 		return DISPATCH_DONE;
+	}
 	}
 
 	printf("Encountered an unexpeted node '%s'!\n",
@@ -1831,11 +1808,6 @@ void apply_print_missing_error(struct apply_context *ctx, struct apply_node *nod
 	case APPLY_NODE_DEVICE:
 		if (node->device.type->state != DISPATCH_DONE) {
 			apply_l_expr_not_found("device type", node->device.type);
-		}
-		break;
-	case APPLY_NODE_DEVICE_ATTR:
-		if (node->device_attr.name->state != DISPATCH_DONE) {
-			apply_l_expr_not_found("value", node->device_attr.name);
 		}
 		break;
 

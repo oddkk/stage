@@ -398,6 +398,7 @@ int scope_lookup_result_single(struct scope_lookup ctx, struct scope_lookup_rang
 	result->begin = ctx.steps[0].offset;
 	result->length = ctx.steps[0].length;
 	result->owner = ctx.owner;
+	result->kind = ctx.kind;
 	result->type = ctx.type;
 	return 0;
 }
@@ -449,6 +450,7 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 	if (owner == -1) {
 		owner = ctx.owner;
 	}
+	out->kind = ctx.kind;
 	out->owner = owner;
 	out->type = ctx.type;
 	return LOOKUP_FOUND;
@@ -467,6 +469,32 @@ size_t scope_lookup_instances(struct scope_lookup ctx)
 size_t scope_lookup_instance_size(struct scope_lookup ctx)
 {
 	return ctx.steps[ctx.num_steps - 1].length;
+}
+
+int eval_lookup_result(struct stage *stage, struct scope_lookup_range range, struct value_ref *out)
+{
+	switch (range.kind) {
+	case SCOPE_ENTRY_NONE:
+	case SCOPE_ENTRY_NAMESPACE:
+		return -1;
+		break;
+
+	case SCOPE_ENTRY_DEVICE_TYPE:
+	case SCOPE_ENTRY_DEVICE:
+	case SCOPE_ENTRY_DEVICE_CHANNEL:
+	case SCOPE_ENTRY_DEVICE_ATTRIBUTE:
+		printf("@TODO: Implement result\n");
+		return -1;
+
+		// @TODO: Device arguments
+
+	case SCOPE_ENTRY_TYPE:
+		out->data[0] = range.begin;
+		break;
+
+	}
+
+	return 0;
 }
 
 void describe_lookup_result_type(FILE *fp, struct scope_lookup ctx)
