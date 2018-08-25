@@ -42,6 +42,15 @@ static void collapse_tree_nodes(struct config_node *tree) {
 		collapse_tree_nodes(tree->tuple_item.type);
 		break;
 
+	case CONFIG_NODE_TYPE_TEMPLATE_PARAM:
+		collapse_tree_nodes(tree->type_template_param.expr);
+		break;
+
+	case CONFIG_NODE_ARRAY_TYPE:
+		collapse_tree_nodes(tree->array_type.lhs);
+		collapse_tree_nodes(tree->array_type.length);
+		break;
+
 	case CONFIG_NODE_ATTR:
 		collapse_tree_nodes(tree->attr.type);
 		collapse_tree_nodes(tree->attr.def_value);

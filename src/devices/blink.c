@@ -51,8 +51,9 @@ struct device_type *register_device_type_blink(struct stage *stage)
 {
 	struct device_type *blink;
 	struct device_channel_def *channel_out;
+	struct type_template_context params = {0};
 
-	blink = register_device_type(stage, STR("blink"), 0);
+	blink = register_device_type(stage, STR("blink"), params);
 	blink->device_init = device_blink_init;
 
 	channel_out = device_type_add_output(stage, blink, STR("out"),

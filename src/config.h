@@ -22,8 +22,10 @@ enum config_node_type {
 	CONFIG_NODE_DEVICE,
 	CONFIG_NODE_TYPE_DECL,
 	CONFIG_NODE_TYPE,
+	CONFIG_NODE_TYPE_TEMPLATE_PARAM,
 	CONFIG_NODE_TUPLE,
 	CONFIG_NODE_TUPLE_ITEM,
+	CONFIG_NODE_ARRAY_TYPE,
 	CONFIG_NODE_ATTR,
 	CONFIG_NODE_INPUT,
 	CONFIG_NODE_OUTPUT,
@@ -88,6 +90,14 @@ struct config_node {
 			struct atom *name;
 			struct config_node *type;
 		} type_decl;
+		struct {
+			struct config_node *expr;
+		} type_template_param;
+		struct {
+			struct config_node *lhs;
+			struct config_node *length;
+			bool template_length;
+		} array_type;
 		struct {
 			struct config_node *first_child;
 		} type_def;

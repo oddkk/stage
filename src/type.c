@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "dlist.h"
 
 int type_count_scalars(struct stage *stage, struct type *type)
 {
@@ -13,6 +14,9 @@ int type_count_scalars(struct stage *stage, struct type *type)
 	case TYPE_KIND_NONE:
 		assert(!"None type used!");
 		return -1;
+
+	case TYPE_KIND_TEMPLATE:
+		return 0;
 
 	case TYPE_KIND_SCALAR:
 		return 1;
@@ -30,6 +34,7 @@ int type_count_scalars(struct stage *stage, struct type *type)
 			int ret;
 
 			child_type_id = type->tuple.types[i];
+
 			child = get_type(stage, child_type_id);
 			if (!child) {
 				return -1;
@@ -65,6 +70,11 @@ int type_count_scalars(struct stage *stage, struct type *type)
 
 	case TYPE_KIND_ARRAY: {
 		struct type *child;
+
+		if (type->array.length_templated) {
+			return 0;
+		}
+
 		child = get_type(stage, type->array.type);
 		return type->array.length * child->num_scalars;
 	}
@@ -85,11 +95,7 @@ void print_type(FILE *fp, struct stage *stage, struct type *type)
 
 void print_type_id(FILE *fp, struct stage *stage, type_id id)
 {
-	if (id == TYPE_TEMPLATE) {
-		fprintf(fp, "(template)");
-	} else {
-		print_type(fp, stage, get_type(stage, id));
-	}
+	print_type(fp, stage, get_type(stage, id));
 }
 
 void expand_type(FILE *fp, struct stage *stage, struct type *type, bool recurse_expand)
@@ -97,6 +103,11 @@ void expand_type(FILE *fp, struct stage *stage, struct type *type, bool recurse_
 	switch (type->kind) {
 	case TYPE_KIND_NONE:
 		fprintf(fp, "none");
+		break;
+
+	case TYPE_KIND_TEMPLATE:
+		fprintf(fp, "$");
+		print_access_pattern(fp, type->template.field);
 		break;
 
 	case TYPE_KIND_SCALAR:
@@ -137,12 +148,10 @@ void expand_type(FILE *fp, struct stage *stage, struct type *type, bool recurse_
 		fprintf(fp, "(");
 		for (size_t i = 0; i < type->tuple.length; i++) {
 			type_id child_type_id;
-			struct type *child;
 			struct atom *name;
 
 			name = type->named_tuple.members[i].name;
 			child_type_id = type->named_tuple.members[i].type;
-			child = stage->types[child_type_id];
 
 			if (i != 0) {
 				fprintf(fp, ", ");
@@ -150,9 +159,9 @@ void expand_type(FILE *fp, struct stage *stage, struct type *type, bool recurse_
 
 			fprintf(fp, "%.*s: ", ALIT(name));
 			if (recurse_expand) {
-				expand_type(fp, stage, child, recurse_expand);
+				expand_type_id(fp, stage, child_type_id, recurse_expand);
 			} else {
-				print_type(fp, stage, child);
+				print_type_id(fp, stage, child_type_id);
 			}
 		}
 		fprintf(fp, ")");
@@ -162,11 +171,17 @@ void expand_type(FILE *fp, struct stage *stage, struct type *type, bool recurse_
 		struct type *child;
 		child = get_type(stage, type->array.type);
 		if (recurse_expand) {
-			expand_type(fp, stage, child, recurse_expand);
+			expand_type_id(fp, stage, type->array.type, recurse_expand);
 		} else {
-			print_type(fp, stage, child);
+			print_type_id(fp, stage, type->array.type);
 		}
-		fprintf(fp, "[%zu]", type->array.length);
+		if (!type->array.length_templated) {
+			fprintf(fp, "[%zu]", type->array.length);
+		} else {
+			fprintf(fp, "[$");
+			print_access_pattern(fp, type->array.length_template_field);
+			fprintf(fp, "]");
+		}
 
 	} break;
 	}
@@ -174,11 +189,7 @@ void expand_type(FILE *fp, struct stage *stage, struct type *type, bool recurse_
 
 void expand_type_id(FILE *fp, struct stage *stage, type_id id, bool recurse_expand)
 {
-	if (id == TYPE_TEMPLATE) {
-		fprintf(fp, "(template)");
-	} else {
-		expand_type(fp, stage, get_type(stage, id), recurse_expand);
-	}
+	expand_type(fp, stage, get_type(stage, id), recurse_expand);
 }
 
 int register_type_name(struct stage *stage, type_id type, struct scoped_hash *scope, struct atom *name)
@@ -248,50 +259,38 @@ struct type *register_type(struct stage *stage, struct type def)
 		assert(!"None type used!");
 		break;
 
+	case TYPE_KIND_TEMPLATE:
+		type->templated = true;
+		break;
+
 	case TYPE_KIND_SCALAR:
 	case TYPE_KIND_STRING:
 	case TYPE_KIND_TYPE:
 		break;
 
 	case TYPE_KIND_ARRAY: {
-		if (type->array.type == TYPE_TEMPLATE ||
-			type->array.length_templated) {
-			type->templated = true;
-			break;
+		if (type->array.length_templated) {
+			type->templated += 1;
 		}
 
 		struct type *child;
 		child = get_type(stage, type->array.type);
 		if (child->templated) {
-			type->templated = true;
+			type->templated += 1;
 		}
 	} break;
 
 	case TYPE_KIND_TUPLE:
 		for (size_t i = 0; i < type->tuple.length; i++) {
-			if (type->named_tuple.members[i].type == TYPE_TEMPLATE) {
-				type->templated = true;
-				break;
-			}
 			struct type *member = get_type(stage, type->tuple.types[i]);
-			if (member->templated) {
-				type->templated = true;
-				break;
-			}
+			type->templated += member->templated;
 		}
 		break;
 
 	case TYPE_KIND_NAMED_TUPLE:
 		for (size_t i = 0; i < type->named_tuple.length; i++) {
-			if (type->named_tuple.members[i].type == TYPE_TEMPLATE) {
-				type->templated = true;
-				break;
-			}
 			struct type *member = get_type(stage, type->named_tuple.members[i].type);
-			if (member->templated) {
-				type->templated = true;
-				break;
-			}
+			type->templated += member->templated;
 		}
 		break;
 	}
@@ -360,6 +359,60 @@ struct type *register_array_type(struct stage *stage, struct atom *name,
 	new_type.array.length = length;
 
 	return register_type(stage, new_type);
+}
+
+struct type *register_template_length_array_type(struct stage *stage,
+												 struct atom *name,
+												 type_id type,
+												 struct access_pattern length_pattern,
+												 struct type_template_context *template_ctx)
+{
+	struct type new_type = {0};
+
+	new_type.name = name;
+	new_type.kind = TYPE_KIND_ARRAY;
+
+	new_type.array.type = type;
+	new_type.array.length = 0;
+	new_type.array.length_templated = true;
+	new_type.array.length_template_field = length_pattern;
+
+	struct type *final_type;
+	final_type = register_type(stage, new_type);
+
+	int id;
+	struct type_template_field field = {0};
+	field.expected_type = stage->standard_types.integer;
+	field.type = final_type->id;
+
+	id = dlist_append(template_ctx->fields, template_ctx->num_fields, &field);
+	final_type->array.length_template_id = id;
+
+	return final_type;
+}
+
+struct type *register_template_type(struct stage *stage, struct atom *name, struct access_pattern field,
+									struct type_template_context *template_ctx)
+{
+	struct type new_type = {0};
+
+	new_type.name = name;
+	new_type.kind = TYPE_KIND_TEMPLATE;
+	new_type.template.field = field;
+
+
+	struct type *final_type;
+	final_type = register_type(stage, new_type);
+
+	struct type_template_field template_field = {0};
+	template_field.expected_type = stage->standard_types.type;
+	template_field.type = final_type->id;
+
+	int id;
+	id = dlist_append(template_ctx->fields, template_ctx->num_fields, &template_field);
+	final_type->template.id = id;
+
+	return final_type;
 }
 
 int register_typed_member_in_scope(struct stage *stage, struct atom *name,
@@ -495,6 +548,9 @@ int type_find_member(struct type_iterator *out,
 		assert(!"None type used!");
 		return -2;
 
+	case TYPE_KIND_TEMPLATE:
+		return -2;
+
 	case TYPE_KIND_SCALAR:
 	case TYPE_KIND_STRING:
 	case TYPE_KIND_TYPE:
@@ -537,6 +593,11 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 	switch (type->kind) {
 	case TYPE_KIND_NONE:
 		assert(!"None type used!");
+		break;
+
+	case TYPE_KIND_TEMPLATE:
+		printf("$");
+		print_access_pattern(stdout, type->template.field);
 		break;
 
 	case TYPE_KIND_SCALAR:
@@ -633,6 +694,10 @@ int consolidate_types(struct stage *stage, type_id expected, type_id input, type
 	switch (expected_type->kind) {
 	case TYPE_KIND_NONE:
 		assert(!"None type used!");
+		return -1;
+
+	case TYPE_KIND_TEMPLATE:
+		printf("@TODO: Implement consolidate template\n");
 		return -1;
 
 	case TYPE_KIND_SCALAR:
@@ -799,9 +864,407 @@ int consolidate_types(struct stage *stage, type_id expected, type_id input, type
 
 
 
+enum resolve_template_node_state {
+	RESOLVE_TEMPLATE_DONE  = 0,
+	RESOLVE_TEMPLATE_YIELD = 1,
+	RESOLVE_TEMPLATE_ERROR = -1,
+};
+
+struct resolve_template_node {
+	enum resolve_template_node_state state;
+	struct type_template_field *field;
+
+	union {
+		scalar_value length;
+		type_id type;
+	} result;
+};
+
+struct resolve_template_context {
+	struct stage *stage;
+	struct resolve_template_node *nodes;
+	size_t num_nodes;
+	struct value_ref input;
+	struct type_template_context ctx;
+};
+
+static int resolve_templated_type_value_internal(struct resolve_template_context *ctx,
+												 type_id expected, struct value_ref input,
+												 type_id *result)
+{
+	if (input.type == expected) {
+		printf("Short circuiting %s (%u %u)\n", humanreadable_type_kind(expected),
+			   expected, input.type);
+		*result = expected;
+		return 0;
+	}
+
+	struct type *expected_type;
+	struct type *input_type;
+
+	expected_type = get_type(ctx->stage, expected);
+	input_type    = get_type(ctx->stage, input.type);
+
+	printf("Handeling %s\n", humanreadable_type_kind(expected_type->kind));
+
+	switch (expected_type->kind) {
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		return -1;
+
+	case TYPE_KIND_TEMPLATE: {
+		struct resolve_template_node *node;
+		assert(expected_type->template.id < ctx->num_nodes);
+
+		node = &ctx->nodes[expected_type->template.id];
+		if (node->result.type != 0 && !types_compatible(ctx->stage,
+														node->result.type, input.type)) {
+			fprintf(stderr, "Conflicting types for '$");
+			print_access_pattern(stderr, expected_type->template.field);
+			fprintf(stderr, "'. Got '");
+			print_type_id(stderr, ctx->stage, node->result.type);
+			fprintf(stderr, "' and '");
+			print_type_id(stderr, ctx->stage, input.type);
+			fprintf(stderr, "'.\n");
+			return -1;
+		}
+
+		print_access_pattern(stdout, expected_type->template.field);
+		printf(": assigning %u\n", input.type);
+		if (node->result.type == 0) {
+			node->result.type = input.type;
+		}
+		*result = node->result.type;
+		return 0;
+	}
+
+	case TYPE_KIND_SCALAR:
+		if (input_type->kind == TYPE_KIND_SCALAR) {
+			*result = expected_type->id;
+			return 0;
+		} else {
+			consolidate_types_fail(ctx->stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_STRING:
+		printf("@TODO: Strings\n");
+		return -1;
+
+	case TYPE_KIND_TYPE:
+		if (input_type->kind == TYPE_KIND_TYPE) {
+			*result = expected_type->id;
+			return 0;
+		} else {
+			consolidate_types_fail(ctx->stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_TUPLE:
+		if (input_type->kind == TYPE_KIND_TUPLE) {
+			if (input_type->tuple.length > expected_type->tuple.length) {
+				// @TODO: Better error message?
+				consolidate_types_fail(ctx->stage, expected_type, input_type);
+				return -1;
+			}
+
+			type_id *new_members;
+			new_members = calloc(expected_type->tuple.length, sizeof(type_id));
+			bool different = false;
+
+			size_t num_scalars = 0;
+			for (size_t i = 0; i < input_type->tuple.length; i++) {
+				struct type *member_type;
+				member_type = get_type(ctx->stage, input_type->tuple.types[i]);
+
+				struct value_ref member_value = {0};
+				member_value.type = member_type->id;
+				member_value.data = &input.data[num_scalars];
+
+				int err;
+				err = resolve_templated_type_value_internal(ctx,
+															expected_type->tuple.types[i],
+															member_value,
+															&new_members[i]);
+
+				if (err) {
+					free(new_members);
+					return -1;
+				}
+
+				if (new_members[i] != expected_type->tuple.types[i]) {
+					different = true;
+				}
+
+				num_scalars += member_type->num_scalars;
+			}
+			if (different) {
+				struct type *new_type;
+				new_type = register_tuple_type(ctx->stage, NULL, new_members,
+											   expected_type->tuple.length);
+				*result = new_type->id;
+			} else {
+				*result = expected_type->id;
+			}
+			free(new_members);
+			return 0;
+		} else {
+			consolidate_types_fail(ctx->stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_NAMED_TUPLE:
+		if (input_type->kind == TYPE_KIND_NAMED_TUPLE) {
+			if (input_type->named_tuple.length > expected_type->named_tuple.length) {
+				// @TODO: Better error message?
+				consolidate_types_fail(ctx->stage, expected_type, input_type);
+				return -1;
+			}
+
+			struct named_tuple_member *new_members;
+			new_members = calloc(expected_type->named_tuple.length,
+								 sizeof(struct named_tuple_member));
+
+			bool different = false;
+
+			size_t num_scalars = 0;
+			for (size_t i = 0; i < expected_type->named_tuple.length; i++) {
+				struct named_tuple_member *expected_member;
+				struct named_tuple_member *input_member;
+
+				expected_member = &expected_type->named_tuple.members[i];
+				input_member = NULL;
+
+				struct type *expected_member_type;
+				expected_member_type = get_type(ctx->stage, expected_member->type);
+
+				for (size_t j = 0; j < input_type->named_tuple.length; j++) {
+					if (input_type->named_tuple.members[j].name == expected_member->name) {
+						input_member = &input_type->named_tuple.members[j];
+						break;
+					}
+				}
+
+				if (input_member == NULL) {
+					new_members[i].name = expected_member->name;
+					new_members[i].type = expected_member->type;
+
+				} else {
+					struct type *member_type;
+					member_type = get_type(ctx->stage, input_member->type);
+
+					struct value_ref member_value = {0};
+					member_value.type = member_type->id;
+					member_value.data = &input.data[num_scalars];
 
 
-int consolidate_typed_value_into(struct stage *stage, type_id expected, struct value_ref input, struct value_ref *result)
+					new_members[i].name = expected_member->name;
+
+					int err;
+					err = resolve_templated_type_value_internal(ctx,
+																expected_member->type,
+																member_value,
+																&new_members[i].type);
+
+					if (err) {
+						free(new_members);
+						return -1;
+					}
+
+					if (new_members[i].type != expected_member->type) {
+						different = true;
+					}
+				}
+
+				num_scalars += expected_member_type->num_scalars;
+			}
+
+			if (different) {
+				struct type *new_type;
+				new_type = register_named_tuple_type(ctx->stage, NULL, new_members,
+													 expected_type->named_tuple.length);
+				*result = new_type->id;
+			} else {
+				*result = expected_type->id;
+			}
+			free(new_members);
+			return 0;
+		} else {
+			consolidate_types_fail(ctx->stage, expected_type, input_type);
+			return -1;
+		}
+
+	case TYPE_KIND_ARRAY:
+		if (input_type->kind == TYPE_KIND_ARRAY) {
+
+			if (expected_type->array.length_templated) {
+				struct resolve_template_node *node;
+				assert(expected_type->array.length_template_id < ctx->num_nodes);
+
+				node = &ctx->nodes[expected_type->array.length_template_id];
+
+				if (node->result.length != 0 && node->result.length != input_type->array.length) {
+					fprintf(stderr, "Conflicting types for '$");
+					print_access_pattern(stderr, expected_type->template.field);
+					fprintf(stderr, "'. Got %u and %zu.\n",
+							node->result.length,
+							input_type->array.length);
+					return -1;
+				}
+
+				node->result.length = input_type->array.length;
+
+			} else if (expected_type->array.length != input_type->array.length) {
+				// @TODO: Better error message?
+				consolidate_types_fail(ctx->stage, expected_type, input_type);
+				return -1;
+			}
+
+			struct type *member_type;
+			member_type = get_type(ctx->stage, input_type->array.type);
+			type_id new_member_id = 0;
+
+			for (size_t i = 0; i < input_type->array.length; i++) {
+				struct value_ref member_value = {0};
+				member_value.type = member_type->id;
+				member_value.data = &input.data[i * member_type->num_scalars];
+
+				type_id out_type;
+
+				int err;
+				err = resolve_templated_type_value_internal(ctx,
+															expected_type->array.type,
+															member_value,
+															&out_type);
+
+				if (err) {
+					return -1;
+				}
+
+				if (new_member_id != 0 && new_member_id != out_type) {
+					// @TODO: Better error message.
+					printf("Conflicting types for array.\n");
+					return -1;
+				}
+				new_member_id = out_type;
+			}
+
+			if (new_member_id != expected_type->array.type || expected_type->array.length_templated) {
+				struct type *new_type;
+				new_type = register_array_type(ctx->stage, expected_type->name,
+											  new_member_id, input_type->array.length);
+				*result = new_type->id;
+			}
+
+			return 0;
+
+		} else {
+			consolidate_types_fail(ctx->stage, expected_type, input_type);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int resolve_templated_type_value(struct stage *stage,
+								 struct type_template_context expected,
+								 struct value_ref input,
+								 struct value_ref *result)
+{
+	struct type *expected_type;
+	struct type *input_type;
+
+	expected_type = get_type(stage, expected.type);
+	input_type    = get_type(stage, input.type);
+
+	if (expected_type->templated) {
+		struct resolve_template_node *nodes;
+		nodes = calloc(expected.num_fields, sizeof(struct resolve_template_node));
+
+		for (size_t i = 0; i < expected.num_fields; i++) {
+			struct resolve_template_node *node;
+			node = &nodes[i];
+			node->field = &expected.fields[i];
+			node->state = RESOLVE_TEMPLATE_YIELD;
+		}
+
+		struct resolve_template_context ctx;
+		ctx.stage     = stage;
+		ctx.input     = input;
+		ctx.nodes     = nodes;
+		ctx.num_nodes = expected.num_fields;
+		ctx.ctx       = expected;
+
+
+		type_id new_expected_type_id = 0;
+		int err;
+		err = resolve_templated_type_value_internal(&ctx, expected_type->id, input,
+											  &new_expected_type_id);
+		if (err) {
+			printf("Failed to resolve type.\n");
+			return -1;
+		}
+
+		expected_type = get_type(stage, new_expected_type_id);
+
+		*result = alloc_value(stage, expected_type->id);
+
+		err = consolidate_typed_value_into(stage, expected_type->id,
+											input, result);
+
+		if (err) {
+			return err;
+		}
+
+		for (size_t i = 0; i < expected.num_fields; i++) {
+			struct value_ref field_out = {0};
+			struct type *type;
+			type = get_type(stage, nodes[i].field->type);
+
+			switch (type->kind) {
+			case TYPE_KIND_TEMPLATE: {
+				err = type_find_by_pattern(stage, *result, type->template.field, &field_out);
+
+				if (err) {
+					return err;
+				}
+
+				printf("out: %u\n", nodes[i].result.type);
+				field_out.data[0] = nodes[i].result.type;
+			} break;
+
+			case TYPE_KIND_ARRAY:
+				err = type_find_by_pattern(stage, *result,
+										   type->array.length_template_field,
+										   &field_out);
+
+				if (err) {
+					return err;
+				}
+
+				field_out.data[0] = nodes[i].result.length;
+				break;
+
+			default:
+				assert(!"Invalid template node.");
+			}
+		}
+
+		return 0;
+
+	} else {
+		*result = alloc_value(stage, expected_type->id);
+
+		return consolidate_typed_value_into(stage, expected_type->id,
+											input, result);
+	}
+}
+
+int consolidate_typed_value_into_internal(struct stage *stage,
+										  type_id expected,
+										  struct value_ref input,
+										  struct value_ref *result)
 {
 	assert(result->type == expected);
 	assert(result->data != NULL);
@@ -823,6 +1286,10 @@ int consolidate_typed_value_into(struct stage *stage, type_id expected, struct v
 	switch (expected_type->kind) {
 	case TYPE_KIND_NONE:
 		assert(!"None type used!");
+		return -1;
+
+	case TYPE_KIND_TEMPLATE:
+		printf("@TODO: Implement consolidate template value.\n");
 		return -1;
 
 	case TYPE_KIND_SCALAR:
@@ -849,7 +1316,7 @@ int consolidate_typed_value_into(struct stage *stage, type_id expected, struct v
 
 	case TYPE_KIND_TUPLE:
 		if (input_type->kind == TYPE_KIND_TUPLE) {
-			if (input_type->tuple.length != expected_type->tuple.length) {
+			if (input_type->tuple.length > expected_type->tuple.length) {
 				// @TODO: Better error message?
 				consolidate_types_fail(stage, expected_type, input_type);
 				return -1;
@@ -895,7 +1362,7 @@ int consolidate_typed_value_into(struct stage *stage, type_id expected, struct v
 
 	case TYPE_KIND_NAMED_TUPLE:
 		if (input_type->kind == TYPE_KIND_NAMED_TUPLE) {
-			if (input_type->named_tuple.length != expected_type->named_tuple.length) {
+			if (input_type->named_tuple.length > expected_type->named_tuple.length) {
 				// @TODO: Better error message?
 				consolidate_types_fail(stage, expected_type, input_type);
 				return -1;
@@ -936,31 +1403,24 @@ int consolidate_typed_value_into(struct stage *stage, type_id expected, struct v
 					input_num_scalars += tmp_input_member_type->num_scalars;
 				}
 
-				if (input_member == NULL) {
-					fprintf(stderr, "Missing the member '%.*s' from '",
-							ALIT(expected_member->name));
-					print_type(stderr, stage, input_type);
-					fprintf(stderr, "' to match '");
-					print_type(stderr, stage, expected_type);
-					fprintf(stderr, "'.\n");
-					return -1;
-				}
+				if (input_member != NULL) {
 
-				struct value_ref member_value = {0};
-				member_value.type = member_type->id;
-				member_value.data = &result->data[expected_num_scalars];
+					struct value_ref member_value = {0};
+					member_value.type = member_type->id;
+					member_value.data = &result->data[expected_num_scalars];
 
-				struct value_ref input_value = {0};
-				input_value.type = input_member_type->id;
-				input_value.data = &input.data[input_num_scalars];
+					struct value_ref input_value = {0};
+					input_value.type = input_member_type->id;
+					input_value.data = &input.data[input_num_scalars];
 
 
-				int err;
-				err = consolidate_typed_value_into(stage, member_type->id,
-												   input_value, &member_value);
+					int err;
+					err = consolidate_typed_value_into(stage, member_type->id,
+													input_value, &member_value);
 
-				if (err) {
-					return -1;
+					if (err) {
+						return -1;
+					}
 				}
 
 				expected_num_scalars += member_type->num_scalars;
@@ -1017,6 +1477,14 @@ int consolidate_typed_value_into(struct stage *stage, type_id expected, struct v
 	return 0;
 }
 
+int consolidate_typed_value_into(struct stage *stage,
+										  type_id expected,
+										  struct value_ref input,
+										  struct value_ref *result)
+{
+	return consolidate_typed_value_into_internal(stage, expected, input, result);
+}
+
 bool types_compatible(struct stage *stage, type_id t1, type_id t2)
 {
 	if (t1 == t2) {
@@ -1029,11 +1497,17 @@ bool types_compatible(struct stage *stage, type_id t1, type_id t2)
 	type1 = get_type(stage, t1);
 	type2 = get_type(stage, t2);
 
+	if (type2->kind == TYPE_KIND_TEMPLATE) {
+		return true;
+	}
 
 	switch (type1->kind) {
 	case TYPE_KIND_NONE:
 		assert(!"None type used!");
 		return -1;
+
+	case TYPE_KIND_TEMPLATE:
+		return true;
 
 	case TYPE_KIND_SCALAR:
 		return (type2->kind == TYPE_KIND_SCALAR);
@@ -1159,6 +1633,87 @@ bool types_compatible(struct stage *stage, type_id t1, type_id t2)
 /* 	} */
 /* } */
 
+int type_find_by_pattern(struct stage *stage,
+						 struct value_ref input,
+						 struct access_pattern pattern,
+						 struct value_ref *result)
+{
+	if (pattern.num_entries == 0) {
+		*result = input;
+		return 0;
+	}
+
+	struct type *type;
+	type = get_type(stage, input.type);
+
+	switch (pattern.entries[0].kind) {
+	case ACCESS_IDENT: {
+		if (type->kind == TYPE_KIND_NAMED_TUPLE) {
+			size_t num_scalars = 0;
+
+			for (size_t i = 0; i < type->named_tuple.length; i++) {
+				struct named_tuple_member *member = &type->named_tuple.members[i];
+				struct type *member_type = get_type(stage, member->type);
+
+				if (member->name == pattern.entries[0].ident) {
+					struct access_pattern sub_pattern = pattern;
+					sub_pattern.num_entries -= 1;
+					sub_pattern.entries += 1;
+
+					struct value_ref sub_input = {0};
+					sub_input.type = member_type->id;
+					sub_input.data = &input.data[num_scalars];
+
+					return type_find_by_pattern(stage, sub_input, sub_pattern, result);
+				}
+
+				num_scalars += member_type->num_scalars;
+			}
+		}
+		fprintf(stderr, "Type '");
+		print_type(stderr, stage, type);
+		fprintf(stderr, "' has no member '%.*s'\n",
+				ALIT(pattern.entries[0].ident));
+		return -1;
+	}
+
+	case ACCESS_INDEX: {
+		size_t index = pattern.entries[0].index;
+		if (type->kind == TYPE_KIND_NAMED_TUPLE && index < type->tuple.length) {
+			size_t num_scalars = 0;
+
+			for (size_t i = 0; i < index; i++) {
+				struct type *member_type;
+				member_type = get_type(stage, type->tuple.types[i]);
+
+				num_scalars += member_type->num_scalars;
+			}
+
+			struct access_pattern sub_pattern = pattern;
+			sub_pattern.num_entries -= 1;
+			sub_pattern.entries += 1;
+
+			struct value_ref sub_input = {0};
+			sub_input.type = type->tuple.types[index];
+			sub_input.data = &input.data[num_scalars];
+
+			return type_find_by_pattern(stage, sub_input, sub_pattern, result);
+		}
+		fprintf(stderr, "Type '");
+		print_type(stderr, stage, type);
+		fprintf(stderr, "' does not have the index %zu\n",
+				pattern.entries[0].index);
+		return -1;
+	}
+
+	case ACCESS_RANGE:
+		printf("Range lookup not supported for types.\n");
+		break;
+	}
+
+	return -1;
+}
+
 void print_typed_value(struct stage *stage, type_id tid, scalar_value *values, size_t num_values)
 {
 	print_typed_value_internal(stage, tid, values, num_values);
@@ -1176,6 +1731,7 @@ char *humanreadable_type_kind(enum type_kind kind)
 {
 	switch (kind) {
 	case TYPE_KIND_NONE:        return "none";
+	case TYPE_KIND_TEMPLATE:    return "template";
 	case TYPE_KIND_SCALAR:      return "scalar";
 	case TYPE_KIND_STRING:      return "string";
 	case TYPE_KIND_TYPE:        return "type";

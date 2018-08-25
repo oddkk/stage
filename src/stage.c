@@ -79,11 +79,7 @@ struct type *get_type(struct stage *stage, type_id tid)
 	struct type *res;
 
 	if (tid >= stage->num_types) {
-		if (tid == TYPE_TEMPLATE) {
-			print_error("get type", "Type is a template that is not assigned.");
-		} else {
-			print_error("get type", "Invalid type id '%i'.", tid);
-		}
+		print_error("get type", "Invalid type id '%i'.", tid);
 		return NULL;
 	}
 	res = stage->types[tid];

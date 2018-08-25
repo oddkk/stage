@@ -5,12 +5,14 @@
 #include "string.h"
 #include "atom.h"
 #include "scoped_hash.h"
+#include "access_pattern.h"
 #include <limits.h>
 #include <stdio.h>
 
 typedef unsigned int type_id;
 
-#define TYPE_TEMPLATE ((type_id)-1)
+// #define TYPE_TEMPLATE ((type_id)-1)
+#define TYPE_ARRAY_LENGTH_TEMPLATE ((size_t)-1)
 
 typedef int scalar_value;
 #define SCALAR_OFF INT_MIN
@@ -19,6 +21,7 @@ typedef int scalar_value;
 
 enum type_kind {
 	TYPE_KIND_NONE = 0,
+	TYPE_KIND_TEMPLATE,
 	TYPE_KIND_SCALAR,
 	TYPE_KIND_STRING,
 	TYPE_KIND_TYPE,
@@ -40,7 +43,7 @@ struct type {
 	type_id id;
 	struct atom *name;
 	int num_scalars;
-	bool templated;
+	size_t templated;
 	enum type_kind kind;
 	union {
 		struct scalar_type scalar;
@@ -54,13 +57,27 @@ struct type {
 		} named_tuple;
 		struct {
 			type_id type;
-			size_t length;
 			bool length_templated;
+			struct access_pattern length_template_field;
+			size_t length_template_id;
+			size_t length;
 		} array;
 		struct {
+			struct access_pattern field;
 			size_t id;
 		} template;
 	};
+};
+
+struct type_template_field {
+	type_id expected_type;
+	type_id type;
+};
+
+struct type_template_context {
+	type_id type;
+	struct type_template_field *fields;
+	size_t num_fields;
 };
 
 #define VALUE_KIND_SCALAR 0
@@ -109,6 +126,16 @@ struct type *register_named_tuple_type(struct stage *stage, struct atom *name,
 struct type *register_array_type(struct stage *stage, struct atom *name,
 								 type_id type, size_t length);
 
+struct type *register_template_length_array_type(struct stage *stage,
+												 struct atom *name,
+												 type_id type,
+												 struct access_pattern length_pattern,
+												 struct type_template_context *);
+
+struct type *register_template_type(struct stage *stage, struct atom *name,
+									struct access_pattern field,
+									struct type_template_context *);
+
 int assign_value(struct value *dest, struct type *dest_type, struct value *src,
 		 struct type *src_type);
 
@@ -132,8 +159,18 @@ int type_find_member(struct type_iterator *out,
 					 struct type_iterator iter,
 					 struct atom *name);
 
+int type_find_by_pattern(struct stage *stage,
+						 struct value_ref input,
+						 struct access_pattern,
+						 struct value_ref *result);
+
 int consolidate_typed_value_into(struct stage *, type_id expected_type,
 								 struct value_ref input, struct value_ref *result);
+
+int resolve_templated_type_value(struct stage *stage,
+								 struct type_template_context expected,
+								 struct value_ref input,
+								 struct value_ref *result);
 
 bool types_compatible(struct stage *, type_id t1, type_id t2);
 

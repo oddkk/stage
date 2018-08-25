@@ -96,7 +96,7 @@ int device_type_get_output_id(struct stage *stage,
 
 struct device_type *register_device_type(struct stage *stage,
 										 struct string name,
-										 type_id params)
+										 struct type_template_context params)
 {
 	return register_device_type_scoped(stage, name, params,
 									   &stage->root_scope);
@@ -104,7 +104,7 @@ struct device_type *register_device_type(struct stage *stage,
 
 struct device_type *register_device_type_scoped(struct stage *stage,
 												struct string name,
-												type_id params,
+												struct type_template_context params,
 												struct scoped_hash *parent_scope)
 {
 	struct device_type *dev_type;
@@ -170,9 +170,9 @@ void finalize_device_type(struct device_type *dev_type)
 	dev_type->finalized = true;
 }
 
-type_id make_device_type_params_type(struct stage *stage,
-									struct device_type_param *params,
-									size_t num_params)
+struct type_template_context make_device_type_params_type(struct stage *stage,
+														  struct device_type_param *params,
+														  size_t num_params)
 {
 	struct type new_type = {0};
 
@@ -189,11 +189,15 @@ type_id make_device_type_params_type(struct stage *stage,
 	struct type *result;
 	result = register_type(stage, new_type);
 
+	struct type_template_context ctx = {0};
+
 	if (!result) {
-		return 0;
+		return ctx;
 	}
 
-	return result->id;
+	ctx.type = result->id;
+
+	return ctx;
 }
 
 void describe_device_type(struct stage *stage, struct device_type *dev_type)
@@ -202,7 +206,7 @@ void describe_device_type(struct stage *stage, struct device_type *dev_type)
 	fprintf(fp, "device type %.*s\n", ALIT(dev_type->name));
 
 	fprintf(stdout, " parameters:\n");
-	print_type_id(fp, stage, dev_type->params);
+	print_type_id(fp, stage, dev_type->params.type);
 	fprintf(fp, "\n");
 
 	fprintf(stdout, " inputs:\n");

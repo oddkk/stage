@@ -43,11 +43,11 @@ static void device_print_tick(struct stage *stage, struct device *dev) {
 static int device_print_template_init(struct stage *stage, struct device_type *type, struct device *dev)
 {
 	scalar_value input_type;
-	int err;
+	int err = 0;
 
 	// @TODO: Implement
 	input_type = stage->standard_types.integer; // device_get_attr(stage, dev, SATOM(stage, "T"));
-	err = device_assign_input_type_by_name(stage, dev, SATOM(stage, "in"), input_type);
+	/* err = device_assign_input_type_by_name(stage, dev, SATOM(stage, "in"), input_type); */
 
 	return err;
 }
@@ -79,7 +79,7 @@ struct device_type *register_device_type_print(struct stage *stage)
 	struct device_type *print;
 	struct device_channel_def *channel_in;
 
-	type_id params_type;
+	struct type_template_context params_type = {0};
 	struct device_type_param params[] = {
 		{ .name=STR("T"), .type=stage->standard_types.type },
 	};
@@ -90,7 +90,13 @@ struct device_type *register_device_type_print(struct stage *stage)
 	print->device_init = device_print_init;
 	print->device_template_init = device_print_template_init;
 
-	channel_in = device_type_add_input(stage, print, STR("in"), TYPE_TEMPLATE);
+	struct type_template_context params_template = {0};
+	struct access_pattern type_pattern = {0};
+	access_pattern_ident(&type_pattern, SATOM(stage, "T"));
+	struct type *T;
+	T = register_template_type(stage, NULL, type_pattern, &params_template);
+
+	channel_in = device_type_add_input(stage, print, STR("in"), T->id);
 
 	print->self_input = channel_in->id;
 

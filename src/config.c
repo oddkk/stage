@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "dlist.h"
 #include "scope_lookup.h"
+#include "access_pattern.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,7 @@ enum apply_node_type {
 	APPLY_NODE_TYPE_TUPLE,
 	APPLY_NODE_TYPE_ARRAY,
 	APPLY_NODE_TYPE_SUBRANGE,
+	APPLY_NODE_TYPE_TEMPLATE_FIELD,
 
 	APPLY_NODE_BINARY_OP,
 	APPLY_NODE_ACCESS,
@@ -54,6 +56,7 @@ const char *apply_node_name(enum apply_node_type type) {
 		APPLY_NODE_NAME(TYPE_TUPLE);
 		APPLY_NODE_NAME(TYPE_ARRAY);
 		APPLY_NODE_NAME(TYPE_SUBRANGE);
+		APPLY_NODE_NAME(TYPE_TEMPLATE_FIELD);
 
 		APPLY_NODE_NAME(BINARY_OP);
 		APPLY_NODE_NAME(ACCESS);
@@ -105,6 +108,7 @@ struct apply_node {
 			struct device_type *type;
 			struct atom *name;
 			struct apply_node *params;
+			struct type_template_context params_type;
 			bool visited;
 			bool complete;
 
@@ -167,14 +171,18 @@ struct apply_node {
 			size_t num_members;
 
 			type_id type;
+			struct type_template_context *template;
 		} type_tuple;
 
 		struct {
 			struct atom *name;
 			struct apply_node *type_node;
 			struct apply_node *length_node;
+			struct access_pattern length_template;
+			bool template_length;
 
 			type_id type;
+			struct type_template_context *template;
 		} type_array;
 
 		struct {
@@ -187,7 +195,17 @@ struct apply_node {
 			scalar_value value_high;
 
 			type_id type;
+			// @TODO: Make subrange type templatable.
+			struct type_template_context *template;
 		} type_subrange;
+
+		struct {
+			struct apply_node *expr;
+
+			type_id type;
+			struct access_pattern pattern;
+			struct type_template_context *template;
+		} type_template_field;
 
 		struct {
 			struct apply_node *lhs;
@@ -195,6 +213,7 @@ struct apply_node {
 			struct scoped_hash *scope;
 
 			struct scope_lookup *lookup;
+			struct access_pattern *pattern;
 		} access;
 
 		struct {
@@ -205,6 +224,7 @@ struct apply_node {
 			scalar_value value_index;
 
 			struct scope_lookup *lookup;
+			struct access_pattern *pattern;
 		} access_index;
 
 		struct {
@@ -217,6 +237,7 @@ struct apply_node {
 			scalar_value value_high_index;
 
 			struct scope_lookup *lookup;
+			struct access_pattern *pattern;
 		} access_index_range;
 
 		struct {
@@ -225,6 +246,7 @@ struct apply_node {
 			bool local_lookup;
 
 			struct scope_lookup *lookup;
+			struct access_pattern *pattern;
 		} ident;
 
 		struct {
@@ -437,7 +459,8 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 												struct scoped_hash *scope,
 												struct config_node *expr,
-												struct scope_lookup *lookup)
+												struct scope_lookup *lookup,
+												struct access_pattern *pattern)
 {
 	switch (expr->type) {
 	case CONFIG_NODE_IDENT: {
@@ -447,6 +470,7 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 		node->ident.name = expr->ident;
 		node->ident.scope = scope;
 		node->ident.lookup = lookup;
+		node->ident.pattern = pattern;
 
 		push_apply_node(ctx, node);
 
@@ -458,8 +482,9 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 			struct apply_node *node;
 			node = alloc_apply_node(ctx, APPLY_NODE_ACCESS, expr);
 			node->access.lookup = lookup;
+			node->access.pattern = pattern;
 			node->access.scope = scope;
-			node->access.lhs = apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, lookup);
+			node->access.lhs = apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, lookup, pattern);
 
 			push_apply_node(ctx, node);
 
@@ -469,9 +494,10 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 			struct apply_node *node;
 			node = alloc_apply_node(ctx, APPLY_NODE_ACCESS_INDEX, expr);
 			node->access_index.lookup = lookup;
+			node->access_index.pattern = pattern;
 			node->access_index.scope = scope;
 			node->access_index.lhs
-				= apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, lookup);
+				= apply_discover_l_expr(ctx, scope, expr->binary_op.lhs, lookup, pattern);
 
 			node->access_index.index
 				= apply_discover_expr(ctx, scope, expr->binary_op.rhs);
@@ -489,8 +515,9 @@ static struct apply_node *apply_discover_l_expr(struct apply_context *ctx,
 		struct apply_node *node;
 		node = alloc_apply_node(ctx, APPLY_NODE_ACCESS_INDEX_RANGE, expr);
 		node->access_index_range.lookup = lookup;
+		node->access_index_range.pattern = pattern;
 		node->access_index_range.lhs
-				= apply_discover_l_expr(ctx, scope, expr->subscript_range.lhs, lookup);
+			= apply_discover_l_expr(ctx, scope, expr->subscript_range.lhs, lookup, pattern);
 		node->access_index_range.scope = scope;
 
 		if (expr->subscript_range.low) {
@@ -557,7 +584,7 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 			struct apply_node *node;
 			node = alloc_apply_node(ctx, APPLY_NODE_L_VALUE, expr);
 			node->l_value.lookup = scope_lookup_init(ctx->stage, scope);
-			node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, &node->l_value.lookup);
+			node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, &node->l_value.lookup, NULL);
 
 			push_apply_node(ctx, node);
 
@@ -576,7 +603,7 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 		struct apply_node *node;
 		node = alloc_apply_node(ctx, APPLY_NODE_L_VALUE, expr);
 		node->l_value.lookup = scope_lookup_init(ctx->stage, scope);
-		node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, &node->l_value.lookup);
+		node->l_value.expr = apply_discover_l_expr(ctx, scope, expr, &node->l_value.lookup, NULL);
 
 		push_apply_node(ctx, node);
 
@@ -629,7 +656,8 @@ static struct apply_node *apply_discover_expr(struct apply_context *ctx,
 static struct apply_node *apply_discover_type_tuple(struct apply_context *ctx,
 													struct scoped_hash *scope,
 													struct config_node *type_expr,
-													struct atom *name);
+													struct atom *name,
+													struct type_template_context *template);
 
 static void apply_discover_device_type(struct apply_context *ctx,
 									   struct scoped_hash *scope,
@@ -644,7 +672,8 @@ static void apply_discover_device_type(struct apply_context *ctx,
 	device_type->device_type.scope = scope;
 	if (device_type_node->device_type.params) {
 		device_type->device_type.params
-			= apply_discover_type_tuple(ctx, scope, device_type_node->device_type.params, NULL);
+			= apply_discover_type_tuple(ctx, scope, device_type_node->device_type.params, NULL,
+										&device_type->device_type.params_type);
 	}
 
 	push_apply_node(ctx, device_type);
@@ -704,13 +733,15 @@ static void apply_discover_bind(struct apply_context *ctx,
 	node->bind.lhs
 		= apply_discover_l_expr(ctx, scope,
 								bind_node->binary_op.lhs,
-								&node->bind.lookup_lhs);
+								&node->bind.lookup_lhs,
+								NULL);
 	node->bind.lookup_rhs
 		= scope_lookup_init(ctx->stage, scope);
 	node->bind.rhs
 		= apply_discover_l_expr(ctx, scope,
 								bind_node->binary_op.rhs,
-								&node->bind.lookup_rhs);
+								&node->bind.lookup_rhs,
+								NULL);
 
 	push_apply_node(ctx, node);
 
@@ -753,7 +784,7 @@ static void apply_discover_device(struct apply_context *ctx,
 	device->device.type_lookup
 		= scope_lookup_init(ctx->stage, scope);
 	device->device.type
-		= apply_discover_l_expr(ctx, scope, device_node->device.type, &device->device.type_lookup);
+		= apply_discover_l_expr(ctx, scope, device_node->device.type, &device->device.type_lookup, NULL);
 	if (device_node->device.args) {
 		device->device.args
 			= apply_discover_tuple_lit(ctx, scope, device_node->device.args);
@@ -765,12 +796,14 @@ static void apply_discover_device(struct apply_context *ctx,
 static struct apply_node *apply_discover_type(struct apply_context *ctx,
 											  struct scoped_hash *scope,
 											  struct config_node *type_node,
-											  struct atom *name);
+											  struct atom *name,
+											  struct type_template_context *template);
 
 static struct apply_node *apply_discover_type_tuple(struct apply_context *ctx,
 													struct scoped_hash *scope,
 													struct config_node *type_expr,
-													struct atom *name)
+													struct atom *name,
+													struct type_template_context *template)
 {
 	struct apply_node *type = NULL;
 	bool named;
@@ -782,6 +815,7 @@ static struct apply_node *apply_discover_type_tuple(struct apply_context *ctx,
 
 	named = type_expr->tuple.named;
 	type->type_tuple.named = named;
+	type->type_tuple.template = template;
 
 	for (struct config_node *member = type_expr->tuple.first_child;
 		 member;
@@ -793,7 +827,7 @@ static struct apply_node *apply_discover_type_tuple(struct apply_context *ctx,
 		if (named) {
 			new_member.name = member->tuple_item.name;
 		}
-		new_member.type = apply_discover_type(ctx, scope, member->tuple_item.type, NULL);
+		new_member.type = apply_discover_type(ctx, scope, member->tuple_item.type, NULL, template);
 
 		dlist_append(type->type_tuple.members, type->type_tuple.num_members, &new_member);
 	}
@@ -805,7 +839,8 @@ static struct apply_node *apply_discover_type_tuple(struct apply_context *ctx,
 static struct apply_node *apply_discover_type(struct apply_context *ctx,
 											  struct scoped_hash *scope,
 											  struct config_node *type_node,
-											  struct atom *name)
+											  struct atom *name,
+											  struct type_template_context *template)
 {
 	if (type_node->type == CONFIG_NODE_TYPE) {
 		struct config_node *type_expr;
@@ -814,15 +849,16 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 
 		switch (type_expr->type) {
 		case CONFIG_NODE_TUPLE: {
-			type = apply_discover_type_tuple(ctx, scope, type_expr, name);
+			type = apply_discover_type_tuple(ctx, scope, type_expr, name, template);
 		} break;
 
 		case CONFIG_NODE_SUBRANGE: {
 			type = alloc_apply_node(ctx, APPLY_NODE_TYPE_SUBRANGE, type_node);
 			type->type_subrange.name = name;
+			type->type_subrange.template = template;
 
 			type->type_subrange.lhs
-				= apply_discover_type(ctx, scope, type_expr->subrange.lhs, NULL);
+				= apply_discover_type(ctx, scope, type_expr->subrange.lhs, NULL, template);
 
 			type->type_subrange.low
 				= apply_discover_expr(ctx, scope, type_expr->subrange.low);
@@ -833,21 +869,27 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 			push_apply_node(ctx, type);
 		} break;
 
-		case CONFIG_NODE_BINARY_OP:
-			if (type_expr->binary_op.op == CONFIG_OP_SUBSCRIPT) {
-				type = alloc_apply_node(ctx, APPLY_NODE_TYPE_ARRAY, type_node);
-				type->type_array.name = name;
+		case CONFIG_NODE_ARRAY_TYPE: {
+			type = alloc_apply_node(ctx, APPLY_NODE_TYPE_ARRAY, type_node);
+			type->type_array.name = name;
+			type->type_array.template = template;
 
-				type->type_array.type_node
-					= apply_discover_type(ctx, scope, type_expr->binary_op.lhs, NULL);
+			type->type_array.type_node
+				= apply_discover_type(ctx, scope, type_expr->array_type.lhs, NULL, template);
 
+			type->type_array.template_length = type_expr->array_type.template_length;
+			if (type_expr->array_type.template_length) {
 				type->type_array.length_node
-					= apply_discover_expr(ctx, scope, type_expr->binary_op.rhs);
-
-				push_apply_node(ctx, type);
-				break;
+					= apply_discover_l_expr(ctx, scope, type_expr->array_type.length, NULL,
+											&type->type_array.length_template);
+			} else {
+				type->type_array.length_node
+					= apply_discover_expr(ctx, scope, type_expr->array_type.length);
 			}
-			// fallthrough
+
+			push_apply_node(ctx, type);
+			break;
+		}
 
 		default:
 			assert(!"Not a valid type.");
@@ -855,13 +897,25 @@ static struct apply_node *apply_discover_type(struct apply_context *ctx,
 
 		return type;
 
+	} else if (type_node->type == CONFIG_NODE_TYPE_TEMPLATE_PARAM) {
+		struct apply_node *node;
+		node = alloc_apply_node(ctx, APPLY_NODE_TYPE_TEMPLATE_FIELD, type_node);
+		node->type_template_field.template = template;
+		node->type_template_field.expr
+			= apply_discover_l_expr(ctx, scope, type_node->type_template_param.expr, NULL,
+									&node->type_template_field.pattern);
+
+		push_apply_node(ctx, node);
+
+		return node;
+
 	} else {
 		struct apply_node *node;
 		node = alloc_apply_node(ctx, APPLY_NODE_TYPE_L_EXPR, type_node);
 		node->type_l_expr.lookup
 			= scope_lookup_init(ctx->stage, scope);
 		node->type_l_expr.expr
-			= apply_discover_l_expr(ctx, scope, type_node, &node->type_l_expr.lookup);
+			= apply_discover_l_expr(ctx, scope, type_node, &node->type_l_expr.lookup, NULL);
 
 		push_apply_node(ctx, node);
 
@@ -882,7 +936,7 @@ static void apply_discover_type_decl(struct apply_context *ctx,
 	type_decl->type_decl.scope = scope;
 	type_decl->type_decl.type =
 		apply_discover_type(ctx, scope, type_decl_node->type_decl.type,
-							type_decl->type_decl.name);
+							type_decl->type_decl.name, NULL);
 
 	push_apply_node(ctx, type_decl);
 }
@@ -946,6 +1000,9 @@ static type_id apply_resolve_type_id(struct apply_node *node)
 
 	case APPLY_NODE_TYPE_SUBRANGE:
 		return node->type_subrange.type;
+
+	case APPLY_NODE_TYPE_TEMPLATE_FIELD:
+		return node->type_template_field.type;
 
 	default:
 		assert(!"Invalid node in type.");
@@ -1224,15 +1281,16 @@ apply_dispatch(struct apply_context *ctx,
 		WAIT_FOR(node->device_type.params);
 
 		if (!node->device_type.type) {
-			type_id params_type_id = 0;
-			if (node->device_type.params) {
-				params_type_id = apply_resolve_type_id(node->device_type.params);
-			}
+			node->device_type.params_type.type
+				= apply_resolve_type_id(node->device_type.params);
 
+			printf("device type param: ");
+			print_type_id(stdout, ctx->stage, node->device_type.params_type.type);
+			printf("\n");
 			node->device_type.type
 				= register_device_type_scoped(ctx->stage,
 											  node->device_type.name->name,
-											  params_type_id,
+											  node->device_type.params_type,
 											  node->device_type.scope);
 			if (!node->device_type.type) {
 				return DISPATCH_ERROR;
@@ -1276,7 +1334,7 @@ apply_dispatch(struct apply_context *ctx,
 		if (!node->device_type_input.type) {
 			node->device_type_input.type
 				= apply_discover_type(ctx, dev_type_node->device_type.scope,
-									  node->cnode->input.type, NULL);
+									  node->cnode->input.type, NULL, NULL);
 		}
 
 		struct apply_node *type_expr;
@@ -1481,23 +1539,36 @@ apply_dispatch(struct apply_context *ctx,
 
 	case APPLY_NODE_TYPE_ARRAY: {
 		WAIT_FOR(node->type_array.type_node);
-		WAIT_FOR(node->type_array.length_node);
 
 		struct type *final_type;
 		struct atom *name;
 		type_id member_type;
-		scalar_value length;
 
 		name        = node->type_array.name;
 		member_type = apply_resolve_type_id(node->type_array.type_node);
 
-		struct value_ref length_value = {0};
-		length_value.data = &length;
-		length_value.type = ctx->stage->standard_types.integer;
-		int err;
-		err = apply_eval_expr(ctx, node->type_array.length_node, &length_value);
+		WAIT_FOR(node->type_array.length_node);
 
-		final_type = register_array_type(ctx->stage, name, member_type, length);
+		if (!node->type_array.template_length) {
+			scalar_value length = 0;
+
+			struct value_ref length_value = {0};
+			length_value.data = &length;
+			length_value.type = ctx->stage->standard_types.integer;
+			int err;
+			err = apply_eval_expr(ctx, node->type_array.length_node, &length_value);
+
+			if (err) {
+				return DISPATCH_ERROR;
+			}
+
+			final_type = register_array_type(ctx->stage, name, member_type, length);
+
+		} else {
+			final_type = register_template_length_array_type(ctx->stage, name, member_type,
+															 node->type_array.length_template,
+															 node->type_array.template);
+		}
 
 		if (!final_type) {
 			// @TODO: Print child type
@@ -1552,6 +1623,20 @@ apply_dispatch(struct apply_context *ctx,
 		node->type_subrange.type = final_type->id;
 		return DISPATCH_DONE;
 
+	case APPLY_NODE_TYPE_TEMPLATE_FIELD: {
+		WAIT_FOR(node->type_template_field.expr);
+
+		struct type *type;
+
+		type = register_template_type(ctx->stage, NULL,
+									  node->type_template_field.pattern,
+									  node->type_template_field.template);
+
+		node->type_template_field.type = type->id;
+
+		return DISPATCH_DONE;
+	}
+
 	case APPLY_NODE_BINARY_OP:
 		return DISPATCH_ERROR;
 
@@ -1565,7 +1650,8 @@ apply_dispatch(struct apply_context *ctx,
 				= apply_discover_l_expr(ctx,
 										node->access.scope,
 										node->cnode->binary_op.rhs,
-										node->access.lookup);
+										node->access.lookup,
+										node->access.pattern);
 		}
 
 		WAIT_FOR(node->access.rhs);
@@ -1580,18 +1666,29 @@ apply_dispatch(struct apply_context *ctx,
 		WAIT_FOR(node->access_index.lhs);
 		WAIT_FOR(node->access_index.index);
 
-		int err;
+		assert((node->access_index.lookup != NULL) || (node->access_index.pattern != NULL));
 
-		err = scope_lookup_index(node->access_index.lookup,
-								 node->access_index.value_index);
+		int err = 0;
 
-		if (err) {
-			apply_debug("Waiting for ident '%.*s'%s.",
-						ALIT(node->ident.name),
-						node->ident.local_lookup
-						? " local lookup"
-						: "");
+		if (node->access_index.lookup) {
+
+			err = scope_lookup_index(node->access_index.lookup,
+									node->access_index.value_index);
+
+			if (err) {
+				apply_debug("Waiting for ident '%.*s'%s.",
+							ALIT(node->ident.name),
+							node->ident.local_lookup
+							? " local lookup"
+							: "");
+			}
 		}
+
+		if (node->access_index.pattern) {
+			access_pattern_index(node->access_index.pattern,
+								 node->access_index.value_index);
+		}
+
 		return (err == 0) ? DISPATCH_DONE : DISPATCH_YIELD;
 	}
 
@@ -1610,7 +1707,8 @@ apply_dispatch(struct apply_context *ctx,
 		if (low_node)  { WAIT_FOR(low_node);  }
 		if (high_node) { WAIT_FOR(high_node); }
 
-		int err;
+		assert((node->access_index_range.lookup != NULL) || (node->access_index_range.pattern != NULL));
+
 
 		size_t low = 0;
 		size_t high = SCOPE_LOOKUP_RANGE_END;
@@ -1622,14 +1720,24 @@ apply_dispatch(struct apply_context *ctx,
 			high = node->access_index_range.value_high_index;
 		}
 
-		err = scope_lookup_range(node->access_index_range.lookup, low, high);
+		int err = 0;
 
-		if (err) {
-			apply_debug("Waiting for ident '%.*s'%s.",
-						ALIT(node->ident.name),
-						node->ident.local_lookup
-						? " local lookup"
-						: "");
+		if (node->access_index_range.lookup) {
+
+			err = scope_lookup_range(node->access_index_range.lookup, low, high);
+
+			if (err) {
+				apply_debug("Waiting for ident '%.*s'%s.",
+							ALIT(node->ident.name),
+							node->ident.local_lookup
+							? " local lookup"
+							: "");
+			}
+		}
+
+		if (node->access_index.pattern) {
+			access_pattern_range(node->access_index.pattern,
+								 low, high);
 		}
 		return (err == 0) ? DISPATCH_DONE : DISPATCH_YIELD;
 	}
@@ -1741,17 +1849,26 @@ apply_dispatch(struct apply_context *ctx,
 	}
 
 	case APPLY_NODE_IDENT: {
-		int err;
-		err = scope_lookup_ident(node->ident.lookup, node->ident.name);
+		assert((node->ident.lookup != NULL) || (node->ident.pattern != NULL));
 
-		if (err) {
-			apply_debug("Waiting for ident '%.*s'%s.",
-						ALIT(node->ident.name),
-						node->ident.local_lookup
-						? " local lookup"
-						: "");
-			return DISPATCH_YIELD;
+		if (node->ident.lookup) {
+			int err;
+
+			err = scope_lookup_ident(node->ident.lookup, node->ident.name);
+
+			if (err) {
+				apply_debug("Waiting for ident '%.*s'%s.",
+							ALIT(node->ident.name),
+							node->ident.local_lookup
+							? " local lookup"
+							: "");
+				return DISPATCH_YIELD;
+			}
 		}
+		if (node->ident.pattern) {
+			access_pattern_ident(node->ident.pattern, node->ident.name);
+		}
+
 		return DISPATCH_DONE;
 	}
 

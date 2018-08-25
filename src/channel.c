@@ -80,6 +80,10 @@ static int init_device_channels_for_type(struct stage *stage,
 		assert(!"None type used!");
 		break;
 
+	case TYPE_KIND_TEMPLATE:
+		assert(!"Instantiating channel with templated.");
+		break;
+
 	case TYPE_KIND_SCALAR: {
 		struct scope_entry *entry;
 		entry = scoped_hash_insert(scope, name,

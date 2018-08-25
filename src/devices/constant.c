@@ -30,7 +30,7 @@ struct device_type *register_device_type_constant(struct stage *stage)
 	struct device_type *constant;
 	struct device_channel_def *channel_out;
 
-	type_id params_type;
+	struct type_template_context params_type = {0};
 	struct device_type_param params[] = {
 		{ .name=STR("T"),     .type=stage->standard_types.type },
 

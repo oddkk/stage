@@ -76,10 +76,10 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 
 	int err = 0;
 
-	if (device_type->params != 0) {
+	if (device_type->params.type != 0) {
 
-		device->args = alloc_value(stage, device_type->params);
-		err = consolidate_typed_value_into(stage, device_type->params, args, &device->args);
+		err = resolve_templated_type_value(stage, device_type->params, args,
+										   &device->args);
 
 		if (err) {
 			return NULL;
@@ -155,16 +155,6 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 		for (size_t i = 0; i < device_type->num_inputs; i++) {
 			struct type *type;
 
-			if (device->input_types[i] == TYPE_TEMPLATE) {
-				print_error("finalize device",
-							"The type for the input '%.*s' for device "
-							"'%.*s' was not resolved.",
-							ALIT(device_type->inputs[i].name),
-							ALIT(device->name));
-				err = -1;
-				continue;
-			}
-
 			type = get_type(stage, device->input_types[i]);
 			if (!type) {
 				print_error("finalize device",
@@ -187,16 +177,6 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 	if (device_type->num_outputs > 0) {
 		for (size_t i = 0; i < device_type->num_outputs; i++) {
 			struct type *type;
-
-			if (device->output_types[i] == TYPE_TEMPLATE) {
-				print_error("finalize device",
-							"The type for the output '%.*s' for device "
-							"'%.*s' was not resolved.",
-							ALIT(device_type->outputs[i].name),
-							ALIT(device->name));
-				err = -1;
-				continue;
-			}
 
 			type = get_type(stage, device->output_types[i]);
 			if (!type) {
@@ -246,37 +226,37 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 
 }
 
-int device_assign_input_type_by_name(struct stage *stage,
-									 struct device *dev,
-									 struct atom *name,
-									 type_id type)
-{
-	struct device_type *dev_type;
-	dev_type = get_device_type(stage, dev->type);
+/* int device_assign_input_type_by_name(struct stage *stage, */
+/* 									 struct device *dev, */
+/* 									 struct atom *name, */
+/* 									 type_id type) */
+/* { */
+/* 	struct device_type *dev_type; */
+/* 	dev_type = get_device_type(stage, dev->type); */
 
-	channel_id id;
-	id = device_type_get_input_id(stage, dev_type, name);
+/* 	channel_id id; */
+/* 	id = device_type_get_input_id(stage, dev_type, name); */
 
-	if (id < 0) {
-		return -1;
-	}
+/* 	if (id < 0) { */
+/* 		return -1; */
+/* 	} */
 
-	if (dev->input_types[id] != TYPE_TEMPLATE) {
-		if (dev_type->inputs[id].type == TYPE_TEMPLATE) {
-			printf("The type of the templated input '%.*s' was already assigned to.\n",
-				   ALIT(dev_type->inputs[id].name));
-		} else {
-			printf("Attempted to assign a new type to the non-templated input '%.*s'.\n",
-				   ALIT(dev_type->inputs[id].name));
-		}
+/* 	if (dev->input_types[id] != TYPE_TEMPLATE) { */
+/* 		if (dev_type->inputs[id].type == TYPE_TEMPLATE) { */
+/* 			printf("The type of the templated input '%.*s' was already assigned to.\n", */
+/* 				   ALIT(dev_type->inputs[id].name)); */
+/* 		} else { */
+/* 			printf("Attempted to assign a new type to the non-templated input '%.*s'.\n", */
+/* 				   ALIT(dev_type->inputs[id].name)); */
+/* 		} */
 
-		return -1;
-	}
+/* 		return -1; */
+/* 	} */
 
-	dev->input_types[id] = type;
+/* 	dev->input_types[id] = type; */
 
-	return 0;
-}
+/* 	return 0; */
+/* } */
 
 struct scope_lookup device_lookup(struct stage *stage, struct device *device)
 {

@@ -126,7 +126,7 @@ struct device_type *register_device_type_midi(struct stage *stage) {
 
 	struct device_type *launchpad;
 
-	type_id params_type = 0;
+	struct type_template_context params_type = {0};
 	/* struct device_type_param params[] = { */
 	/* 	{ .name=STR("midi_file"), .type=stage->standard_types.string }, */
 	/* }; */

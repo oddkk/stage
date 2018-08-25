@@ -109,6 +109,25 @@ static void _config_print_tree(struct config_node *node, int depth)
 		_config_print_tree(node->tuple_item.type, depth + 2);
 		break;
 
+	case CONFIG_NODE_TYPE_TEMPLATE_PARAM:
+		printf("type template param\n");
+		_config_print_tree(node->type_template_param.expr, depth + 1);
+		break;
+
+	case CONFIG_NODE_ARRAY_TYPE:
+		printf("array type\n");
+
+		_print_indent(depth + 1);
+		printf("length\n");
+		_config_print_tree(node->array_type.length, depth + 2);
+
+		_print_indent(depth + 1);
+		printf("type%s\n",
+			   node->array_type.template_length ? " (template)" : "");
+		_config_print_tree(node->array_type.lhs, depth + 2);
+		break;
+
+
 	case CONFIG_NODE_ATTR:
 		printf("attr\n");
 

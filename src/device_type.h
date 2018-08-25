@@ -40,7 +40,7 @@ struct device_type {
 	device_type_id id;
 	struct atom *name;
 
-	type_id params;
+	struct type_template_context params;
 
 	struct device_channel_def *inputs;
 	size_t num_inputs;
@@ -91,11 +91,11 @@ int device_type_get_output_id(struct stage *,
 
 struct device_type *register_device_type(struct stage *stage,
 										 struct string name,
-										 type_id params);
+										 struct type_template_context params);
 
 struct device_type *register_device_type_scoped(struct stage *stage,
 												struct string name,
-												type_id params,
+												struct type_template_context params,
 												struct scoped_hash *parent_scope);
 
 struct device_type_param {
@@ -103,9 +103,9 @@ struct device_type_param {
 	type_id type;
 };
 
-type_id make_device_type_params_type(struct stage *stage,
-									struct device_type_param *params,
-									size_t num_params);
+struct type_template_context make_device_type_params_type(struct stage *stage,
+														  struct device_type_param *params,
+														  size_t num_params);
 
 void finalize_device_type(struct device_type *dev_type);
 

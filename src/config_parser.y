@@ -222,10 +222,12 @@ l_expr:			IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDENT)
 type_decl:		"type" IDENTIFIER '=' type ';'   { $$ = alloc_node(ctx, CONFIG_NODE_TYPE_DECL); $$->type_decl.name = $2; $$->type_decl.type = $4; };
 
 type: 			type_l_expr                  { $$ = $1; }
+		|		'$' type_l_expr              { $$ = alloc_node(ctx, CONFIG_NODE_TYPE_TEMPLATE_PARAM); $$->type_template_param.expr = $2; }
 		|		array_type                   { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $1; }
 		|		subrange_type                { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $1; }
 		|		'{' enum_list '}'            { $$ = NULL; printf("TODO: enumlist\n"); }
 		|		'(' tuple_decl ')'           { $$ = alloc_node(ctx, CONFIG_NODE_TYPE); $$->type_def.first_child = $2; }
+		|		"type"                       { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = atom_create(ctx->atom_table, STR("type")); }
 		;
 
 type_l_expr:	IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDENT); $$->ident = $1; }
@@ -233,7 +235,8 @@ type_l_expr:	IDENTIFIER                   { $$ = alloc_node(ctx, CONFIG_NODE_IDE
 		|		type_l_expr '.' type_l_expr  { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_ACCESS; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
 		;
 
-array_type:		type '[' expr ']'            { $$ = alloc_node(ctx, CONFIG_NODE_BINARY_OP); $$->binary_op.op = CONFIG_OP_SUBSCRIPT; $$->binary_op.lhs = $1; $$->binary_op.rhs = $3; }
+array_type:		type '[' expr ']'            { $$ = alloc_node(ctx, CONFIG_NODE_ARRAY_TYPE); $$->array_type.lhs = $1; $$->array_type.length = $3; $$->array_type.template_length = false; }
+		|		type '[' '$' l_expr ']'      { $$ = alloc_node(ctx, CONFIG_NODE_ARRAY_TYPE); $$->array_type.lhs = $1; $$->array_type.length = $4; $$->array_type.template_length = true;  }
 		;
 
 subrange_type:	type_l_expr '{' range '}'    { $$ = alloc_node(ctx, CONFIG_NODE_SUBRANGE); $$->subrange.lhs = $1; $$->subrange.low = $3.low; $$->subrange.high = $3.high; }
@@ -384,7 +387,7 @@ re2c:define:YYFILL:naked = 1;
 	return NUMLIT;
  }
 
-[-+*/:;={}()\[\].,_] {
+[-+*/:;={}()\[\].,_$] {
 	lloc_col(lloc, CURRENT_LEN);
 	return *ctx->tok;
  }
@@ -426,7 +429,12 @@ int parse_config_file(struct string filename, struct atom_table *table, struct a
 
 	config_parse_fill(&ctx, BUFFER_SIZE);
 
-	yyparse(&ctx);
+	int err;
+	err = yyparse(&ctx);
+
+	if (err) {
+		return err;
+	}
 
 	config_tree_clean(ctx.module);
 	*out_node = ctx.module;
