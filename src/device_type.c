@@ -189,6 +189,10 @@ static struct type_template_context make_device_type_params_type(struct stage *s
 	struct type_template_context ctx = {0};
 	struct type new_type = {0};
 
+	if (num_params == 0) {
+		return ctx;
+	}
+
 	new_type.kind = TYPE_KIND_NAMED_TUPLE;
 	new_type.named_tuple.length = num_params;
 	new_type.named_tuple.members

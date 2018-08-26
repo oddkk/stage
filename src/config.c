@@ -221,8 +221,6 @@ struct apply_node {
 			struct apply_node *index;
 			struct scoped_hash *scope;
 
-			scalar_value value_index;
-
 			struct scope_lookup *lookup;
 			struct access_pattern *pattern;
 		} access_index;
@@ -232,9 +230,6 @@ struct apply_node {
 			struct apply_node *low_index;
 			struct apply_node *high_index;
 			struct scoped_hash *scope;
-
-			scalar_value value_low_index;
-			scalar_value value_high_index;
 
 			struct scope_lookup *lookup;
 			struct access_pattern *pattern;
@@ -1272,6 +1267,35 @@ static int config_device_init(struct stage *stage,
 	return 0;
 }
 
+static int apply_eval_single_scalar_expr(struct apply_context *ctx,
+										 struct apply_node *node,
+										 scalar_value *out)
+{
+	struct value_ref out_ref = {0};
+	out_ref.data = out;
+	out_ref.type = ctx->stage->standard_types.integer;
+
+
+	type_id type_id;
+	type_id = apply_resolve_expr_type_id(ctx, node);
+
+	struct type *type;
+	type = get_type(ctx->stage, type_id);
+	if (type->num_scalars != 1 || type->kind != TYPE_KIND_SCALAR) {
+		apply_error(node->cnode, "Not a single scalar.");
+		return -1;
+	}
+
+	int err;
+	err = apply_eval_expr(ctx, node, &out_ref);
+	if (err) {
+		apply_error(node->cnode, "Failed to evaluate literal.");
+		return -1;
+	}
+
+	return 0;
+}
+
 static enum apply_dispatch_result
 apply_dispatch(struct apply_context *ctx,
 			   struct apply_node *node)
@@ -1667,10 +1691,15 @@ apply_dispatch(struct apply_context *ctx,
 
 		int err = 0;
 
+		scalar_value index = 0;
+		err = apply_eval_single_scalar_expr(ctx,
+											node->access_index.index,
+											&index);
+
 		if (node->access_index.lookup) {
 
 			err = scope_lookup_index(node->access_index.lookup,
-									node->access_index.value_index);
+									 index);
 
 			if (err) {
 				apply_debug("Waiting for ident '%.*s'%s.",
@@ -1683,7 +1712,7 @@ apply_dispatch(struct apply_context *ctx,
 
 		if (node->access_index.pattern) {
 			access_pattern_index(node->access_index.pattern,
-								 node->access_index.value_index);
+								 index);
 		}
 
 		return (err == 0) ? DISPATCH_DONE : DISPATCH_YIELD;
@@ -1711,10 +1740,24 @@ apply_dispatch(struct apply_context *ctx,
 		size_t high = SCOPE_LOOKUP_RANGE_END;
 
 		if (low_node) {
-			low  = node->access_index_range.value_low_index;
+			int err = 0;
+
+			scalar_value index = 0;
+			err = apply_eval_single_scalar_expr(ctx,
+												node->access_index_range.low_index,
+												&index);
+
+			low = index;
 		}
 		if (high_node) {
-			high = node->access_index_range.value_high_index;
+			int err = 0;
+
+			scalar_value index = 0;
+			err = apply_eval_single_scalar_expr(ctx,
+												node->access_index_range.high_index,
+												&index);
+
+			high = index;
 		}
 
 		int err = 0;
