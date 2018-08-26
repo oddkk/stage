@@ -35,12 +35,15 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 											struct value_ref args,
 											void *context);
 
-/* int device_assign_input_type_by_name(struct stage *stage, */
-/* 									 struct device *dev, */
-/* 									 struct atom *name, */
-/* 									 type_id type); */
-
 struct scope_lookup device_lookup(struct stage *, struct device *);
+
+int device_get_attr(struct stage *, struct device *,
+					struct string pattern,
+					struct value_ref *out);
+
+int device_get_attr_by_pattern(struct stage *, struct device *,
+							   struct access_pattern pattern,
+							   struct value_ref *out);
 
 struct value_ref device_get_attr_from_lookup(struct stage *, struct device *,
 											 struct scope_lookup_range);

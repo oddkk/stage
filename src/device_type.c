@@ -11,6 +11,16 @@ struct device_channel_def *device_type_add_input(struct stage *stage,
 						 struct string name,
 						 type_id type)
 {
+	struct type_template_context ctx = {0};
+	ctx.type = type;
+	return device_type_add_input_template(stage, dev_type, name, ctx);
+}
+
+struct device_channel_def *device_type_add_input_template(struct stage *stage,
+						 struct device_type *dev_type,
+						 struct string name,
+						 struct type_template_context type)
+{
 	struct device_channel_def input;
 	bool self = false;
 
@@ -41,6 +51,16 @@ struct device_channel_def *device_type_add_output(struct stage *stage,
 						  struct device_type *dev_type,
 						  struct string name,
 						  type_id type)
+{
+	struct type_template_context ctx = {0};
+	ctx.type = type;
+	return device_type_add_output_template(stage, dev_type, name, ctx);
+}
+
+struct device_channel_def *device_type_add_output_template(struct stage *stage,
+						  struct device_type *dev_type,
+						  struct string name,
+						  struct type_template_context type)
 {
 	struct device_channel_def output;
 	bool self = false;
@@ -174,6 +194,7 @@ struct type_template_context make_device_type_params_type(struct stage *stage,
 														  struct device_type_param *params,
 														  size_t num_params)
 {
+	struct type_template_context ctx = {0};
 	struct type new_type = {0};
 
 	new_type.kind = TYPE_KIND_NAMED_TUPLE;
@@ -182,17 +203,30 @@ struct type_template_context make_device_type_params_type(struct stage *stage,
 		= calloc(num_params, sizeof(struct named_tuple_member));
 
 	for (size_t i = 0; i < num_params; i++) {
-		new_type.named_tuple.members[i].name = satom(stage, params[i].name);
-		new_type.named_tuple.members[i].type = params[i].type;
+		struct named_tuple_member *member;
+		member = &new_type.named_tuple.members[i];
+		member->name = satom(stage, params[i].name);
+
+		if (params[i].type) {
+			member->type = params[i].type;
+		} else if (params[i].template.length) {
+			struct access_pattern pattern = {0};
+			parse_access_pattern(&stage->atom_table, params[i].template, &pattern);
+
+			struct type *new_type;
+			new_type = register_template_type(stage, NULL, pattern, &ctx);
+			member->type = new_type->id;
+		} else {
+			assert(!"[make_device_type_params_type] Either type or template must be set.");
+		}
 	}
 
 	struct type *result;
 	result = register_type(stage, new_type);
 
-	struct type_template_context ctx = {0};
-
 	if (!result) {
-		return ctx;
+		struct type_template_context empty_ctx = {0};
+		return empty_ctx;
 	}
 
 	ctx.type = result->id;
@@ -214,7 +248,7 @@ void describe_device_type(struct stage *stage, struct device_type *dev_type)
 		struct device_channel_def *input;
 		input = &dev_type->inputs[i];
 		fprintf(fp, " - %i: %.*s ", input->id, ALIT(input->name));
-		print_type_id(fp, stage, input->type);
+		print_type_id(fp, stage, input->type.type);
 		fprintf(fp, "\n");
 	}
 
@@ -223,7 +257,7 @@ void describe_device_type(struct stage *stage, struct device_type *dev_type)
 		struct device_channel_def *output;
 		output = &dev_type->outputs[i];
 		fprintf(fp, " - %i: %.*s ", output->id, ALIT(output->name));
-		print_type_id(fp, stage, output->type);
+		print_type_id(fp, stage, output->type.type);
 		fprintf(fp, "\n");
 	}
 }

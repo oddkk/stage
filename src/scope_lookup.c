@@ -3,6 +3,7 @@
 #include "type.h"
 #include "dlist.h"
 #include "utils.h"
+#include "device.h"
 #include <stdio.h>
 
 struct scope_lookup scope_lookup_init(struct stage *stage, struct scoped_hash *root_scope)
@@ -366,6 +367,47 @@ int scope_lookup_range(struct scope_lookup *ctx, size_t begin, size_t end)
 	return 0;
 }
 
+int scope_lookup_pattern(struct scope_lookup *ctx, struct access_pattern pat)
+{
+	int err;
+	for (size_t i = 0; i < pat.num_entries; i++) {
+		struct access_pattern_entry *entry;
+		entry = &pat.entries[i];
+		switch (entry->kind) {
+		case ACCESS_IDENT:
+			err = scope_lookup_ident(ctx, entry->ident);
+			break;
+
+		case ACCESS_INDEX:
+			err = scope_lookup_index(ctx, entry->index);
+			break;
+
+		case ACCESS_RANGE:
+			err = scope_lookup_range(ctx, entry->range.begin, entry->range.end);
+			break;
+		}
+
+		if (err) {
+			struct access_pattern sub_pattern;
+
+			fprintf(stderr, "'");
+
+			sub_pattern = pat;
+			sub_pattern.num_entries = i;
+			print_access_pattern(stderr, sub_pattern);
+			fprintf(stderr, "' does not have a member '");
+
+			sub_pattern = pat;
+			sub_pattern.entries += i;
+			sub_pattern.num_entries -= i;
+			print_access_pattern(stderr, sub_pattern);
+			fprintf(stderr, "'.");
+		}
+	}
+
+	return 0;
+}
+
 void print_steps(struct scope_lookup ctx)
 {
 	printf("off len rep str\n");
@@ -387,11 +429,9 @@ int scope_lookup_result_single(struct scope_lookup ctx, struct scope_lookup_rang
 		printf("Expected 1 step, got %zu\n", ctx.num_steps);
 		return -1;
 	}
-	if (ctx.steps[0].length != 1 ||
-		ctx.steps[0].repetitions != 1) {
-		printf("Exptected single value, got %u (%u %u)\n.",
-			   ctx.steps[0].length * ctx.steps[0].repetitions,
-			   ctx.steps[0].length,  ctx.steps[0].repetitions);
+	if (ctx.steps[0].repetitions != 1) {
+		printf("Exptected single value, got %u\n.",
+			   ctx.steps[0].repetitions);
 		return -1;
 	}
 
@@ -482,9 +522,21 @@ int eval_lookup_result(struct stage *stage, struct scope_lookup_range range, str
 	case SCOPE_ENTRY_DEVICE_TYPE:
 	case SCOPE_ENTRY_DEVICE:
 	case SCOPE_ENTRY_DEVICE_CHANNEL:
-	case SCOPE_ENTRY_DEVICE_ATTRIBUTE:
-		printf("@TODO: Implement result\n");
+		printf("@TODO: Implement value.\n");
 		return -1;
+		break;
+
+	case SCOPE_ENTRY_DEVICE_ATTRIBUTE: {
+		struct device *device;
+		device = get_device(stage, range.owner);
+		if (!device) {
+			return -1;
+		}
+
+		out->type = range.type->id;
+		out->data = &device->args.data[range.begin];
+		return 0;
+	}
 
 		// @TODO: Device arguments
 

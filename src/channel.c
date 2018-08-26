@@ -32,9 +32,10 @@ channel_id allocate_channels(struct stage * stage, struct scalar_type type,
 
 	range_begin = _alloc_channels(stage, count);
 
-	for (channel_id i = range_begin; i < range_begin + count; i++) {
-		stage->channels[i].type = type;
-	}
+	// @TODO Initialize channels with proper types.
+	/* for (channel_id i = range_begin; i < range_begin + count; i++) { */
+	/* 	stage->channels[i].type = type; */
+	/* } */
 
 	return range_begin;
 }
@@ -473,8 +474,8 @@ int channel_bind_callback(struct stage *stage, channel_id channel,
 	return 0;
 }
 
-int channel_bind_constant(struct stage *stage, channel_id channel,
-			  scalar_value value)
+static int channel_bind_single_constant(struct stage *stage, channel_id channel,
+										scalar_value value)
 {
 	struct channel *cnl;
 
@@ -493,6 +494,24 @@ int channel_bind_constant(struct stage *stage, channel_id channel,
 
 	cnl->connection_type = CHANNEL_CONNECTION_CONSTANT;
 	cnl->constant = value;
+
+	return 0;
+}
+
+int channel_bind_constant(struct stage *stage, channel_id channel,
+						  struct value_ref value)
+{
+	// @TODO: Check that all the channels belong to the same "group".
+	// @TODO: Actually apply the type properly!!!!!
+	// @TODO: Actually apply the type properly!!!!!
+	// @TODO: Actually apply the type properly!!!!!
+
+	struct type *type;
+	type = get_type(stage, value.type);
+
+	for (size_t i = 0; i < type->num_scalars; i++) {
+		channel_bind_single_constant(stage, channel + i, value.data[i]);
+	}
 
 	return 0;
 }
@@ -567,7 +586,8 @@ void channel_describe(struct stage *stage, channel_id cnl_id)
 
 	cnl = &stage->channels[cnl_id];
 
-	printf("%i limit={%i..%i}", cnl_id, cnl->type.min, cnl->type.max);
+	//printf("%i limit={%i..%i}", cnl_id, cnl->type.min, cnl->type.max);
+	printf("%i", cnl_id);
 
 	if (cnl->device_channel) {
 		struct device *dev;

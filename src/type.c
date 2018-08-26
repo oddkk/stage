@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "dlist.h"
+#include "scope_lookup.h"
 
 int type_count_scalars(struct stage *stage, struct type *type)
 {
@@ -888,13 +889,216 @@ struct resolve_template_context {
 	struct type_template_context ctx;
 };
 
+int resolve_templated_type(struct stage *stage, struct scoped_hash *scope,
+						   type_id input, type_id *result)
+{
+	struct type *input_type;
+
+	input_type = get_type(stage, input);
+
+	if (!input_type->templated) {
+		*result = input_type->id;
+		return 0;
+	}
+
+
+	switch (input_type->kind) {
+	case TYPE_KIND_NONE:
+		assert(!"None type used!");
+		return -1;
+
+	case TYPE_KIND_TEMPLATE: {
+		struct scope_lookup lookup;
+		lookup = scope_lookup_init(stage, scope);
+
+		int err;
+		err = scope_lookup_pattern(&lookup, input_type->template.field);
+		if (err) {
+			return -1;
+		}
+
+		struct scope_lookup_range range;
+		err = scope_lookup_result_single(lookup, &range);
+		if (err) {
+			return -1;
+		}
+
+		if (range.type->kind != TYPE_KIND_TYPE) {
+			fprintf(stderr, "'");
+			print_access_pattern(stderr, input_type->template.field);
+			fprintf(stderr, "' is a %s, but a type was expected.\n",
+					humanreadable_type_kind(range.type->kind));
+			return -1;
+		}
+
+		assert(range.length == 1);
+
+		struct value_ref value;
+		err = eval_lookup_result(stage, range, &value);
+		if (err) {
+			return -1;
+		}
+
+		*result = value.data[0];
+
+		return 0;
+	}
+
+	case TYPE_KIND_SCALAR:
+	case TYPE_KIND_TYPE:
+		*result = input_type->id;
+		return 0;
+
+	case TYPE_KIND_STRING:
+		printf("@TODO: Strings\n");
+		return -1;
+
+	case TYPE_KIND_TUPLE: {
+		type_id *new_members;
+		new_members = calloc(input_type->tuple.length, sizeof(type_id));
+		bool different = false;
+
+		for (size_t i = 0; i < input_type->tuple.length; i++) {
+			int err;
+			err = resolve_templated_type(stage, scope,
+										 input_type->tuple.types[i],
+										 &new_members[i]);
+
+			if (err) {
+				free(new_members);
+				return -1;
+			}
+
+			if (new_members[i] != input_type->tuple.types[i]) {
+				different = true;
+			}
+		}
+		if (different) {
+			struct type *new_type;
+			new_type = register_tuple_type(stage, NULL, new_members,
+										   input_type->tuple.length);
+			*result = new_type->id;
+		} else {
+			*result = input_type->id;
+		}
+		free(new_members);
+		return 0;
+	}
+
+	case TYPE_KIND_NAMED_TUPLE: {
+		struct named_tuple_member *new_members;
+		new_members = calloc(input_type->named_tuple.length,
+							 sizeof(struct named_tuple_member));
+
+		bool different = false;
+
+		for (size_t i = 0; i < input_type->named_tuple.length; i++) {
+			struct named_tuple_member *input_member;
+
+			input_member = &input_type->named_tuple.members[i];
+
+			new_members[i].name = input_member->name;
+
+			int err;
+			err = resolve_templated_type(stage, scope,
+									input_member->type,
+									&new_members[i].type);
+			if (err) {
+				free(new_members);
+				return -1;
+			}
+
+			if (new_members[i].type != input_member->type) {
+				different = true;
+			}
+		}
+
+		if (different) {
+			struct type *new_type;
+			new_type = register_named_tuple_type(stage, NULL, new_members,
+												 input_type->named_tuple.length);
+			*result = new_type->id;
+		} else {
+			*result = input_type->id;
+		}
+		free(new_members);
+		return 0;
+	}
+
+	case TYPE_KIND_ARRAY: {
+		type_id new_member_type;
+		int err;
+		err = resolve_templated_type(stage, scope,
+									 input_type->array.type,
+									 &new_member_type);
+		if (err) {
+			return -1;
+		}
+
+		size_t new_length = input_type->array.length;
+
+		if (input_type->array.length_templated) {
+
+			struct scope_lookup lookup;
+			lookup = scope_lookup_init(stage, scope);
+
+			int err;
+			err = scope_lookup_pattern(&lookup, input_type->array.length_template_field);
+			if (err) {
+				return -1;
+			}
+
+			struct scope_lookup_range range;
+			err = scope_lookup_result_single(lookup, &range);
+			if (err) {
+				return -1;
+			}
+
+			if (range.type->kind != TYPE_KIND_SCALAR) {
+				fprintf(stderr, "'");
+				print_access_pattern(stderr, input_type->template.field);
+				fprintf(stderr, "' is a %s, but a scalar was expected.\n",
+						humanreadable_type_kind(range.type->kind));
+				return -1;
+			}
+
+			assert(range.length == 1);
+
+			struct value_ref value;
+			err = eval_lookup_result(stage, range, &value);
+			if (err) {
+				return -1;
+			}
+
+			new_length = value.data[0];
+		}
+
+		if (new_member_type != input_type->array.type ||
+			input_type->array.length_templated) {
+
+			struct type *new_type;
+			new_type = register_array_type(stage, input_type->name,
+										   new_member_type, new_length);
+
+		} else {
+			*result = input_type->id;
+		}
+
+		// @TODO: Templated length
+
+		return 0;
+	}
+
+	}
+
+	return 0;
+}
+
 static int resolve_templated_type_value_internal(struct resolve_template_context *ctx,
 												 type_id expected, struct value_ref input,
 												 type_id *result)
 {
 	if (input.type == expected) {
-		printf("Short circuiting %s (%u %u)\n", humanreadable_type_kind(expected),
-			   expected, input.type);
 		*result = expected;
 		return 0;
 	}
@@ -904,8 +1108,6 @@ static int resolve_templated_type_value_internal(struct resolve_template_context
 
 	expected_type = get_type(ctx->stage, expected);
 	input_type    = get_type(ctx->stage, input.type);
-
-	printf("Handeling %s\n", humanreadable_type_kind(expected_type->kind));
 
 	switch (expected_type->kind) {
 	case TYPE_KIND_NONE:
@@ -929,8 +1131,6 @@ static int resolve_templated_type_value_internal(struct resolve_template_context
 			return -1;
 		}
 
-		print_access_pattern(stdout, expected_type->template.field);
-		printf(": assigning %u\n", input.type);
 		if (node->result.type == 0) {
 			node->result.type = input.type;
 		}
@@ -1230,7 +1430,6 @@ int resolve_templated_type_value(struct stage *stage,
 					return err;
 				}
 
-				printf("out: %u\n", nodes[i].result.type);
 				field_out.data[0] = nodes[i].result.type;
 			} break;
 
@@ -1592,46 +1791,6 @@ bool types_compatible(struct stage *stage, type_id t1, type_id t2)
 	return false;
 }
 
-
-/* int consolidate_typed_value_into_type(struct stage *stage, type_id expected_type_id, */
-/* 									  struct value_ref input, struct value_ref *result) */
-/* { */
-/* 	struct type *expected_type; */
-/* 	struct type *input_type; */
-
-/* 	assert(result->type == expected_type_id); */
-/* 	assert(result->data != NULL); */
-
-/* 	expected_type = get_type(stage, expected_type_id); */
-/* 	input_type    = get_type(stage, input.type); */
-
-/* 	if (expected_type == input_type) { */
-/* 		memcpy(result->data, input.data, */
-/* 			   expected_type->num_scalars * sizeof(scalar_value)); */
-/* 		return 0; */
-/* 	} */
-
-/* 	switch (expected_type->kind) { */
-/* 	case TYPE_KIND_NONE: */
-/* 		assert(!"None type used!"); */
-/* 		break; */
-
-/* 	case TYPE_KIND_SCALAR: */
-/* 		// @TODO: Wrapping of scalars (min, max) */
-/* 		result->data[0] = input->data[0]; */
-/* 		break; */
-
-/* 	case TYPE_KIND_TYPE: */
-/* 		result->data[0] = input->data[0]; */
-/* 		break; */
-
-/* 	case TYPE_KIND_STRING: */
-/* 		printf("@TODO: Consolidate string\n"); */
-/* 		return -1; */
-
-
-/* 	} */
-/* } */
 
 int type_find_by_pattern(struct stage *stage,
 						 struct value_ref input,

@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include "atom.h"
+#include "string.h"
 
 enum access_pattern_entry_kind {
 	ACCESS_IDENT,
@@ -30,6 +31,8 @@ struct access_pattern {
 void access_pattern_ident(struct access_pattern *,  struct atom *name);
 void access_pattern_index(struct access_pattern *,  size_t i);
 void access_pattern_range(struct access_pattern *,  size_t begin, size_t end);
+
+int parse_access_pattern(struct atom_table *atom_table, struct string str, struct access_pattern *out);
 
 void print_access_pattern(FILE *fp, struct access_pattern);
 

@@ -111,33 +111,6 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 
 	err = 0;
 
-
-	if (device_type->num_inputs > 0) {
-		device->input_types = calloc(device_type->num_inputs, sizeof(type_id));
-		if (!device->input_types) {
-			printf("Out of memory!");
-			// @TODO: Deallocate
-			return NULL;
-		}
-
-		for (size_t i = 0; i < device_type->num_inputs; i++) {
-			device->input_types[i] = device_type->inputs[i].type;
-		}
-	}
-
-	if (device_type->num_outputs > 0) {
-		device->output_types = calloc(device_type->num_outputs, sizeof(type_id));
-		if (!device->output_types) {
-			printf("Out of memory!");
-			// @TODO: Deallocate
-			return NULL;
-		}
-
-		for (size_t i = 0; i < device_type->num_outputs; i++) {
-			device->output_types[i] = device_type->outputs[i].type;
-		}
-	}
-
 	if (device_type->takes_context && device_type->device_context_template_init != NULL) {
 		err = device_type->device_context_template_init(stage, device_type, device, context);
 	} else if (device_type->device_template_init != NULL) {
@@ -151,9 +124,26 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 		return NULL;
 	}
 
+
 	if (device_type->num_inputs > 0) {
+		device->input_types = calloc(device_type->num_inputs, sizeof(type_id));
+		if (!device->input_types) {
+			printf("Out of memory!");
+			// @TODO: Deallocate
+			return NULL;
+		}
+
 		for (size_t i = 0; i < device_type->num_inputs; i++) {
 			struct type *type;
+			int error;
+
+			error = resolve_templated_type(stage, device->scope,
+										   device_type->inputs[i].type.type,
+										   &device->input_types[i]);
+			if (error) {
+				err = -1;
+				continue;
+			}
 
 			type = get_type(stage, device->input_types[i]);
 			if (!type) {
@@ -175,10 +165,28 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 	}
 
 	if (device_type->num_outputs > 0) {
+		device->output_types = calloc(device_type->num_outputs, sizeof(type_id));
+		if (!device->output_types) {
+			printf("Out of memory!");
+			// @TODO: Deallocate
+			return NULL;
+		}
+
 		for (size_t i = 0; i < device_type->num_outputs; i++) {
 			struct type *type;
 
+			int error;
+
+			error = resolve_templated_type(stage, device->scope,
+										   device_type->outputs[i].type.type,
+										   &device->output_types[i]);
+			if (error) {
+				err = -1;
+				continue;
+			}
+
 			type = get_type(stage, device->output_types[i]);
+
 			if (!type) {
 				print_error("finalize device",
 							"Missing type for the output '%.*s' for device "
@@ -226,37 +234,52 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 
 }
 
-/* int device_assign_input_type_by_name(struct stage *stage, */
-/* 									 struct device *dev, */
-/* 									 struct atom *name, */
-/* 									 type_id type) */
-/* { */
-/* 	struct device_type *dev_type; */
-/* 	dev_type = get_device_type(stage, dev->type); */
+int device_get_attr(struct stage *stage, struct device *device,
+					struct string pattern,
+					struct value_ref *out)
+{
+	struct access_pattern pat = {0};
+	int err;
 
-/* 	channel_id id; */
-/* 	id = device_type_get_input_id(stage, dev_type, name); */
+	err = parse_access_pattern(&stage->atom_table, pattern, &pat);
+	if (err) {
+		return err;
+	}
 
-/* 	if (id < 0) { */
-/* 		return -1; */
-/* 	} */
+	err = device_get_attr_by_pattern(stage, device, pat, out);
 
-/* 	if (dev->input_types[id] != TYPE_TEMPLATE) { */
-/* 		if (dev_type->inputs[id].type == TYPE_TEMPLATE) { */
-/* 			printf("The type of the templated input '%.*s' was already assigned to.\n", */
-/* 				   ALIT(dev_type->inputs[id].name)); */
-/* 		} else { */
-/* 			printf("Attempted to assign a new type to the non-templated input '%.*s'.\n", */
-/* 				   ALIT(dev_type->inputs[id].name)); */
-/* 		} */
+	return err;
+}
 
-/* 		return -1; */
-/* 	} */
+int device_get_attr_by_pattern(struct stage *stage, struct device *device,
+							   struct access_pattern pattern,
+							   struct value_ref *out)
+{
+	int err;
 
-/* 	dev->input_types[id] = type; */
+	struct scope_lookup lookup = {0};
+	lookup = device_lookup(stage, device);
+	err = scope_lookup_pattern(&lookup, pattern);
 
-/* 	return 0; */
-/* } */
+	if (err) {
+		return err;
+	}
+
+	struct scope_lookup_range range = {0};
+
+	err = scope_lookup_result_single(lookup, &range);
+	if (err) {
+		return err;
+	}
+
+	err = eval_lookup_result(stage, range, out);
+	if (err) {
+		return err;
+	}
+
+	return 0;
+}
+
 
 struct scope_lookup device_lookup(struct stage *stage, struct device *device)
 {

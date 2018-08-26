@@ -28,7 +28,8 @@ enum device_channel_kind {
 };
 
 struct channel {
-	struct scalar_type type;
+	type_id type;
+	size_t type_subindex;
 	enum channel_connection_type connection_type;
 	bool dirty;
 	enum device_channel_kind device_channel;
@@ -56,7 +57,7 @@ int channel_bind(struct stage *, channel_id src, channel_id dest);
 int channel_bind_callback(struct stage *, channel_id channel,
 			  channel_eval_callback);
 int channel_bind_constant(struct stage *, channel_id channel,
-			  scalar_value value);
+						  struct value_ref value);
 scalar_value eval_channel(struct stage *stage, channel_id);
 
 void channel_describe_connection(struct stage *stage, channel_id);

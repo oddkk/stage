@@ -3,6 +3,7 @@
 
 #include "scoped_hash.h"
 #include "type.h"
+#include "access_pattern.h"
 #include <stdio.h>
 
 struct stage;
@@ -36,6 +37,7 @@ struct scope_lookup scope_lookup_init(struct stage *, struct scoped_hash *root_s
 int scope_lookup_ident(struct scope_lookup *, struct atom *name);
 int scope_lookup_index(struct scope_lookup *, size_t i);
 int scope_lookup_range(struct scope_lookup *, size_t begin, size_t end);
+int scope_lookup_pattern(struct scope_lookup *, struct access_pattern);
 
 struct scope_lookup_range {
 	enum scope_entry_kind kind;

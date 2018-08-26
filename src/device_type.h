@@ -26,7 +26,8 @@ typedef scalar_value(*device_output_eval_callback) (struct stage *,
 struct device_channel_def {
 	int id;
 	struct atom *name;
-	type_id type;
+	struct type_template_context type;
+	/* type_id type; */
 };
 
 struct device_attribute_def {
@@ -81,6 +82,16 @@ struct device_channel_def *device_type_add_output(struct stage *,
 						  struct string name,
 						  type_id type);
 
+struct device_channel_def *device_type_add_input_template(struct stage *,
+						  struct device_type *dev_type,
+						  struct string name,
+						  struct type_template_context type);
+
+struct device_channel_def *device_type_add_output_template(struct stage *,
+						  struct device_type *dev_type,
+						  struct string name,
+						  struct type_template_context type);
+
 int device_type_get_input_id(struct stage *,
 							 struct device_type *,
 							 struct atom *name);
@@ -101,6 +112,7 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 struct device_type_param {
 	struct string name;
 	type_id type;
+	struct string template;
 };
 
 struct type_template_context make_device_type_params_type(struct stage *stage,

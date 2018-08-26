@@ -78,6 +78,7 @@ struct type_template_context {
 	type_id type;
 	struct type_template_field *fields;
 	size_t num_fields;
+	struct scoped_hash *scope;
 };
 
 #define VALUE_KIND_SCALAR 0
@@ -136,6 +137,10 @@ struct type *register_template_type(struct stage *stage, struct atom *name,
 									struct access_pattern field,
 									struct type_template_context *);
 
+struct type *register_template_type_str(struct stage *stage, struct atom *name,
+										struct string pattern,
+										struct type_template_context *);
+
 int assign_value(struct value *dest, struct type *dest_type, struct value *src,
 		 struct type *src_type);
 
@@ -166,6 +171,9 @@ int type_find_by_pattern(struct stage *stage,
 
 int consolidate_typed_value_into(struct stage *, type_id expected_type,
 								 struct value_ref input, struct value_ref *result);
+
+int resolve_templated_type(struct stage *stage, struct scoped_hash *scope,
+						   type_id input, type_id *result);
 
 int resolve_templated_type_value(struct stage *stage,
 								 struct type_template_context expected,

@@ -1284,9 +1284,6 @@ apply_dispatch(struct apply_context *ctx,
 			node->device_type.params_type.type
 				= apply_resolve_type_id(node->device_type.params);
 
-			printf("device type param: ");
-			print_type_id(stdout, ctx->stage, node->device_type.params_type.type);
-			printf("\n");
 			node->device_type.type
 				= register_device_type_scoped(ctx->stage,
 											  node->device_type.name->name,
