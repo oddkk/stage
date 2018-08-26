@@ -57,21 +57,22 @@ static int device_ease_init(struct stage *stage, struct device_type *type, struc
 
 struct device_type *register_device_type_ease(struct stage *stage)
 {
-	struct device_type *ease;
-	struct device_channel_def *channel_in;
-	struct device_channel_def *channel_out;
-	struct type_template_context params = {0};
 
-	ease = register_device_type(stage, STR("ease"), params);
-	ease->device_init = device_ease_init;
+	struct device_type_param params[] = {
+		{ .name=STR("T"), .type=stage->standard_types.type },
+	};
+	struct device_type_channel channels[] = {
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("in"),  .template=STR("T"), .self=true },
+		{ .kind=DEVICE_CHANNEL_OUTPUT, .name=STR("out"), .template=STR("T"), .self=true },
+	};
 
-	channel_in  = device_type_add_input(stage, ease, STR("in"), stage->standard_types.integer);
-	channel_out = device_type_add_output(stage, ease, STR("out"), stage->standard_types.integer);
+	struct device_type_def device = {
+		.name = STR("basic.ease"),
+		.init = device_ease_init,
 
-	ease->self_input = channel_in->id;
-	ease->self_output = channel_out->id;
+		DEVICE_TYPE_DEF_CHANNELS(channels),
+		DEVICE_TYPE_DEF_PARAMS(params),
+	};
 
-	finalize_device_type(ease);
-
-	return ease;
+	return register_device_type(stage, device);
 }

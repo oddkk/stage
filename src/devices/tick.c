@@ -23,19 +23,21 @@ int device_tick_init(struct stage *stage, struct device_type *type, struct devic
 
 struct device_type *register_device_type_tick(struct stage *stage)
 {
-	struct device_type *tick;
-	struct device_channel_def *channel_out;
-	struct type_template_context params = {0};
+	struct device_type_channel channels[] = {
+		{
+			.kind=DEVICE_CHANNEL_OUTPUT,
+			.name=STR("out"),
+			.type=stage->standard_types.integer,
+			.self=true
+		},
+	};
 
-	tick = register_device_type(stage, STR("tick"), params);
-	tick->device_init = device_tick_init;
+	struct device_type_def device = {
+		.name = STR("basic.tick"),
+		.init = device_tick_init,
 
-	channel_out = device_type_add_output(stage, tick, STR("out"),
-										 stage->standard_types.integer);
+		DEVICE_TYPE_DEF_CHANNELS(channels),
+	};
 
-	tick->self_output = channel_out->id;
-
-	finalize_device_type(tick);
-
-	return tick;
+	return register_device_type(stage, device);
 }

@@ -178,6 +178,43 @@ void scoped_hash_print(struct scoped_hash *hash, int indent)
 	}
 }
 
+struct scoped_hash *get_or_create_namespace(struct scoped_hash *scope,
+											struct access_pattern pattern)
+{
+	if (pattern.num_entries == 0) {
+		return scope;
+	}
+
+	struct scoped_hash *next_scope;
+	/* struct scope_entry entry; */
+	/* int err; */
+
+	switch (pattern.entries[0].kind) {
+	case ACCESS_IDENT:
+		next_scope = scoped_hash_namespace(scope, pattern.entries[0].ident);
+		break;
+
+		// @TODO: Should index namespaces be allowed?
+	/* case ACCESS_INDEX: */
+	/* 	err = scoped_hash_lookup_index(scope, pattern.entries[0].index, &entry); */
+	/* 	break; */
+
+	default:
+		assert(!"Invalid pattern entr.");
+		return NULL;
+	}
+
+	if (next_scope) {
+		struct access_pattern sub_pattern;
+		sub_pattern = pattern;
+		sub_pattern.entries += 1;
+		sub_pattern.num_entries -= 1;
+		return get_or_create_namespace(next_scope, sub_pattern);
+	} else {
+		return NULL;
+	}
+}
+
 char *humanreadable_scope_entry(enum scope_entry_kind kind)
 {
 	switch (kind) {

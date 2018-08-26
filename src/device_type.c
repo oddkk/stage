@@ -114,15 +114,7 @@ int device_type_get_output_id(struct stage *stage,
 	return -1;
 }
 
-struct device_type *register_device_type(struct stage *stage,
-										 struct string name,
-										 struct type_template_context params)
-{
-	return register_device_type_scoped(stage, name, params,
-									   &stage->root_scope);
-}
-
-struct device_type *register_device_type_scoped(struct stage *stage,
+struct device_type *register_device_type_two_phase(struct stage *stage,
 												struct string name,
 												struct type_template_context params,
 												struct scoped_hash *parent_scope)
@@ -185,12 +177,12 @@ struct device_type *register_device_type_scoped(struct stage *stage,
 	return dev_type;
 }
 
-void finalize_device_type(struct device_type *dev_type)
+void finalize_device_type_two_phase(struct device_type *dev_type)
 {
 	dev_type->finalized = true;
 }
 
-struct type_template_context make_device_type_params_type(struct stage *stage,
+static struct type_template_context make_device_type_params_type(struct stage *stage,
 														  struct device_type_param *params,
 														  size_t num_params)
 {
@@ -232,6 +224,137 @@ struct type_template_context make_device_type_params_type(struct stage *stage,
 	ctx.type = result->id;
 
 	return ctx;
+}
+
+
+struct device_type *register_device_type(struct stage *stage,
+										 struct device_type_def def)
+{
+	struct type_template_context params = {0};
+	params = make_device_type_params_type(stage, def.params.params,
+										  def.params.num_params);
+
+	assert(def.name.length > 0);
+
+	int err;
+
+	struct access_pattern name_pattern = {0};
+	err = parse_access_pattern(&stage->atom_table, def.name, &name_pattern);
+	if (err) {
+		return NULL;
+	}
+	if (name_pattern.num_entries < 1) {
+		fprintf(stderr, "The device type must have a name.\n");
+		return NULL;
+	}
+
+
+	struct access_pattern_entry *name_part;
+	name_part = &name_pattern.entries[name_pattern.num_entries - 1];
+	if (name_part->kind != ACCESS_IDENT) {
+		fprintf(stderr,
+				"Expected the final part of the device name "
+				"'%.*s' to be an identifier.\n",
+				LIT(def.name));
+		return NULL;
+	}
+
+	struct scoped_hash *scope;
+	struct access_pattern namespace_pattern;
+	namespace_pattern = name_pattern;
+	namespace_pattern.num_entries -= 1;
+
+	scope = get_or_create_namespace(&stage->root_scope, namespace_pattern);
+
+	struct device_type *device_type;
+
+	device_type = register_device_type_two_phase(stage, name_part->ident->name,
+												 params, scope);
+
+	for (size_t i = 0; i < def.channels.num_channels; i++) {
+		struct device_channel_def *cnl;
+		struct device_type_channel *channel;
+		channel = &def.channels.channels[i];
+
+		if (channel->kind != DEVICE_CHANNEL_INPUT &&
+			channel->kind != DEVICE_CHANNEL_OUTPUT) {
+			fprintf(stderr, "Device type channel must be either INPUT or OUTPUT.\n");
+			return NULL;
+		}
+
+		if (channel->type) {
+			if (channel->kind == DEVICE_CHANNEL_INPUT) {
+				cnl = device_type_add_input(stage, device_type,
+											channel->name, channel->type);
+			} else {
+				cnl = device_type_add_output(stage, device_type,
+											 channel->name, channel->type);
+			}
+		} else if (channel->template.length) {
+			struct type_template_context ctx = {0};
+			struct access_pattern pattern = {0};
+			parse_access_pattern(&stage->atom_table,
+								 channel->template,
+								 &pattern);
+
+			struct type *new_type;
+			new_type = register_template_type(stage, NULL,
+											  pattern, &ctx);
+			ctx.type = new_type->id;
+
+			if (channel->kind == DEVICE_CHANNEL_INPUT) {
+				cnl = device_type_add_input_template(stage, device_type,
+													 channel->name, ctx);
+			} else {
+				cnl = device_type_add_output_template(stage, device_type,
+													  channel->name, ctx);
+			}
+
+		} else {
+			assert(!"[make_device_type_params_type] Either type or template must be set.");
+		}
+
+		if (channel->self) {
+			if (channel->kind == DEVICE_CHANNEL_INPUT) {
+				if (device_type->self_input != -1) {
+					fprintf(stderr, "Multiple input channels marked as self.\n");
+					return NULL;
+				}
+
+				device_type->self_input = cnl->id;
+			} else {
+				if (device_type->self_output != -1) {
+					fprintf(stderr, "Multiple input channels marked as self.\n");
+					return NULL;
+				}
+
+				device_type->self_output = cnl->id;
+			}
+		}
+	}
+
+	if ((def.template_init != NULL || def.init != NULL) &&
+		(def.context_template_init != NULL || def.context_init != NULL)) {
+		printf("Use either init and template_init or "
+			   "context_init and context_template_init. "
+			   "Not both.\n");
+		return NULL;
+	}
+
+	if (def.template_init || def.init) {
+		device_type->device_template_init = def.template_init;
+		device_type->device_init = def.init;
+		device_type->takes_context = false;
+
+	} else if (def.context_template_init || def.context_init) {
+		device_type->device_context_template_init = def.context_template_init;
+		device_type->device_context_init = def.context_init;
+		device_type->takes_context = true;
+	}
+
+	finalize_device_type_two_phase(device_type);
+
+	return device_type;
 }
 
 void describe_device_type(struct stage *stage, struct device_type *dev_type)

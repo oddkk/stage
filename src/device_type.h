@@ -5,6 +5,7 @@
 #include "intdef.h"
 #include "atom.h"
 #include "scoped_hash.h"
+#include "channel.h"
 /* #include "idlookuptable.h" */
 
 typedef unsigned int device_type_id;
@@ -100,14 +101,11 @@ int device_type_get_output_id(struct stage *,
 							  struct device_type *,
 							  struct atom *name);
 
-struct device_type *register_device_type(struct stage *stage,
-										 struct string name,
-										 struct type_template_context params);
-
-struct device_type *register_device_type_scoped(struct stage *stage,
-												struct string name,
-												struct type_template_context params,
-												struct scoped_hash *parent_scope);
+struct device_type *register_device_type_two_phase(struct stage *,
+												   struct string name,
+												   struct type_template_context params,
+												   struct scoped_hash *parent_scope);
+void finalize_device_type_two_phase(struct device_type *dev_type);
 
 struct device_type_param {
 	struct string name;
@@ -115,11 +113,43 @@ struct device_type_param {
 	struct string template;
 };
 
-struct type_template_context make_device_type_params_type(struct stage *stage,
-														  struct device_type_param *params,
-														  size_t num_params);
+struct device_type_channel {
+	enum device_channel_kind kind;
+	struct string name;
+	type_id type;
+	struct string template;
+	bool self;
+};
 
-void finalize_device_type(struct device_type *dev_type);
+#ifndef ARRAY_LENGTH
+#define ARRAY_LENGTH(a) (sizeof(a) / sizeof(a[0]))
+#endif
+
+#define DEVICE_TYPE_DEF_CHANNELS(cnls) .channels={.channels=(cnls), .num_channels=ARRAY_LENGTH(cnls)}
+#define DEVICE_TYPE_DEF_PARAMS(par) .params={.params=(par), .num_params=ARRAY_LENGTH(par)}
+
+struct device_type_def {
+	struct string name;
+
+	device_init_callback template_init;
+	device_init_callback init;
+
+	device_init_context_callback context_template_init;
+	device_init_context_callback context_init;
+
+	struct {
+		struct device_type_channel *channels;
+		size_t                      num_channels;
+	} channels;
+
+	struct {
+		struct device_type_param   *params;
+		size_t                      num_params;
+	} params;
+};
+
+struct device_type *register_device_type(struct stage *stage,
+										 struct device_type_def);
 
 void describe_device_type(struct stage *stage, struct device_type *dev_type);
 

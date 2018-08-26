@@ -2,6 +2,7 @@
 #define STAGE_SCOPED_HASH_H
 
 #include "idlookuptable.h"
+#include "access_pattern.h"
 
 enum scope_entry_kind {
 	SCOPE_ENTRY_NONE,
@@ -73,6 +74,8 @@ struct scoped_hash *scoped_hash_push(struct scoped_hash *parent,
 				     enum scope_entry_kind kind, int id);
 
 void scoped_hash_print(struct scoped_hash *hash, int indent);
+
+struct scoped_hash *get_or_create_namespace(struct scoped_hash *scope, struct access_pattern);
 
 char *humanreadable_scope_entry(enum scope_entry_kind);
 

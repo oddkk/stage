@@ -50,29 +50,22 @@ int device_add_init(struct stage *stage, struct device_type *type, struct device
 
 struct device_type *register_device_type_add(struct stage *stage)
 {
-	struct device_type *add;
-	struct device_channel_def *channel_out;
-
-	struct type_template_context params_type = {0};
 	struct device_type_param params[] = {
 		{ .name=STR("T"), .type=stage->standard_types.type },
 	};
-	params_type = make_device_type_params_type(stage, params, ARRAY_LENGTH(params));
+	struct device_type_channel channels[] = {
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("left"),  .template=STR("T") },
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("right"), .template=STR("T") },
+		{ .kind=DEVICE_CHANNEL_OUTPUT, .name=STR("out"),   .template=STR("T"), .self=true },
+	};
 
-	add = register_device_type(stage, STR("add"), params_type);
-	add->device_init = device_add_init;
+	struct device_type_def device = {
+		.name = STR("basic.add"),
+		.init = device_add_init,
 
-	device_type_add_input(stage, add, STR("left"),
-						  stage->standard_types.integer);
-	device_type_add_input(stage, add, STR("right"),
-						  stage->standard_types.integer);
+		DEVICE_TYPE_DEF_CHANNELS(channels),
+		DEVICE_TYPE_DEF_PARAMS(params),
+	};
 
-	channel_out = device_type_add_output(stage, add, STR("out"),
-										 stage->standard_types.integer);
-
-	add->self_output = channel_out->id;
-
-	finalize_device_type(add);
-
-	return add;
+	return register_device_type(stage, device);
 }

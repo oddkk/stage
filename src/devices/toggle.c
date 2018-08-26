@@ -91,24 +91,30 @@ int device_toggle_init(struct stage *stage, struct device_type *type, struct dev
 
 struct device_type *register_device_type_toggle(struct stage *stage)
 {
-	struct device_type *toggle;
-	struct device_channel_def *out;
-	struct type_template_context params = {0};
+	struct device_type_param params[] = {
+		{ .name=STR("T"), .type=stage->standard_types.type },
+	};
+	struct device_type_channel channels[] = {
+		{
+			.kind=DEVICE_CHANNEL_INPUT,
+			.name=STR("in"),
+			.type=stage->standard_types.integer,
+			.self=true
+		},
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("threshold"),  .type=stage->standard_types.integer, },
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("hysterisis"), .type=stage->standard_types.integer, },
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("on_value"),   .template=STR("T") },
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("off_value"),  .template=STR("T") },
+		{ .kind=DEVICE_CHANNEL_OUTPUT, .name=STR("out"),        .template=STR("T"), .self=true },
+	};
 
-	toggle = register_device_type(stage, STR("toggle"), params);
-	toggle->device_init = device_toggle_init;
+	struct device_type_def device = {
+		.name = STR("basic.toggle"),
+		.init = device_toggle_init,
 
-	out = device_type_add_output(stage, toggle, STR("out"), stage->standard_types.integer);
+		DEVICE_TYPE_DEF_CHANNELS(channels),
+		DEVICE_TYPE_DEF_PARAMS(params),
+	};
 
-	device_type_add_input(stage, toggle, STR("in"), stage->standard_types.integer);
-	device_type_add_input(stage, toggle, STR("on_value"), stage->standard_types.integer);
-	device_type_add_input(stage, toggle, STR("off_value"), stage->standard_types.integer);
-	device_type_add_input(stage, toggle, STR("threshold"), stage->standard_types.integer);
-	device_type_add_input(stage, toggle, STR("hysterisis"), stage->standard_types.integer);
-
-	toggle->self_output = out->id;
-
-	finalize_device_type(toggle);
-
-	return toggle;
+	return register_device_type(stage, device);
 }

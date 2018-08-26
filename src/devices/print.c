@@ -40,18 +40,6 @@ static void device_print_tick(struct stage *stage, struct device *dev) {
 	data->buffer ^= 0x1;
 }
 
-static int device_print_template_init(struct stage *stage, struct device_type *type, struct device *dev)
-{
-	scalar_value input_type;
-	int err = 0;
-
-	// @TODO: Implement
-	input_type = stage->standard_types.integer; // device_get_attr(stage, dev, SATOM(stage, "T"));
-	/* err = device_assign_input_type_by_name(stage, dev, SATOM(stage, "in"), input_type); */
-
-	return err;
-}
-
 static int device_print_init(struct stage *stage, struct device_type *type, struct device *dev)
 {
 	struct device_debug_print_data *data = calloc(1, sizeof(struct device_debug_print_data));
@@ -76,32 +64,21 @@ static int device_print_init(struct stage *stage, struct device_type *type, stru
 
 struct device_type *register_device_type_print(struct stage *stage)
 {
-	struct device_type *print;
-	struct device_channel_def *channel_in;
-
-	struct type_template_context params_type = {0};
 	struct device_type_param params[] = {
 		{ .name=STR("T"), .type=stage->standard_types.type },
 	};
+	struct device_type_channel channels[] = {
+		{ .kind=DEVICE_CHANNEL_INPUT, .name=STR("in"), .template=STR("T"), .self=true },
+	};
 
-	params_type = make_device_type_params_type(stage, params, ARRAY_LENGTH(params));
+	struct device_type_def device = {
+		.name = STR("basic.print"),
+		.init = device_print_init,
 
-	print = register_device_type(stage, STR("debug_print"), params_type);
-	print->device_init = device_print_init;
-	print->device_template_init = device_print_template_init;
+		DEVICE_TYPE_DEF_CHANNELS(channels),
+		DEVICE_TYPE_DEF_PARAMS(params),
+	};
 
-	struct type_template_context params_template = {0};
-	struct access_pattern type_pattern = {0};
-	access_pattern_ident(&type_pattern, SATOM(stage, "T"));
-	struct type *T;
-	T = register_template_type(stage, NULL, type_pattern, &params_template);
-
-	channel_in = device_type_add_input(stage, print, STR("in"), T->id);
-
-	print->self_input = channel_in->id;
-
-	finalize_device_type(print);
-
-	return print;
+	return register_device_type(stage, device);
 }
 

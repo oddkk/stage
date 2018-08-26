@@ -49,24 +49,22 @@ int device_blink_init(struct stage *stage, struct device_type *type, struct devi
 
 struct device_type *register_device_type_blink(struct stage *stage)
 {
-	struct device_type *blink;
-	struct device_channel_def *channel_out;
-	struct type_template_context params = {0};
+	struct device_type_param params[] = {
+		{ .name=STR("T"), .type=stage->standard_types.type },
+	};
+	struct device_type_channel channels[] = {
+		{ .kind=DEVICE_CHANNEL_OUTPUT, .name=STR("out"),       .template=STR("T"), .self=true },
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("on_value"),  .template=STR("T"), },
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("off_value"), .template=STR("T"), },
+	};
 
-	blink = register_device_type(stage, STR("blink"), params);
-	blink->device_init = device_blink_init;
+	struct device_type_def device = {
+		.name = STR("basic.blink"),
+		.init = device_blink_init,
 
-	channel_out = device_type_add_output(stage, blink, STR("out"),
-										 stage->standard_types.integer);
-	device_type_add_input(stage, blink, STR("on_value"),
-						  stage->standard_types.integer);
-	device_type_add_input(stage, blink, STR("off_value"),
-						  stage->standard_types.integer);
+		DEVICE_TYPE_DEF_CHANNELS(channels),
+		DEVICE_TYPE_DEF_PARAMS(params),
+	};
 
-
-	blink->self_output = channel_out->id;
-
-	finalize_device_type(blink);
-
-	return blink;
+	return register_device_type(stage, device);
 }

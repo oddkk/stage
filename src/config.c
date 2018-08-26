@@ -1285,10 +1285,10 @@ apply_dispatch(struct apply_context *ctx,
 				= apply_resolve_type_id(node->device_type.params);
 
 			node->device_type.type
-				= register_device_type_scoped(ctx->stage,
-											  node->device_type.name->name,
-											  node->device_type.params_type,
-											  node->device_type.scope);
+				= register_device_type_two_phase(ctx->stage,
+												 node->device_type.name->name,
+												 node->device_type.params_type,
+												 node->device_type.scope);
 			if (!node->device_type.type) {
 				return DISPATCH_ERROR;
 			}
@@ -1316,7 +1316,7 @@ apply_dispatch(struct apply_context *ctx,
 			return DISPATCH_YIELD;
 		}
 		node->device_type.complete = true;
-		finalize_device_type(node->device_type.type);
+		finalize_device_type_two_phase(node->device_type.type);
 
 		return DISPATCH_DONE;
 

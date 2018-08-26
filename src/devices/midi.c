@@ -114,41 +114,18 @@ static int device_launchpad_init(struct stage *stage, struct device_type *type, 
 	return 0;
 }
 
-struct device_type *register_device_type_midi(struct stage *stage) {
-	struct scoped_hash *ns_midi;
-	struct scoped_hash *ns_novation;
+struct device_type *register_device_type_midi(struct stage *stage)
+{
+	struct scoped_hash *ns;
 
-	ns_midi
-		= scoped_hash_namespace(&stage->root_scope, SATOM(stage, "midi"));
-
-	ns_novation
-		= scoped_hash_namespace(ns_midi, SATOM(stage, "novation"));
-
-	struct device_type *launchpad;
-
-	struct type_template_context params_type = {0};
-	/* struct device_type_param params[] = { */
-	/* 	{ .name=STR("midi_file"), .type=stage->standard_types.string }, */
-	/* }; */
-
-	/* params_type = make_device_type_params_type(stage, params, ARRAY_LENGTH(params)); */
-
-	launchpad
-		= register_device_type_scoped(stage,
-									  STR("launchpad"),
-									  params_type,
-									  ns_novation);
+	ns = scoped_hash_namespace(&stage->root_scope, SATOM(stage, "midi"));
+	ns = scoped_hash_namespace(ns, SATOM(stage, "novation"));
 
 	struct type *button_state_array_type;
 	button_state_array_type
 		= register_array_type(stage, NULL, stage->standard_types.integer, 8);
 	button_state_array_type
 		= register_array_type(stage, NULL, button_state_array_type->id, 8);
-
-	struct device_channel_def *button_down;
-	button_down
-		= device_type_add_output(stage, launchpad, STR("button_down"),
-								 button_state_array_type->id);
 
 	struct named_tuple_member button_color_members[] = {
 		{.name = SATOM(stage, "red"),   .type = stage->standard_types.integer},
@@ -161,7 +138,7 @@ struct device_type *register_device_type_midi(struct stage *stage) {
 									ARRAY_LENGTH(button_color_members));
 	register_type_name(stage,
 					   button_color_type->id,
-					   ns_novation,
+					   ns,
 					   button_color_type->name);
 
 	struct type *button_color_array_type;
@@ -170,12 +147,17 @@ struct device_type *register_device_type_midi(struct stage *stage) {
 	button_color_array_type
 		= register_array_type(stage, NULL, button_color_array_type->id, 8);
 
-	device_type_add_input(stage, launchpad, STR("button_color"),
-						  button_color_array_type->id);
+	struct device_type_channel channels[] = {
+		{ .kind=DEVICE_CHANNEL_INPUT,  .name=STR("button_color"), .type=button_color_array_type->id },
+		{ .kind=DEVICE_CHANNEL_OUTPUT, .name=STR("button_down"),  .type=button_state_array_type->id },
+	};
 
-	launchpad->device_init = device_launchpad_init;
+	struct device_type_def device = {
+		.name = STR("midi.novation.launchpad"),
+		.init = device_launchpad_init,
 
-	finalize_device_type(launchpad);
+		DEVICE_TYPE_DEF_CHANNELS(channels),
+	};
 
-	return launchpad;
+	return register_device_type(stage, device);
 }
