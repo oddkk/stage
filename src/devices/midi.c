@@ -63,7 +63,7 @@ static void device_launchpad_tick(struct stage *stage, struct device *dev)
 		uint8_t button_color = (r & 0x03) | ((g & 0x03) << 4);
 		if (button_color != data->last_button_color[i]) {
 			uint8_t key = (uint8_t)(i % 8) | ((uint8_t)(i / 8) << 4);
-			uint8_t packet[4] = {0x90, key, button_color};
+			uint8_t packet[3] = {0x90, key, button_color};
 
 			write(data->fd, packet, sizeof(packet));
 
@@ -95,6 +95,10 @@ static int device_launchpad_init(struct stage *stage, struct device_type *type, 
 		perror("open");
 		return -1;
 	}
+
+	// Reset launchpad
+	uint8_t reset_packet[3] = {0xb0, 0x00, 0x00};
+	write(data->fd, reset_packet, sizeof(reset_packet));
 
 	channel_id button_down;
 	button_down = device_get_output_channel_id_by_name(stage, dev, STR("button_down"));
