@@ -112,6 +112,11 @@ int scope_lookup_ident(struct scope_lookup *ctx, struct atom *name)
 		unsigned int offset = 0;
 		unsigned int length = 0;
 
+		if (ctx->num_steps > 0) {
+			offset = ctx->steps[ctx->num_steps - 1].offset;
+			length = ctx->steps[ctx->num_steps - 1].length;
+		}
+
 		if (ctx->type->kind == TYPE_KIND_NAMED_TUPLE) {
 			for (size_t mid = 0; mid < ctx->type->named_tuple.length; mid++) {
 				struct type *member;
@@ -186,7 +191,7 @@ int scope_lookup_index(struct scope_lookup *ctx, size_t i)
 		}
 
 		if (ctx->type->kind == TYPE_KIND_TUPLE) {
-			if (i > ctx->type->tuple.length) {
+			if (i >= ctx->type->tuple.length) {
 				printf("Out of range of tuple.\n");
 				return -1;
 			}
@@ -208,7 +213,7 @@ int scope_lookup_index(struct scope_lookup *ctx, size_t i)
 			}
 		}
 		else if (ctx->type->kind == TYPE_KIND_NAMED_TUPLE) {
-			if (i > ctx->type->named_tuple.length) {
+			if (i >= ctx->type->named_tuple.length) {
 				printf("Out of range of named tuple.\n");
 				return -1;
 			}
@@ -230,7 +235,7 @@ int scope_lookup_index(struct scope_lookup *ctx, size_t i)
 			}
 		}
 		else if (ctx->type->kind == TYPE_KIND_ARRAY) {
-			if (i > ctx->type->array.length) {
+			if (i >= ctx->type->array.length) {
 				printf("Out of range of array.\n");
 				return -1;
 			}
@@ -246,7 +251,7 @@ int scope_lookup_index(struct scope_lookup *ctx, size_t i)
 			return -1;
 		}
 
-		assert(length == 0 || next_type->num_scalars < length);
+		assert(length == 0 || next_type->num_scalars <= length);
 		length = next_type->num_scalars;
 
 		struct scope_lookup_step *step;
@@ -255,8 +260,10 @@ int scope_lookup_index(struct scope_lookup *ctx, size_t i)
 		}
 
 		step = &ctx->steps[ctx->num_steps - 1];
-		step->offset      = offset;
-		step->length      = length;
+
+		step->offset = offset;
+		step->length = length;
+
 
 		ctx->type = next_type;
 	}
