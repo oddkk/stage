@@ -1732,8 +1732,8 @@ apply_dispatch(struct apply_context *ctx,
 			}
 		}
 
-		if (node->access_index.pattern) {
-			access_pattern_range(node->access_index.pattern,
+		if (node->access_index_range.pattern) {
+			access_pattern_range(node->access_index_range.pattern,
 								 low, high);
 		}
 		return (err == 0) ? DISPATCH_DONE : DISPATCH_YIELD;
