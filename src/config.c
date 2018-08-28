@@ -335,43 +335,43 @@ static void apply_error(struct config_node *node, const char *fmt, ...)
 	va_end(ap);
 }
 
-static void print_l_expr(struct config_node *expr)
+static void print_l_expr(FILE *fp, struct config_node *expr)
 {
 	switch (expr->type) {
 	case CONFIG_NODE_IDENT:
 		if (expr->ident) {
-			fprintf(stderr, "%.*s", ALIT(expr->ident));
+			fprintf(fp, "%.*s", ALIT(expr->ident));
 		} else {
-			fprintf(stderr, "_");
+			fprintf(fp, "_");
 		}
 		break;
 
 	case CONFIG_NODE_BINARY_OP:
-		print_l_expr(expr->binary_op.lhs);
+		print_l_expr(fp, expr->binary_op.lhs);
 
 		if (expr->binary_op.op == CONFIG_OP_SUBSCRIPT) {
-			fprintf(stderr, "[");
-			fprintf(stderr, "(expr)");
-			fprintf(stderr, "]");
+			fprintf(fp, "[");
+			fprintf(fp, "(expr)");
+			fprintf(fp, "]");
 		} else if (expr->binary_op.op == CONFIG_OP_ACCESS) {
-			fprintf(stderr, ".");
-			print_l_expr(expr->binary_op.rhs);
+			fprintf(fp, ".");
+			print_l_expr(fp, expr->binary_op.rhs);
 		} else {
-			fprintf(stderr, "(non l-expr)");
+			fprintf(fp, "(non l-expr)");
 		}
 		break;
 
 	case CONFIG_NODE_SUBSCRIPT_RANGE:
-		print_l_expr(expr->subscript_range.lhs);
+		print_l_expr(fp, expr->subscript_range.lhs);
 
-		fprintf(stderr, "[");
-		fprintf(stderr, "(expr)..(expr)");
-		fprintf(stderr, "]");
+		fprintf(fp, "[");
+		fprintf(fp, "(expr)..(expr)");
+		fprintf(fp, "]");
 
 		break;
 
 	default:
-		fprintf(stderr, "(non l-expr)");
+		fprintf(fp, "(non l-expr)");
 		break;
 	}
 }
@@ -384,7 +384,7 @@ static bool apply_expect_lookup_result(enum scope_entry_kind expected,
 	if (expected != found) {
 		apply_begin_error(node->cnode);
 		fprintf(stderr, "'");
-		print_l_expr(node->cnode);
+		print_l_expr(stderr, node->cnode);
 		fprintf(stderr, "' is a %s, but a %s was expected.",
 				humanreadable_scope_entry(found),
 				humanreadable_scope_entry(expected));
@@ -401,7 +401,7 @@ static void apply_l_expr_not_found(char *expected,
 {
 	apply_begin_error(node->cnode);
 	fprintf(stderr, "Could not find the %s '", expected);
-	print_l_expr(node->cnode);
+	print_l_expr(stderr, node->cnode);
 	fprintf(stderr, "'.");
 	apply_end_error(node->cnode);
 }
@@ -1227,6 +1227,7 @@ static void config_device_initialize_context(struct tmp_config_device_context *c
 
 		ctx->ctx = config_ctx->ctx;
 		ctx->device_node = config_ctx->device;
+		ctx->device_node->device.device = dev;
 	} else{
 		ctx->ctx = &ctx->tmp_apply_context;
 		ctx->ctx->stage = stage;

@@ -5,7 +5,6 @@
 int device_constant_init(struct stage *stage, struct device_type *dev_type, struct device *dev)
 {
 	channel_id out_channel;
-	struct value_ref value;
 	int err;
 
 	out_channel = device_get_output_channel_id_by_name(stage, dev, STR("out"));
@@ -13,6 +12,12 @@ int device_constant_init(struct stage *stage, struct device_type *dev_type, stru
 	if (out_channel < 0) {
 		return -1;
 	}
+
+	struct type *type;
+	struct value_ref value;
+
+	type = device_get_type_from_attr(stage, dev, STR("T"));
+	value = alloc_value(stage, type->id);
 
 	err = device_get_attr(stage, dev, STR("value"), &value);
 	if (err) {

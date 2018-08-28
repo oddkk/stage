@@ -45,6 +45,10 @@ int device_get_attr_by_pattern(struct stage *, struct device *,
 							   struct access_pattern pattern,
 							   struct value_ref *out);
 
+struct type *device_get_type_from_attr(struct stage *, struct device *,
+									   struct string pattern);
+
+
 struct value_ref device_get_attr_from_lookup(struct stage *, struct device *,
 											 struct scope_lookup_range);
 

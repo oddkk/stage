@@ -124,7 +124,6 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 		return NULL;
 	}
 
-
 	if (device_type->num_inputs > 0) {
 		device->input_types = calloc(device_type->num_inputs, sizeof(type_id));
 		if (!device->input_types) {
@@ -146,6 +145,9 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 			}
 
 			type = get_type(stage, device->input_types[i]);
+
+			assert(type->kind != TYPE_KIND_NONE);
+
 			if (!type) {
 				print_error("finalize device",
 							"Missing type for the input '%.*s' for device "
@@ -154,6 +156,7 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 							ALIT(device->name));
 				err = -1;
 			} else if (type->templated) {
+
 				print_error("finalize device",
 							"The type for the input '%.*s' for device "
 							"'%.*s' was not resolved.",
@@ -187,6 +190,8 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 
 			type = get_type(stage, device->output_types[i]);
 
+			assert(type->kind != TYPE_KIND_NONE);
+
 			if (!type) {
 				print_error("finalize device",
 							"Missing type for the output '%.*s' for device "
@@ -194,6 +199,7 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 							ALIT(device_type->outputs[i].name),
 							ALIT(device->name));
 				err = -1;
+
 			} else if (type->templated) {
 				print_error("finalize device",
 							"The type for the output '%.*s' for device "
@@ -278,6 +284,26 @@ int device_get_attr_by_pattern(struct stage *stage, struct device *device,
 	}
 
 	return 0;
+}
+
+struct type *device_get_type_from_attr(struct stage *stage,
+									   struct device *device,
+									   struct string pattern)
+{
+	scalar_value type_id;
+	struct value_ref value = {0};
+	value.data = &type_id;
+	value.type = stage->standard_types.type;
+
+	int err;
+
+	err = device_get_attr(stage, device, pattern, &value);
+
+	if (err) {
+		return NULL;
+	}
+
+	return get_type(stage, type_id);
 }
 
 

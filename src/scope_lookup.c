@@ -520,6 +520,9 @@ size_t scope_lookup_instance_size(struct scope_lookup ctx)
 
 int eval_lookup_result(struct stage *stage, struct scope_lookup_range range, struct value_ref *out)
 {
+	struct type *type;
+	type = get_type(stage, out->type);
+
 	switch (range.kind) {
 	case SCOPE_ENTRY_NONE:
 	case SCOPE_ENTRY_NAMESPACE:
@@ -540,8 +543,17 @@ int eval_lookup_result(struct stage *stage, struct scope_lookup_range range, str
 			return -1;
 		}
 
-		out->type = range.type->id;
-		out->data = &device->args.data[range.begin];
+		struct value_ref attr = {0};
+		attr.type = range.type->id;
+		attr.data = &device->args.data[range.begin];
+
+		consolidate_typed_value_into(stage, out->type, attr, out);
+
+		/* printf("attribute %zu\n", range.begin); */
+
+		/* /\* out->type = range.type->id; *\/ */
+		/* memcpy(out->data, &device->args.data); */
+		/* out->data = &device->args.data[range.begin]; */
 		return 0;
 	}
 
@@ -549,6 +561,7 @@ int eval_lookup_result(struct stage *stage, struct scope_lookup_range range, str
 
 	case SCOPE_ENTRY_TYPE:
 		out->data[0] = range.begin;
+		printf("type %zu\n", range.begin);
 		break;
 
 	}

@@ -498,13 +498,13 @@ void register_default_types(struct stage *stage)
 	register_type_name(stage, stage->standard_types.integer, &stage->root_scope,
 					   atom_create(&stage->atom_table, STR("int")));
 
-	struct type string_type;
+	struct type string_type = {0};
 	string_type.kind = TYPE_KIND_STRING;
 	string_type.name = atom_create(&stage->atom_table, STR("string"));
 	stage->standard_types.string = register_type(stage, string_type)->id;
 
 
-	struct type type_type;
+	struct type type_type = {0};
 	type_type.kind = TYPE_KIND_TYPE;
 	type_type.name = atom_create(&stage->atom_table, STR("type"));
 	stage->standard_types.type = register_type(stage, type_type)->id;
@@ -593,7 +593,7 @@ int print_typed_value_internal(struct stage *stage, type_id tid, scalar_value *v
 
 	switch (type->kind) {
 	case TYPE_KIND_NONE:
-		assert(!"None type used!");
+		printf("none");
 		break;
 
 	case TYPE_KIND_TEMPLATE:
@@ -933,13 +933,17 @@ int resolve_templated_type(struct stage *stage, struct scoped_hash *scope,
 
 		assert(range.length == 1);
 
-		struct value_ref value;
+		struct value_ref value = {0};
+		scalar_value result_type;
+		value.type = stage->standard_types.type;
+		value.data = &result_type;
+
 		err = eval_lookup_result(stage, range, &value);
 		if (err) {
 			return -1;
 		}
 
-		*result = value.data[0];
+		*result = result_type;
 
 		return 0;
 	}
