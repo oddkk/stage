@@ -431,9 +431,25 @@ int register_typed_member_in_scope(struct stage *stage, struct atom *name,
 		assert(!"None type used!");
 		break;
 
-	case TYPE_KIND_TUPLE:
-		printf("@TODO: Implement register in scope for unnamed tuples.\n");
-		break;
+	case TYPE_KIND_TUPLE: {
+		int subindex = 0;
+		new_scope = scoped_hash_push(scope, kind, start_id);
+		new_scope->array = true;
+		for (size_t i = 0; i < type->tuple.length; i++) {
+			type_id member_type;
+			int num_scalars;
+
+			member_type = type->tuple.types[i];
+
+			num_scalars
+				= register_typed_member_in_scope(stage, NULL,
+												 member_type, new_scope,
+												 kind, start_id + subindex);
+
+			subindex += num_scalars;
+		}
+		assert(subindex == type->num_scalars);
+	} break;
 
 	case TYPE_KIND_NAMED_TUPLE: {
 		int subindex = 0;
@@ -455,9 +471,22 @@ int register_typed_member_in_scope(struct stage *stage, struct atom *name,
 		assert(subindex == type->num_scalars);
 	} break;
 
-	case TYPE_KIND_ARRAY:
-		printf("@TODO: Implement register in scope for arrays.\n");
-		break;
+	case TYPE_KIND_ARRAY: {
+		int subindex = 0;
+		new_scope = scoped_hash_push(scope, kind, start_id);
+		new_scope->array = true;
+		for (size_t i = 0; i < type->array.length; i++) {
+			int num_scalars;
+
+			num_scalars
+				= register_typed_member_in_scope(stage, NULL,
+												 type->array.type, new_scope,
+												 kind, start_id + subindex);
+
+			subindex += num_scalars;
+		}
+		assert(subindex == type->num_scalars);
+	} break;
 
 	default:
 		break;

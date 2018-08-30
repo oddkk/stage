@@ -561,7 +561,6 @@ int eval_lookup_result(struct stage *stage, struct scope_lookup_range range, str
 
 	case SCOPE_ENTRY_TYPE:
 		out->data[0] = range.begin;
-		printf("type %zu\n", range.begin);
 		break;
 
 	}
