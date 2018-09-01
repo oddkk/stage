@@ -157,6 +157,34 @@ struct device_type *register_device_type_two_phase(struct stage *stage,
 
 	stage->device_types[dev_type->id] = dev_type;
 
+	if (dev_type->params.type != 0) {
+
+		struct type *params_type;
+		params_type = get_type(stage, dev_type->params.type);
+
+		assert(params_type->kind == TYPE_KIND_NAMED_TUPLE);
+
+		size_t params_num_scalars = 0;
+		for (size_t i = 0; i < params_type->named_tuple.length; i++) {
+			struct named_tuple_member *param;
+			param = &params_type->named_tuple.members[i];
+
+			err = register_typed_member_in_scope(stage,
+												 param->name, param->type,
+												 dev_type->scope,
+												 SCOPE_ENTRY_DEVICE_TYPE_ATTRIBUTE,
+												 params_num_scalars);
+
+			if (err < 0) {
+				return NULL;
+			}
+
+			params_num_scalars += err;
+		}
+	}
+
+	err = 0;
+
 	struct scope_entry *entry;
 	entry = scoped_hash_insert(parent_scope, satom(stage, name),
 							   SCOPE_ENTRY_DEVICE_TYPE, NULL,

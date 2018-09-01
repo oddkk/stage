@@ -120,7 +120,7 @@ struct apply_node {
 			struct apply_node *owner;
 			struct apply_node *type;
 
-			struct scope_lookup type_lookup;
+			struct type_template_context result_type;
 		} device_type_channel;
 
 		struct {
@@ -678,8 +678,6 @@ static void apply_discover_device_type_members(struct apply_context *ctx,
 
 			channel = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE_CHANNEL, node);
 			channel->device_type_channel.owner = device_type;
-			channel->device_type_channel.type_lookup
-				= scope_lookup_init(ctx->stage, scope);
 			device_type->device_type.missing_channels += 1;
 
 			if (node->type == CONFIG_NODE_INPUT) {
@@ -1343,7 +1341,7 @@ apply_dispatch(struct apply_context *ctx,
 
 			node->device_type_channel.type
 				= apply_discover_type(ctx, dev_type_node->device_type.scope,
-									  type_cnode, NULL, NULL);
+									  type_cnode, NULL, &node->device_type_channel.result_type);
 		}
 
 		struct apply_node *type_expr;

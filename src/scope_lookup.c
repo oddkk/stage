@@ -395,20 +395,28 @@ int scope_lookup_pattern(struct scope_lookup *ctx, struct access_pattern pat)
 		}
 
 		if (err) {
-			struct access_pattern sub_pattern;
+			if (i > 0) {
+				struct access_pattern sub_pattern;
 
-			fprintf(stderr, "'");
+				fprintf(stderr, "'");
 
-			sub_pattern = pat;
-			sub_pattern.num_entries = i;
-			print_access_pattern(stderr, sub_pattern);
-			fprintf(stderr, "' does not have a member '");
+				sub_pattern = pat;
+				sub_pattern.num_entries = i;
+				print_access_pattern(stderr, sub_pattern);
+				fprintf(stderr, "' does not have a member '");
 
-			sub_pattern = pat;
-			sub_pattern.entries += i;
-			sub_pattern.num_entries -= i;
-			print_access_pattern(stderr, sub_pattern);
-			fprintf(stderr, "'.");
+				sub_pattern = pat;
+				sub_pattern.entries += i;
+				sub_pattern.num_entries -= i;
+				print_access_pattern(stderr, sub_pattern);
+				fprintf(stderr, "'.");
+			} else {
+				fprintf(stderr, "Could not find '");
+				print_access_pattern(stderr, pat);
+				fprintf(stderr, "'.");
+			}
+
+			return -1;
 		}
 	}
 
@@ -526,6 +534,7 @@ int eval_lookup_result(struct stage *stage, struct scope_lookup_range range, str
 	switch (range.kind) {
 	case SCOPE_ENTRY_NONE:
 	case SCOPE_ENTRY_NAMESPACE:
+	case SCOPE_ENTRY_DEVICE_TYPE_ATTRIBUTE:
 		return -1;
 		break;
 

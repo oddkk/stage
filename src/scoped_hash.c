@@ -226,6 +226,7 @@ char *humanreadable_scope_entry(enum scope_entry_kind kind)
 	case SCOPE_ENTRY_DEVICE_CHANNEL: return "device channel";
 	/* case SCOPE_ENTRY_DEVICE_INPUT: return "device input"; */
 	/* case SCOPE_ENTRY_DEVICE_OUTPUT: return "device output"; */
+	case SCOPE_ENTRY_DEVICE_TYPE_ATTRIBUTE: return "device type attribute";
 	case SCOPE_ENTRY_DEVICE_ATTRIBUTE: return "device attribute";
 	}
 }

@@ -1097,13 +1097,17 @@ int resolve_templated_type(struct stage *stage, struct scoped_hash *scope,
 
 			assert(range.length == 1);
 
-			struct value_ref value;
+			scalar_value value_buffer;
+			struct value_ref value = {0};
+			value.type = stage->standard_types.integer;
+			value.data = &value_buffer;
+
 			err = eval_lookup_result(stage, range, &value);
 			if (err) {
 				return -1;
 			}
 
-			new_length = value.data[0];
+			new_length = value_buffer;
 		}
 
 		if (new_member_type != input_type->array.type ||
@@ -1113,11 +1117,11 @@ int resolve_templated_type(struct stage *stage, struct scoped_hash *scope,
 			new_type = register_array_type(stage, input_type->name,
 										   new_member_type, new_length);
 
+			*result = new_type->id;
+
 		} else {
 			*result = input_type->id;
 		}
-
-		// @TODO: Templated length
 
 		return 0;
 	}
