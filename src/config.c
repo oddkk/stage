@@ -14,8 +14,7 @@
 
 enum apply_node_type {
 	APPLY_NODE_DEVICE_TYPE,
-	APPLY_NODE_DEVICE_TYPE_INPUT,
-	APPLY_NODE_DEVICE_TYPE_OUTPUT,
+	APPLY_NODE_DEVICE_TYPE_CHANNEL,
 
 	APPLY_NODE_DEVICE,
 	/* APPLY_NODE_DEVICE_ATTR, */
@@ -45,8 +44,7 @@ const char *apply_node_name(enum apply_node_type type) {
 #define APPLY_NODE_NAME(name) case APPLY_NODE_##name: return #name;
 	switch (type) {
 		APPLY_NODE_NAME(DEVICE_TYPE);
-		APPLY_NODE_NAME(DEVICE_TYPE_INPUT);
-		APPLY_NODE_NAME(DEVICE_TYPE_OUTPUT);
+		APPLY_NODE_NAME(DEVICE_TYPE_CHANNEL);
 		APPLY_NODE_NAME(DEVICE);
 		/* APPLY_NODE_NAME(DEVICE_ATTR); */
 
@@ -112,24 +110,18 @@ struct apply_node {
 			bool visited;
 			bool complete;
 
-			size_t missing_inputs;
-			size_t missing_outputs;
+			size_t missing_channels;
 		} device_type;
 
 		struct {
+			enum device_channel_kind kind;
+
 			struct atom *name;
 			struct apply_node *owner;
 			struct apply_node *type;
 
 			struct scope_lookup type_lookup;
-		} device_type_input;
-
-		struct {
-			struct atom *name;
-			struct apply_node *owner;
-			struct apply_node *type;
-			struct scope_lookup type_lookup;
-		} device_type_output;
+		} device_type_channel;
 
 		struct {
 			bool visited;
@@ -680,35 +672,25 @@ static void apply_discover_device_type_members(struct apply_context *ctx,
 											   struct apply_node *device_type)
 {
 	for (; node; node = node->next_sibling) {
-		switch (node->type) {
-		case CONFIG_NODE_INPUT: {
-			struct apply_node *input;
+		if (node->type == CONFIG_NODE_INPUT ||
+			node->type == CONFIG_NODE_OUTPUT) {
+			struct apply_node *channel;
 
-			input = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE_INPUT, node);
-			input->device_type_input.owner = device_type;
-			input->device_type_input.name = node->input.name;
-			input->device_type_input.type_lookup
+			channel = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE_CHANNEL, node);
+			channel->device_type_channel.owner = device_type;
+			channel->device_type_channel.type_lookup
 				= scope_lookup_init(ctx->stage, scope);
-			device_type->device_type.missing_inputs += 1;
+			device_type->device_type.missing_channels += 1;
 
-			push_apply_node(ctx, input);
-		} break;
+			if (node->type == CONFIG_NODE_INPUT) {
+				channel->device_type_channel.kind = DEVICE_CHANNEL_INPUT;
+				channel->device_type_channel.name = node->input.name;
+			} else {
+				channel->device_type_channel.kind = DEVICE_CHANNEL_OUTPUT;
+				channel->device_type_channel.name = node->output.name;
+			}
 
-		case CONFIG_NODE_OUTPUT: {
-			struct apply_node *output;
-
-			output = alloc_apply_node(ctx, APPLY_NODE_DEVICE_TYPE_OUTPUT, node);
-			output->device_type_output.owner = device_type;
-			output->device_type_output.name = node->output.name;
-			output->device_type_output.type_lookup
-				= scope_lookup_init(ctx->stage, scope);
-			device_type->device_type.missing_outputs += 1;
-
-			push_apply_node(ctx, output);
-		} break;
-
-		default:
-			break;
+			push_apply_node(ctx, channel);
 		}
 	}
 }
@@ -1336,31 +1318,36 @@ apply_dispatch(struct apply_context *ctx,
 			node->device_type.visited = true;
 		}
 
-		if (node->device_type.missing_inputs     > 0 ||
-			node->device_type.missing_outputs    > 0) {
+		if (node->device_type.missing_channels > 0) {
 			return DISPATCH_YIELD;
 		}
+
 		node->device_type.complete = true;
 		finalize_device_type_two_phase(node->device_type.type);
 
 		return DISPATCH_DONE;
 
-	case APPLY_NODE_DEVICE_TYPE_OUTPUT: // fallthrough
-	case APPLY_NODE_DEVICE_TYPE_INPUT: {
+	case APPLY_NODE_DEVICE_TYPE_CHANNEL: {
 		struct apply_node *dev_type_node;
 
-		dev_type_node = node->device_type_input.owner;
+		dev_type_node = node->device_type_channel.owner;
 		assert(dev_type_node->type == APPLY_NODE_DEVICE_TYPE);
 
-		// @TODO: This should use input or output.
-		if (!node->device_type_input.type) {
-			node->device_type_input.type
+		if (!node->device_type_channel.type) {
+			struct config_node *type_cnode;
+			if (node->device_type_channel.kind == DEVICE_CHANNEL_INPUT) {
+				type_cnode = node->cnode->input.type;
+			} else {
+				type_cnode = node->cnode->output.type;
+			}
+
+			node->device_type_channel.type
 				= apply_discover_type(ctx, dev_type_node->device_type.scope,
-									  node->cnode->input.type, NULL, NULL);
+									  type_cnode, NULL, NULL);
 		}
 
 		struct apply_node *type_expr;
-		type_expr = node->device_type_input.type;
+		type_expr = node->device_type_channel.type;
 
 		WAIT_FOR(type_expr);
 
@@ -1371,19 +1358,16 @@ apply_dispatch(struct apply_context *ctx,
 
 		dev_type = dev_type_node->device_type.type;
 
-		if (node->type == APPLY_NODE_DEVICE_TYPE_OUTPUT) {
-			name = node->device_type_output.name;
+		name = node->device_type_channel.name;
+
+		if (node->device_type_channel.kind == DEVICE_CHANNEL_OUTPUT) {
 			device_type_add_output(ctx->stage, dev_type, name->name, type);
-
-			assert(dev_type_node->device_type.missing_outputs > 0);
-			dev_type_node->device_type.missing_outputs -= 1;
 		} else {
-			name = node->device_type_input.name;
 			device_type_add_input(ctx->stage, dev_type, name->name, type);
-
-			assert(dev_type_node->device_type.missing_inputs > 0);
-			dev_type_node->device_type.missing_inputs -= 1;
 		}
+
+		assert(dev_type_node->device_type.missing_channels > 0);
+		dev_type_node->device_type.missing_channels -= 1;
 
 		return DISPATCH_DONE;
 	}
