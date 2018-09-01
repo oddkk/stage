@@ -60,6 +60,19 @@ struct device *get_device(struct stage *stage, device_id dev_id)
 	return res;
 }
 
+struct channel *get_channel(struct stage *stage, channel_id id)
+{
+	struct channel *result;
+	if (id >= stage->num_channels || id < 0) {
+		print_error("get channel", "Invalid channel id %u", id);
+		return NULL;
+	}
+
+	result = &stage->channels[id];
+
+	return result;
+}
+
 struct device_type *get_device_type(struct stage *stage, device_id dev_type_id)
 {
 	struct device_type *res;

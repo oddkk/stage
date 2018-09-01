@@ -118,6 +118,7 @@ struct device_type_channel {
 	struct string name;
 	type_id type;
 	struct string template;
+	struct type_template_context custom_template;
 	bool self;
 };
 

@@ -342,6 +342,15 @@ struct device_type *register_device_type(struct stage *stage,
 													  channel->name, ctx);
 			}
 
+		} else if (channel->custom_template.type != 0) {
+			if (channel->kind == DEVICE_CHANNEL_INPUT) {
+				cnl = device_type_add_input_template(stage, device_type,
+													 channel->name, channel->custom_template);
+			} else {
+				cnl = device_type_add_output_template(stage, device_type,
+													  channel->name, channel->custom_template);
+			}
+
 		} else {
 			assert(!"[make_device_type_params_type] Either type or template must be set.");
 		}

@@ -362,6 +362,18 @@ struct type *register_array_type(struct stage *stage, struct atom *name,
 	return register_type(stage, new_type);
 }
 
+struct type *register_template_length_array_type_str(struct stage *stage,
+													 struct atom *name,
+													 type_id type,
+													 struct string length_pattern,
+													 struct type_template_context *template_ctx)
+{
+	struct access_pattern pattern = {0};
+	parse_access_pattern(&stage->atom_table, length_pattern, &pattern);
+
+	return register_template_length_array_type(stage, name, type, pattern, template_ctx);
+}
+
 struct type *register_template_length_array_type(struct stage *stage,
 												 struct atom *name,
 												 type_id type,
@@ -390,6 +402,17 @@ struct type *register_template_length_array_type(struct stage *stage,
 	final_type->array.length_template_id = id;
 
 	return final_type;
+}
+
+struct type *register_template_type_str(struct stage *stage,
+										struct atom *name,
+										struct string field,
+										struct type_template_context *template_ctx)
+{
+	struct access_pattern pattern = {0};
+	parse_access_pattern(&stage->atom_table, field, &pattern);
+
+	return register_template_type(stage, name, pattern, template_ctx);
 }
 
 struct type *register_template_type(struct stage *stage, struct atom *name, struct access_pattern field,

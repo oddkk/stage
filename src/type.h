@@ -133,6 +133,12 @@ struct type *register_template_length_array_type(struct stage *stage,
 												 struct access_pattern length_pattern,
 												 struct type_template_context *);
 
+struct type *register_template_length_array_type_str(struct stage *stage,
+													 struct atom *name,
+													 type_id type,
+													 struct string length_pattern,
+													 struct type_template_context *);
+
 struct type *register_template_type(struct stage *stage, struct atom *name,
 									struct access_pattern field,
 									struct type_template_context *);

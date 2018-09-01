@@ -77,6 +77,7 @@ struct atom *satom(struct stage *stage, struct string name);
 struct device *get_device(struct stage *stage, device_id);
 struct device_type *get_device_type(struct stage *stage, device_type_id);
 struct type *get_type(struct stage *stage, type_id);
+struct channel *get_channel(struct stage *stage, channel_id);
 
 struct atom *stage_atom(struct stage *stage, struct string str);
 
