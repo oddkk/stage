@@ -2,7 +2,7 @@
 #include "../device.h"
 #include <stdlib.h>
 
-struct device_select {
+struct device_mux {
 	channel_id channel_in;
 	channel_id channel_out;
 	channel_id channels;
@@ -10,14 +10,14 @@ struct device_select {
 	size_t channel_width;
 };
 
-static scalar_value device_select_eval(struct stage *stage, channel_id cnl_id, struct channel *cnl)
+static scalar_value device_mux_eval(struct stage *stage, channel_id cnl_id, struct channel *cnl)
 {
 	struct device *device;
-	struct device_select *data;
+	struct device_mux *data;
 	scalar_value in;
 
 	device = get_device(stage, cnl->device.id);
-	data = (struct device_select *)device->data;
+	data = (struct device_mux *)device->data;
 	in = eval_channel(stage, data->channel_in);
 
 	if (in < 0) {
@@ -33,9 +33,9 @@ static scalar_value device_select_eval(struct stage *stage, channel_id cnl_id, s
 						cnl->device.channel_subindex);
 }
 
-static int device_select_init(struct stage *stage, struct device_type *type, struct device *dev)
+static int device_mux_init(struct stage *stage, struct device_type *type, struct device *dev)
 {
-	struct device_select *data = calloc(1, sizeof(struct device_select));
+	struct device_mux *data = calloc(1, sizeof(struct device_mux));
 
 	dev->data = data;
 
@@ -56,11 +56,11 @@ static int device_select_init(struct stage *stage, struct device_type *type, str
 	case_type = device_get_type_from_attr(stage, dev, STR("T"));
 
 	data->channels
-		= device_get_input_channel_id_by_name(stage, dev, STR("case"));
+		= device_get_input_channel_id_by_name(stage, dev, STR("in"));
 	data->channel_width = case_type->num_scalars;
 
 	for (size_t i = 0; i < data->channel_width; i++) {
-		channel_bind_callback(stage, data->channel_out + i, device_select_eval);
+		channel_bind_callback(stage, data->channel_out + i, device_mux_eval);
 		struct channel *cnl;
 		cnl = get_channel(stage, data->channel_out + i);
 		cnl->device.channel_subindex = i;
@@ -69,7 +69,7 @@ static int device_select_init(struct stage *stage, struct device_type *type, str
 	return 0;
 }
 
-struct device_type *register_device_type_select(struct stage *stage)
+struct device_type *register_device_type_mux(struct stage *stage)
 {
 	struct device_type_param params[] = {
 		{ .name=STR("T"), .type=stage->standard_types.type },
@@ -99,7 +99,7 @@ struct device_type *register_device_type_select(struct stage *stage)
 
 		{
 			.kind=DEVICE_CHANNEL_INPUT,
-			.name=STR("case"),
+			.name=STR("in"),
 			.custom_template=case_template,
 		},
 
@@ -107,8 +107,8 @@ struct device_type *register_device_type_select(struct stage *stage)
 	};
 
 	struct device_type_def device = {
-		.name = STR("basic.select"),
-		.init = device_select_init,
+		.name = STR("basic.mux"),
+		.init = device_mux_init,
 
 		DEVICE_TYPE_DEF_CHANNELS(channels),
 		DEVICE_TYPE_DEF_PARAMS(params),
