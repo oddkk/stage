@@ -1283,11 +1283,15 @@ apply_dispatch(struct apply_context *ctx,
 {
 	switch (node->type) {
 	case APPLY_NODE_DEVICE_TYPE:
-		WAIT_FOR(node->device_type.params);
+		if (node->device_type.params) {
+			WAIT_FOR(node->device_type.params);
+		}
 
 		if (!node->device_type.type) {
-			node->device_type.params_type.type
-				= apply_resolve_type_id(node->device_type.params);
+			if (node->device_type.params) {
+				node->device_type.params_type.type
+					= apply_resolve_type_id(node->device_type.params);
+			}
 
 			node->device_type.type
 				= register_device_type_two_phase(ctx->stage,
