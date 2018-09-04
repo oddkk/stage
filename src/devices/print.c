@@ -43,12 +43,9 @@ static void device_print_tick(struct stage *stage, struct device *dev) {
 static int device_print_init(struct stage *stage, struct device_type *type, struct device *dev)
 {
 	struct device_debug_print_data *data = calloc(1, sizeof(struct device_debug_print_data));
-	/* scalar_value input_type; */
 
-	// @TODO: Implement
-	/* input_type = device_get_attr(stage, dev, SATOM(stage, "T")); */
-	data->type = get_type(stage, stage->standard_types.integer); //input_type);
-	/* data->buffer = 0; */
+	data->type = device_get_type_from_attr(stage, dev, STR("T"));
+	data->buffer = 0;
 
 	data->last_value[0] = calloc(data->type->num_scalars, sizeof(scalar_value));
 	data->last_value[1] = calloc(data->type->num_scalars, sizeof(scalar_value));
