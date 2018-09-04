@@ -103,8 +103,7 @@ struct device_type *register_device_type_select(struct stage *stage)
 			.custom_template=case_template,
 		},
 
-		{
-			.kind=DEVICE_CHANNEL_OUTPUT, .name=STR("out"), .template=STR("T") },
+		{ .kind=DEVICE_CHANNEL_OUTPUT, .name=STR("out"), .template=STR("T") },
 	};
 
 	struct device_type_def device = {
