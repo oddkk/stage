@@ -11,4 +11,5 @@ void register_device_types(struct stage *stage)
 	register_device_type_midi(stage);
 	register_device_type_blink(stage);
 	register_device_type_select(stage);
+	register_device_type_dmx(stage);
 }

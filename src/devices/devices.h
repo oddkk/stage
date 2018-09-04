@@ -15,5 +15,6 @@ struct device_type *register_device_type_toggle(struct stage *);
 struct device_type *register_device_type_midi(struct stage *);
 struct device_type *register_device_type_blink(struct stage *);
 struct device_type *register_device_type_select(struct stage *);
+struct device_type *register_device_type_dmx(struct stage *);
 
 #endif
