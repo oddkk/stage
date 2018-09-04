@@ -16,6 +16,7 @@ struct device_type;
 struct config_node;
 typedef int (*device_init_callback) (struct stage *, struct device_type *,
 				     struct device *);
+typedef void (*device_free_callback) (struct stage *, struct device *);
 typedef int (*device_init_context_callback) (struct stage *, struct device_type *,
 											 struct device *, void *);
 typedef scalar_value(*device_output_eval_callback) (struct stage *,
@@ -67,6 +68,7 @@ struct device_type {
 		};
 	};
 
+	device_free_callback device_free;
 	device_output_eval_callback eval;
 
 	bool finalized;
@@ -134,6 +136,7 @@ struct device_type_def {
 
 	device_init_callback template_init;
 	device_init_callback init;
+	device_free_callback free;
 
 	device_init_context_callback context_template_init;
 	device_init_context_callback context_init;

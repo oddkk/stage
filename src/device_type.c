@@ -393,6 +393,8 @@ struct device_type *register_device_type(struct stage *stage,
 		device_type->takes_context = true;
 	}
 
+	device_type->device_free = def.free;
+
 	finalize_device_type_two_phase(device_type);
 
 	return device_type;

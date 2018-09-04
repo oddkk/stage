@@ -190,3 +190,27 @@ void print_full_entry_name(struct stage *stage, struct scoped_hash *entry)
 {
 	print_full_entry_name_internal(stage, entry);
 }
+
+void stage_destroy(struct stage *stage)
+{
+	for (size_t i = 0; i < stage->num_devices; i++) {
+		device_free(stage, stage->devices[i]);
+	}
+
+	stage->num_devices = 0;
+	stage->cap_devices = 0;
+	free(stage->devices);
+	stage->devices = NULL;
+
+	// @TODO: Free device types
+	// @TODO: Free types
+
+	// @TODO: Free root_scope
+	// @TODO: Free atom_table
+	// @TODO: Free tick callbacks
+
+	stage->memory.head = 0;
+	stage->memory.capacity = 0;
+	free(stage->memory.data);
+	stage->memory.data = NULL;
+}

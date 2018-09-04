@@ -240,6 +240,28 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 
 }
 
+void device_free(struct stage *stage, struct device *device)
+{
+	struct device_type *type;
+	type = get_device_type(stage, device->type);
+
+	if (type->device_free) {
+		type->device_free(stage, device);
+	}
+
+	if (device->args.data) {
+		free(device->args.data);
+	}
+
+	// @TODO: Free scope.
+
+	assert(stage->devices[device->id] == device);
+
+	stage->devices[device->id] = NULL;
+	// Arena alloced
+	/* free(device); */
+}
+
 int device_get_attr(struct stage *stage, struct device *device,
 					struct string pattern,
 					struct value_ref *out)

@@ -62,6 +62,15 @@ static int device_print_init(struct stage *stage, struct device_type *type, stru
 	return 0;
 }
 
+static void device_print_free(struct stage *stage, struct device *dev)
+{
+	struct device_debug_print_data *data = dev->data;
+
+	free(data->last_value[0]);
+	free(data->last_value[1]);
+	free(data);
+}
+
 struct device_type *register_device_type_print(struct stage *stage)
 {
 	struct device_type_param params[] = {
@@ -74,6 +83,7 @@ struct device_type *register_device_type_print(struct stage *stage)
 	struct device_type_def device = {
 		.name = STR("basic.print"),
 		.init = device_print_init,
+		.free = device_print_free,
 
 		DEVICE_TYPE_DEF_CHANNELS(channels),
 		DEVICE_TYPE_DEF_PARAMS(params),

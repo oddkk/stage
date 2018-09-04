@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 
 /* enable clock_* functions */
 #ifndef __USE_POSIX199309
@@ -37,6 +38,15 @@
 #ifdef STAGE_TEST
 #define main _main
 #endif
+
+static bool should_quit = false;
+
+void stage_signal_handler(int sig)
+{
+	if (sig == SIGINT) {
+		should_quit = true;
+	}
+}
 
 static struct timespec timespec_add(struct timespec begin, struct timespec end)
 {
@@ -168,7 +178,9 @@ int main(int argc, char *argv[])
 	frame_duration.tv_nsec = stage.tick_period % NSEC;
 	tick_begin = read_time();
 
-	while (true) {
+	signal(SIGINT, stage_signal_handler);
+
+	while (!should_quit) {
 		struct timespec tick_end_desired;
 		int clock_err;
 
@@ -179,12 +191,14 @@ int main(int argc, char *argv[])
 		clock_err =
 		    clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME,
 				    &tick_end_desired, 0);
-		if (clock_err) {
+		if (clock_err && clock_err != EINTR) {
 			perror("clock_nanosleep");
 		}
 
 		tick_begin = read_time();
 	}
+
+	stage_destroy(&stage);
 
 	return 0;
 }

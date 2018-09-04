@@ -70,6 +70,8 @@ struct stage {
 int stage_init(struct stage *stage);
 void stage_tick(struct stage *stage);
 
+void stage_destroy(struct stage *stage);
+
 struct atom *satom(struct stage *stage, struct string name);
 
 #define SATOM(stage, name) satom((stage), STR(name))

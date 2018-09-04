@@ -35,6 +35,8 @@ struct device *register_device_with_context(struct stage *stage, device_type_id 
 											struct value_ref args,
 											void *context);
 
+void device_free(struct stage *, struct device *);
+
 struct scope_lookup device_lookup(struct stage *, struct device *);
 
 int device_get_attr(struct stage *, struct device *,
