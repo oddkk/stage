@@ -5,7 +5,7 @@
 #include "access_pattern.h"
 
 enum scope_entry_kind {
-	SCOPE_ENTRY_NONE,
+	SCOPE_ENTRY_NONE = 0,
 	SCOPE_ENTRY_NAMESPACE,
 	SCOPE_ENTRY_TYPE,
 	SCOPE_ENTRY_DEVICE,

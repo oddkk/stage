@@ -103,7 +103,6 @@ struct device_type *register_device_type_demux(struct stage *stage)
 			.kind=DEVICE_CHANNEL_INPUT,
 			.name=STR("select"),
 			.type=stage->standard_types.integer,
-			.self=true,
 		},
 
 		{ .kind=DEVICE_CHANNEL_INPUT, .name=STR("in"),        .template=STR("T") },
@@ -113,6 +112,7 @@ struct device_type *register_device_type_demux(struct stage *stage)
 			.kind=DEVICE_CHANNEL_OUTPUT,
 			.name=STR("out"),
 			.custom_template=out_template,
+			.self=true,
 		},
 	};
 

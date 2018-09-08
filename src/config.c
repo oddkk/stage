@@ -705,6 +705,8 @@ static void apply_discover_bind(struct apply_context *ctx,
 	node = alloc_apply_node(ctx, APPLY_NODE_BIND, bind_node);
 	node->bind.lookup_lhs
 		= scope_lookup_init(ctx->stage, scope);
+	node->bind.lookup_lhs.hint = SCOPE_ENTRY_DEVICE_CHANNEL;
+	node->bind.lookup_lhs.hint_channel_input = true;
 	node->bind.lhs
 		= apply_discover_l_expr(ctx, scope,
 								bind_node->binary_op.lhs,
@@ -712,6 +714,8 @@ static void apply_discover_bind(struct apply_context *ctx,
 								NULL);
 	node->bind.lookup_rhs
 		= scope_lookup_init(ctx->stage, scope);
+	node->bind.lookup_rhs.hint = SCOPE_ENTRY_DEVICE_CHANNEL;
+	node->bind.lookup_rhs.hint_channel_input = false;
 	node->bind.rhs
 		= apply_discover_l_expr(ctx, scope,
 								bind_node->binary_op.rhs,
@@ -1363,9 +1367,27 @@ apply_dispatch(struct apply_context *ctx,
 		name = node->device_type_channel.name;
 
 		if (node->device_type_channel.kind == DEVICE_CHANNEL_OUTPUT) {
-			device_type_add_output(ctx->stage, dev_type, name->name, type);
+			struct device_channel_def *cnl;
+			cnl = device_type_add_output(ctx->stage, dev_type, name->name, type);
+
+			if (node->cnode->output.def) {
+				if (dev_type->self_output != -1) {
+					apply_error(node->cnode, "Only one default output can be specified per device type.");
+					return DISPATCH_ERROR;
+				}
+				dev_type->self_output = cnl->id;
+			}
 		} else {
-			device_type_add_input(ctx->stage, dev_type, name->name, type);
+			struct device_channel_def *cnl;
+			cnl = device_type_add_input(ctx->stage, dev_type, name->name, type);
+
+			if (node->cnode->input.def) {
+				if (dev_type->self_input != -1) {
+					apply_error(node->cnode, "Only one default input can be specified per device type.");
+					return DISPATCH_ERROR;
+				}
+				dev_type->self_input = cnl->id;
+			}
 		}
 
 		assert(dev_type_node->device_type.missing_channels > 0);
@@ -1773,15 +1795,19 @@ apply_dispatch(struct apply_context *ctx,
 		WAIT_FOR(node->bind.lhs);
 		WAIT_FOR(node->bind.rhs);
 
-		if (!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_CHANNEL,
+		if (node->bind.lookup_lhs.kind != SCOPE_ENTRY_DEVICE &&
+			!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_CHANNEL,
 										node->bind.lookup_lhs.kind,
 										node->bind.lhs)) {
+			printf("lhs\n");
 			return DISPATCH_ERROR;
 		}
 
-		if (!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_CHANNEL,
+		if (node->bind.lookup_rhs.kind != SCOPE_ENTRY_DEVICE &&
+			!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_CHANNEL,
 										node->bind.lookup_rhs.kind,
 										node->bind.rhs)) {
+			printf("rhs\n");
 			return DISPATCH_ERROR;
 		}
 
@@ -1798,6 +1824,10 @@ apply_dispatch(struct apply_context *ctx,
 
 		lhs_instance_size = scope_lookup_instance_size(node->bind.lookup_lhs);
 		rhs_instance_size = scope_lookup_instance_size(node->bind.lookup_rhs);
+
+		printf("%zu x %zu <- %zu x %zu\n",
+			   lhs_instances, lhs_instance_size,
+			   rhs_instances, rhs_instance_size);
 
 		if (lhs_instances == rhs_instances &&
 			lhs_instance_size == rhs_instance_size) {

@@ -437,6 +437,44 @@ void print_steps(struct scope_lookup ctx)
 	}
 }
 
+static int scope_check_hints(struct scope_lookup ctx, struct scope_lookup_range *out)
+{
+	if (ctx.hint == SCOPE_ENTRY_DEVICE_CHANNEL &&
+		ctx.kind == SCOPE_ENTRY_DEVICE) {
+		struct device *dev;
+
+		assert(ctx.num_steps > 0);
+		assert(ctx.steps[ctx.num_steps-1].length == 1);
+		assert(ctx.steps[ctx.num_steps-1].repetitions == 1);
+
+		dev = get_device(ctx.stage, ctx.steps[ctx.num_steps-1].offset);
+
+		assert(dev != NULL);
+
+		struct channel_ref cnl_ref;
+		int err;
+
+		if (ctx.hint_channel_input == true) {
+			err = device_get_default_input(ctx.stage, dev, &cnl_ref);
+		} else {
+			err = device_get_default_output(ctx.stage, dev, &cnl_ref);
+		}
+
+		if (err) {
+			return err;
+		}
+		out->kind = SCOPE_ENTRY_DEVICE_CHANNEL;
+		out->type = get_type(ctx.stage, cnl_ref.type);
+		out->begin = cnl_ref.begin;
+		out->length = out->type->num_scalars;
+		out->owner = dev->id;
+
+		return 0;
+	}
+
+	return 1;
+}
+
 int scope_lookup_result_single(struct scope_lookup ctx, struct scope_lookup_range *result)
 {
 	//print_steps(ctx);
@@ -468,6 +506,19 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 	it = *iter;
 	next_it = it;
 	owner = -1;
+
+	int err = scope_check_hints(ctx, out);
+
+	if (err < 0) {
+		return LOOKUP_NOT_FOUND;
+
+	} else if (err == 0) {
+		if (*iter != 0) {
+			return LOOKUP_END;
+		}
+
+		return LOOKUP_FOUND;
+	}
 
 	for (size_t i = 0; i < ctx.num_steps; i++) {
 		struct scope_lookup_step *step = &ctx.steps[i];
@@ -514,6 +565,15 @@ int scope_lookup_iterate(struct scope_lookup ctx, size_t *iter,
 size_t scope_lookup_instances(struct scope_lookup ctx)
 {
 	size_t instances = 1;
+
+	struct scope_lookup_range hint_out;
+	int err = scope_check_hints(ctx, &hint_out);
+	if (err < 0) {
+		return 0;
+	} else if (err == 0) {
+		return 1;
+	}
+
 	for (size_t i = 0; i < ctx.num_steps; i++) {
 		struct scope_lookup_step *step = &ctx.steps[i];
 		instances *= step->repetitions;
@@ -523,6 +583,14 @@ size_t scope_lookup_instances(struct scope_lookup ctx)
 
 size_t scope_lookup_instance_size(struct scope_lookup ctx)
 {
+	struct scope_lookup_range hint_out;
+	int err = scope_check_hints(ctx, &hint_out);
+	if (err < 0) {
+		return 0;
+	} else if (err == 0) {
+		return hint_out.length;
+	}
+
 	return ctx.steps[ctx.num_steps - 1].length;
 }
 

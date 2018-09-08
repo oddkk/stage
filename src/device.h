@@ -75,6 +75,14 @@ int device_assign_input_by_name(struct stage *stage,
 								struct string name,
 								type_id type);
 
+struct channel_ref {
+	type_id type;
+	channel_id begin;
+};
+
+int device_get_default_input(struct stage *, struct device *, struct channel_ref *out);
+int device_get_default_output(struct stage *, struct device *, struct channel_ref *out);
+
 void describe_device(struct stage *stage, struct device *dev);
 
 #endif

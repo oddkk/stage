@@ -16,6 +16,8 @@ struct scope_lookup_step {
 };
 
 struct scope_lookup {
+	enum scope_entry_kind hint;
+	bool hint_channel_input;
 	enum scope_entry_kind kind;
 	struct scoped_hash *scope;
 	struct type *type;

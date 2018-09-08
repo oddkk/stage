@@ -94,7 +94,6 @@ struct device_type *register_device_type_mux(struct stage *stage)
 			.kind=DEVICE_CHANNEL_INPUT,
 			.name=STR("select"),
 			.type=stage->standard_types.integer,
-			.self=true,
 		},
 
 		{
@@ -103,7 +102,7 @@ struct device_type *register_device_type_mux(struct stage *stage)
 			.custom_template=case_template,
 		},
 
-		{ .kind=DEVICE_CHANNEL_OUTPUT, .name=STR("out"), .template=STR("T") },
+		{ .kind=DEVICE_CHANNEL_OUTPUT, .name=STR("out"), .template=STR("T"), .self=true, },
 	};
 
 	struct device_type_def device = {

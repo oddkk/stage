@@ -468,6 +468,72 @@ channel_id device_get_output_channel_id_by_name(struct stage * stage,
 	return device_get_output_channel_id(stage, device, atom);
 }
 
+int device_get_default_input(struct stage *stage,
+							 struct device *device,
+							 struct channel_ref *out)
+{
+	struct device_type *dev_type;
+
+	dev_type = get_device_type(stage, device->type);
+	if (!dev_type) {
+		return -2;
+	}
+
+	if (dev_type->self_input < 0) {
+		printf("The device '%.*s' of type '%.*s' does not have a default input channel.\n",
+			   ALIT(device->name), ALIT(dev_type->name));
+		return -1;
+	}
+
+	assert(dev_type->self_input < dev_type->num_inputs);
+
+	size_t num_scalars = 0;
+	for (size_t i = 0; i < dev_type->self_input; i++) {
+		struct type *type;
+		type = get_type(stage, device->input_types[i]);
+		assert(type != NULL);
+		num_scalars += type->num_scalars;
+	}
+
+	out->begin = device->input_begin + num_scalars;
+	out->type = device->input_types[dev_type->self_input];
+
+	return 0;
+}
+
+int device_get_default_output(struct stage *stage,
+							  struct device *device,
+							  struct channel_ref *out)
+{
+	struct device_type *dev_type;
+
+	dev_type = get_device_type(stage, device->type);
+	if (!dev_type) {
+		return -2;
+	}
+
+	if (dev_type->self_output < 0) {
+		printf("The device '%.*s' of type '%.*s' does not have a default output channel.\n",
+			   ALIT(device->name), ALIT(dev_type->name));
+		return -1;
+	}
+
+	assert(dev_type->self_output < dev_type->num_outputs);
+
+	size_t num_scalars = 0;
+	for (size_t i = 0; i < dev_type->self_output; i++) {
+		struct type *type;
+		type = get_type(stage, device->output_types[i]);
+		assert(type != NULL);
+		num_scalars += type->num_scalars;
+	}
+
+	out->begin = device->output_begin + num_scalars;
+	out->type = device->output_types[dev_type->self_output];
+
+	return 0;
+}
+
 void describe_device(struct stage *stage, struct device *dev)
 {
 	channel_id current_channel;
