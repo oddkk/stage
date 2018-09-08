@@ -27,7 +27,7 @@ int stage_init(struct stage *stage)
 		return -1;
 	}
 
-	stage->cap_channels = 1024;
+	stage->cap_channels = 10000;
 	stage->channels =
 	    arena_alloc(&stage->memory,
 			sizeof(struct channel) * stage->cap_channels);
