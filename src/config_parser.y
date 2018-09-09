@@ -63,7 +63,7 @@
 				perror("config");
 			}
 		}
-		return false;
+		return true;
 	}
 
 	struct config_node *_alloc_node(struct lex_context *ctx, enum config_node_type type, YYLTYPE loc) {
