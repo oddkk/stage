@@ -16,6 +16,7 @@
 #include "device_type.h"
 #include "utils.h"
 #include "config.h"
+#include "websocket.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -173,6 +174,10 @@ int main(int argc, char *argv[])
 #endif
 
 	stage.tick_period = NSEC / 1000;
+
+	struct websocket_context ws = {{0}};
+
+	websocket_init(&ws, "0.0.0.0", "6060");
 
 	frame_duration.tv_sec = stage.tick_period / NSEC;
 	frame_duration.tv_nsec = stage.tick_period % NSEC;

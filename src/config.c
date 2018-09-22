@@ -1799,7 +1799,6 @@ apply_dispatch(struct apply_context *ctx,
 			!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_CHANNEL,
 										node->bind.lookup_lhs.kind,
 										node->bind.lhs)) {
-			printf("lhs\n");
 			return DISPATCH_ERROR;
 		}
 
@@ -1807,7 +1806,6 @@ apply_dispatch(struct apply_context *ctx,
 			!apply_expect_lookup_result(SCOPE_ENTRY_DEVICE_CHANNEL,
 										node->bind.lookup_rhs.kind,
 										node->bind.rhs)) {
-			printf("rhs\n");
 			return DISPATCH_ERROR;
 		}
 
@@ -1825,9 +1823,9 @@ apply_dispatch(struct apply_context *ctx,
 		lhs_instance_size = scope_lookup_instance_size(node->bind.lookup_lhs);
 		rhs_instance_size = scope_lookup_instance_size(node->bind.lookup_rhs);
 
-		printf("%zu x %zu <- %zu x %zu\n",
-			   lhs_instances, lhs_instance_size,
-			   rhs_instances, rhs_instance_size);
+		/* printf("%zu x %zu <- %zu x %zu\n", */
+		/* 	   lhs_instances, lhs_instance_size, */
+		/* 	   rhs_instances, rhs_instance_size); */
 
 		if (lhs_instances == rhs_instances &&
 			lhs_instance_size == rhs_instance_size) {

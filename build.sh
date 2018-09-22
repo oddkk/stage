@@ -12,4 +12,4 @@ FLAGS="-lssl -lcrypto"
 FLAGS="$FLAGS $(libftdi1-config --libs) $(libftdi1-config --cflags) -DSTAGE_DMX"
 
 echo "Compiling"
-$CC -g -std=c11 -lm -Wall -pedantic $FLAGS -pthread ${SRC[*]} -o stage || exit
+$CC -g -std=gnu11 -lm -Wall -pedantic $FLAGS -pthread ${SRC[*]} -o stage || exit
