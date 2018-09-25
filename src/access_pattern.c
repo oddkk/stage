@@ -59,7 +59,7 @@ int parse_access_pattern(struct atom_table *atom_table, struct string str, struc
 				break;
 
 			default:
-				if (isalpha(*iter)) {
+				if (isalpha(*iter) || *iter == '_') {
 					iter--;
 					state = ACCESS_PARSE_IDENT;
 				} else {
@@ -71,7 +71,7 @@ int parse_access_pattern(struct atom_table *atom_table, struct string str, struc
 		} break;
 
 		case ACCESS_PARSE_IDENT: {
-			if (!isalpha(*iter)) {
+			if (!isalpha(*iter) && *iter != '_') {
 				struct string token;
 				token.text = token_begin;
 				token.length = iter - token_begin;
