@@ -34,8 +34,6 @@
 #include <time.h>
 #include <errno.h>
 
-#define NSEC (1000000000)
-
 #ifdef STAGE_TEST
 #define main _main
 #endif

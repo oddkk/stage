@@ -20,6 +20,8 @@ struct type;
 struct channel;
 struct stage;
 
+#define NSEC (1000000000)
+
 typedef void (*tick_callback) (struct stage *, struct device *);
 struct device_tick_callback {
 	struct device *device;

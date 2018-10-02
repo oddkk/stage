@@ -14,6 +14,7 @@ struct device_type *register_device_type_tick(struct stage *);
 struct device_type *register_device_type_toggle(struct stage *);
 struct device_type *register_device_type_midi(struct stage *);
 struct device_type *register_device_type_blink(struct stage *);
+struct device_type *register_device_type_tap_tempo(struct stage *);
 struct device_type *register_device_type_mux(struct stage *);
 struct device_type *register_device_type_demux(struct stage *);
 struct device_type *register_device_type_radio(struct stage *);
