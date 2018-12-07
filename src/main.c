@@ -117,7 +117,7 @@ int main(int argc, char *argv[])
 	/* dev = register_device_pre_attrs(&stage, 0, &stage.root_scope, SATOM(&stage, "c"), NULL); */
 	/* finalize_device(&stage, dev); */
 
-	err = parse_config_file(STR("config/super_simple.conf"), &stage.atom_table,
+	err = parse_config_file(STR("config/alt.stg"), &stage.atom_table,
 							&stage.memory, &node);
 
 	if (err) {
