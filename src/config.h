@@ -4,6 +4,166 @@
 #include "type.h"
 #include "atom.h"
 
+enum cfg_bin_op {
+	CFG_OP_ADD,
+	CFG_OP_SUB,
+	CFG_OP_MUL,
+	CFG_OP_DIV,
+	CFG_OP_RANGE,
+	CFG_OP_EQ,
+	CFG_OP_NEQ,
+	CFG_OP_GTE,
+	CFG_OP_LTE,
+	CFG_OP_GT,
+	CFG_OP_LT,
+};
+
+#define CFG_NODES \
+	CFG_NODE(INTERNAL_LIST, struct {			\
+			struct cfg_node *head;				\
+			struct cfg_node *tail;				\
+	})											\
+	CFG_NODE(MODULE, struct {					\
+			struct cfg_node *body;				\
+	})											\
+	CFG_NODE(STMT, struct {						\
+			struct cfg_node *attrs;				\
+			struct cfg_node *stmt;				\
+	})											\
+	CFG_NODE(DECL_STMT, struct {				\
+			struct cfg_node *name;				\
+			struct cfg_node *args;				\
+			struct cfg_node *decl;				\
+	})											\
+	CFG_NODE(OBJ_DECL, struct {					\
+			struct cfg_node *ident;				\
+			struct cfg_node *body;				\
+	})											\
+	CFG_NODE(ENUM_DECL, struct {				\
+			struct cfg_node *items;				\
+	})											\
+	CFG_NODE(ENUM_ITEM, struct {				\
+			struct atom *name;					\
+			struct cfg_node *data;				\
+	})											\
+	CFG_NODE(USE_STMT, struct {					\
+			struct cfg_node *ident;				\
+	})											\
+	CFG_NODE(USE_ALL, struct {					\
+			int _dc;							\
+	})											\
+	CFG_NODE(FUNC_STMT, struct {				\
+			struct cfg_node *ident;				\
+			struct cfg_node *proto;				\
+			struct cfg_node *body;				\
+	})											\
+	CFG_NODE(FUNC_PROTO, struct {				\
+			struct cfg_node *params;			\
+			struct cfg_node *ret;				\
+	})											\
+	CFG_NODE(ASSIGN_STMT, struct {				\
+			struct cfg_node *ident;				\
+			struct cfg_node *type;				\
+			struct cfg_node *body;				\
+	})											\
+	CFG_NODE(BIND, struct {						\
+			struct cfg_node *src;				\
+			struct cfg_node *drain;				\
+	})											\
+	CFG_NODE(NAMESPACE, struct {				\
+			struct cfg_node *name;				\
+			struct cfg_node *body;				\
+	})											\
+	CFG_NODE(TEMPLATE_VAR, struct {				\
+			struct atom *name;					\
+	})											\
+	CFG_NODE(ACCESS, struct {					\
+			struct cfg_node *lhs;				\
+			struct cfg_node *rhs;				\
+	})											\
+	CFG_NODE(SUBSCRIPT, struct {				\
+			struct cfg_node *lhs;				\
+			struct cfg_node *index;				\
+	})											\
+	CFG_NODE(BIN_OP, struct {					\
+			enum cfg_bin_op op;					\
+			struct cfg_node *lhs;				\
+			struct cfg_node *rhs;				\
+	})											\
+	CFG_NODE(LAMBDA, struct {					\
+			struct cfg_node *proto;				\
+			struct cfg_node *body;				\
+	})											\
+	CFG_NODE(FUNC_CALL, struct {				\
+			struct cfg_node *ident;				\
+			struct cfg_node *params;			\
+	})											\
+	CFG_NODE(TUPLE_DECL, struct {				\
+			struct cfg_node *items;				\
+			bool named;							\
+	})											\
+	CFG_NODE(TUPLE_DECL_ITEM, struct {			\
+			struct atom *name;					\
+			struct cfg_node *type;				\
+	})											\
+	CFG_NODE(TUPLE_LIT, struct {				\
+			struct cfg_node *items;				\
+			bool named;							\
+	})											\
+	CFG_NODE(TUPLE_LIT_ITEM, struct {			\
+			struct atom *name;					\
+			struct cfg_node *value;				\
+	})											\
+	CFG_NODE(ARRAY_LIT, struct {				\
+			struct cfg_node *items;				\
+	})											\
+	CFG_NODE(NUM_LIT, scalar_value)				\
+	CFG_NODE(IDENT, struct atom *)				\
+
+enum cfg_node_type {
+#define CFG_NODE(name, data) CFG_NODE_##name,
+	CFG_NODES
+#undef CFG_NODE
+	CFG_NODES_LEN
+};
+
+struct cfg_location {
+	size_t line;
+	size_t column;
+};
+
+#define CFG_NODE(name, data) typedef data name##_t;
+CFG_NODES
+#undef CFG_NODE
+
+struct cfg_node {
+	enum cfg_node_type type;
+
+	struct cfg_location from;
+	struct cfg_location to;
+
+	struct cfg_node *next_sibling;
+
+#define CFG_NODE(name, data) name##_t name;
+	union {
+		CFG_NODES
+	};
+#undef CFG_NODE
+};
+
+extern struct string cfg_node_names[CFG_NODES_LEN];
+
+/* #define CFG_JOBS \ */
+/* 	CFG_JOB(DISCOVER) \ */
+
+
+
+
+
+
+
+
+
 enum config_binary_op {
 	CONFIG_OP_ASSIGN,
 	CONFIG_OP_BIND,
@@ -165,4 +325,5 @@ int parse_config_file(struct string filename, struct atom_table *table,
 int apply_config(struct stage *, struct config_node *);
 
 void config_tree_print(struct config_node *node);
+void cfg_tree_print(struct cfg_node *node);
 #endif

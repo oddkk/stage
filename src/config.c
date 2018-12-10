@@ -12,6 +12,15 @@
 
 #define APPLY_DEBUG 0
 
+struct string cfg_node_names[] = {
+#define CFG_NODE(name, data) STR(#name),
+	CFG_NODES
+#undef CFG_NODE
+};
+
+
+
+
 enum apply_node_type {
 	APPLY_NODE_DEVICE_TYPE,
 	APPLY_NODE_DEVICE_TYPE_CHANNEL,

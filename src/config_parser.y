@@ -40,7 +40,7 @@
 		FILE *fp;
 		char buf[BUFFER_SIZE + YYMAXFILL];
 		size_t head;
-		struct config_node *module;
+		struct cfg_node *module;
 	};
 
 	bool config_parse_fill(struct lex_context *ctx, size_t need) {
@@ -68,7 +68,7 @@
 		return true;
 	}
 
-	struct config_node *_alloc_node(struct lex_context *ctx, enum config_node_type type, YYLTYPE loc) {
+	struct config_node *_alloc_node_old(struct lex_context *ctx, enum config_node_type type, YYLTYPE loc) {
 		struct config_node *res;
 
 		res = arena_alloc_struct(ctx->memory, struct config_node);
@@ -90,19 +90,49 @@
 		*first_child = node;
 	}
 
-	static struct config_node *make_list(struct lex_context *ctx, struct config_node *head, struct config_node *tail) {
-		struct config_node *list_node;
-		YYLTYPE loc = {0};
+	/* static struct config_node *make_list(struct lex_context *ctx, struct config_node *head, struct config_node *tail) { */
+	/* 	struct config_node *list_node; */
+	/* 	YYLTYPE loc = {0}; */
 
-		list_node = _alloc_node(ctx, CONFIG_NODE_INTERNAL_LIST, loc);
-		list_node->internal_list.head = head;
-		list_node->internal_list.tail = tail;
+	/* 	list_node = _alloc_node(ctx, CONFIG_NODE_INTERNAL_LIST, loc); */
+	/* 	list_node->internal_list.head = head; */
+	/* 	list_node->internal_list.tail = tail; */
 
-		return list_node;
-	}
+	/* 	return list_node; */
+	/* } */
 
 	int yylex(YYSTYPE *, YYLTYPE *, struct lex_context *);
 	void yyerror(YYLTYPE *loc, struct lex_context *, const char *);
+
+	struct cfg_node *_alloc_node(struct lex_context *ctx, enum cfg_node_type type, YYLTYPE loc) {
+		struct cfg_node *res;
+
+		res = arena_alloc_struct(ctx->memory, struct cfg_node);
+		res->type = type;
+
+		res->from.line   = loc.first_line;
+		res->from.column = loc.first_column;
+
+		res->to.line     = loc.last_line;
+		res->to.column   = loc.last_column;
+
+		return res;
+	}
+
+#define CFG_NODE(name, data) \
+	struct cfg_node *_mknode##name(struct lex_context *ctx,	\
+								   YYLTYPE loc,				\
+								   name##_t value) {		\
+		struct cfg_node *result;							\
+		result = _alloc_node(ctx, CFG_NODE_##name, loc);	\
+		result->name = value;								\
+		return result;										\
+	}
+
+	CFG_NODES
+#undef CFG_NODE
+
+#define MKNODE(type, ...) _mknode##type(ctx, yylloc, (type##_t){__VA_ARGS__})
 }
 
 %token END 0
@@ -128,7 +158,21 @@
 /* %type	<struct config_node*> array_lit array_lit_body */
 /* %type	<struct tmp_range> range */
 
-%type <struct atom *> IDENTIFIER ident
+%type <struct cfg_node *> module stmt_list stmt stmt1 attr_list attr
+%type <struct cfg_node *> decl_stmt decl enum_items enum_item use_stmt
+%type <struct cfg_node *> use_expr use_expr1 func_stmt assign_stmt
+%type <struct cfg_node *> bind_stmt bind_left_expr namespace_stmt
+%type <struct cfg_node *> namespace_ident expr expr1 subscript_expr
+%type <struct cfg_node *> l_expr type_expr lambda func_proto func_call
+%type <struct cfg_node *> tuple_decl named_tuple_decl named_tuple_decl_item
+%type <struct cfg_node *> unnamed_tuple_decl unnamed_tuple_decl_item
+%type <struct cfg_node *> tuple_lit named_tuple_lit named_tuple_lit_item
+%type <struct cfg_node *> unnamed_tuple_lit unnamed_tuple_lit_item
+%type <struct cfg_node *> array_lit array_lit_body array_lit_item
+%type <struct cfg_node *> ident numlit
+
+
+%type <struct atom *> IDENTIFIER
 %type <scalar_value> NUMLIT
 
 %left '<' '>' "<=" ">=" "!=" "=="
@@ -141,75 +185,81 @@
 
 %%
 
-module:			stmt_list
+module:			stmt_list {
+	$$ = MKNODE(MODULE, .body=$1);
+	assert(ctx->module == NULL);
+	ctx->module = $$;
+ }
 		;
 
-stmt_list:		stmt_list stmt
-		|		%empty
+stmt_list:		stmt_list stmt              { $$ = MKNODE(INTERNAL_LIST, .head=$2, .tail=$1); }
+		|		%empty                      { $$ = NULL; }
 		;
 
-stmt:			stmt1
-		|		'[' attr_list ']' stmt1
-		|		'[' attr_list ',' ']' stmt1
+stmt:			stmt1                       { $$ = MKNODE(STMT, .stmt=$1); }
+		|		'[' attr_list ']' stmt1     { $$ = MKNODE(STMT, .stmt=$4, .attrs=$2); }
+		|		'[' attr_list ',' ']' stmt1 { $$ = MKNODE(STMT, .stmt=$5, .attrs=$2); }
 		;
 
-attr_list:		attr_list ',' attr
-		|		attr
+attr_list:		attr_list ',' attr { $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
+		|		attr               { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
 		;
 
-attr:			expr
+attr:			expr               { $$ = NULL; }
 		;
 
-stmt1:			';'
-		|		decl_stmt
-		|		namespace_stmt
-		|		func_stmt      ';'
-		|		assign_stmt    ';'
-		|		bind_stmt      ';'
-		|		use_stmt       ';'
-		|		error          ';'
+stmt1:			';'                { $$ = NULL; }
+		|		decl_stmt          { $$ = $1; }
+		|		namespace_stmt     { $$ = $1; }
+		|		func_stmt      ';' { $$ = $1; }
+		|		assign_stmt    ';' { $$ = $1; }
+		|		bind_stmt      ';' { $$ = $1; }
+		|		use_stmt       ';' { $$ = $1; }
+		|		error          ';' { $$ = NULL; }
 		;
 
-decl_stmt:		ident "::" decl
-		|		ident tuple_decl "::" decl
+decl_stmt:		ident "::" decl            { $$ = MKNODE(DECL_STMT, .name=$1, .decl=$3); }
+		|		ident tuple_decl "::" decl { $$ = MKNODE(DECL_STMT, .name=$1, .decl=$4, .args=$2); }
 		;
 
-decl:			l_expr ';'
-		|		"Enum" '{' enum_items '}'
-		|		"Enum" '{' error '}'
-		|		l_expr '{' stmt_list '}'
+decl:			l_expr ';'                 { $$ = $1; }
+		|		"Enum" '{' enum_items '}'  { $$ = MKNODE(ENUM_DECL, .items=$3); }
+		|		"Enum" '{' error '}'       { $$ = NULL; }
+		|		l_expr '{' stmt_list '}'   { $$ = MKNODE(OBJ_DECL, .ident=$1, .body=$3); }
 		/* |		l_expr '{' error '}' */
-		|		tuple_decl
+		|		tuple_decl                 { $$ = $1; }
 		;
 
-enum_items:		enum_items ',' enum_item
-		|		enum_item
+enum_items:		enum_items ',' enum_item   { $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
+		|		enum_item                  { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
 		;
 
-enum_item:		ident
-		|		ident tuple_decl
+enum_item:		IDENTIFIER                 { $$ = MKNODE(ENUM_ITEM, .name=$1); }
+		|		IDENTIFIER tuple_decl      { $$ = MKNODE(ENUM_ITEM, .name=$1, .data=$2); }
 		;
 
-use_stmt:		"use" use_expr
+use_stmt:		"use" use_expr             { $$ = MKNODE(USE_STMT, .ident=$2); }
 		;
 
-use_expr:		use_expr1
+use_expr:		use_expr1                  { $$ = $1; }
 		|		use_expr1 '.' '*'
+					{ $$ = MKNODE(ACCESS, .lhs=$1, .rhs=alloc_node(ctx, CFG_NODE_USE_ALL)); }
 		;
 
-use_expr1:		use_expr1 '.' ident
-		|		ident
+use_expr1:		use_expr1 '.' ident        { $$ = MKNODE(ACCESS, .lhs=$1, .rhs=$3); }
+		|		ident                      { $$ = $1; }
 		;
 
-func_stmt:		ident func_proto '=' expr
-		|		ident '=' expr
+func_stmt:		ident func_proto '=' expr  { $$ = MKNODE(FUNC_STMT, .ident=$1, .proto=$2, .body=$4); }
+		|		ident '=' expr             { $$ = MKNODE(FUNC_STMT, .ident=$1, .body=$3); }
 		;
 
-assign_stmt:	ident ':' '=' expr
+assign_stmt:	ident ':' '=' expr         { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .body=$4); }
 		|		ident ':' type_expr '=' expr
+					{ $$ = MKNODE(ASSIGN_STMT, .ident=$1, .body=$5, .type=$3); }
 		;
 
-bind_stmt:		l_expr "<-" bind_left_expr
+bind_stmt:		l_expr "<-" bind_left_expr { $$ = MKNODE(BIND, .src=$3, .drain=$1); }
 		/* |		bind_right_expr "->" l_expr */
 		;
 
@@ -219,150 +269,161 @@ bind_stmt:		l_expr "<-" bind_left_expr
 /* 		; */
 
 bind_left_expr:
-				bind_left_expr "<-" expr
-		|		expr
+				bind_left_expr "<-" expr { $$ = MKNODE(BIND, .src=$3, .drain=$1); }
+		|		expr                     { $$ = $1; }
 		;
 
 namespace_stmt:	"namespace" namespace_ident '{' stmt_list '}'
+					{ $$ = MKNODE(NAMESPACE, .name=$2, .body=$4); }
 		;
 
 namespace_ident:
-				ident
+				ident                    { $$ = $1; }
 		|		namespace_ident '.' ident
+					{ $$ = MKNODE(ACCESS, .lhs=$1, .rhs=$3); }
 		;
 
-expr:			expr1
-		|		lambda
+expr:			expr1                    { $$ = $1; }
+		|		lambda                   { $$ = $1; }
 		;
 
-expr1:  		tuple_lit
-		|		array_lit
-		|		l_expr
-		|		numlit
-		|		func_call
-		|		'$' ident
+expr1:  		tuple_lit                { $$ = $1; }
+		|		array_lit                { $$ = $1; }
+		|		l_expr                   { $$ = $1; }
+		|		numlit                   { $$ = $1; }
+		|		func_call                { $$ = $1; }
+		|		'$' IDENTIFIER           { $$ = MKNODE(TEMPLATE_VAR, .name=$2); }
 
-		|		expr1 '+' expr1
-		|		expr1 '-' expr1
-		|		expr1 '*' expr1
-		|		expr1 '/' expr1
+		|		expr1 '+' expr1          { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_ADD); }
+		|		expr1 '-' expr1          { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_SUB); }
+		|		expr1 '*' expr1          { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_MUL); }
+		|		expr1 '/' expr1          { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_DIV); }
 				// Should ranges be allowed?
 		/* |		expr1 ".." expr1 */
-		|		expr1 "==" expr1
-		|		expr1 "!=" expr1
-		|		expr1 "<=" expr1
-		|		expr1 ">=" expr1
-		|		expr1 '<' expr1
-		|		expr1 '>' expr1
+		|		expr1 "==" expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_EQ);  }
+		|		expr1 "!=" expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_NEQ); }
+		|		expr1 "<=" expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_LTE); }
+		|		expr1 ">=" expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_GTE); }
+		|		expr1 '<' expr1          { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_LT);  }
+		|		expr1 '>' expr1          { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_GT);  }
 		/* |		'(' expr ')' */
 		;
 
-subscript_expr:	expr
-		|		".."
-		|		expr ".."
-		|		".." expr
-		|		expr ".." expr
+subscript_expr:	expr                    { $$ = $1;  }
+		|		".."                    { $$ = MKNODE(BIN_OP, .lhs=NULL, .rhs=NULL, .op=CFG_OP_RANGE); }
+		|		expr ".."               { $$ = MKNODE(BIN_OP, .lhs=$1,   .rhs=NULL, .op=CFG_OP_RANGE); }
+		|		".." expr               { $$ = MKNODE(BIN_OP, .lhs=NULL, .rhs=$2,   .op=CFG_OP_RANGE); }
+		|		expr ".." expr          { $$ = MKNODE(BIN_OP, .lhs=$1,   .rhs=$3,   .op=CFG_OP_RANGE); }
 		;
 
-l_expr:			ident
-		|		l_expr '.' ident
+l_expr:			ident                   { $$ = $1; }
+		|		l_expr '.' ident        { $$ = MKNODE(ACCESS, .lhs=$1, .rhs=$3); }
 		|		l_expr '[' subscript_expr ']'
+					{ $$ = MKNODE(SUBSCRIPT, .lhs=$1, .index=$3); }
 		;
 
-type_expr:		l_expr
-		|		'$' ident
-		|		'$' ident '[' expr ']'
-		|		func_proto
-		|		tuple_decl
+type_expr:		l_expr                  { $$ = $1; }
+		|		'$' IDENTIFIER          { $$ = MKNODE(TEMPLATE_VAR, .name=$2); }
+		|		'$' IDENTIFIER '[' expr ']'
+					{ $$ = MKNODE(SUBSCRIPT, .lhs=MKNODE(TEMPLATE_VAR, .name=$2), .index=$4); }
+		|		func_proto              { $$ = $1; }
+		|		tuple_decl              { $$ = $1; }
 		//		Array declarations are handled by l_expr
 		//		 |		array_decl
-		|		func_call
+		|		func_call               { $$ = $1; }
 		;
 
-lambda:
+lambda:			'\\' ident expr1       { $$ = MKNODE(LAMBDA, .proto=$2, .body=$3); }
+		|		'\\' tuple_decl expr1  { $$ = MKNODE(LAMBDA, .proto=$2, .body=$3); }
 				/* '\\' func_proto expr1 */
-				'\\' ident expr1
-		|		'\\' tuple_decl expr1
 		/* |		'\\' '(' func_params ')' expr */
 		;
 
 func_proto:		tuple_decl "->" type_expr
+					{ $$ = MKNODE(FUNC_PROTO, .params=$1, .ret=$3); }
 		;
 
-func_call:		l_expr tuple_lit
+func_call:		l_expr tuple_lit       { $$ = MKNODE(FUNC_CALL, .ident=$1, .params=$2); }
 		;
 
 
-tuple_decl:		'(' named_tuple_decl ')'
-		|		'(' named_tuple_decl ',' ')'
-		|		'(' unnamed_tuple_decl ')'
-		|		'(' unnamed_tuple_decl ',' ')'
+tuple_decl:		'(' named_tuple_decl ')'       { $$ = MKNODE(TUPLE_DECL, .items=$2, .named=true);  }
+		|		'(' named_tuple_decl ',' ')'   { $$ = MKNODE(TUPLE_DECL, .items=$2, .named=true);  }
+		|		'(' unnamed_tuple_decl ')'     { $$ = MKNODE(TUPLE_DECL, .items=$2, .named=false); }
+		|		'(' unnamed_tuple_decl ',' ')' { $$ = MKNODE(TUPLE_DECL, .items=$2, .named=false); }
 		;
 
 named_tuple_decl:
 				named_tuple_decl ',' named_tuple_decl_item
-		|		named_tuple_decl_item
+					{ $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
+		|		named_tuple_decl_item          { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
 		;
 
 named_tuple_decl_item:
-				ident ':' type_expr
+				IDENTIFIER ':' type_expr       { $$ = MKNODE(TUPLE_DECL_ITEM, .name=$1, .type=$3); }
 		;
 
 unnamed_tuple_decl:
 				unnamed_tuple_decl ',' unnamed_tuple_decl_item
-		|		unnamed_tuple_decl_item
+					{ $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
+		|		unnamed_tuple_decl_item        { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
 		;
 
 unnamed_tuple_decl_item:
-				type_expr
+				type_expr                      { $$ = MKNODE(TUPLE_DECL_ITEM, .name=NULL, .type=$1); }
 		;
 
-tuple_lit:		'(' named_tuple_lit ')'
-		|		'(' named_tuple_lit ',' ')'
+tuple_lit:		'(' named_tuple_lit ')'        { $$ = MKNODE(TUPLE_LIT, .items=$2, .named=true); }
+		|		'(' named_tuple_lit ',' ')'    { $$ = MKNODE(TUPLE_LIT, .items=$2, .named=true); }
 		/* |		'(' named_tuple_lit_item ',' "..." ')' */
-		|		'(' unnamed_tuple_lit ')'
-		|		'(' unnamed_tuple_lit ',' ')'
+		|		'(' unnamed_tuple_lit ')'      { $$ = MKNODE(TUPLE_LIT, .items=$2, .named=false); }
+		|		'(' unnamed_tuple_lit ',' ')'  { $$ = MKNODE(TUPLE_LIT, .items=$2, .named=false); }
 		/* |		'(' unnamed_tuple_lit_item ',' "..." ')' */
 		;
 
 named_tuple_lit:
 				named_tuple_lit ',' named_tuple_lit_item
-		|		named_tuple_lit_item
+					{ $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
+		|		named_tuple_lit_item           { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
 		;
 
 named_tuple_lit_item:
-				ident '=' expr
+				IDENTIFIER '=' expr            { $$ = MKNODE(TUPLE_LIT_ITEM, .name=$1, .value=$3); }
 		;
 
 unnamed_tuple_lit:
 				unnamed_tuple_lit ',' unnamed_tuple_lit_item
-		|		unnamed_tuple_lit_item
+					{ $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
+		|		unnamed_tuple_lit_item         { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
 		;
 
 unnamed_tuple_lit_item:
-				expr
+				expr                           { $$ = MKNODE(TUPLE_LIT_ITEM, .name=NULL, .value=$1); }
 		;
 
 /* array_decl:		type_expr '[' expr ']' */
 /* 		; */
 
-array_lit:		'[' array_lit_body ']'
-		|		'[' array_lit_body ',' ']'
-		|		'[' ']'
+array_lit:		'[' array_lit_body ']'         { $$ = MKNODE(ARRAY_LIT, .items=$2); }
+		|		'[' array_lit_body ',' ']'     { $$ = MKNODE(ARRAY_LIT, .items=$2); }
+		|		'[' ']'                        { $$ = MKNODE(ARRAY_LIT, .items=NULL); }
 		;
 
 array_lit_body:
 				array_lit_body ',' array_lit_item
-		|		array_lit_item
+					{ $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
+		|		array_lit_item                 { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
 		;
 
-array_lit_item:	expr
+array_lit_item:	expr                           { $$ = $1; }
 		;
 
 ident:			IDENTIFIER
+					{ $$ = alloc_node(ctx, CFG_NODE_IDENT); $$->IDENT = $1; }
 		;
 
 numlit:			NUMLIT
+					{ $$ = alloc_node(ctx, CFG_NODE_NUM_LIT); $$->NUM_LIT = $1; }
 		;
 
 
@@ -692,8 +753,11 @@ int parse_config_file(struct string filename, struct atom_table *table, struct a
 		return err;
 	}
 
-	config_tree_clean(ctx.module);
-	*out_node = ctx.module;
+	cfg_tree_print(ctx.module);
+
+	/* config_tree_clean(ctx.module); */
+	/* *out_node = ctx.module; */
+	*out_node = NULL;
 
 	return 0;
 }
