@@ -33,17 +33,6 @@ static char *_cfg_bin_op_sym(enum cfg_bin_op op) {
 	_print_indent(depth + 1);								\
 	printf(#member ": %.*s\n", ALIT(node->type.member));
 
-static void _cfg_tree_print(struct cfg_node *node, int depth);
-
-static void _cfg_tree_print_list(struct cfg_node *node, int depth) {
-	if (!node) {
-		return;
-	}
-	assert(node->type == CFG_NODE_INTERNAL_LIST);
-	_cfg_tree_print_list(node->INTERNAL_LIST.tail, depth);
-	_cfg_tree_print(node->INTERNAL_LIST.head, depth);
-}
-
 static void _cfg_tree_print(struct cfg_node *node, int depth) {
 	_print_indent(depth);
 
@@ -55,10 +44,6 @@ static void _cfg_tree_print(struct cfg_node *node, int depth) {
 	printf("%.*s:\n", LIT(cfg_node_names[node->type]));
 
 	switch (node->type) {
-	case CFG_NODE_INTERNAL_LIST:
-		_cfg_tree_print_list(node, depth + 1);
-		return;
-
 	case CFG_NODE_BIN_OP:
 		_print_indent(depth + 1);
 		printf("op: %s\n", _cfg_bin_op_sym(node->BIN_OP.op));
@@ -86,9 +71,13 @@ static void _cfg_tree_print(struct cfg_node *node, int depth) {
 
 #define TREE_VISIT_NODE(node, type, member) TREE_PRINT_VISIT(node, type, member)
 #define TREE_VISIT_ATOM(node, type, member) TREE_PRINT_ATOM(node, type, member)
-	CFG_NODE_VISIT
+	CFG_NODE_VISIT(node)
 #undef TREE_VISIT_NODE
 #undef TREE_VISIT_ATOM
+
+	if (node->next_sibling) {
+		_cfg_tree_print(node->next_sibling, depth);
+	}
 }
 
 void cfg_tree_print(struct cfg_node *node) {
