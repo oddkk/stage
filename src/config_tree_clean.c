@@ -1,6 +1,26 @@
 #include "config.h"
 #include "utils.h"
 
+void cfg_tree_clean(struct cfg_node *node) {
+	if (!node) {
+		return;
+	}
+
+	switch (node->type) {
+	case CFG_NODE_INTERNAL_LIST:
+		break;
+
+	default:
+		break;
+	}
+
+#define TREE_VISIT_NODE(node, type, member) cfg_tree_clean(node->type.member)
+#define TREE_VISIT_ATOM(node, type, member)
+	CFG_NODE_VISIT
+#undef TREE_VISIT_NODE
+#undef TREE_VISIT_ATOM
+}
+
 static void collapse_tree_nodes(struct config_node *tree) {
 	if (!tree) {
 		return;

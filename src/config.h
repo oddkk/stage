@@ -153,8 +153,138 @@ struct cfg_node {
 
 extern struct string cfg_node_names[CFG_NODES_LEN];
 
-/* #define CFG_JOBS \ */
-/* 	CFG_JOB(DISCOVER) \ */
+#define CFG_NODE_VISIT										\
+	switch (node->type) {									\
+	case CFG_NODE_INTERNAL_LIST:							\
+		TREE_VISIT_NODE(node, INTERNAL_LIST, head);			\
+		TREE_VISIT_NODE(node, INTERNAL_LIST, tail);			\
+		break;												\
+															\
+	case CFG_NODE_MODULE:									\
+		TREE_VISIT_NODE(node, MODULE, body);				\
+		break;												\
+															\
+	case CFG_NODE_STMT:										\
+		TREE_VISIT_NODE(node, STMT, attrs);					\
+		TREE_VISIT_NODE(node, STMT, stmt);					\
+		break;												\
+															\
+	case CFG_NODE_DECL_STMT:								\
+		TREE_VISIT_NODE(node, DECL_STMT, name);				\
+		TREE_VISIT_NODE(node, DECL_STMT, args);				\
+		TREE_VISIT_NODE(node, DECL_STMT, decl);				\
+		break;												\
+															\
+	case CFG_NODE_OBJ_DECL:									\
+		TREE_VISIT_NODE(node, OBJ_DECL, ident);				\
+		TREE_VISIT_NODE(node, OBJ_DECL, body);				\
+		break;												\
+															\
+	case CFG_NODE_ENUM_DECL:								\
+		TREE_VISIT_NODE(node, ENUM_DECL, items);			\
+		break;												\
+															\
+	case CFG_NODE_ENUM_ITEM:								\
+		TREE_VISIT_ATOM(node, ENUM_ITEM, name);				\
+		TREE_VISIT_NODE(node, ENUM_ITEM, data);				\
+		break;												\
+															\
+	case CFG_NODE_USE_STMT:									\
+		TREE_VISIT_NODE(node, USE_STMT, ident);				\
+		break;												\
+															\
+	case CFG_NODE_USE_ALL:									\
+		break;												\
+															\
+	case CFG_NODE_FUNC_STMT:								\
+		TREE_VISIT_NODE(node, FUNC_STMT, ident);			\
+		TREE_VISIT_NODE(node, FUNC_STMT, proto);			\
+		TREE_VISIT_NODE(node, FUNC_STMT, body);				\
+		break;												\
+															\
+	case CFG_NODE_FUNC_PROTO:								\
+		TREE_VISIT_NODE(node, FUNC_PROTO, params);			\
+		TREE_VISIT_NODE(node, FUNC_PROTO, ret);				\
+		break;												\
+															\
+	case CFG_NODE_ASSIGN_STMT:								\
+		TREE_VISIT_NODE(node, ASSIGN_STMT, ident);			\
+		TREE_VISIT_NODE(node, ASSIGN_STMT, type);			\
+		TREE_VISIT_NODE(node, ASSIGN_STMT, body);			\
+		break;												\
+															\
+	case CFG_NODE_BIND:										\
+		TREE_VISIT_NODE(node, BIND, src);					\
+		TREE_VISIT_NODE(node, BIND, drain);					\
+		break;												\
+															\
+	case CFG_NODE_NAMESPACE:								\
+		TREE_VISIT_NODE(node, NAMESPACE, name);				\
+		TREE_VISIT_NODE(node, NAMESPACE, body);				\
+		break;												\
+															\
+	case CFG_NODE_TEMPLATE_VAR:								\
+		TREE_VISIT_ATOM(node, TEMPLATE_VAR, name);			\
+		break;												\
+															\
+	case CFG_NODE_ACCESS:									\
+		TREE_VISIT_NODE(node, ACCESS, lhs);					\
+		TREE_VISIT_NODE(node, ACCESS, rhs);					\
+		break;												\
+															\
+	case CFG_NODE_SUBSCRIPT:								\
+		TREE_VISIT_NODE(node, SUBSCRIPT, lhs);				\
+		TREE_VISIT_NODE(node, SUBSCRIPT, index);			\
+		break;												\
+															\
+	case CFG_NODE_BIN_OP:									\
+		TREE_VISIT_NODE(node, BIN_OP, lhs);					\
+		TREE_VISIT_NODE(node, BIN_OP, rhs);					\
+		break;												\
+															\
+	case CFG_NODE_LAMBDA:									\
+		TREE_VISIT_NODE(node, LAMBDA, proto);				\
+		TREE_VISIT_NODE(node, LAMBDA, body);				\
+		break;												\
+															\
+	case CFG_NODE_FUNC_CALL:								\
+		TREE_VISIT_NODE(node, FUNC_CALL, ident);			\
+		TREE_VISIT_NODE(node, FUNC_CALL, params);			\
+		break;												\
+															\
+	case CFG_NODE_TUPLE_DECL:								\
+		TREE_VISIT_NODE(node, TUPLE_DECL, items);			\
+		break;												\
+															\
+	case CFG_NODE_TUPLE_DECL_ITEM:							\
+		TREE_VISIT_ATOM(node, TUPLE_DECL_ITEM, name);		\
+		TREE_VISIT_NODE(node, TUPLE_DECL_ITEM, type);		\
+		break;												\
+															\
+	case CFG_NODE_TUPLE_LIT:								\
+		TREE_VISIT_NODE(node, TUPLE_LIT, items);			\
+		break;												\
+															\
+	case CFG_NODE_TUPLE_LIT_ITEM:							\
+		TREE_VISIT_ATOM(node, TUPLE_LIT_ITEM, name);		\
+		TREE_VISIT_NODE(node, TUPLE_LIT_ITEM, value);		\
+		break;												\
+															\
+	case CFG_NODE_ARRAY_LIT:								\
+		TREE_VISIT_NODE(node, ARRAY_LIT, items);			\
+		break;												\
+															\
+	case CFG_NODE_NUM_LIT:									\
+		break;												\
+															\
+	case CFG_NODE_IDENT:									\
+		break;												\
+															\
+	case CFG_NODES_LEN:										\
+		assert(false);										\
+		break;												\
+															\
+	}														\
 
 
 

@@ -721,6 +721,7 @@ void yyerror(YYLTYPE *lloc, struct lex_context *ctx, const char *error) {
 		   lloc->first_line, lloc->first_column, error);
 }
 
+void cfg_tree_clean(struct cfg_node *tree);
 void config_tree_clean(struct config_node *tree);
 
 int parse_config_file(struct string filename, struct atom_table *table, struct arena *memory, struct config_node **out_node) {
@@ -752,6 +753,8 @@ int parse_config_file(struct string filename, struct atom_table *table, struct a
 	if (err) {
 		return err;
 	}
+
+	cfg_tree_clean(ctx.module);
 
 	cfg_tree_print(ctx.module);
 
