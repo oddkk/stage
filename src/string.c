@@ -1,6 +1,7 @@
 #include "string.h"
 #include "arena.h"
 #include <string.h>
+#include <stdlib.h>
 
 bool string_equal(struct string lhs, struct string rhs)
 {
@@ -19,15 +20,30 @@ int string_duplicate(struct arena *arena, struct string *dest,
 		     struct string src)
 {
 	dest->length = src.length;
-	dest->text = arena_alloc(arena, src.length);
+	dest->text = arena_alloc(arena, src.length + 1);
 
 	if (!dest->text) {
 		return -1;
 	}
 
+	dest->text[src.length] = 0;
 	memcpy(dest->text, src.text, dest->length);
 
 	return 0;
+}
+
+struct string string_duplicate_cstr(char *str)
+{
+	struct string result = {0};
+
+	result.length = strlen(str);
+	result.text = calloc(sizeof(char), result.length + 1);
+
+	if (!result.text) {
+		result.length = 0;
+	}
+
+	return result;
 }
 
 int64_t string_to_int64_base2(struct string str)

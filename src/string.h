@@ -18,6 +18,8 @@ struct arena;
 int string_duplicate(struct arena *arena, struct string *dest,
 		     struct string src);
 
+struct string string_duplicate_cstr(char *str);
+
 int64_t string_to_int64_base2(struct string str);
 int64_t string_to_int64_base10(struct string str);
 int64_t string_to_int64_base16(struct string str);

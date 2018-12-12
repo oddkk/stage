@@ -10,13 +10,14 @@
 //    at init instead of as part of device type definition.
 //  * Clean up config.c
 
-#include "stage.h"
-#include "channel.h"
-#include "device.h"
-#include "device_type.h"
+/* #include "stage.h" */
+/* #include "channel.h" */
+/* #include "device.h" */
+/* #include "device_type.h" */
 #include "utils.h"
+#include "vm.h"
 #include "config.h"
-#include "websocket.h"
+/* #include "websocket.h" */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +38,8 @@
 #ifdef STAGE_TEST
 #define main _main
 #endif
+
+#define NSEC (1000000000)
 
 static bool should_quit = false;
 
@@ -99,86 +102,106 @@ static bool check_clock_support()
 int main(int argc, char *argv[])
 {
 	int err;
-	struct stage stage;
+	/* struct stage stage; */
 	struct timespec tick_begin;
 	struct timespec frame_duration;
-	struct config_node *node;
+	/* struct config_node *node; */
 
 	if (!check_clock_support()) {
 		panic("No alternative clock supported yet.");
 	}
 
-	err = stage_init(&stage);
-	if (err) {
-		return err;
-	}
+	/* err = stage_init(&stage); */
+	/* if (err) { */
+	/* 	return err; */
+	/* } */
 
 	/* struct device *dev; */
 	/* dev = register_device_pre_attrs(&stage, 0, &stage.root_scope, SATOM(&stage, "c"), NULL); */
 	/* finalize_device(&stage, dev); */
 
-	err = parse_config_file(STR("config/alt.stg"), &stage.atom_table,
-							&stage.memory, &node);
+	/* err = parse_config_file(STR("config/alt.stg"), &stage.atom_table, */
+	/* 						&stage.memory, &node); */
 
-	if (err) {
-		return err;
-	}
+	/* if (err) { */
+	/* 	return err; */
+	/* } */
 
 	/* config_tree_print(node); */
 
-	err = apply_config(&stage, node);
+	/* err = apply_config(&stage, node); */
+	/* if (err) { */
+	/* 	return err; */
+	/* } */
+
+
+/* #if 0 */
+/* 	printf */
+/* 	    ("============================ types ============================\n"); */
+/* 	for (int i = 0; i < stage.num_types; i++) { */
+/* 		struct type *type; */
+
+/* 		type = get_type(&stage, i); */
+
+/* 		print_type(stdout, &stage, type); */
+/* 		printf(" "); */
+/* 		expand_type(stdout, &stage, type, false); */
+/* 		//expand_type(&stage, type, true); */
+/* 		printf("\n"); */
+/* 	} */
+/* 	printf("\n"); */
+
+/* 	printf */
+/* 	    ("======================== devices_types ========================\n"); */
+/* 	for (int i = 0; i < stage.num_device_types; i++) { */
+/* 		struct device_type *dev_type; */
+
+/* 		dev_type = get_device_type(&stage, i); */
+
+/* 		describe_device_type(&stage, dev_type); */
+/* 		printf("\n"); */
+/* 	} */
+
+/* 	printf */
+/* 	    ("=========================== devices ===========================\n"); */
+/* 	for (int i = 0; i < stage.num_devices; i++) { */
+/* 		struct device *dev; */
+
+/* 		dev = get_device(&stage, i); */
+
+/* 		describe_device(&stage, dev); */
+/* 		printf("\n"); */
+/* 	} */
+/* #endif */
+
+	/* stage.tick_period = NSEC / 1000; */
+
+	/* struct websocket_context ws = {{0}}; */
+
+	/* websocket_init(&ws, "0.0.0.0", "6060"); */
+
+	/* frame_duration.tv_sec = stage.tick_period / NSEC; */
+	/* frame_duration.tv_nsec = stage.tick_period % NSEC; */
+
+	struct vm vm;
+
+	err = vm_init(&vm);
 	if (err) {
-		return err;
+		printf("Failed to initialize vm.\n");
+		return -1;
+	}
+
+	err = cfg_compile(&vm, STR("./config/"));
+	if (err) {
+		printf("Failed to compile config.\n");
+		return -1;
 	}
 
 
-#if 0
-	printf
-	    ("============================ types ============================\n");
-	for (int i = 0; i < stage.num_types; i++) {
-		struct type *type;
+	uint64_t tick_period = NSEC / 1000;
 
-		type = get_type(&stage, i);
-
-		print_type(stdout, &stage, type);
-		printf(" ");
-		expand_type(stdout, &stage, type, false);
-		//expand_type(&stage, type, true);
-		printf("\n");
-	}
-	printf("\n");
-
-	printf
-	    ("======================== devices_types ========================\n");
-	for (int i = 0; i < stage.num_device_types; i++) {
-		struct device_type *dev_type;
-
-		dev_type = get_device_type(&stage, i);
-
-		describe_device_type(&stage, dev_type);
-		printf("\n");
-	}
-
-	printf
-	    ("=========================== devices ===========================\n");
-	for (int i = 0; i < stage.num_devices; i++) {
-		struct device *dev;
-
-		dev = get_device(&stage, i);
-
-		describe_device(&stage, dev);
-		printf("\n");
-	}
-#endif
-
-	stage.tick_period = NSEC / 1000;
-
-	struct websocket_context ws = {{0}};
-
-	websocket_init(&ws, "0.0.0.0", "6060");
-
-	frame_duration.tv_sec = stage.tick_period / NSEC;
-	frame_duration.tv_nsec = stage.tick_period % NSEC;
+	frame_duration.tv_sec = tick_period / NSEC;
+	frame_duration.tv_nsec = tick_period % NSEC;
 	tick_begin = read_time();
 
 	signal(SIGINT, stage_signal_handler);
@@ -187,7 +210,7 @@ int main(int argc, char *argv[])
 		struct timespec tick_end_desired;
 		int clock_err;
 
-		stage_tick(&stage);
+		/* stage_tick(&stage); */
 
 		tick_end_desired = timespec_add(tick_begin, frame_duration);
 
@@ -201,7 +224,7 @@ int main(int argc, char *argv[])
 		tick_begin = read_time();
 	}
 
-	stage_destroy(&stage);
+	/* stage_destroy(&stage); */
 
 	return 0;
 }

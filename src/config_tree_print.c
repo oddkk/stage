@@ -56,7 +56,12 @@ static void _cfg_tree_print(struct cfg_node *node, int depth) {
 
 	case CFG_NODE_NUM_LIT:
 		_print_indent(depth + 1);
-		printf("%i\n", node->NUM_LIT);
+		printf("%li\n", node->NUM_LIT);
+		break;
+
+	case CFG_NODE_STR_LIT:
+		_print_indent(depth + 1);
+		printf("\"%.*s\"\n", LIT(node->STR_LIT));
 		break;
 
 	case CFG_NODE_IDENT:

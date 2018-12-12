@@ -8,23 +8,28 @@ struct cfg_node_ll {
 struct cfg_node_ll _cfg_tree_clean_list(struct cfg_node *node) {
 	assert(node->type == CFG_NODE_INTERNAL_LIST);
 
-	if (!node->INTERNAL_LIST.tail) {
-		struct cfg_node_ll res;
+	struct cfg_node_ll res = {0};
 
+	if (!node->INTERNAL_LIST.tail) {
 		res.first = node->INTERNAL_LIST.head;
 		res.last = res.first;
-
-		return res;
 	} else {
-		struct cfg_node_ll res;
-
 		res = _cfg_tree_clean_list(node->INTERNAL_LIST.tail);
 
-		res.last->next_sibling = node->INTERNAL_LIST.head;
-		res.last = node->INTERNAL_LIST.head;
+		if (res.last) {
+			res.last->next_sibling = node->INTERNAL_LIST.head;
+		} else {
+			assert(!res.first);
+			res.first = node->INTERNAL_LIST.head;
+		}
 
-		return res;
+		if (node->INTERNAL_LIST.head) {
+			res.last = node->INTERNAL_LIST.head;
+		}
+
 	}
+
+	return res;
 }
 
 void cfg_tree_clean(struct cfg_node **node) {
@@ -40,6 +45,10 @@ void cfg_tree_clean(struct cfg_node **node) {
 
 	default:
 		break;
+	}
+
+	if (!(*node)) {
+		return;
 	}
 
 #define TREE_VISIT_NODE(node, type, member) cfg_tree_clean(&node->type.member)

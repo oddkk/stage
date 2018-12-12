@@ -24,7 +24,7 @@ struct scope_entry {
 	struct atom *name;
 	enum scope_entry_kind kind;
 	struct scoped_hash *scope;
-	struct config_node *config_node;
+	struct cfg_node *config_node;
 
 	int id;
 	int length;
