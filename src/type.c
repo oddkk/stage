@@ -244,7 +244,7 @@ static struct type *alloc_type(struct stage *stage)
 	return type;
 }
 
-struct type *register_type(struct stage *stage, struct type def)
+struct type *register_old_type(struct stage *stage, struct type def)
 {
 	struct type *type;
 	type = alloc_type(stage);
@@ -309,7 +309,7 @@ struct type *register_scalar_type(struct stage *stage, struct atom *name,
 	new_type.scalar.min = min;
 	new_type.scalar.max = max;
 
-	return register_type(stage, new_type);
+	return register_old_type(stage, new_type);
 }
 
 struct type *register_tuple_type(struct stage *stage, struct atom *name,
@@ -328,7 +328,7 @@ struct type *register_tuple_type(struct stage *stage, struct atom *name,
 	memcpy(new_type.tuple.types, subtypes,
 	       sizeof(type_id) * new_type.tuple.length);
 
-	return register_type(stage, new_type);
+	return register_old_type(stage, new_type);
 }
 
 struct type *register_named_tuple_type(struct stage *stage, struct atom *name,
@@ -345,7 +345,7 @@ struct type *register_named_tuple_type(struct stage *stage, struct atom *name,
 
 	memcpy(new_type.tuple.types, members, sizeof(struct named_tuple_member) * num_members);
 
-	return register_type(stage, new_type);
+	return register_old_type(stage, new_type);
 }
 
 struct type *register_array_type(struct stage *stage, struct atom *name,
@@ -359,7 +359,7 @@ struct type *register_array_type(struct stage *stage, struct atom *name,
 	new_type.array.type = type;
 	new_type.array.length = length;
 
-	return register_type(stage, new_type);
+	return register_old_type(stage, new_type);
 }
 
 struct type *register_template_length_array_type_str(struct stage *stage,
@@ -391,7 +391,7 @@ struct type *register_template_length_array_type(struct stage *stage,
 	new_type.array.length_template_field = length_pattern;
 
 	struct type *final_type;
-	final_type = register_type(stage, new_type);
+	final_type = register_old_type(stage, new_type);
 
 	int id;
 	struct type_template_field field = {0};
@@ -426,7 +426,7 @@ struct type *register_template_type(struct stage *stage, struct atom *name, stru
 
 
 	struct type *final_type;
-	final_type = register_type(stage, new_type);
+	final_type = register_old_type(stage, new_type);
 
 	struct type_template_field template_field = {0};
 	template_field.expected_type = stage->standard_types.type;
@@ -553,13 +553,13 @@ void register_default_types(struct stage *stage)
 	struct type string_type = {0};
 	string_type.kind = TYPE_KIND_STRING;
 	string_type.name = atom_create(&stage->atom_table, STR("string"));
-	stage->standard_types.string = register_type(stage, string_type)->id;
+	stage->standard_types.string = register_old_type(stage, string_type)->id;
 
 
 	struct type type_type = {0};
 	type_type.kind = TYPE_KIND_TYPE;
 	type_type.name = atom_create(&stage->atom_table, STR("type"));
-	stage->standard_types.type = register_type(stage, type_type)->id;
+	stage->standard_types.type = register_old_type(stage, type_type)->id;
 	register_type_name(stage, stage->standard_types.type, &stage->root_scope, type_type.name);
 }
 

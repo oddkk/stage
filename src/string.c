@@ -1,7 +1,10 @@
 #include "string.h"
 #include "arena.h"
+#include "utils.h"
 #include <string.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 bool string_equal(struct string lhs, struct string rhs)
 {
@@ -44,6 +47,54 @@ struct string string_duplicate_cstr(char *str)
 	}
 
 	return result;
+}
+
+struct string arena_sprintf(struct arena *arena, char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	char *out = (char *)&arena->data[arena->head];
+
+	size_t cap = arena->capacity - arena->head;
+	int err;
+	err = vsnprintf(out, cap, fmt, ap);
+
+	va_end(ap);
+
+	struct string result = {0};
+
+	if (err < 0) {
+		perror("vsnprintf");
+		return result;
+	}
+
+	if (err >= cap) {
+		printf("Warning: String truncated due to insufficient space in arena.\n");
+		err = (int)cap;
+	}
+
+	result.text = out;
+	result.length = err;
+
+	return result;
+}
+
+int arena_string_append(struct arena *mem, struct string *str, struct string in)
+{
+	assert((mem->data + mem->head) == (uint8_t *)(str->text + str->length));
+
+	uint8_t *appendage = arena_alloc(mem, in.length);
+
+	if (!appendage) {
+		return -1;
+	}
+
+	assert(appendage == (uint8_t *)(str->text + str->length));
+	memcpy(appendage, in.text, in.length);
+	str->length += in.length;
+
+	return 0;
 }
 
 int64_t string_to_int64_base2(struct string str)

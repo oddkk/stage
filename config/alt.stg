@@ -16,6 +16,50 @@ ColorRGB :: (r: int, g: int, b: int);
 # Channel(T: ($T, ...)) -> (Channel($T), ...) = @builtin("channel", "channel_");
 # Channel(T: $T[$N]) -> Channel($T)[$N] = @builtin();
 
+# Node :: Class {};
+
+# Channel :: Class {};
+
+# InputChannel(T: type) :: Class Self {
+# 	op<-(lhs: Self, rhs: OutputChannel(T)) -> Channel(T);
+# 	op->(lhs: OutputChannel(T), rhs: Self) -> Channel(T);
+
+# 	[DefaultIn](member: Channel(T)) {
+# 		op<-(lhs: Self, rhs: OutputChannel(T)) -> Channel(T)
+# 			= member <- rhs;
+# 	}
+# };
+
+# OutputChannel :: Class Self {
+# 	[DefaultOut](member: Channel(T)) {
+# 		op<-(rhs: OutputChannel(T), lhs: Self) -> Channel(T)
+# 			= rhs <- member;
+# 	}
+# };
+
+# IOChannel :: InputChannel($T) + OutputChannel($U);
+
+# Mux(T: type, N: int) :: Node + IOChannel {
+# 	inputs := InputChannel(T)[N];
+
+# 	[DefaultIn]
+# 	selector := InputChannel(int);
+
+# 	[DefaultOut]
+# 	output := OutputChannel(\(inputs, selector) inputs[selector]);
+# 	output <- (inputs, selector);
+# };
+
+# mux(inputs: InputChannel($T)[$N]) -> Mux($T) {
+# 	m := Mux(T, N);
+# 	m.inputs <- inputs;
+# 	return m;
+# };
+
+# out <- mux([0, 1, 2, 3, 4, 5, 6]) <- 5;
+
+# IOChannel :: InputChannel + OutputChannel;
+
 ButtonColor :: (int, int);
 FakeLaunchpad :: Device {
 	button_down  := Channel(int[8][8]);
@@ -155,7 +199,7 @@ universe.in[6..] <- led2;
 square(a: int) -> int = a * a;
 
 # function overload
-square(a: float) -> int = a * a;
+square(a: float) -> float = a * a;
 
 # types
 # Color: Type = (r: int, g: int, b: int);

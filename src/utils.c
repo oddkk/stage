@@ -34,7 +34,7 @@ void panic(const char *fmt, ...)
 	vfprintf(stderr, fmt, ap);
 	fprintf(stderr, "\n");
 	va_end(ap);
-	exit(-1);
+	abort();
 }
 
 void zero_memory(void *data, size_t length)

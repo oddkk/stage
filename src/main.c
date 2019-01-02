@@ -99,17 +99,42 @@ static bool check_clock_support()
 	return true;
 }
 
+/* static void test_func(struct vm *vm, struct exec_stack *stack) */
+/* { */
+/* 	printf("I'm called!\n"); */
+/* } */
+
+/* static void test_int_add(struct vm *vm, struct exec_stack *stack) */
+/* { */
+/* 	struct object lhs = stack_pop(stack); // = vm_arg(stack, 0); */
+/* 	struct object rhs = stack_pop(stack); // = vm_arg(stack, 1); */
+
+/* 	assert(lhs.type == vm->types.integer); */
+/* 	assert(rhs.type == vm->types.integer); */
+
+/* 	int64_t lhs_value = (int64_t)lhs.data; */
+/* 	int64_t rhs_value = (int64_t)rhs.data; */
+/* 	int64_t result_value = lhs_value + rhs_value; */
+
+/* 	struct object result; */
+/* 	result.type = vm->types.integer; */
+/* 	result.data = (void *)result_value; */
+
+/* 	stack_push(stack, result); */
+/* } */
+
 int main(int argc, char *argv[])
 {
 	int err;
-	/* struct stage stage; */
 	struct timespec tick_begin;
 	struct timespec frame_duration;
-	/* struct config_node *node; */
 
 	if (!check_clock_support()) {
 		panic("No alternative clock supported yet.");
 	}
+
+	/* struct stage stage; */
+	/* struct config_node *node; */
 
 	/* err = stage_init(&stage); */
 	/* if (err) { */
@@ -191,12 +216,57 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	/* obj_id test1 = register_object(&vm.store, (struct object){ */
+	/* 		.type=vm.default_types.integer, .data=(void*)5L}); */
+
+	/* print_type_repr(&vm, *get_object(&vm.store, test1)); */
+	/* printf("\n"); */
+
+	/* obj_id int1 = obj_register_integer(&vm, 5); */
+	/* obj_id int2 = obj_register_integer(&vm, 3); */
+	/* obj_id add_func; */
+	/* obj_id print_func; */
+
+	/* add_func = scope_lookup_id(&vm.root_scope, */
+	/* 						   atom_create(&vm.atom_table, STR("op+"))); */
+	/* if (add_func == OBJ_NONE) { */
+	/* 		panic("add operation not found."); */
+	/* } */
+
+	/* print_func = scope_lookup_id(&vm.root_scope, */
+	/* 							 atom_create(&vm.atom_table, STR("print"))); */
+	/* if (print_func == OBJ_NONE) { */
+	/* 		panic("print func not found."); */
+	/* } */
+
+	/* void *int1_data = get_object(&vm.store, int1).data; */
+	/* void *int2_data = get_object(&vm.store, int2).data; */
+	/* void *add_func_data = get_object(&vm.store, add_func).data; */
+	/* void *print_func_data = get_object(&vm.store, print_func).data; */
+
+	/* uint8_t instructions[] = { */
+	/* 	LIT_VM_INST_PUSH_GLOBAL((uint64_t)int2_data, sizeof(int64_t)), */
+	/* 	LIT_VM_INST_PUSH_GLOBAL((uint64_t)int1_data, sizeof(int64_t)), */
+	/* 	LIT_VM_INST_PUSH_GLOBAL((uint64_t)add_func_data, sizeof(struct obj_builtin_func_data)), */
+	/* 	LIT_VM_INST_CALL(), */
+	/* 	LIT_VM_INST_PUSH_GLOBAL((uint64_t)print_func_data, sizeof(struct obj_builtin_func_data)), */
+	/* 	LIT_VM_INST_CALL(), */
+	/* 	LIT_VM_INST_RETURN(), */
+	/* }; */
+
+	/* struct exec_stack stack; */
+	/* arena_alloc_stack(&stack, &vm.memory, 1024); */
+	/* vm_exec(&vm, &stack, (void *)instructions, sizeof(instructions)); */
+
+	/* printf("stack length: %zu, value: %li\n", stack.sp, (int64_t)stack.memory[0].data); */
+
 	err = cfg_compile(&vm, STR("./config/"));
 	if (err) {
 		printf("Failed to compile config.\n");
 		return -1;
 	}
 
+	return 0;
 
 	uint64_t tick_period = NSEC / 1000;
 

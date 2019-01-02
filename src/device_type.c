@@ -246,7 +246,7 @@ static struct type_template_context make_device_type_params_type(struct stage *s
 	}
 
 	struct type *result;
-	result = register_type(stage, new_type);
+	result = register_old_type(stage, new_type);
 
 	if (!result) {
 		struct type_template_context empty_ctx = {0};

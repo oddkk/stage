@@ -20,6 +20,12 @@ int string_duplicate(struct arena *arena, struct string *dest,
 
 struct string string_duplicate_cstr(char *str);
 
+struct string arena_sprintf(struct arena *, char *fmt, ...)
+// TODO: Make this cross-compiler compliant.
+	__attribute__((__format__ (__printf__, 2, 3)));
+
+int arena_string_append(struct arena *, struct string *, struct string);
+
 int64_t string_to_int64_base2(struct string str);
 int64_t string_to_int64_base10(struct string str);
 int64_t string_to_int64_base16(struct string str);

@@ -17,115 +17,9 @@ enum cfg_bin_op {
 	CFG_OP_LT,
 };
 
-#define CFG_NODES \
-	CFG_NODE(INTERNAL_LIST, struct {			\
-			struct cfg_node *head;				\
-			struct cfg_node *tail;				\
-	})											\
-	CFG_NODE(MODULE, struct {					\
-			struct cfg_node *body;				\
-	})											\
-	CFG_NODE(STMT, struct {						\
-			struct cfg_node *attrs;				\
-			struct cfg_node *stmt;				\
-	})											\
-	CFG_NODE(DECL_STMT, struct {				\
-			struct cfg_node *name;				\
-			struct cfg_node *args;				\
-			struct cfg_node *decl;				\
-	})											\
-	CFG_NODE(OBJ_DECL, struct {					\
-			struct cfg_node *ident;				\
-			struct cfg_node *body;				\
-	})											\
-	CFG_NODE(ENUM_DECL, struct {				\
-			struct cfg_node *items;				\
-	})											\
-	CFG_NODE(ENUM_ITEM, struct {				\
-			struct atom *name;					\
-			struct cfg_node *data;				\
-	})											\
-	CFG_NODE(USE_STMT, struct {					\
-			struct cfg_node *ident;				\
-	})											\
-	CFG_NODE(USE_ALL, struct {					\
-			int _dc;							\
-	})											\
-	CFG_NODE(ASSERT_STMT, struct {				\
-			struct cfg_node *expr;				\
-	})											\
-	CFG_NODE(FUNC_STMT, struct {				\
-			struct cfg_node *ident;				\
-			struct cfg_node *proto;				\
-			struct cfg_node *body;				\
-	})											\
-	CFG_NODE(FUNC_PROTO, struct {				\
-			struct cfg_node *params;			\
-			struct cfg_node *ret;				\
-	})											\
-	CFG_NODE(ASSIGN_STMT, struct {				\
-			struct cfg_node *ident;				\
-			struct cfg_node *type;				\
-			struct cfg_node *body;				\
-	})											\
-	CFG_NODE(BIND, struct {						\
-			struct cfg_node *src;				\
-			struct cfg_node *drain;				\
-	})											\
-	CFG_NODE(NAMESPACE, struct {				\
-			struct cfg_node *name;				\
-			struct cfg_node *body;				\
-	})											\
-	CFG_NODE(TEMPLATE_VAR, struct {				\
-			struct atom *name;					\
-	})											\
-	CFG_NODE(ACCESS, struct {					\
-			struct cfg_node *lhs;				\
-			struct cfg_node *rhs;				\
-	})											\
-	CFG_NODE(SUBSCRIPT, struct {				\
-			struct cfg_node *lhs;				\
-			struct cfg_node *index;				\
-	})											\
-	CFG_NODE(BIN_OP, struct {					\
-			enum cfg_bin_op op;					\
-			struct cfg_node *lhs;				\
-			struct cfg_node *rhs;				\
-	})											\
-	CFG_NODE(LAMBDA, struct {					\
-			struct cfg_node *proto;				\
-			struct cfg_node *body;				\
-	})											\
-	CFG_NODE(FUNC_CALL, struct {				\
-			struct cfg_node *ident;				\
-			struct cfg_node *params;			\
-	})											\
-	CFG_NODE(TUPLE_DECL, struct {				\
-			struct cfg_node *items;				\
-			bool named;							\
-	})											\
-	CFG_NODE(TUPLE_DECL_ITEM, struct {			\
-			struct atom *name;					\
-			struct cfg_node *type;				\
-	})											\
-	CFG_NODE(TUPLE_LIT, struct {				\
-			struct cfg_node *items;				\
-			bool named;							\
-	})											\
-	CFG_NODE(TUPLE_LIT_ITEM, struct {			\
-			struct atom *name;					\
-			struct cfg_node *value;				\
-	})											\
-	CFG_NODE(ARRAY_LIT, struct {				\
-			struct cfg_node *items;				\
-	})											\
-	CFG_NODE(NUM_LIT, int64_t)					\
-	CFG_NODE(STR_LIT, struct string)			\
-	CFG_NODE(IDENT, struct atom *)				\
-
 enum cfg_node_type {
 #define CFG_NODE(name, data) CFG_NODE_##name,
-	CFG_NODES
+#include "config_nodes.h"
 #undef CFG_NODE
 	CFG_NODES_LEN
 };
@@ -136,12 +30,13 @@ struct cfg_location {
 };
 
 #define CFG_NODE(name, data) typedef data name##_t;
-CFG_NODES
+#include "config_nodes.h"
 #undef CFG_NODE
 
 struct cfg_node {
 	enum cfg_node_type type;
 
+	unsigned int file_id;
 	struct cfg_location from;
 	struct cfg_location to;
 
@@ -149,12 +44,52 @@ struct cfg_node {
 
 #define CFG_NODE(name, data) name##_t name;
 	union {
-		CFG_NODES
+#include "config_nodes.h"
 	};
 #undef CFG_NODE
 };
 
 extern struct string cfg_node_names[CFG_NODES_LEN];
+
+enum cfg_compile_func_state {
+	CFG_COMPILE_FUNC_IDLE = 0,
+	CFG_COMPILE_FUNC_EVAL_TYPES,
+	CFG_COMPILE_FUNC_EVAL_BODY_TYPE_CONSTRAINTS,
+	CFG_COMPILE_FUNC_RESOLVE_TYPES,
+	CFG_COMPILE_FUNC_OPTIMIZE,
+	CFG_COMPILE_FUNC_GEN_INSTRUCTIONS,
+};
+
+enum cfg_func_proto_decl_state {
+	CFG_FUNC_PROTO_DECL_RESOLVE_PARAMS = 0,
+	CFG_FUNC_PROTO_DECL_RESOLVE_RET,
+	CFG_FUNC_PROTO_DECL_FINALIZE,
+};
+
+enum cfg_tuple_decl_state {
+	CFG_TUPLE_DECL_GET_LENGTH = 0,
+	CFG_TUPLE_DECL_RESOLVE_TYPES,
+	CFG_TUPLE_DECL_FINALIZE,
+};
+
+enum cfg_binop_state {
+	CFG_BINOP_LHS = 0,
+	CFG_BINOP_RHS,
+	CFG_BINOP_FINALIZE,
+};
+
+enum cfg_job_type {
+#define CFG_JOB(name, data) CFG_JOB_##name,
+	#include "config_jobs.h"
+#undef CFG_JOB
+	CFG_JOBS_LEN
+};
+
+extern struct string cfg_job_names[CFG_JOBS_LEN];
+
+void cfg_tree_print(struct cfg_node *node);
+
+int cfg_compile(struct vm *vm, struct string cfg_dir);
 
 #define CFG_NODE_VISIT(node)							\
 	switch ((node)->type) {								\
@@ -295,28 +230,5 @@ extern struct string cfg_node_names[CFG_NODES_LEN];
 		break;											\
 														\
 	}													\
-
-
-#define CFG_JOBS \
-	CFG_JOB(parse_file, struct {				\
-			struct string file_name;			\
-	})											\
-	CFG_JOB(visit_module, struct {				\
-			struct scope *root_scope;	\
-			struct cfg_node *node;				\
-	})											\
-
-enum cfg_job_type {
-#define CFG_JOB(name, data) CFG_JOB_##name,
-	CFG_JOBS
-#undef CFG_JOB
-	CFG_JOBS_LEN
-};
-
-extern struct string cfg_job_names[CFG_JOBS_LEN];
-
-void cfg_tree_print(struct cfg_node *node);
-
-int cfg_compile(struct vm *vm, struct string cfg_dir);
 
 #endif

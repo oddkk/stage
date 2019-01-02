@@ -115,7 +115,7 @@ void expand_type_id(FILE *fp, struct stage *, type_id id, bool recurse_expand);
 
 int register_type_name(struct stage *stage, type_id type, struct scoped_hash *scope, struct atom *name);
 
-struct type *register_type(struct stage *stage, struct type def);
+struct type *register_old_type(struct stage *stage, struct type def);
 struct type *register_scalar_type(struct stage *stage, struct atom *name,
 				  scalar_value min, scalar_value max);
 struct type *register_tuple_type(struct stage *stage, struct atom *name,

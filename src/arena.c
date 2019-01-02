@@ -29,6 +29,17 @@ void *arena_alloc(struct arena *arena, size_t length)
 	return result;
 }
 
+arena_point arena_push(struct arena *arena)
+{
+	return arena->head;
+}
+
+void arena_pop(struct arena *arena, arena_point p)
+{
+	assert(p <= arena->head);
+	arena->head = p;
+}
+
 void arena_print_usage(struct arena *arena)
 {
 	printf("%lu / %lu", arena->head, arena->capacity);

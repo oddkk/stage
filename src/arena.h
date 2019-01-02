@@ -5,12 +5,17 @@
 
 struct arena {
 	uint8_t *data;
-	uint64_t head;
-	uint64_t capacity;
+	size_t head;
+	size_t capacity;
 };
 
 int arena_init(struct arena *arena, size_t capacity);
 void *arena_alloc(struct arena *arena, size_t length);
+
+typedef size_t arena_point;
+
+arena_point arena_push(struct arena *arena);
+void arena_pop(struct arena *arena, arena_point p);
 
 void arena_print_usage(struct arena *arena);
 

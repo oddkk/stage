@@ -37,6 +37,7 @@
 		char buf[BUFFER_SIZE + YYMAXFILL];
 		size_t head;
 		struct cfg_node *module;
+		unsigned int file_id;
 	};
 
 	bool config_parse_fill(struct lex_context *ctx, size_t need) {
@@ -75,6 +76,7 @@
 		res = arena_alloc_struct(ctx->memory, struct cfg_node);
 		res->type = type;
 
+		res->file_id     = ctx->file_id;
 		res->from.line   = loc.first_line;
 		res->from.column = loc.first_column;
 
@@ -94,7 +96,7 @@
 		return result;										\
 	}
 
-	CFG_NODES
+#include "config_nodes.h"
 #undef CFG_NODE
 
 #define MKNODE(type, ...) _mknode##type(ctx, yylloc, (type##_t){__VA_ARGS__})
@@ -503,7 +505,11 @@ void yyerror(YYLTYPE *lloc, struct lex_context *ctx, const char *error) {
 
 void cfg_tree_clean(struct cfg_node **tree);
 
-int parse_config_file(struct string filename, struct atom_table *table, struct arena *memory, struct cfg_node **out_node) {
+int parse_config_file(struct string filename,
+					  struct atom_table *table,
+					  struct arena *memory,
+					  unsigned int file_id,
+					  struct cfg_node **out_node) {
 	struct lex_context ctx;
 
 	memset(&ctx, 0, sizeof(struct lex_context));
@@ -514,6 +520,7 @@ int parse_config_file(struct string filename, struct atom_table *table, struct a
 	ctx.eof = false;
 	ctx.atom_table = table;
 	ctx.memory = memory;
+	ctx.file_id = file_id;
 
 	ctx.fp = fopen(filename.text, "rb");
 
@@ -524,7 +531,7 @@ int parse_config_file(struct string filename, struct atom_table *table, struct a
 
 	config_parse_fill(&ctx, BUFFER_SIZE);
 
-	yydebug = 0;
+	/* yydebug = 1; */
 
 	int err;
 	err = yyparse(&ctx);
@@ -534,7 +541,7 @@ int parse_config_file(struct string filename, struct atom_table *table, struct a
 	}
 
 	cfg_tree_clean(&ctx.module);
-	cfg_tree_print(ctx.module);
+	/* cfg_tree_print(ctx.module); */
 
 	*out_node = ctx.module;
 
