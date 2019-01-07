@@ -1,0 +1,5 @@
+Bool :: Enum { true, false }
+
+square(x: int) = x * x;
+double(x: int) -> int = 2 * x;
+double(x: (int, Bool)) = 2 * x;

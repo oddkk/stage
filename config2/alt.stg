@@ -61,6 +61,7 @@ ColorRGB :: (r: int, g: int, b: int);
 # IOChannel :: InputChannel + OutputChannel;
 
 ButtonColor :: (int, int);
+
 FakeLaunchpad :: Device {
 	button_down  := Channel(int[8][8]);
 	button_color := Channel(ButtonColor[8][8]);
