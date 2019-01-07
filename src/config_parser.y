@@ -208,6 +208,7 @@ assert_stmt:	"assert" expr              { $$ = NULL; }
 		;
 
 func_stmt:		ident func_proto '=' expr  { $$ = MKNODE(FUNC_STMT, .ident=$1, .proto=$2, .body=$4); }
+		|		ident tuple_decl '=' expr  { $$ = MKNODE(FUNC_STMT, .ident=$1, .proto=$2, .body=$4); }
 		|		ident '=' expr             { $$ = MKNODE(FUNC_STMT, .ident=$1, .body=$3); }
 		;
 
