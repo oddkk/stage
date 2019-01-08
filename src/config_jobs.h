@@ -70,6 +70,18 @@ CFG_JOB(compile_func, struct {
 	struct cfg_node *body_node;
 	obj_id *out_func_obj;
 	type_id proto;
+	struct cfg_func_context func_ctx;
+	struct cfg_func_node *func;
+})
+
+CFG_JOB(visit_expr, struct {
+	/* struct scope *scope; */
+	struct cfg_func_context *func_ctx;
+	struct cfg_node *node;
+	struct cfg_func_node **out_func;
+
+	struct cfg_func_node *tmp_func;
+	unsigned int iter;
 })
 
 CFG_JOB(resolve_type_l_expr, struct {

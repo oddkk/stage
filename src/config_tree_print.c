@@ -8,22 +8,6 @@ static void _print_indent(int depth) {
 	}
 }
 
-static char *_cfg_bin_op_sym(enum cfg_bin_op op) {
-	switch (op) {
-	case CFG_OP_ADD:   return "+";
-	case CFG_OP_SUB:   return "-";
-	case CFG_OP_MUL:   return "*";
-	case CFG_OP_DIV:   return "/";
-	case CFG_OP_RANGE: return "..";
-	case CFG_OP_EQ:    return "==";
-	case CFG_OP_NEQ:   return "!=";
-	case CFG_OP_GTE:   return ">=";
-	case CFG_OP_LTE:   return "<=";
-	case CFG_OP_GT:    return ">";
-	case CFG_OP_LT:    return "<";
-	}
-}
-
 #define TREE_PRINT_VISIT(node, type, member)		\
 	_print_indent(depth + 1);						\
 	printf(#member ":\n");							\
@@ -46,7 +30,7 @@ static void _cfg_tree_print(struct cfg_node *node, int depth) {
 	switch (node->type) {
 	case CFG_NODE_BIN_OP:
 		_print_indent(depth + 1);
-		printf("op: %s\n", _cfg_bin_op_sym(node->BIN_OP.op));
+		printf("op: %.*s\n", LIT(cfg_bin_op_sym[node->BIN_OP.op]));
 		break;
 
 	case CFG_NODE_TUPLE_DECL:

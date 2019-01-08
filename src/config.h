@@ -3,19 +3,32 @@
 
 #include "vm.h"
 
+#define CFG_BIN_OPS								\
+	OP(ADD, "+")								\
+	OP(SUB, "-")								\
+	OP(MUL, "*")								\
+	OP(DIV, "/")								\
+	OP(RANGE, "..")								\
+	OP(EQ, "==")								\
+	OP(NEQ, "!=")								\
+	OP(GTE, ">=")								\
+	OP(LTE, "<=")								\
+	OP(GT, ">")									\
+	OP(LT, "<")									\
+
+#define CFG_BIN_OPS_MAX_LEN (2)
+
 enum cfg_bin_op {
-	CFG_OP_ADD,
-	CFG_OP_SUB,
-	CFG_OP_MUL,
-	CFG_OP_DIV,
-	CFG_OP_RANGE,
-	CFG_OP_EQ,
-	CFG_OP_NEQ,
-	CFG_OP_GTE,
-	CFG_OP_LTE,
-	CFG_OP_GT,
-	CFG_OP_LT,
+#define OP(name, sym) CFG_OP_##name,
+	CFG_BIN_OPS
+#undef OP
+
+	CFG_OP_LEN
 };
+
+extern struct string cfg_bin_op_sym[CFG_OP_LEN];
+
+struct atom *binop_atom(struct atom_table *, enum cfg_bin_op);
 
 enum cfg_node_type {
 #define CFG_NODE(name, data) CFG_NODE_##name,
@@ -53,11 +66,14 @@ extern struct string cfg_node_names[CFG_NODES_LEN];
 
 enum cfg_compile_func_state {
 	CFG_COMPILE_FUNC_IDLE = 0,
-	CFG_COMPILE_FUNC_EVAL_TYPES,
-	CFG_COMPILE_FUNC_EVAL_BODY_TYPE_CONSTRAINTS,
-	CFG_COMPILE_FUNC_RESOLVE_TYPES,
-	CFG_COMPILE_FUNC_OPTIMIZE,
-	CFG_COMPILE_FUNC_GEN_INSTRUCTIONS,
+	CFG_COMPILE_FUNC_RESOLVE_SIGNATURE,
+	CFG_COMPILE_FUNC_VISIT_BODY,
+
+	/* CFG_COMPILE_FUNC_EVAL_TYPES, */
+	/* CFG_COMPILE_FUNC_EVAL_BODY_TYPE_CONSTRAINTS, */
+	/* CFG_COMPILE_FUNC_RESOLVE_TYPES, */
+	/* CFG_COMPILE_FUNC_OPTIMIZE, */
+	/* CFG_COMPILE_FUNC_GEN_INSTRUCTIONS, */
 };
 
 enum cfg_func_proto_decl_state {

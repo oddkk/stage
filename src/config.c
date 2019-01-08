@@ -1,25 +1,48 @@
 #include "config.h"
-/* #include "stage.h" */
-/* #include "device_type.h" */
-/* #include "device.h" */
 #include "utils.h"
 #include "dlist.h"
-/* #include "scope_lookup.h" */
-/* #include "access_pattern.h" */
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-#define APPLY_DEBUG 0
-
+#include "config_func.h"
 #include "objstore.h"
 #include "scope.h"
 
-/* #include <ftw.h> */
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fts.h>
+
+struct string cfg_bin_op_sym[] = {
+#define OP(name, sym) STR(sym),
+	CFG_BIN_OPS
+#undef OP
+};
+
+struct atom *binop_atom(struct atom_table *atom_table,
+						enum cfg_bin_op op)
+{
+	assert(op < CFG_OP_LEN);
+
+	char buffer[2 + CFG_BIN_OPS_MAX_LEN] = {0};
+
+	buffer[0] = 'o';
+	buffer[1] = 'p';
+
+	struct string sym = cfg_bin_op_sym[op];
+
+	assert(sym.length <= CFG_BIN_OPS_MAX_LEN);
+
+	memcpy(&buffer[2], sym.text, sym.length);
+
+	struct string name;
+	name.text = buffer;
+	name.length = 2 + sym.length;
+
+	return atom_create(atom_table, name);
+}
 
 struct string cfg_node_names[] = {
 #define CFG_NODE(name, data) STR(#name),
@@ -83,7 +106,9 @@ struct cfg_ctx {
 	size_t num_errors;
 };
 
-static void cfg_error(struct cfg_ctx *ctx, struct cfg_node *node, const char *fmt, ...)
+static void
+cfg_error(struct cfg_ctx *ctx, struct cfg_node *node,
+		  const char *fmt, ...)
 {
 	va_list ap;
 
@@ -106,8 +131,9 @@ static void cfg_error(struct cfg_ctx *ctx, struct cfg_node *node, const char *fm
 	ctx->num_errors += 1;
 }
 
-static void _expr_to_string_internal(struct arena *mem, struct string *str,
-									 struct cfg_node *node)
+static void
+_expr_to_string_internal(struct arena *mem, struct string *str,
+						 struct cfg_node *node)
 {
 	switch (node->type) {
 	case CFG_NODE_ACCESS:
@@ -134,7 +160,8 @@ static void _expr_to_string_internal(struct arena *mem, struct string *str,
 	}
 }
 
-static struct string expr_to_string(struct arena *mem, struct cfg_node *node)
+static struct string
+expr_to_string(struct arena *mem, struct cfg_node *node)
 {
 	struct string str = {0};
 
@@ -147,7 +174,8 @@ static struct string expr_to_string(struct arena *mem, struct cfg_node *node)
 	return str;
 }
 
-static void append_job(struct cfg_ctx *ctx, struct cfg_job *job)
+static void
+append_job(struct cfg_ctx *ctx, struct cfg_job *job)
 {
 	if (ctx->job_end) {
 		ctx->job_end->next_job = job;
@@ -163,7 +191,8 @@ static void append_job(struct cfg_ctx *ctx, struct cfg_job *job)
 	}
 }
 
-static struct cfg_job *dispatch_job(struct cfg_ctx *ctx, struct cfg_job job)
+static struct cfg_job *
+dispatch_job(struct cfg_ctx *ctx, struct cfg_job job)
 {
 	struct cfg_job *new_job = calloc(1, sizeof(struct cfg_job));
 	*new_job = job;
@@ -273,12 +302,10 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 	}
 }
 
-static struct cfg_job *resolve_type(struct cfg_ctx *ctx,
-									struct cfg_node *node,
-									struct cfg_node *args,
-									struct scope *scope,
-									type_id *out_type,
-									struct scope **out_child_scope)
+static struct cfg_job *
+resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
+			 struct cfg_node *args, struct scope *scope,
+			 type_id *out_type, struct scope **out_child_scope)
 {
 	struct cfg_job *job = NULL;
 	switch (node->type) {
@@ -336,7 +363,8 @@ static struct cfg_job *resolve_type(struct cfg_ctx *ctx,
 	return job;
 }
 
-static struct job_status job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
+static struct job_status
+job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 {
 	struct cfg_node *node = data->stmt;
 	assert(node->DECL_STMT.decl != NULL);
@@ -368,7 +396,8 @@ static struct job_status job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl
 	return JOB_OK;
 }
 
-static struct job_status job_func_proto_decl(struct cfg_ctx *ctx, job_func_proto_decl_t *data)
+static struct job_status
+job_func_proto_decl(struct cfg_ctx *ctx, job_func_proto_decl_t *data)
 {
 	assert(data->out_type != NULL);
 
@@ -445,7 +474,8 @@ static struct job_status job_func_proto_decl(struct cfg_ctx *ctx, job_func_proto
 	return JOB_ERROR;
 }
 
-static struct job_status job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
+static struct job_status
+job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 {
 	assert(data->node->type == CFG_NODE_FUNC_STMT);
 	assert(data->node->FUNC_STMT.ident->type == CFG_NODE_IDENT);
@@ -476,39 +506,159 @@ static struct job_status job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *dat
 	return JOB_OK;
 }
 
-static struct job_status job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
+static struct job_status
+job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 {
 	switch (data->state) {
 	case CFG_COMPILE_FUNC_IDLE: {
+		data->state = CFG_COMPILE_FUNC_RESOLVE_SIGNATURE;
+
 		struct cfg_job *job;
+
 		job = DISPATCH_JOB(ctx, func_proto_decl,
 						   .scope = data->scope,
 						   .node  = data->proto_node,
 						   .out_type = &data->proto);
-		data->state = CFG_COMPILE_FUNC_EVAL_TYPES;
+
+		return JOB_YIELD_FOR(job);
 	} break;
 
-	case CFG_COMPILE_FUNC_EVAL_TYPES: {
+	case CFG_COMPILE_FUNC_RESOLVE_SIGNATURE: {
+		data->state = CFG_COMPILE_FUNC_VISIT_BODY;
+
+		data->func_ctx.outer_scope = data->scope;
+		data->func_ctx.inner_scope = scope_push(data->scope);
+
+		// @TODO: Insert params into inner scope
+
+		struct cfg_job *job;
+
+		job = DISPATCH_JOB(ctx, visit_expr,
+						   .func_ctx = &data->func_ctx,
+						   .node     = data->body_node,
+						   .out_func = &data->func);
+
+		return JOB_YIELD_FOR(job);
 	} break;
 
-	case CFG_COMPILE_FUNC_EVAL_BODY_TYPE_CONSTRAINTS: {
+	case CFG_COMPILE_FUNC_VISIT_BODY: {
+		return JOB_OK;
 	} break;
 
-	case CFG_COMPILE_FUNC_RESOLVE_TYPES: {
-	} break;
 
-	case CFG_COMPILE_FUNC_OPTIMIZE: {
-	} break;
+	/* case CFG_COMPILE_FUNC_EVAL_TYPES: { */
+	/* } break; */
 
-	case CFG_COMPILE_FUNC_GEN_INSTRUCTIONS: {
-	} break;
+	/* case CFG_COMPILE_FUNC_EVAL_BODY_TYPE_CONSTRAINTS: { */
+	/* } break; */
+
+	/* case CFG_COMPILE_FUNC_RESOLVE_TYPES: { */
+	/* } break; */
+
+	/* case CFG_COMPILE_FUNC_OPTIMIZE: { */
+	/* } break; */
+
+	/* case CFG_COMPILE_FUNC_GEN_INSTRUCTIONS: { */
+	/* } break; */
 
 	}
 
 	return JOB_ERROR;
 }
 
-static struct job_status job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
+static struct job_status
+job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
+{
+	struct cfg_job *job;
+
+	switch (data->node->type) {
+
+	case CFG_NODE_ACCESS:
+		break;
+
+	case CFG_NODE_SUBSCRIPT:
+		break;
+
+	case CFG_NODE_BIN_OP: {
+		struct cfg_node *node_to_process = NULL;
+
+		/* State machine
+		 * 0: Initialize func and visit lhs
+		 * 1: Add the result of lhs, and visit rhs
+		 * 2: Add the result of rhs and finalize
+		 */
+		assert(data->iter <= 2);
+
+		if (data->iter != 0) {
+			assert(data->tmp_func != NULL);
+			cfg_func_call_add_arg(*data->out_func,
+								  data->tmp_func);
+		}
+
+		switch (data->iter) {
+		case 0:
+			*data->out_func =
+				cfg_func_call(ctx->vm, data->func_ctx,
+							  binop_atom(&ctx->vm->atom_table,
+										 data->node->BIN_OP.op));
+
+			node_to_process = data->node->BIN_OP.lhs;
+		break;
+
+		case 1:
+			node_to_process = data->node->BIN_OP.rhs;
+			break;
+
+		case 2:
+			return JOB_OK;
+		}
+
+		assert(node_to_process);
+
+		job = DISPATCH_JOB(ctx, visit_expr,
+						   .func_ctx = data->func_ctx,
+						   .node     = node_to_process,
+						   .out_func = &data->tmp_func);
+		data->iter += 1;
+	} break;
+
+	case CFG_NODE_LAMBDA:
+		panic("TODO: Lambda");
+		break;
+
+	case CFG_NODE_FUNC_CALL:
+		break;
+
+	case CFG_NODE_TUPLE_LIT:
+		break;
+
+	case CFG_NODE_ARRAY_LIT:
+		break;
+
+	case CFG_NODE_NUM_LIT:
+		*data->out_func =
+			cfg_func_lit_int(ctx->vm, data->node->NUM_LIT);
+		return JOB_OK;
+
+	case CFG_NODE_STR_LIT:
+		*data->out_func =
+			cfg_func_lit_str(ctx->vm, data->node->STR_LIT);
+		return JOB_OK;
+
+	case CFG_NODE_IDENT:
+		break;
+
+	default:
+		panic("Invalid node '%.*s' in expr.",
+			  LIT(cfg_node_names[data->node->type]));
+		break;
+	}
+
+	return JOB_ERROR;
+}
+
+static struct job_status
+job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 {
 	if (data->dispatched) {
 		assert(data->entry.id != OBJ_NONE);
@@ -545,7 +695,8 @@ static struct job_status job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolv
 	return JOB_YIELD_FOR(job);
 }
 
-static struct job_status job_resolve_l_expr(struct cfg_ctx *ctx, job_resolve_l_expr_t *data)
+static struct job_status
+job_resolve_l_expr(struct cfg_ctx *ctx, job_resolve_l_expr_t *data)
 {
 	if (!data->l_expr_top_node) {
 		data->l_expr_top_node = data->node;
@@ -639,7 +790,8 @@ int parse_config_file(struct string filename,
 					  unsigned int file_id,
 					  struct cfg_node **out_node);
 
-static struct job_status job_parse_file(struct cfg_ctx *ctx, job_parse_file_t *data)
+static struct job_status
+job_parse_file(struct cfg_ctx *ctx, job_parse_file_t *data)
 {
 	int err;
 	struct cfg_node *node;
@@ -673,7 +825,8 @@ static struct job_status job_parse_file(struct cfg_ctx *ctx, job_parse_file_t *d
 	return JOB_OK;
 }
 
-static struct job_status job_visit_stmt_list(struct cfg_ctx *ctx, job_visit_stmt_list_t *data)
+static struct job_status
+job_visit_stmt_list(struct cfg_ctx *ctx, job_visit_stmt_list_t *data)
 {
 	struct cfg_node *stmt = data->first_stmt;
 	while (stmt) {
@@ -686,7 +839,9 @@ static struct job_status job_visit_stmt_list(struct cfg_ctx *ctx, job_visit_stmt
 	return JOB_OK;
 }
 
-static void enum_item_constructor(struct vm *vm, struct exec_stack *stack, void *data)
+static void
+enum_item_constructor(struct vm *vm, struct exec_stack *stack,
+					  void *data)
 {
 	struct type_enum_item *item = (struct type_enum_item *)data;
 	int64_t enum_value = item->value;
@@ -694,7 +849,8 @@ static void enum_item_constructor(struct vm *vm, struct exec_stack *stack, void 
 	stack_push(stack, &enum_value, sizeof(enum_value));
 }
 
-static struct job_status job_enum_decl(struct cfg_ctx *ctx, job_enum_decl_t *data)
+static struct job_status
+job_enum_decl(struct cfg_ctx *ctx, job_enum_decl_t *data)
 {
 	/* struct cfg_node *decl = data->node; */
 	/* assert(decl->type == CFG_NODE_DECL_STMT); */
@@ -769,7 +925,8 @@ static struct job_status job_enum_decl(struct cfg_ctx *ctx, job_enum_decl_t *dat
 	return JOB_OK;
 }
 
-static struct job_status job_obj_decl(struct cfg_ctx *ctx, job_obj_decl_t *data)
+static struct job_status
+job_obj_decl(struct cfg_ctx *ctx, job_obj_decl_t *data)
 {
 	struct cfg_node *node = data->node;
 	assert(node->type == CFG_NODE_OBJ_DECL);
@@ -777,7 +934,8 @@ static struct job_status job_obj_decl(struct cfg_ctx *ctx, job_obj_decl_t *data)
 	return JOB_ERROR;
 }
 
-static struct job_status job_tuple_decl(struct cfg_ctx *ctx, job_tuple_decl_t *data)
+static struct job_status
+job_tuple_decl(struct cfg_ctx *ctx, job_tuple_decl_t *data)
 {
 	struct cfg_node *node = data->node;
 	assert(node->type == CFG_NODE_TUPLE_DECL);
@@ -835,7 +993,8 @@ static struct job_status job_tuple_decl(struct cfg_ctx *ctx, job_tuple_decl_t *d
 	return JOB_ERROR;
 }
 
-static bool has_extension(struct string str, struct string ext)
+static bool
+has_extension(struct string str, struct string ext)
 {
 	if (str.length < ext.length + 1) {
 		return false;
@@ -848,7 +1007,8 @@ static bool has_extension(struct string str, struct string ext)
 	return string_equal(file_ext, ext);
 }
 
-static void discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
+static void
+discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 {
 	/* // TODO: Ensure zero-terminated */
 	char *paths[] = {cfg_dir.text, NULL};
@@ -920,7 +1080,8 @@ static void discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 	fts_close(ftsp);
 }
 
-int cfg_compile(struct vm *vm, struct string cfg_dir)
+int
+cfg_compile(struct vm *vm, struct string cfg_dir)
 {
 	struct cfg_ctx ctx = {0};
 	size_t num_errors = 0;
