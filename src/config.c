@@ -64,7 +64,8 @@ enum job_status_code {
 	JOB_STATUS_OK = 0,
 	JOB_STATUS_ERROR = -1,
 	JOB_STATUS_YIELD = 1,
-	JOB_STATUS_IDLE = 2,
+	JOB_STATUS_YIELD_FOR_PHASE = 2,
+	JOB_STATUS_IDLE = 3,
 };
 
 struct cfg_job {
@@ -82,28 +83,44 @@ struct cfg_job {
 #undef CFG_JOB
 };
 
+enum cfg_compile_phase {
+	CFG_PHASE_DISCOVER = 0,
+	CFG_PHASE_RESOLVE,
+
+	CFG_NUM_PHASES
+};
+
 struct job_status {
 	enum job_status_code status;
 	struct cfg_job *yield_for;
+	enum cfg_compile_phase yield_for_phase;
 };
 
 #define JOB_OK  ((struct job_status){.status=JOB_STATUS_OK})
 #define JOB_ERROR ((struct job_status){.status=JOB_STATUS_ERROR})
 #define JOB_YIELD ((struct job_status){.status=JOB_STATUS_YIELD, .yield_for=NULL})
 #define JOB_YIELD_FOR(job) ((struct job_status){.status=JOB_STATUS_YIELD, .yield_for=(job)})
+#define JOB_YIELD_FOR_PHASE(phase) ((struct job_status){.status=JOB_STATUS_YIELD_FOR_PHASE, .yield_for_phase=(phase)})
+
+struct cfg_phase {
+	struct cfg_job *job_head;
+	struct cfg_job *job_end;
+};
 
 struct cfg_ctx {
 	struct vm *vm;
 	struct arena *mem;
 
-	struct cfg_job *job_head;
-	struct cfg_job *job_end;
 	size_t next_job_id;
+
+	enum cfg_compile_phase current_phase;
+	struct cfg_phase phases[CFG_NUM_PHASES];
 
 	struct string *file_names;
 	size_t num_files;
 
 	size_t num_errors;
+	size_t num_jobs_failed;
 };
 
 static void
@@ -175,24 +192,29 @@ expr_to_string(struct arena *mem, struct cfg_node *node)
 }
 
 static void
-append_job(struct cfg_ctx *ctx, struct cfg_job *job)
+append_job(struct cfg_ctx *ctx, enum cfg_compile_phase ph, struct cfg_job *job)
 {
-	if (ctx->job_end) {
-		ctx->job_end->next_job = job;
-		ctx->job_end = job;
+	assert(ph < CFG_NUM_PHASES);
+	assert(ph >= ctx->current_phase);
 
-		if (!ctx->job_head) {
-			ctx->job_head = job;
+	struct cfg_phase *phase = &ctx->phases[ph];
+
+	if (phase->job_end) {
+		phase->job_end->next_job = job;
+		phase->job_end = job;
+
+		if (!phase->job_head) {
+			phase->job_head = job;
 		}
 	} else {
-		assert(!ctx->job_head);
-		ctx->job_end = job;
-		ctx->job_head = job;
+		assert(!phase->job_head);
+		phase->job_end = job;
+		phase->job_head = job;
 	}
 }
 
 static struct cfg_job *
-dispatch_job(struct cfg_ctx *ctx, struct cfg_job job)
+dispatch_job(struct cfg_ctx *ctx, enum cfg_compile_phase phase, struct cfg_job job)
 {
 	struct cfg_job *new_job = calloc(1, sizeof(struct cfg_job));
 	*new_job = job;
@@ -201,12 +223,17 @@ dispatch_job(struct cfg_ctx *ctx, struct cfg_job job)
 	new_job->id = ctx->next_job_id;
 	ctx->next_job_id += 1;
 
-	append_job(ctx, new_job);
+	append_job(ctx, phase, new_job);
 
 	return new_job;
 }
 
-#define DISPATCH_JOB(ctx, name, ...) dispatch_job((ctx), (struct cfg_job){.type=CFG_JOB_##name, .name = (job_##name##_t){__VA_ARGS__}})
+#define DISPATCH_JOB(ctx, name, phase, ...)						\
+	dispatch_job((ctx), (phase),								\
+				 (struct cfg_job){								\
+					 .type=CFG_JOB_##name,						\
+						 .name = (job_##name##_t){__VA_ARGS__}	\
+				 })
 
 static struct scope *
 instantiate_scope_by_access_pattern(struct cfg_ctx *ctx,
@@ -263,7 +290,7 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 
 	switch (node->type) {
 	case CFG_NODE_DECL_STMT: {
-		DISPATCH_JOB(ctx, visit_decl_stmt,
+		DISPATCH_JOB(ctx, visit_decl_stmt, CFG_PHASE_DISCOVER,
 					 .scope = parent_scope,
 					 .stmt = node);
 	} break;
@@ -275,7 +302,7 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 		break;
 
 	case CFG_NODE_FUNC_STMT:
-		DISPATCH_JOB(ctx, func_decl,
+		DISPATCH_JOB(ctx, func_decl, CFG_PHASE_DISCOVER,
 					 .scope = parent_scope,
 					 .node = node);
 		break;
@@ -290,7 +317,7 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 		struct scope *ns_scope;
 		ns_scope = instantiate_scope_by_access_pattern(ctx, parent_scope, node->NAMESPACE.name);
 
-		DISPATCH_JOB(ctx, visit_stmt_list,
+		DISPATCH_JOB(ctx, visit_stmt_list, CFG_PHASE_DISCOVER,
 					 .scope = ns_scope,
 					 .first_stmt = node->NAMESPACE.body);
 	} break;
@@ -310,7 +337,7 @@ resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
 	struct cfg_job *job = NULL;
 	switch (node->type) {
 	case CFG_NODE_ENUM_DECL:
-		job = DISPATCH_JOB(ctx, enum_decl,
+		job = DISPATCH_JOB(ctx, enum_decl, CFG_PHASE_DISCOVER,
 						   .scope = scope,
 						   .node  = node,
 						   .args  = args,
@@ -319,7 +346,7 @@ resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
 		break;
 
 	case CFG_NODE_OBJ_DECL:
-		job = DISPATCH_JOB(ctx, obj_decl,
+		job = DISPATCH_JOB(ctx, obj_decl, CFG_PHASE_RESOLVE,
 						   .scope = scope,
 						   .node  = node,
 						   .args  = args,
@@ -327,7 +354,7 @@ resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
 		break;
 
 	case CFG_NODE_TUPLE_DECL:
-		job = DISPATCH_JOB(ctx, tuple_decl,
+		job = DISPATCH_JOB(ctx, tuple_decl, CFG_PHASE_RESOLVE,
 						   .scope = scope,
 						   .node  = node,
 						   .args  = args,
@@ -335,7 +362,7 @@ resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
 		break;
 
 	case CFG_NODE_FUNC_PROTO:
-		job = DISPATCH_JOB(ctx, func_proto_decl,
+		job = DISPATCH_JOB(ctx, func_proto_decl, CFG_PHASE_RESOLVE,
 						   .scope = scope,
 						   .node  = node,
 						   /* .args  = node->DECL_STMT.args, */
@@ -345,7 +372,7 @@ resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
 	case CFG_NODE_IDENT:
 	case CFG_NODE_ACCESS:
 	case CFG_NODE_SUBSCRIPT:
-		job = DISPATCH_JOB(ctx, resolve_type_l_expr,
+		job = DISPATCH_JOB(ctx, resolve_type_l_expr, CFG_PHASE_RESOLVE,
 						   .scope = scope,
 						   .node = node,
 						   .out_type = out_type);
@@ -484,7 +511,7 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 		data->initialized = true;
 
 		struct cfg_job *func_job;
-		func_job = DISPATCH_JOB(ctx, compile_func,
+		func_job = DISPATCH_JOB(ctx, compile_func, CFG_PHASE_RESOLVE,
 								.scope = data->scope,
 								.proto_node = data->node->FUNC_STMT.proto,
 								.body_node  = data->node->FUNC_STMT.body,
@@ -533,7 +560,7 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 
 		struct cfg_job *job;
 
-		job = DISPATCH_JOB(ctx, visit_expr,
+		job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
 						   .func_ctx = &data->func_ctx,
 						   .node     = data->body_node,
 						   .out_func = &data->func);
@@ -615,11 +642,13 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 
 		assert(node_to_process);
 
-		job = DISPATCH_JOB(ctx, visit_expr,
+		job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
 						   .func_ctx = data->func_ctx,
 						   .node     = node_to_process,
 						   .out_func = &data->tmp_func);
 		data->iter += 1;
+
+		return JOB_YIELD_FOR(job);
 	} break;
 
 	case CFG_NODE_LAMBDA:
@@ -685,7 +714,7 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 
 	struct cfg_job *job;
 
-	job = DISPATCH_JOB(ctx, resolve_l_expr,
+	job = DISPATCH_JOB(ctx, resolve_l_expr, CFG_PHASE_RESOLVE,
 					   .scope = data->scope,
 					   .node = data->node,
 					   .out_entry = &data->entry);
@@ -706,7 +735,7 @@ job_resolve_l_expr(struct cfg_ctx *ctx, job_resolve_l_expr_t *data)
 		switch (data->state) {
 		case CFG_BINOP_LHS: {
 			struct cfg_job *lhs_job;
-			lhs_job = DISPATCH_JOB(ctx, resolve_l_expr,
+			lhs_job = DISPATCH_JOB(ctx, resolve_l_expr, CFG_PHASE_RESOLVE,
 								   .scope = data->scope,
 								   .node  = data->node->ACCESS.lhs,
 								   .l_expr_top_node  = data->l_expr_top_node,
@@ -725,7 +754,7 @@ job_resolve_l_expr(struct cfg_ctx *ctx, job_resolve_l_expr_t *data)
 				return JOB_ERROR;
 			}
 
-			rhs_job = DISPATCH_JOB(ctx, resolve_l_expr,
+			rhs_job = DISPATCH_JOB(ctx, resolve_l_expr, CFG_PHASE_RESOLVE,
 								   .scope = data->scope,
 								   .node  = data->node->ACCESS.rhs,
 								   .l_expr_top_node  = data->l_expr_top_node,
@@ -818,7 +847,7 @@ job_parse_file(struct cfg_ctx *ctx, job_parse_file_t *data)
 	assert(node);
 	assert(node->type == CFG_NODE_MODULE);
 
-	DISPATCH_JOB(ctx, visit_stmt_list,
+	DISPATCH_JOB(ctx, visit_stmt_list, CFG_PHASE_DISCOVER,
 				 .scope = data->mod_scope,
 				 .first_stmt = node->MODULE.body);
 
@@ -852,6 +881,11 @@ enum_item_constructor(struct vm *vm, struct exec_stack *stack,
 static struct job_status
 job_enum_decl(struct cfg_ctx *ctx, job_enum_decl_t *data)
 {
+	// @TODO: Enum should initially be dispatched in the discovery
+	// phase, to discover the value constructors, but should yield
+	// until the resolve phase for being instantiatiated, especially
+	// when it has any items with data, or parameters.
+
 	/* struct cfg_node *decl = data->node; */
 	/* assert(decl->type == CFG_NODE_DECL_STMT); */
 
@@ -880,6 +914,9 @@ job_enum_decl(struct cfg_ctx *ctx, job_enum_decl_t *data)
 	struct type_enum_item *items;
 	result = arena_alloc(ctx->mem, sizeof(struct type_enum));
 	items  = arena_alloc(ctx->mem, sizeof(struct type_enum_item) * length);
+
+	// TODO: Types. If any option has an associated type, the enum
+	// decl has to be yielded until resolve phase.
 
 	{
 		size_t i = 0;
@@ -1042,7 +1079,7 @@ discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 				mod_scope = scope_push(scope);
 				scope_insert(scope, atom, OBJ_NONE, mod_scope);
 
-				DISPATCH_JOB(ctx, parse_file,
+				DISPATCH_JOB(ctx, parse_file, CFG_PHASE_DISCOVER,
 							 .mod_scope = mod_scope,
 							 .file_name = file_name);
 			}
@@ -1080,102 +1117,117 @@ discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 	fts_close(ftsp);
 }
 
+static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
+{
+	assert(job->status == JOB_STATUS_IDLE || job->status == JOB_STATUS_YIELD);
+
+	printf("Dispatching 0x%03zx %.*s... ", job->id, LIT(cfg_job_names[job->type]));
+
+	struct job_status res;
+
+	switch (job->type) {
+#define CFG_JOB(name, data) case CFG_JOB_##name: res = job_##name(ctx, &job->name); break;
+#include "config_jobs.h"
+#undef CFG_JOB
+
+	case CFG_JOBS_LEN:
+		assert(false);
+		break;
+	}
+
+	job->status = res.status;
+
+	switch (res.status) {
+	case JOB_STATUS_OK:
+		if (job->first_dependant_node) {
+			append_job(ctx, ctx->current_phase, job->first_dependant_node);
+			job->first_dependant_node = NULL;
+		}
+		printf("ok\n");
+		break;
+
+	case JOB_STATUS_ERROR: {
+		ctx->num_jobs_failed += 1;
+
+		size_t num_canceled = 0;
+
+		for (struct cfg_job *dep = job->first_dependant_node;
+			 dep != NULL;
+			 dep = dep->next_job) {
+			dep->status = JOB_STATUS_ERROR;
+			num_canceled += 1;
+		}
+
+		if (num_canceled > 0) {
+			printf("=== error (%zu dependenc%s canceled) ===\n", num_canceled,
+				   (num_canceled == 1 ? "y" : "ies"));
+		} else {
+			printf("=== error ===\n");
+		}
+	} break;
+
+	case JOB_STATUS_YIELD:
+		if (res.yield_for) {
+			printf("=== yield for 0x%03zx %.*s ===\n",
+				   res.yield_for->id, LIT(cfg_job_names[res.yield_for->type]));
+
+			if (res.yield_for->status == JOB_STATUS_ERROR) {
+				job->status = JOB_STATUS_ERROR;
+				break;
+
+			} else if (res.yield_for->status == JOB_STATUS_OK) {
+				job->next_job = NULL;
+				append_job(ctx, ctx->current_phase, job);
+				break;
+			}
+
+			// TODO: Thread-safe
+			job->next_job = res.yield_for->first_dependant_node;
+			res.yield_for->first_dependant_node = job;
+		} else {
+			printf("=== yield ===\n");
+
+			job->next_job = NULL;
+			append_job(ctx, ctx->current_phase, job);
+		}
+		break;
+
+	case JOB_STATUS_YIELD_FOR_PHASE:
+		job->status = JOB_STATUS_YIELD;
+		append_job(ctx, res.yield_for_phase, job);
+		printf("=== yield for phase %i ===\n", res.yield_for_phase);
+		break;
+
+	case JOB_STATUS_IDLE:
+		panic("Job returned idle as result.");
+		break;
+	}
+}
+
 int
 cfg_compile(struct vm *vm, struct string cfg_dir)
 {
 	struct cfg_ctx ctx = {0};
-	size_t num_errors = 0;
 
 	ctx.vm = vm;
 	ctx.mem = &vm->memory;
 
 	discover_config_files(&ctx, cfg_dir);
 
-	while (ctx.job_head) {
-		struct cfg_job *job = ctx.job_head;
-		ctx.job_head = job->next_job;
+	for (; ctx.current_phase < CFG_NUM_PHASES; ctx.current_phase += 1) {
+		struct cfg_phase *phase = &ctx.phases[ctx.current_phase];
+		printf("\n=== Phase %i ===\n", ctx.current_phase);
+		while (phase->job_head) {
+			struct cfg_job *job = phase->job_head;
+			phase->job_head = job->next_job;
 
-		assert(job->status == JOB_STATUS_IDLE || job->status == JOB_STATUS_YIELD);
-
-		printf("Dispatching 0x%03zx %.*s... ", job->id, LIT(cfg_job_names[job->type]));
-
-		struct job_status res;
-
-		switch (job->type) {
-#define CFG_JOB(name, data) case CFG_JOB_##name: res = job_##name(&ctx, &job->name); break;
-	#include "config_jobs.h"
-#undef CFG_JOB
-
-		case CFG_JOBS_LEN:
-			assert(false);
-			break;
-		}
-
-		job->status = res.status;
-
-		switch (res.status) {
-		case JOB_STATUS_OK:
-			if (job->first_dependant_node) {
-				append_job(&ctx, job->first_dependant_node);
-				job->first_dependant_node = NULL;
-			}
-			printf("ok\n");
-			break;
-
-		case JOB_STATUS_ERROR: {
-			num_errors += 1;
-
-			size_t num_canceled = 0;
-
-			for (struct cfg_job *dep = job->first_dependant_node;
-				 dep != NULL;
-				 dep = dep->next_job) {
-				dep->status = JOB_STATUS_ERROR;
-				num_canceled += 1;
-			}
-
-			if (num_canceled > 0) {
-				printf("=== error (%zu dependenc%s canceled) ===\n", num_canceled,
-					   (num_canceled == 1 ? "y" : "ies"));
-			} else {
-				printf("=== error ===\n");
-			}
-		} break;
-
-		case JOB_STATUS_YIELD:
-			if (res.yield_for) {
-				printf("=== yield for 0x%03zx %.*s ===\n",
-					   res.yield_for->id, LIT(cfg_job_names[res.yield_for->type]));
-
-				if (res.yield_for->status == JOB_STATUS_ERROR) {
-					job->status = JOB_STATUS_ERROR;
-					break;
-
-				} else if (res.yield_for->status == JOB_STATUS_OK) {
-					job->next_job = NULL;
-					append_job(&ctx, job);
-					break;
-				}
-
-				// TODO: Thread-safe
-				job->next_job = res.yield_for->first_dependant_node;
-				res.yield_for->first_dependant_node = job;
-			} else {
-				printf("=== yield ===\n");
-
-				job->next_job = NULL;
-				append_job(&ctx, job);
-			}
-			break;
-
-		case JOB_STATUS_IDLE:
-			panic("Job returned idle as result.");
-			break;
+			cfg_exec_job(&ctx, job);
 		}
 	}
 
-	if (num_errors > 0) {
-		printf("Compilation failed! (%zu errors)\n", num_errors);
+	if (ctx.num_jobs_failed > 0 || ctx.num_errors > 0) {
+		printf("Compilation failed! (%zu jobs failed, %zu errors)\n",
+			   ctx.num_jobs_failed, ctx.num_errors);
 	}
 
 	printf("\n");
