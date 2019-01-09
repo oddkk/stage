@@ -34,6 +34,7 @@ int scope_insert(struct scope *parent,
 	entry->parent = parent;
 	entry->scope = child_scope;
 	entry->overloadable = false;
+	entry->next_overload = -1;
 
 	int err;
 	err = id_lookup_table_insert(&parent->lookup, name->name, id);
@@ -43,7 +44,7 @@ int scope_insert(struct scope *parent,
 		return -1;
 	}
 
-	return 0;
+	return id;
 }
 
 int scope_insert_overloadable(struct scope *parent,
@@ -53,55 +54,39 @@ int scope_insert_overloadable(struct scope *parent,
 	int err;
 	err = id_lookup_table_lookup(&parent->lookup, name->name);
 
+	struct scope_entry *previous_overload = NULL;
+
+	if (err >= 0) {
+		previous_overload = &parent->entries[err];
+
+		if (!previous_overload->overloadable) {
+			return -3;
+		}
+
+		while (previous_overload->next_overload >= 0) {
+			previous_overload = &parent->entries[previous_overload->next_overload];
+		}
+	}
+
+	int id;
 	struct scope_entry *entry;
 
-	if (err < 0) {
-		int id;
+	id = dlist_alloc(parent->entries, parent->num_entries);
+	entry = &parent->entries[id];
 
-		id = dlist_alloc(parent->entries, parent->num_entries);
-		entry = &parent->entries[id];
+	entry->overloadable = true;
+	entry->name = name;
+	entry->parent = parent;
+	entry->scope = NULL;
+	entry->next_overload = -1;
 
-		entry->overloadable = true;
-		entry->name = name;
-		entry->parent = parent;
-		entry->scope = NULL;
+	entry->id = object_id;
 
-		int err;
-		err = id_lookup_table_insert(&parent->lookup, name->name, id);
-
-		// We already tested that the entry did not exist, and it
-		// should still not exist.
-		assert(err == 0);
-	} else {
-		entry = &parent->entries[err];
+	if (previous_overload) {
+		previous_overload->next_overload = id;
 	}
 
-	if (!entry->overloadable) {
-		return -3;
-	}
-
-	entry->num_overloads += 1;
-
-	if (entry->num_overloads <= SCOPE_ENTRY_INLINED_OVERLOADS) {
-		entry->inlined_overloads[entry->num_overloads - 1] = object_id;
-
-		return 0;
-	}
-
-	if (entry->num_overloads == SCOPE_ENTRY_INLINED_OVERLOADS + 1) {
-		obj_id *overloads = calloc(entry->num_overloads, sizeof(obj_id));
-		memcpy(overloads, entry->inlined_overloads,
-			   (entry->num_overloads + 1) * sizeof(obj_id));
-		entry->overloads = overloads;
-
-	} else {
-		entry->overloads = realloc(entry->overloads,
-								   entry->num_overloads * sizeof(obj_id));
-	}
-
-	entry->overloads[entry->num_overloads - 1] = object_id;
-
-	return 0;
+	return id;
 }
 
 int scope_local_lookup(struct scope *scope,
@@ -153,19 +138,7 @@ static void _scope_print(struct vm *vm, struct scope *scope, int depth)
 	for (size_t i = 0; i < scope->num_entries; i++) {
 		struct scope_entry *entry = &scope->entries[i];
 		_print_indent(depth);
-		printf("%.*s", ALIT(entry->name));
-
-		obj_id *objs = NULL;
-		size_t num_objs = 0;
-
-		num_objs = scope_objects(*entry, &objs);
-
-		for (size_t i = 0; i < num_objs; i++) {
-			printf(" ");
-			print_type_repr(vm, get_object(&vm->store, objs[i]));
-		}
-
-		printf("\n");
+		printf("%.*s\n", ALIT(entry->name));
 
 		if (entry->scope) {
 			_scope_print(vm, entry->scope, depth + 1);
@@ -193,25 +166,62 @@ obj_id scope_lookup_id(struct scope *scope,
 	return res.id;
 }
 
-size_t scope_objects(struct scope_entry entry, obj_id **objs)
+int scope_iterate_overloads(struct scope *scope, struct atom *name,
+							struct scope_entry **iter)
 {
-	size_t num_objs = 0;
+	int err = 1;
+	struct scope *current_scope;
 
-	if (entry.overloadable) {
-		num_objs = entry.num_overloads;
-
-		if (entry.num_overloads > SCOPE_ENTRY_INLINED_OVERLOADS) {
-			*objs = entry.overloads;
-		} else {
-			*objs = entry.inlined_overloads;
-		}
-	} else if (entry.id != OBJ_NONE) {
-		num_objs = 1;
-		*objs = &entry.id;
+	if (*iter) {
+		current_scope = (*iter)->parent;
 	} else {
-		num_objs = 0;
-		*objs = NULL;
+		current_scope = scope;
 	}
 
-	return num_objs;
+	bool found = (*iter != NULL);
+
+	while (current_scope && err != 0) {
+		err = scope_iterate_local_overloads(current_scope, name, iter);
+
+		if (err == 0) {
+			return 0;
+		}
+
+		current_scope = current_scope->parent;
+	}
+
+	return found ? 1 : -1;
+}
+
+int scope_iterate_local_overloads(struct scope *scope, struct atom *name,
+								  struct scope_entry **iter)
+{
+	assert(scope != NULL);
+
+	if (*iter == NULL) {
+		int err;
+		err = id_lookup_table_lookup(&scope->lookup, name->name);
+
+		if (err < 0) {
+			return (*iter != NULL) ? 1 : -1;
+		}
+
+		*iter = &scope->entries[err];
+
+		return 0;
+	}
+
+	struct scope_entry *entry = *iter;
+	struct scope *parent = entry->parent;
+
+	if (entry->next_overload >= 0) {
+		assert(entry->next_overload < parent->num_entries);
+		*iter = &parent->entries[entry->next_overload];
+
+		return 0;
+
+	} else {
+		*iter = NULL;
+		return 1;
+	}
 }

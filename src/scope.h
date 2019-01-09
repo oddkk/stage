@@ -9,18 +9,9 @@ struct objstore;
 struct scope;
 typedef unsigned int obj_id;
 
-#define SCOPE_ENTRY_INLINED_OVERLOADS (sizeof(obj_id *) / sizeof(obj_id))
-
 struct scope_entry {
-	union {
-		// For non-overloadable entries.
-		obj_id id;
-
-		// For overloadable entries.
-		obj_id inlined_overloads[SCOPE_ENTRY_INLINED_OVERLOADS];
-		obj_id *overloads;
-	};
-	size_t num_overloads;
+	obj_id id;
+	int next_overload;
 	bool overloadable;
 
 	struct atom *name;
@@ -62,6 +53,13 @@ obj_id scope_lookup_id(struct scope *scope,
 
 void scope_print(struct vm *vm, struct scope *scope);
 
-size_t scope_objects(struct scope_entry entry, obj_id **objs);
+// Returns 0 if found overload, in this case *iter is a pointer to
+// that element. Returns -1 if no element was found, and 1 if an
+// element previously was found, but there are no more matches.
+int scope_iterate_overloads(struct scope *scope, struct atom *name,
+							struct scope_entry **iter);
+
+int scope_iterate_local_overloads(struct scope *scope, struct atom *name,
+								  struct scope_entry **iter);
 
 #endif
