@@ -186,13 +186,21 @@ int vm_init(struct vm *vm)
 
 
 	{
+		struct object unset = {0};
+		obj_id unset_id;
+
+		unset.type = TYPE_UNSET;
+		unset_id = register_object(&vm->store, unset);
+		assert(unset_id == OBJ_UNSET);
+	}
+
+	{
 		struct object none = {0};
 		obj_id none_id;
 
 		none.type = TYPE_NONE;
-
 		none_id = register_object(&vm->store, none);
-		assert(none_id == 0);
+		assert(none_id == OBJ_NONE);
 	}
 
 	{
@@ -266,6 +274,10 @@ int vm_init(struct vm *vm)
 		base->subtypes_iter = type_tuple_subtypes_iter;
 	}
 
+	{
+		vm->default_types.func_template_return
+			= type_register_function(vm, TYPE_NONE, TYPE_TEMPLATE_PARAM);
+	}
 
 
 	{

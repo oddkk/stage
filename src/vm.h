@@ -92,7 +92,10 @@ enum vm_instruction {
 #define TYPE_NONE ((type_id)1)
 #define TYPE_TEMPLATE_PARAM ((type_id)2)
 
-#define OBJ_NONE ((obj_id)0)
+#define OBJ_UNSET ((obj_id)0)
+#define OBJ_NONE ((obj_id)1)
+
+#define OBJ_VALID(oid) ((oid) > OBJ_NONE)
 
 struct vm {
 	struct objstore store;
@@ -107,6 +110,8 @@ struct vm {
 		type_id type;
 		type_id integer;
 		type_id string;
+
+		type_id func_template_return;
 
 		struct type_base func_base;
 		struct type_base enum_base;
