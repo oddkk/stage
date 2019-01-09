@@ -11,6 +11,8 @@ CFG_JOB(visit_stmt_list, struct {
 CFG_JOB(visit_decl_stmt, struct {
 	struct scope *scope;
 	struct cfg_node *stmt;
+
+	int scope_entry_id;
 	bool initialized;
 	type_id type;
 	struct scope *child_scope;
@@ -21,7 +23,7 @@ CFG_JOB(enum_decl, struct {
 	struct cfg_node *node;
 	struct cfg_node *args;
 	type_id *out_type;
-	struct scope **out_child_scope;
+	struct scope *child_scope;
 })
 
 CFG_JOB(obj_decl, struct {
@@ -29,7 +31,6 @@ CFG_JOB(obj_decl, struct {
 	struct cfg_node *node;
 	struct cfg_node *args;
 	type_id *out_type;
-	struct scope **out_child_scope;
 })
 
 CFG_JOB(tuple_decl, struct {
@@ -57,10 +58,11 @@ CFG_JOB(func_proto_decl, struct {
 CFG_JOB(func_decl, struct {
 	struct scope *scope;
 	struct cfg_node *node;
+
+	int scope_entry_id;
 	obj_id func_object;
 	bool initialized;
 	obj_id *out_object;
-	struct scope **out_child_scope;
 })
 
 CFG_JOB(compile_func, struct {

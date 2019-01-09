@@ -332,7 +332,7 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 static struct cfg_job *
 resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
 			 struct cfg_node *args, struct scope *scope,
-			 type_id *out_type, struct scope **out_child_scope)
+			 type_id *out_type, struct scope *child_scope)
 {
 	struct cfg_job *job = NULL;
 	switch (node->type) {
@@ -342,7 +342,7 @@ resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
 						   .node  = node,
 						   .args  = args,
 						   .out_type = out_type,
-						   .out_child_scope = out_child_scope);
+						   .child_scope = child_scope);
 		break;
 
 	case CFG_NODE_OBJ_DECL:
@@ -398,10 +398,35 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 
 	if (!data->initialized) {
 		data->initialized = true;
-		struct cfg_job *job;
 
+		struct atom *name;
+		assert(node->DECL_STMT.name->type == CFG_NODE_IDENT);
+		name = node->DECL_STMT.name->IDENT;
+
+		struct scope *child_scope = NULL;
+
+		// @TODO: This is a hack. There should be a more elegant way
+		// of having scopes inside type decls.
+		if (node->DECL_STMT.decl->type == CFG_NODE_ENUM_DECL) {
+			child_scope = scope_push(data->scope);
+		}
+
+		data->scope_entry_id =
+			scope_insert(data->scope, name, OBJ_UNSET, child_scope);
+
+		if (data->scope_entry_id < 0) {
+			cfg_error(ctx, node->DECL_STMT.name,
+					  "An object named '%.*s' already exists in this scope.",
+					  ALIT(name));
+			return JOB_ERROR;
+		}
+
+		struct cfg_job *job;
+		struct scope_entry *entry;
+
+		entry = &data->scope->entries[data->scope_entry_id];
 		job = resolve_type(ctx, node->DECL_STMT.decl, node->DECL_STMT.args,
-						   data->scope, &data->type, &data->child_scope);
+						   data->scope, &data->type, entry->scope);
 
 		assert(job != NULL);
 
@@ -413,12 +438,7 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 	obj_id object;
 
 	object = obj_register_type(ctx->vm, data->type);
-
-	struct atom *name;
-	assert(node->DECL_STMT.name->type == CFG_NODE_IDENT);
-	name = node->DECL_STMT.name->IDENT;
-
-	scope_insert(data->scope, name, object, data->child_scope);
+	data->scope->entries[data->scope_entry_id].id = object;
 
 	return JOB_OK;
 }
@@ -510,6 +530,12 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 	if (!data->initialized) {
 		data->initialized = true;
 
+		struct atom *name;
+
+		name = data->node->FUNC_STMT.ident->IDENT;
+		data->scope_entry_id =
+			scope_insert(data->scope, name, OBJ_UNSET, NULL);
+
 		struct cfg_job *func_job;
 		func_job = DISPATCH_JOB(ctx, compile_func, CFG_PHASE_RESOLVE,
 								.scope = data->scope,
@@ -522,13 +548,15 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 
 	// The object should have been defined before we are called
 	// again.
-	if (data->func_object == OBJ_NONE) {
+	if (!OBJ_VALID(data->func_object)) {
 		return JOB_ERROR;
 	}
+	assert(OBJ_VALID(data->func_object));
 
-	struct atom *name = data->node->FUNC_STMT.ident->IDENT;
+	struct scope_entry *entry;
 
-	scope_insert(data->scope, name, OBJ_NONE, NULL);
+	entry = &data->scope->entries[data->scope_entry_id];
+	entry->id = data->func_object;
 
 	return JOB_OK;
 }
@@ -539,16 +567,21 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 	switch (data->state) {
 	case CFG_COMPILE_FUNC_IDLE: {
 		data->state = CFG_COMPILE_FUNC_RESOLVE_SIGNATURE;
+		if (data->proto_node) {
+			struct cfg_job *job;
 
-		struct cfg_job *job;
+			job = DISPATCH_JOB(ctx, func_proto_decl, CFG_PHASE_RESOLVE,
+							.scope = data->scope,
+							.node  = data->proto_node,
+							.out_type = &data->proto);
 
-		job = DISPATCH_JOB(ctx, func_proto_decl,
-						   .scope = data->scope,
-						   .node  = data->proto_node,
-						   .out_type = &data->proto);
+			return JOB_YIELD_FOR(job);
+		} else {
+			data->proto = ctx->vm->default_types.func_template_return;
 
-		return JOB_YIELD_FOR(job);
-	} break;
+			return JOB_YIELD_FOR_PHASE(CFG_PHASE_RESOLVE);
+		}
+	}
 
 	case CFG_COMPILE_FUNC_RESOLVE_SIGNATURE: {
 		data->state = CFG_COMPILE_FUNC_VISIT_BODY;
@@ -569,6 +602,8 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 	} break;
 
 	case CFG_COMPILE_FUNC_VISIT_BODY: {
+		printf("\n");
+		cfg_func_print(data->func);
 		return JOB_OK;
 	} break;
 
@@ -683,6 +718,8 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 		break;
 	}
 
+	printf("Unhandled node '%.*s' in expr.",
+		   LIT(cfg_node_names[data->node->type]));
 	return JOB_ERROR;
 }
 
@@ -940,9 +977,9 @@ job_enum_decl(struct cfg_ctx *ctx, job_enum_decl_t *data)
 
 	*data->out_type = type;
 
-	if (data->out_child_scope != NULL) {
+	if (data->child_scope != NULL) {
 		struct scope *enum_scope;
-		enum_scope = scope_push(data->scope);
+		enum_scope = data->child_scope;
 
 		for (size_t i = 0; i < result->num_items; i++) {
 			struct type_enum_item *item = &result->items[i];
@@ -955,8 +992,6 @@ job_enum_decl(struct cfg_ctx *ctx, job_enum_decl_t *data)
 
 			scope_insert(enum_scope, item->name, item_constructor, NULL);
 		}
-
-		*data->out_child_scope = enum_scope;
 	}
 
 	return JOB_OK;
