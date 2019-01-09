@@ -486,7 +486,13 @@ re2c:define:YYFILL:naked = 1;
 
 "\"" [^\"]* "\"" {
 	lloc_col(lloc, CURRENT_LEN);
-	string_duplicate(ctx->memory, &lval->STRINGLIT, CURRENT_TOKEN);
+
+	// Trim surrounding "".
+	struct string content;
+	content.text = CURRENT_TOKEN.text + 1;
+	content.length = CURRENT_TOKEN.length - 2;
+
+	string_duplicate(ctx->memory, &lval->STRINGLIT, content);
 	return STRINGLIT;
  }
 

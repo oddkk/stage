@@ -89,7 +89,7 @@ cfg_func_print_internal(struct cfg_func_node *node, int depth)
 		break;
 
 	case CFG_FUNC_NODE_LIT_STR:
-		printf("\"%*.s\"", LIT(node->lit_str));
+		printf("\"%.*s\"", LIT(node->lit_str));
 		break;
 	}
 
