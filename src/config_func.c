@@ -31,7 +31,7 @@ cfg_func_call_add_arg(struct cfg_func_node *func,
 		p = &(*p)->next_arg;
 	}
 
-	(*p)->next_arg = arg;
+	*p = arg;
 }
 
 struct cfg_func_node *
