@@ -43,6 +43,45 @@ static void obj_integer_add(struct vm *vm, struct exec_stack *stack, void *data)
 	stack_push(stack, &result, sizeof(result));
 }
 
+static void obj_integer_sub(struct vm *vm, struct exec_stack *stack, void *data)
+{
+	(void)data;
+	int64_t lhs, rhs;
+
+	stack_pop(stack, &lhs, sizeof(lhs));
+	stack_pop(stack, &rhs, sizeof(rhs));
+
+	int64_t result = lhs - rhs;
+
+	stack_push(stack, &result, sizeof(result));
+}
+
+static void obj_integer_mul(struct vm *vm, struct exec_stack *stack, void *data)
+{
+	(void)data;
+	int64_t lhs, rhs;
+
+	stack_pop(stack, &lhs, sizeof(lhs));
+	stack_pop(stack, &rhs, sizeof(rhs));
+
+	int64_t result = lhs * rhs;
+
+	stack_push(stack, &result, sizeof(result));
+}
+
+static void obj_integer_div(struct vm *vm, struct exec_stack *stack, void *data)
+{
+	(void)data;
+	int64_t lhs, rhs;
+
+	stack_pop(stack, &lhs, sizeof(lhs));
+	stack_pop(stack, &rhs, sizeof(rhs));
+
+	int64_t result = lhs / rhs;
+
+	stack_push(stack, &result, sizeof(result));
+}
+
 static struct string type_string_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
 	struct string value = *(struct string *)obj->data;
@@ -287,12 +326,42 @@ int vm_init(struct vm *vm)
 		};
 
 		type_id param_type = type_register_tuple(vm, params, 2);
-		obj_id func;
-		func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
-										 obj_integer_add, NULL);
 
-		struct atom *name = atom_create(&vm->atom_table, STR("op+"));
-		scope_insert_overloadable(&vm->root_scope, name, func);
+		{
+			obj_id func;
+			func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
+											obj_integer_add, NULL);
+
+			struct atom *name = atom_create(&vm->atom_table, STR("op+"));
+			scope_insert_overloadable(&vm->root_scope, name, func);
+		}
+
+		{
+			obj_id func;
+			func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
+											obj_integer_sub, NULL);
+
+			struct atom *name = atom_create(&vm->atom_table, STR("op-"));
+			scope_insert_overloadable(&vm->root_scope, name, func);
+		}
+
+		{
+			obj_id func;
+			func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
+											obj_integer_mul, NULL);
+
+			struct atom *name = atom_create(&vm->atom_table, STR("op*"));
+			scope_insert_overloadable(&vm->root_scope, name, func);
+		}
+
+		{
+			obj_id func;
+			func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
+											obj_integer_div, NULL);
+
+			struct atom *name = atom_create(&vm->atom_table, STR("op/"));
+			scope_insert_overloadable(&vm->root_scope, name, func);
+		}
 	}
 
 	{
