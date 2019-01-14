@@ -15,6 +15,28 @@
 #include <sys/stat.h>
 #include <fts.h>
 
+#define ENABLE_TERM_COLORS 1
+
+#if ENABLE_TERM_COLORS
+#define TERM_COLOR_ESCAPE_LIT "\x1b"
+#define TERM_COLOR_RED_LIT TERM_COLOR_ESCAPE_LIT "[1;31m"
+#define TERM_COLOR_GREEN_LIT TERM_COLOR_ESCAPE_LIT "[1;32m"
+#define TERM_COLOR_YELLOW_LIT TERM_COLOR_ESCAPE_LIT "[1;33m"
+#define TERM_COLOR_BLUE_LIT TERM_COLOR_ESCAPE_LIT "[1;34m"
+#define TERM_COLOR_CLEAR_LIT TERM_COLOR_ESCAPE_LIT "[0m"
+#else
+#define TERM_COLOR_RED_LIT ""
+#define TERM_COLOR_GREEN_LIT ""
+#define TERM_COLOR_YELLOW_LIT ""
+#define TERM_COLOR_BLUE_LIT ""
+#define TERM_COLOR_CLEAR_LIT ""
+#endif
+
+#define TERM_COLOR_RED(text) TERM_COLOR_RED_LIT text TERM_COLOR_CLEAR_LIT
+#define TERM_COLOR_GREEN(text) TERM_COLOR_GREEN_LIT text TERM_COLOR_CLEAR_LIT
+#define TERM_COLOR_YELLOW(text) TERM_COLOR_YELLOW_LIT text TERM_COLOR_CLEAR_LIT
+#define TERM_COLOR_BLUE(text) TERM_COLOR_BLUE_LIT text TERM_COLOR_CLEAR_LIT
+
 struct string cfg_bin_op_sym[] = {
 #define OP(name, sym) STR(sym),
 	CFG_BIN_OPS
@@ -1209,7 +1231,7 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 		}
 
 		job->first_dependant_node = NULL;
-		printf("ok\n");
+		printf(TERM_COLOR_GREEN("ok") "\n");
 	} break;
 
 	case JOB_STATUS_ERROR: {
@@ -1225,16 +1247,16 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 		}
 
 		if (num_canceled > 0) {
-			printf("=== error (%zu dependenc%s canceled) ===\n", num_canceled,
+			printf(TERM_COLOR_RED("=== error (%zu dependenc%s canceled) ===") "\n", num_canceled,
 				   (num_canceled == 1 ? "y" : "ies"));
 		} else {
-			printf("=== error ===\n");
+			printf(TERM_COLOR_RED("=== error ===") "\n");
 		}
 	} break;
 
 	case JOB_STATUS_YIELD:
 		if (res.yield_for) {
-			printf("=== yield for 0x%03zx %.*s ===\n",
+			printf(TERM_COLOR_YELLOW("=== yield for 0x%03zx %.*s ===") "\n",
 				   res.yield_for->id, LIT(cfg_job_names[res.yield_for->type]));
 
 			if (res.yield_for->status == JOB_STATUS_ERROR) {
@@ -1251,7 +1273,7 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 				res.yield_for->first_dependant_node = job;
 			}
 		} else {
-			printf("=== yield ===\n");
+			printf(TERM_COLOR_YELLOW("=== yield ===") "\n");
 
 			job->next_job = NULL;
 			append_job(ctx, ctx->current_phase, job);
@@ -1262,7 +1284,8 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 		job->status = JOB_STATUS_YIELD;
 		job->next_job = NULL;
 		append_job(ctx, res.yield_for_phase, job);
-		printf("=== yield for phase %i ===\n", res.yield_for_phase);
+		printf(TERM_COLOR_YELLOW("=== yield for phase %i ===") "\n",
+			   res.yield_for_phase);
 		break;
 
 	case JOB_STATUS_IDLE:
@@ -1272,7 +1295,7 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 
 	if (job->status == JOB_STATUS_YIELD) {
 		if (ctx->time - ctx->last_completed_job_time > CFG_JOB_MAX_CONSECUTIVE_YIELDS) {
-			printf("=== erroring due to no progress ===\n");
+			printf(TERM_COLOR_RED("=== erroring due to no progress ===") "\n");
 			job->status = JOB_STATUS_ERROR;
 			ctx->num_jobs_failed += 1;
 		}
@@ -1295,7 +1318,8 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 
 	for (; ctx.current_phase < CFG_NUM_PHASES; ctx.current_phase += 1) {
 		struct cfg_phase *phase = &ctx.phases[ctx.current_phase];
-		printf("\n=== Phase %i ===\n", ctx.current_phase);
+		printf("\n" TERM_COLOR_BLUE("=== Phase %i ===") "\n",
+			   ctx.current_phase);
 		while (phase->job_head) {
 			struct cfg_job *job = phase->job_head;
 			phase->job_head = job->next_job;
@@ -1308,7 +1332,8 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 	}
 
 	if (ctx.num_jobs_failed > 0 || ctx.num_errors > 0) {
-		printf("Compilation failed! (%zu jobs failed, %zu errors)\n",
+		printf("\n" TERM_COLOR_RED("Compilation failed! "
+								   "(%zu jobs failed, %zu errors)") "\n",
 			   ctx.num_jobs_failed, ctx.num_errors);
 	}
 
