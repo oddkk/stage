@@ -162,6 +162,7 @@ struct type_tuple {
 	struct atom **names;
 	type_id *types;
 	size_t num_items;
+	bool named;
 
 	// Number of bytes
 	size_t size;
@@ -182,7 +183,8 @@ struct obj_builtin_func_data {
 };
 
 type_id type_register_enum(struct vm *vm, struct type_enum *t);
-type_id type_register_tuple(struct vm *vm, struct type_tuple_item *items, size_t num_items);
+type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, size_t num_items);
+type_id type_register_unnamed_tuple(struct vm *vm, type_id *items, size_t num_items);
 type_id type_register_function(struct vm *vm, type_id params, type_id ret);
 
 void vm_exec(struct vm *vm, struct exec_stack *stack, void *instructions, size_t length);

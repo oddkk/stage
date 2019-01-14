@@ -3,6 +3,7 @@
 
 #include "intdef.h"
 #include "atom.h"
+#include "utils.h"
 
 typedef unsigned int obj_id;
 typedef unsigned int type_id;
@@ -15,16 +16,20 @@ struct object;
 // TYPE_UNSET
 #define TYPE_SUBTYPES_END ((type_id)0)
 
-typedef struct string (*type_repr)(struct vm *vm, struct arena *mem, struct object *obj);
+typedef struct string (*type_repr)(struct vm *vm, struct arena *mem, struct type *);
+typedef struct string (*obj_repr)(struct vm *vm, struct arena *mem, struct object *);
 typedef type_id (*type_subtypes_iter)(struct vm *vm, struct type *type, size_t *iter);
 typedef void (*type_free)(struct vm *vm, struct type *type);
 
 struct type_base {
 	struct string name;
 	type_repr repr;
+	obj_repr obj_repr;
 	type_free free;
 	type_subtypes_iter subtypes_iter;
 };
+
+void type_base_init(struct type_base *, struct string name);
 
 struct type {
 	struct atom *name;
@@ -59,7 +64,8 @@ struct objstore {
 };
 
 type_id register_type(struct objstore *store, struct type type);
-void print_type_repr(struct vm *vm, struct object obj);
+void print_type_repr(struct vm *vm, struct type *);
+void print_obj_repr(struct vm *vm, struct object);
 
 obj_id register_object(struct objstore *store, struct object obj);
 
@@ -69,6 +75,15 @@ static inline struct object get_object(struct objstore *store, obj_id id) {
 	obj = &store->pages[id / store->elements_per_page][id % store->elements_per_page];
 
 	return *obj;
+}
+
+static inline struct type *get_type(struct objstore *store, type_id id) {
+	struct type *type;
+
+	assert(id < store->num_types);
+	type = &store->types[id];
+
+	return type;
 }
 
 void free_objstore(struct objstore *store);

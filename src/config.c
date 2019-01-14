@@ -512,7 +512,7 @@ job_func_proto_decl(struct cfg_ctx *ctx, job_func_proto_decl_t *data)
 			item.name = data->node->IDENT;
 			item.type = TYPE_TEMPLATE_PARAM;
 
-			data->params = type_register_tuple(ctx->vm, &item, 1);
+			data->params = type_register_named_tuple(ctx->vm, &item, 1);
 			data->ret = TYPE_TEMPLATE_PARAM;
 
 			data->state = CFG_FUNC_PROTO_DECL_FINALIZE;
@@ -772,15 +772,15 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 		}
 
 		if (obj.type != ctx->vm->default_types.type) {
-			arena_point p = arena_push(&ctx->vm->memory);
+			struct arena mem = arena_push(&ctx->vm->memory);
 
 			struct type *type = &ctx->vm->store.types[obj.type];
 
 			struct string obj_repr;
-			obj_repr = type->base->repr(ctx->vm, &ctx->vm->memory, &obj);
+			obj_repr = type->base->repr(ctx->vm, &mem, type);
 			cfg_error(ctx, data->node, "Expected a type but got '%.*s'.", LIT(obj_repr));
 
-			arena_pop(&ctx->vm->memory, p);
+			arena_pop(&ctx->vm->memory, mem);
 
 			return JOB_ERROR;
 		}
@@ -866,16 +866,15 @@ job_resolve_l_expr(struct cfg_ctx *ctx, job_resolve_l_expr_t *data)
 		}
 
 		if (err) {
-			struct arena *mem = &ctx->vm->memory;
-			arena_point p = arena_push(mem);
+			struct arena mem = arena_push(&ctx->vm->memory);
 
 			struct string expr;
 
-			expr = expr_to_string(mem, data->l_expr_top_node);
+			expr = expr_to_string(&mem, data->l_expr_top_node);
 
 			cfg_error(ctx, data->node, "Could not find '%.*s'.", LIT(expr));
 
-			arena_pop(mem, p);
+			arena_pop(&ctx->vm->memory, mem);
 			return JOB_ERROR;
 		}
 
@@ -1065,8 +1064,13 @@ job_tuple_decl(struct cfg_ctx *ctx, job_tuple_decl_t *data)
 		}
 
 		data->num_items = len;
-		data->items = calloc(data->num_items,
-							 sizeof(struct type_tuple_item));
+		if (node->TUPLE_DECL.named) {
+			data->named_items = calloc(data->num_items,
+									   sizeof(struct type_tuple_item));
+		} else {
+			data->unnamed_items = calloc(data->num_items,
+										 sizeof(type_id));
+		}
 
 		data->next_node_to_resolve = node->TUPLE_DECL.items;
 		data->num_nodes_resolved = 0;
@@ -1078,13 +1082,19 @@ job_tuple_decl(struct cfg_ctx *ctx, job_tuple_decl_t *data)
 		if (data->num_nodes_resolved < data->num_items) {
 			struct cfg_node *n = data->next_node_to_resolve;
 			size_t i = data->num_nodes_resolved;
+			type_id *type_id_dest;
 
-			data->items[i].name = n->TUPLE_DECL_ITEM.name;
+			if (node->TUPLE_DECL.named) {
+				data->named_items[i].name = n->TUPLE_DECL_ITEM.name;
+				type_id_dest = &data->named_items[i].type;
+			} else {
+				type_id_dest = &data->unnamed_items[i];
+			}
 
 			struct cfg_job *item_job;
 
 			item_job = resolve_type(ctx, n->TUPLE_DECL_ITEM.type, NULL,
-									data->scope, &data->items[i].type, NULL);
+									data->scope, type_id_dest, NULL);
 
 			data->num_nodes_resolved += 1;
 			data->next_node_to_resolve = n->next_sibling;
@@ -1098,8 +1108,18 @@ job_tuple_decl(struct cfg_ctx *ctx, job_tuple_decl_t *data)
 	}
 
 	if (data->state == CFG_TUPLE_DECL_FINALIZE) {
-		*data->out_type = type_register_tuple(ctx->vm, data->items, data->num_items);
-		free(data->items);
+		if (node->TUPLE_DECL.named) {
+			*data->out_type =
+				type_register_named_tuple(ctx->vm, data->named_items,
+										  data->num_items);
+			free(data->named_items);
+		} else {
+			*data->out_type =
+				type_register_unnamed_tuple(ctx->vm, data->unnamed_items,
+											data->num_items);
+			free(data->unnamed_items);
+		}
+
 
 		return JOB_OK;
 	}

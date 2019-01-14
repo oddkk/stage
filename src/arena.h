@@ -11,11 +11,12 @@ struct arena {
 
 int arena_init(struct arena *arena, size_t capacity);
 void *arena_alloc(struct arena *arena, size_t length);
+void *arena_alloc_no_zero(struct arena *arena, size_t length);
 
 typedef size_t arena_point;
 
-arena_point arena_push(struct arena *arena);
-void arena_pop(struct arena *arena, arena_point p);
+struct arena arena_push(struct arena *arena);
+void arena_pop(struct arena *arena, struct arena tmp);
 
 void arena_print_usage(struct arena *arena);
 

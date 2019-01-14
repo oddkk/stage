@@ -9,6 +9,34 @@
 #include "utils.h"
 #include "vm.h"
 
+static struct string default_type_repr(struct vm *vm, struct arena *mem,
+									   struct type *type)
+{
+	return type->base->name;
+}
+
+static struct string default_obj_repr(struct vm *vm, struct arena *mem,
+									  struct object *object)
+{
+	assert(object->type < vm->store.num_types);
+	struct type *type = &vm->store.types[object->type];
+	return type->base->name;
+}
+
+static type_id default_type_subtypes_iter(struct vm *vm, struct type *type,
+										  size_t *iter)
+{
+	return TYPE_SUBTYPES_END;
+}
+
+void type_base_init(struct type_base *base, struct string name)
+{
+	base->name = name;
+	base->repr = default_type_repr;
+	base->obj_repr = default_obj_repr;
+	base->subtypes_iter = default_type_subtypes_iter;
+}
+
 obj_id register_object(struct objstore *store, struct object obj) {
 	if (store->page_size == 0) {
 		store->page_size = sysconf(_SC_PAGESIZE);
@@ -110,16 +138,26 @@ type_id register_type(struct objstore *store, struct type type)
 	return dlist_append(store->types, store->num_types, &type);
 }
 
-void print_type_repr(struct vm *vm, struct object obj)
+void print_type_repr(struct vm *vm, struct type *type)
 {
-	arena_point p = arena_push(&vm->memory);
-
-	struct type *type = &vm->store.types[obj.type];
-
+	struct arena mem = arena_push(&vm->memory);
+	/* struct type *type = &vm->store.types[obj.type]; */
 	struct string res;
-	res = type->base->repr(vm, &vm->memory, &obj);
 
+	res = type->base->repr(vm, &mem, type);
 	printf("%.*s", LIT(res));
 
-	arena_pop(&vm->memory, p);
+	arena_pop(&vm->memory, mem);
+}
+
+void print_obj_repr(struct vm *vm, struct object obj)
+{
+	struct arena mem = arena_push(&vm->memory);
+	struct type *type = &vm->store.types[obj.type];
+	struct string res;
+
+	res = type->base->obj_repr(vm, &mem, &obj);
+	printf("%.*s", LIT(res));
+
+	arena_pop(&vm->memory, mem);
 }

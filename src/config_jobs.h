@@ -38,8 +38,12 @@ CFG_JOB(tuple_decl, struct {
 	struct cfg_node *node;
 	struct cfg_node *args;
 	type_id *out_type;
+
 	enum cfg_tuple_decl_state state;
-	struct type_tuple_item *items;
+	union {
+		struct type_tuple_item *named_items;
+		type_id *unnamed_items;
+	};
 	size_t num_items;
 	struct cfg_node *next_node_to_resolve;
 	size_t num_nodes_resolved;

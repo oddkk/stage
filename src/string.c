@@ -80,19 +80,29 @@ struct string arena_sprintf(struct arena *arena, char *fmt, ...)
 	return result;
 }
 
+struct string arena_string_init(struct arena *mem)
+{
+	struct string res = {0};
+	res.text = arena_alloc(mem, 0);
+	res.length = 0;
+	return res;
+}
+
 int arena_string_append(struct arena *mem, struct string *str, struct string in)
 {
 	assert((mem->data + mem->head) == (uint8_t *)(str->text + str->length));
 
-	uint8_t *appendage = arena_alloc(mem, in.length);
+	uint8_t *appendage = arena_alloc_no_zero(mem, in.length);
 
 	if (!appendage) {
 		return -1;
 	}
 
 	assert(appendage == (uint8_t *)(str->text + str->length));
-	memcpy(appendage, in.text, in.length);
+	memmove(appendage, in.text, in.length);
 	str->length += in.length;
+
+	appendage[in.length + 1] = 0;
 
 	return 0;
 }

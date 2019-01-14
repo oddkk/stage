@@ -143,7 +143,7 @@ static void _scope_print(struct vm *vm, struct scope *scope, int depth)
 		struct scope_entry *entry = &scope->entries[i];
 		_print_indent(depth);
 		printf("%.*s ", ALIT(entry->name));
-		print_type_repr(vm, entry->object);
+		print_obj_repr(vm, entry->object);
 		printf("\n");
 
 		if (entry->scope) {

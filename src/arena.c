@@ -29,15 +29,34 @@ void *arena_alloc(struct arena *arena, size_t length)
 	return result;
 }
 
-arena_point arena_push(struct arena *arena)
+void *arena_alloc_no_zero(struct arena *arena, size_t length)
 {
-	return arena->head;
+	assert(arena->head + length < arena->capacity);
+
+	void *result = &arena->data[arena->head];
+	arena->head += length;
+
+	return result;
 }
 
-void arena_pop(struct arena *arena, arena_point p)
+
+struct arena arena_push(struct arena *arena)
 {
-	assert(p <= arena->head);
-	arena->head = p;
+	struct arena tmp = {0};
+
+	tmp.data = arena->data + arena->head;
+	tmp.capacity = arena->capacity - arena->head;
+	arena->head = arena->capacity;
+
+	return tmp;
+}
+
+void arena_pop(struct arena *arena, struct arena tmp)
+{
+	assert(tmp.data >= arena->data &&
+		   tmp.data < arena->data + arena->capacity);
+
+	arena->head = tmp.data - arena->data;
 }
 
 void arena_print_usage(struct arena *arena)

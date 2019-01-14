@@ -3,31 +3,64 @@
 #include <stdlib.h>
 #include <string.h>
 
-static struct string type_unset_repr(struct vm *vm, struct arena *mem, struct object *obj)
+/* static struct string type_unset_repr(struct vm *vm, struct arena *mem, struct object *obj) */
+/* { */
+/* 	return STR("<unset>"); */
+/* } */
+
+/* static struct string type_none_repr(struct vm *vm, struct arena *mem, struct object *obj) */
+/* { */
+/* 	return STR("<none>"); */
+/* } */
+
+/* static struct string type_template_param_repr(struct vm *vm, struct arena *mem, struct object *obj) */
+/* { */
+/* 	return STR("<template param>"); */
+/* } */
+
+static void arena_string_append_type_repr(struct string *str, struct vm *vm,
+										  struct arena *mem, struct type *type)
 {
-	return STR("<unset>");
+	struct string type_repr;
+
+	struct arena tmp_mem = arena_push(mem);
+	type_repr = type->base->repr(vm, &tmp_mem, type);
+	arena_pop(mem, tmp_mem);
+
+	arena_string_append(mem, str, type_repr);
 }
 
-static struct string type_none_repr(struct vm *vm, struct arena *mem, struct object *obj)
+static void arena_string_append_obj_repr(struct string *str, struct vm *vm,
+										 struct arena *mem, struct object *object)
 {
-	return STR("<none>");
+	struct string repr;
+	struct type *type;
+	type = &vm->store.types[object->type];
+
+	struct arena tmp_mem = arena_push(mem);
+	repr = type->base->obj_repr(vm, &tmp_mem, object);
+	arena_pop(mem, tmp_mem);
+
+	arena_string_append(mem, str, repr);
 }
 
-static struct string type_template_param_repr(struct vm *vm, struct arena *mem, struct object *obj)
-{
-	return STR("<template param>");
-}
-
-static struct string type_type_repr(struct vm *vm, struct arena *mem, struct object *obj)
+static struct string type_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
 	type_id tid = *(type_id *)obj->data;
-	return arena_sprintf(mem, "<type: %.*s (%u)>", ALIT(vm->store.types[tid].name), tid);
+	struct type *type = &vm->store.types[tid];
+	struct string res = arena_string_init(mem);
+
+	arena_string_append(mem, &res, STR("type("));
+	arena_string_append_type_repr(&res, vm, mem, type);
+	arena_string_append(mem, &res, STR(")"));
+
+	return res;
 }
 
-static struct string type_integer_repr(struct vm *vm, struct arena *mem, struct object *obj)
+static struct string obj_integer_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
 	int64_t value = *(int64_t *)obj->data;
-	return arena_sprintf(mem, "<int: %li>", value);
+	return arena_sprintf(mem, "%li", value);
 }
 
 static void obj_integer_add(struct vm *vm, struct exec_stack *stack, void *data)
@@ -82,27 +115,71 @@ static void obj_integer_div(struct vm *vm, struct exec_stack *stack, void *data)
 	stack_push(stack, &result, sizeof(result));
 }
 
-static struct string type_string_repr(struct vm *vm, struct arena *mem, struct object *obj)
+static struct string obj_string_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
 	struct string value = *(struct string *)obj->data;
-	return arena_sprintf(mem, "<string: \"%.*s\">", LIT(value));
+	return arena_sprintf(mem, "\"%.*s\"", LIT(value));
 }
 
-static struct string type_enum_repr(struct vm *vm, struct arena *mem, struct object *obj)
+static struct string type_enum_repr(struct vm *vm, struct arena *mem, struct type *type)
+{
+	struct type_enum *type_enum = type->data;
+	struct string res = arena_string_init(mem);
+
+	arena_string_append(mem, &res, STR("Enum {"));
+
+	for (size_t i = 0; i < type_enum->num_items; i++) {
+		if (i != 0) {
+			arena_string_append(mem, &res, STR(", "));
+		}
+
+		struct type_enum_item *item;
+		item = &type_enum->items[i];
+
+		arena_string_append(mem, &res, item->name->name);
+
+		if (item->type != TYPE_NONE) {
+			struct type *item_type;
+			item_type = &vm->store.types[item->type];
+			arena_string_append(mem, &res, STR("("));
+			arena_string_append_type_repr(&res, vm, mem, item_type);
+			arena_string_append(mem, &res, STR(")"));
+		}
+	}
+
+	arena_string_append(mem, &res, STR("}"));
+
+
+	return res;
+}
+
+
+static struct string obj_enum_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
 	int64_t value = *(int64_t *)obj->data;
 	struct type *type = &vm->store.types[obj->type];
 	struct type_enum *type_enum = type->data;
 
-	struct atom *name = NULL;
+	struct string res = arena_string_init(mem);
 
 	if (value < type_enum->num_items) {
-		name = type_enum->items[value].name;
+		struct type_enum_item *item = &type_enum->items[value];
+		arena_string_append(mem, &res, item->name->name);
+
+		if (item->type != TYPE_NONE) {
+			struct object item_obj = {0};
+			item_obj.type = item->type;
+			item_obj.data = (uint8_t *)obj->data + sizeof(int64_t);
+
+			arena_string_append(mem, &res, STR(" "));
+			arena_string_append_obj_repr(&res, vm, mem, &item_obj);
+		}
+
 	} else {
-		name = atom_create(&vm->atom_table, STR("(invalid)"));
+		arena_string_append(mem, &res, STR("(invalid)"));
 	}
 
-	return arena_sprintf(mem, "<enum: (%li) \"%.*s\">", value, ALIT(name));
+	return res;
 }
 
 static type_id type_enum_subtypes_iter(struct vm *vm, struct type *type, size_t *iter)
@@ -118,9 +195,67 @@ static type_id type_enum_subtypes_iter(struct vm *vm, struct type *type, size_t 
 	return TYPE_SUBTYPES_END;
 }
 
-static struct string type_tuple_repr(struct vm *vm, struct arena *mem, struct object *obj)
+static struct string type_tuple_repr(struct vm *vm, struct arena *mem, struct type *type)
 {
-	return STR("<tuple>");
+	struct type_tuple *tuple = type->data;
+	struct string res = arena_string_init(mem);
+
+	arena_string_append(mem, &res, STR("("));
+
+	for (size_t i = 0; i < tuple->num_items; i++) {
+		if (i != 0) {
+			arena_string_append(mem, &res, STR(", "));
+		}
+
+		if (tuple->named) {
+			arena_string_append(mem, &res, tuple->names[i]->name);
+			arena_string_append(mem, &res, STR(": "));
+		}
+
+		struct type *item_type;
+		item_type = get_type(&vm->store, tuple->types[i]);
+		arena_string_append_type_repr(&res, vm, mem, item_type);
+	}
+
+	arena_string_append(mem, &res, STR(")"));
+
+	return res;
+}
+
+static struct string obj_tuple_repr(struct vm *vm, struct arena *mem, struct object *object)
+{
+	struct type *type = get_type(&vm->store, object->type);
+	struct type_tuple *tuple = type->data;
+	struct string res = arena_string_init(mem);
+
+	arena_string_append(mem, &res, STR("("));
+
+	size_t offset = 0;
+
+	for (size_t i = 0; i < tuple->num_items; i++) {
+		if (i != 0) {
+			arena_string_append(mem, &res, STR(", "));
+		}
+
+		if (tuple->named) {
+			arena_string_append(mem, &res, tuple->names[i]->name);
+			arena_string_append(mem, &res, STR(" = "));
+		}
+
+		struct object item_obj = {0};
+		item_obj.data = (uint8_t *)object->data + offset;
+		item_obj.type = tuple->types[i];
+
+		arena_string_append_obj_repr(&res, vm, mem, &item_obj);
+
+		struct type *item_type;
+		item_type = get_type(&vm->store, tuple->types[i]);
+		offset += item_type->size;
+	}
+
+	arena_string_append(mem, &res, STR(")"));
+
+	return res;
 }
 
 static type_id type_tuple_subtypes_iter(struct vm *vm, struct type *type, size_t *iter)
@@ -135,9 +270,30 @@ static type_id type_tuple_subtypes_iter(struct vm *vm, struct type *type, size_t
 	}
 }
 
-static struct string type_func_repr(struct vm *vm, struct arena *mem, struct object *obj)
+static struct string type_func_repr(struct vm *vm, struct arena *mem, struct type *type)
 {
-	return STR("<func>");
+	struct type_func *func = type->data;
+	struct string res = arena_string_init(mem);
+
+	struct type *params_type, *ret_type;
+
+	assert(func->params < vm->store.num_types);
+	assert(func->ret < vm->store.num_types);
+
+	params_type = &vm->store.types[func->params];
+	ret_type = &vm->store.types[func->ret];
+
+	arena_string_append_type_repr(&res, vm, mem, params_type);
+	arena_string_append(mem, &res, STR(" -> "));
+	arena_string_append_type_repr(&res, vm, mem, ret_type);
+
+	return res;
+}
+
+static struct string obj_func_repr(struct vm *vm, struct arena *mem, struct object *object)
+{
+	struct type *type = get_type(&vm->store, object->type);
+	return type_func_repr(vm, mem, type);
 }
 
 static type_id type_func_subtypes_iter(struct vm *vm, struct type *type, size_t *iter)
@@ -185,8 +341,7 @@ int vm_init(struct vm *vm)
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
-		base->name = STR("unset");
-		base->repr = type_unset_repr;
+		type_base_init(base, STR("unset"));
 
 		struct type unset = {0};
 		unset.name = atom_create(&vm->atom_table, STR("unset"));
@@ -198,8 +353,7 @@ int vm_init(struct vm *vm)
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
-		base->name = STR("none");
-		base->repr = type_none_repr;
+		type_base_init(base, STR("none"));
 
 		struct type none = {0};
 		none.name = atom_create(&vm->atom_table, STR("none"));
@@ -211,8 +365,7 @@ int vm_init(struct vm *vm)
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
-		base->name = STR("template_param");
-		base->repr = type_template_param_repr;
+		type_base_init(base, STR("template_param"));
 
 		struct type template_param = {0};
 		template_param.name = atom_create(&vm->atom_table, STR("template_param"));
@@ -244,8 +397,8 @@ int vm_init(struct vm *vm)
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
-		base->name = STR("type");
-		base->repr = type_type_repr;
+		type_base_init(base, STR("type"));
+		base->obj_repr = type_obj_repr;
 
 		struct type type = {0};
 		type.name = atom_create(&vm->atom_table, STR("type"));
@@ -260,11 +413,11 @@ int vm_init(struct vm *vm)
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
-		base->name = STR("integer");
-		base->repr = type_integer_repr;
+		type_base_init(base, STR("int"));
+		base->obj_repr = obj_integer_repr;
 
 		struct type integer = {0};
-		integer.name = atom_create(&vm->atom_table, STR("integer"));
+		integer.name = atom_create(&vm->atom_table, STR("int"));
 		integer.base = base;
 		integer.size = sizeof(int64_t);
 		vm->default_types.integer = register_type(&vm->store, integer);
@@ -277,11 +430,11 @@ int vm_init(struct vm *vm)
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
-		base->name = STR("string");
-		base->repr = type_string_repr;
+		type_base_init(base, STR("str"));
+		base->obj_repr = obj_string_repr;
 
 		struct type string = {0};
-		string.name = atom_create(&vm->atom_table, STR("string"));
+		string.name = atom_create(&vm->atom_table, STR("str"));
 		string.base = base;
 		string.size = sizeof(struct string);
 		vm->default_types.string = register_type(&vm->store, string);
@@ -294,25 +447,25 @@ int vm_init(struct vm *vm)
 
 	{
 		struct type_base *base = &vm->default_types.func_base;
-
-		base->name = STR("func");
+		type_base_init(base, STR("func"));
 		base->repr = type_func_repr;
+		base->obj_repr = obj_func_repr;
 		base->subtypes_iter = type_func_subtypes_iter;
 	}
 
 	{
 		struct type_base *base = &vm->default_types.enum_base;
-
-		base->name = STR("enum");
+		type_base_init(base, STR("enum"));
 		base->repr = type_enum_repr;
+		base->obj_repr = obj_enum_repr;
 		base->subtypes_iter = type_enum_subtypes_iter;
 	}
 
 	{
 		struct type_base *base = &vm->default_types.tuple_base;
-
-		base->name = STR("tuple");
+		type_base_init(base, STR("tuple"));
 		base->repr = type_tuple_repr;
+		base->obj_repr = obj_tuple_repr;
 		base->subtypes_iter = type_tuple_subtypes_iter;
 	}
 
@@ -328,7 +481,7 @@ int vm_init(struct vm *vm)
 			{ atom_create(&vm->atom_table, STR("rhs")), vm->default_types.integer },
 		};
 
-		type_id param_type = type_register_tuple(vm, params, 2);
+		type_id param_type = type_register_named_tuple(vm, params, 2);
 
 		{
 			obj_id func;
@@ -376,7 +529,7 @@ int vm_init(struct vm *vm)
 			{ atom_create(&vm->atom_table, STR("value")), vm->default_types.integer },
 		};
 
-		type_id param_type = type_register_tuple(vm, params, 1);
+		type_id param_type = type_register_named_tuple(vm, params, 1);
 		obj_id func;
 		func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
 										 debug_print_integer, NULL);
@@ -418,7 +571,7 @@ type_id type_register_enum(struct vm *vm, struct type_enum *t)
 	return register_type(&vm->store, type);
 }
 
-type_id type_register_tuple(struct vm *vm, struct type_tuple_item *items, size_t num_items)
+type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, size_t num_items)
 {
 	struct type type = {0};
 
@@ -430,6 +583,8 @@ type_id type_register_tuple(struct vm *vm, struct type_tuple_item *items, size_t
 
 	tuple->names = arena_alloc(&vm->memory, num_items * sizeof(struct atom *));
 	tuple->types = arena_alloc(&vm->memory, num_items * sizeof(type_id));
+	tuple->num_items = num_items;
+	tuple->named = true;
 
 	size_t size = 0;
 	bool num_template_params = 0;
@@ -440,6 +595,40 @@ type_id type_register_tuple(struct vm *vm, struct type_tuple_item *items, size_t
 
 		assert(items[i].type < vm->store.num_types);
 		struct type *subtype = &vm->store.types[items[i].type];
+
+		size += subtype->size;
+		num_template_params += num_template_params;
+	}
+
+	type.num_template_params = num_template_params;
+	type.size = size;
+	type.data = (void *)tuple;
+
+	return register_type(&vm->store, type);
+}
+
+type_id type_register_unnamed_tuple(struct vm *vm, type_id *items, size_t num_items)
+{
+	struct type type = {0};
+
+	// TODO: Better names
+	type.name = atom_create(&vm->atom_table, STR("tuple"));
+	type.base = &vm->default_types.tuple_base;
+
+	struct type_tuple *tuple = arena_alloc(&vm->memory, sizeof(struct type_tuple));
+
+	tuple->types = arena_alloc(&vm->memory, num_items * sizeof(type_id));
+	tuple->num_items = num_items;
+	tuple->named = false;
+
+	size_t size = 0;
+	bool num_template_params = 0;
+
+	for (size_t i = 0; i < num_items; i++) {
+		tuple->types[i] = items[i];
+
+		assert(items[i] < vm->store.num_types);
+		struct type *subtype = &vm->store.types[items[i]];
 
 		size += subtype->size;
 		num_template_params += num_template_params;

@@ -1,10 +1,9 @@
 Bool :: Enum { true, false }
+Foo :: (Bool, (foo: int, bar: str));
 
 two = 2;
 four = 2 + 2;
 some_number = 2 * 3 + 5 - 6;
-
-# print(some_number);
 
 # some_string = "foo";
 # some_string = "foo" + "bar";
