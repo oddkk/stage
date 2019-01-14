@@ -20,7 +20,8 @@ struct scope *scope_push(struct scope *parent)
 
 int scope_insert(struct scope *parent,
 				 struct atom *name,
-				 obj_id object_id,
+				 enum scope_object_anchor anchor,
+				 struct object object,
 				 struct scope *child_scope)
 {
 	int id;
@@ -29,7 +30,8 @@ int scope_insert(struct scope *parent,
 	id = dlist_alloc(parent->entries, parent->num_entries);
 	entry = &parent->entries[id];
 
-	entry->id = object_id;
+	entry->object = object;
+	entry->anchor = anchor;
 	entry->name = name;
 	entry->parent = parent;
 	entry->scope = child_scope;
@@ -49,7 +51,8 @@ int scope_insert(struct scope *parent,
 
 int scope_insert_overloadable(struct scope *parent,
 							  struct atom *name,
-							  obj_id object_id)
+							  enum scope_object_anchor anchor,
+							  struct object object)
 {
 	int err;
 	err = id_lookup_table_lookup(&parent->lookup, name->name);
@@ -80,7 +83,8 @@ int scope_insert_overloadable(struct scope *parent,
 	entry->scope = NULL;
 	entry->next_overload = -1;
 
-	entry->id = object_id;
+	entry->object = object;
+	entry->anchor = anchor;
 
 	if (previous_overload) {
 		previous_overload->next_overload = id;
@@ -138,7 +142,9 @@ static void _scope_print(struct vm *vm, struct scope *scope, int depth)
 	for (size_t i = 0; i < scope->num_entries; i++) {
 		struct scope_entry *entry = &scope->entries[i];
 		_print_indent(depth);
-		printf("%.*s\n", ALIT(entry->name));
+		printf("%.*s ", ALIT(entry->name));
+		print_type_repr(vm, entry->object);
+		printf("\n");
 
 		if (entry->scope) {
 			_scope_print(vm, entry->scope, depth + 1);
@@ -152,19 +158,19 @@ void scope_print(struct vm *vm, struct scope *scope)
 	_scope_print(vm, scope, 1);
 }
 
-obj_id scope_lookup_id(struct scope *scope,
-					   struct atom *name)
-{
-	struct scope_entry res;
-	int err;
-	err = scope_lookup(scope, name, &res);
+/* obj_id scope_lookup_id(struct scope *scope, */
+/* 					   struct atom *name) */
+/* { */
+/* 	struct scope_entry res; */
+/* 	int err; */
+/* 	err = scope_lookup(scope, name, &res); */
 
-	if (err) {
-		return OBJ_NONE;
-	}
+/* 	if (err) { */
+/* 		return OBJ_NONE; */
+/* 	} */
 
-	return res.id;
-}
+/* 	return res.id; */
+/* } */
 
 int scope_iterate_overloads(struct scope *scope, struct atom *name,
 							struct scope_entry **iter)

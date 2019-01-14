@@ -26,7 +26,8 @@ struct cfg_func_node {
 			struct cfg_func_node *args;
 		} func_call;
 
-		obj_id global;
+		/* obj_id global; */
+		struct object obj;
 
 		int64_t lit_int;
 		struct string lit_str;
@@ -36,6 +37,11 @@ struct cfg_func_node {
 struct cfg_func_context {
 	struct scope *outer_scope;
 	struct scope *inner_scope;
+};
+
+struct cfg_func {
+	struct cfg_func_context *ctx;
+	struct cfg_func_node *body;
 };
 
 struct cfg_func_node *

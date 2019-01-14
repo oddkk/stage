@@ -81,7 +81,7 @@ cfg_func_print_internal(struct cfg_func_node *node, int depth)
 		break;
 
 	case CFG_FUNC_NODE_GLOBAL:
-		printf("global %u", node->global);
+		printf("global");
 		break;
 
 	case CFG_FUNC_NODE_LIT_INT:

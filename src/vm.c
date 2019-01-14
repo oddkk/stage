@@ -254,7 +254,8 @@ int vm_init(struct vm *vm)
 		vm->default_types.type = register_type(&vm->store, type);
 
 		obj_id obj = obj_register_type(vm, vm->default_types.type);
-		scope_insert(&vm->root_scope, type.name, obj, NULL);
+		scope_insert(&vm->root_scope, type.name,
+					 SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, obj), NULL);
 	}
 
 	{
@@ -270,7 +271,8 @@ int vm_init(struct vm *vm)
 
 		obj_id obj = obj_register_type(vm, vm->default_types.integer);
 		struct atom *name = atom_create(&vm->atom_table, STR("int"));
-		scope_insert(&vm->root_scope, name, obj, NULL);
+		scope_insert(&vm->root_scope, name,
+					 SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, obj), NULL);
 	}
 
 	{
@@ -286,7 +288,8 @@ int vm_init(struct vm *vm)
 
 		obj_id obj = obj_register_type(vm, vm->default_types.string);
 		struct atom *name = atom_create(&vm->atom_table, STR("str"));
-		scope_insert(&vm->root_scope, name, obj, NULL);
+		scope_insert(&vm->root_scope, name,
+					 SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, obj), NULL);
 	}
 
 	{
@@ -333,7 +336,8 @@ int vm_init(struct vm *vm)
 											obj_integer_add, NULL);
 
 			struct atom *name = atom_create(&vm->atom_table, STR("op+"));
-			scope_insert_overloadable(&vm->root_scope, name, func);
+			scope_insert_overloadable(&vm->root_scope, name,
+									  SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, func));
 		}
 
 		{
@@ -342,7 +346,8 @@ int vm_init(struct vm *vm)
 											obj_integer_sub, NULL);
 
 			struct atom *name = atom_create(&vm->atom_table, STR("op-"));
-			scope_insert_overloadable(&vm->root_scope, name, func);
+			scope_insert_overloadable(&vm->root_scope, name,
+									  SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, func));
 		}
 
 		{
@@ -351,7 +356,8 @@ int vm_init(struct vm *vm)
 											obj_integer_mul, NULL);
 
 			struct atom *name = atom_create(&vm->atom_table, STR("op*"));
-			scope_insert_overloadable(&vm->root_scope, name, func);
+			scope_insert_overloadable(&vm->root_scope, name,
+									  SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, func));
 		}
 
 		{
@@ -360,7 +366,8 @@ int vm_init(struct vm *vm)
 											obj_integer_div, NULL);
 
 			struct atom *name = atom_create(&vm->atom_table, STR("op/"));
-			scope_insert_overloadable(&vm->root_scope, name, func);
+			scope_insert_overloadable(&vm->root_scope, name,
+									  SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, func));
 		}
 	}
 
@@ -375,7 +382,8 @@ int vm_init(struct vm *vm)
 										 debug_print_integer, NULL);
 
 		struct atom *name = atom_create(&vm->atom_table, STR("print"));
-		scope_insert_overloadable(&vm->root_scope, name, func);
+		scope_insert_overloadable(&vm->root_scope, name,
+								  SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, func));
 	}
 
 	return 0;

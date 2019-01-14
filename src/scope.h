@@ -3,14 +3,32 @@
 
 #include "idlookuptable.h"
 #include "atom.h"
+#include "objstore.h"
 
 struct vm;
 struct objstore;
 struct scope;
 typedef unsigned int obj_id;
 
+enum scope_object_anchor {
+	/* No object */
+	SCOPE_ANCHOR_NONE = 0,
+
+	/* Absolute memory location to object data */
+	SCOPE_ANCHOR_ABSOLUTE,
+
+	/* Relative to the base of its parent */
+	SCOPE_ANCHOR_PARENT,
+
+	/* Relative to the base pointer of the vm stack */
+	SCOPE_ANCHOR_STACK,
+};
+
 struct scope_entry {
-	obj_id id;
+	struct object object;
+	enum scope_object_anchor anchor;
+
+	/* obj_id id; */
 	int next_overload;
 	bool overloadable;
 
@@ -33,12 +51,14 @@ struct scope *scope_push(struct scope *parent);
 
 int scope_insert(struct scope *parent,
 				 struct atom *name,
-				 obj_id id,
+				 enum scope_object_anchor anchor,
+				 struct object object,
 				 struct scope *child_scope);
 
 int scope_insert_overloadable(struct scope *parent,
 							  struct atom *name,
-							  obj_id id);
+							  enum scope_object_anchor anchor,
+							  struct object object);
 
 int scope_local_lookup(struct scope *scope,
 					   struct atom *name,
@@ -48,8 +68,8 @@ int scope_lookup(struct scope *scope,
 				 struct atom *name,
 				 struct scope_entry *result);
 
-obj_id scope_lookup_id(struct scope *scope,
-					   struct atom *name);
+/* obj_id scope_lookup_id(struct scope *scope, */
+/* 					   struct atom *name); */
 
 void scope_print(struct vm *vm, struct scope *scope);
 

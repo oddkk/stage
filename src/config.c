@@ -289,14 +289,15 @@ instantiate_scope_by_access_pattern(struct cfg_ctx *ctx,
 		struct scope_entry entry;
 
 		if (scope_local_lookup(parent, node->IDENT, &entry) == 0) {
-			if (entry.id != 0 || !entry.scope) {
+			if (entry.anchor != SCOPE_ANCHOR_NONE || !entry.scope) {
 				cfg_error(ctx, node, "'%.*s' already exists, and is not a namespace.");
 				return NULL;
 			}
 		}
 
 		scope = scope_push(parent);
-		scope_insert(parent, node->IDENT, OBJ_NONE, scope);
+		scope_insert(parent, node->IDENT, SCOPE_ANCHOR_NONE,
+					 get_object(&ctx->vm->store, OBJ_NONE), scope);
 		return scope;
 	} break;
 
@@ -444,7 +445,8 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 		}
 
 		data->scope_entry_id =
-			scope_insert(data->scope, name, OBJ_UNSET, child_scope);
+			scope_insert(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
+						 get_object(&ctx->vm->store, OBJ_UNSET), child_scope);
 
 		if (data->scope_entry_id < 0) {
 			cfg_error(ctx, node->DECL_STMT.name,
@@ -470,7 +472,7 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 	obj_id object;
 
 	object = obj_register_type(ctx->vm, data->type);
-	data->scope->entries[data->scope_entry_id].id = object;
+	data->scope->entries[data->scope_entry_id].object = get_object(&ctx->vm->store, object);
 
 	return JOB_OK;
 }
@@ -566,7 +568,8 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 
 		name = data->node->FUNC_STMT.ident->IDENT;
 		data->scope_entry_id =
-			scope_insert(data->scope, name, OBJ_UNSET, NULL);
+			scope_insert(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
+						 get_object(&ctx->vm->store, OBJ_UNSET), NULL);
 
 		struct cfg_job *func_job;
 		func_job = DISPATCH_JOB(ctx, compile_func, CFG_PHASE_RESOLVE,
@@ -588,7 +591,7 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 	struct scope_entry *entry;
 
 	entry = &data->scope->entries[data->scope_entry_id];
-	entry->id = data->func_object;
+	entry->object = get_object(&ctx->vm->store, data->func_object);
 
 	return JOB_OK;
 }
@@ -759,8 +762,14 @@ static struct job_status
 job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 {
 	if (data->dispatched) {
-		assert(data->entry.id != OBJ_NONE);
-		struct object obj = get_object(&ctx->vm->store, data->entry.id);
+		/* assert(data->entry.id != OBJ_NONE); */
+		/* struct object obj = get_object(&ctx->vm->store, data->entry.id); */
+		struct object obj = data->obj;
+
+		if (obj.type == OBJ_UNSET) {
+			// Yield until the type is resolved.
+			return JOB_YIELD;
+		}
 
 		if (obj.type != ctx->vm->default_types.type) {
 			arena_point p = arena_push(&ctx->vm->memory);
@@ -1022,7 +1031,8 @@ job_enum_decl(struct cfg_ctx *ctx, job_enum_decl_t *data)
 				obj_register_builtin_func(ctx->vm, TYPE_NONE, type,
 										enum_item_constructor, (void *)item);
 
-			scope_insert(enum_scope, item->name, item_constructor, NULL);
+			scope_insert(enum_scope, item->name, SCOPE_ANCHOR_ABSOLUTE,
+							get_object(&ctx->vm->store, item_constructor), NULL);
 		}
 	}
 
@@ -1144,7 +1154,8 @@ discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 				string_duplicate(&ctx->vm->memory, &file_name, path);
 
 				mod_scope = scope_push(scope);
-				scope_insert(scope, atom, OBJ_NONE, mod_scope);
+				scope_insert(scope, atom, SCOPE_ANCHOR_NONE,
+							 get_object(&ctx->vm->store, OBJ_NONE), mod_scope);
 
 				DISPATCH_JOB(ctx, parse_file, CFG_PHASE_DISCOVER,
 							 .mod_scope = mod_scope,
@@ -1162,7 +1173,8 @@ discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 
 				struct atom *atom = atom_create(&ctx->vm->atom_table, name);
 
-				scope_insert(scope->parent, atom, OBJ_NONE, scope);
+				scope_insert(scope->parent, atom, SCOPE_ANCHOR_NONE,
+							 get_object(&ctx->vm->store, OBJ_NONE), scope);
 			}
 			break;
 

@@ -91,6 +91,7 @@ CFG_JOB(resolve_type_l_expr, struct {
 	struct cfg_node *node;
 
 	bool dispatched;
+	struct object obj;
 	struct scope_entry entry;
 	type_id *out_type;
 })
