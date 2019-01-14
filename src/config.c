@@ -70,6 +70,7 @@ enum job_status_code {
 
 struct cfg_job {
 	size_t id;
+	size_t last_dispatch_time;
 	enum cfg_job_type type;
 	enum job_status_code status;
 
@@ -107,11 +108,16 @@ struct cfg_phase {
 	struct cfg_job *job_end;
 };
 
+#define CFG_JOB_MAX_CONSECUTIVE_YIELDS (3)
+
 struct cfg_ctx {
 	struct vm *vm;
 	struct arena *mem;
 
 	size_t next_job_id;
+	// A measure of how many times jobs have yielded.
+	size_t time;
+	size_t last_completed_job_time;
 
 	enum cfg_compile_phase current_phase;
 	struct cfg_phase phases[CFG_NUM_PHASES];
@@ -200,6 +206,10 @@ append_job(struct cfg_ctx *ctx, enum cfg_compile_phase ph, struct cfg_job *job)
 	struct cfg_phase *phase = &ctx->phases[ph];
 
 	if (phase->job_end) {
+		assert(phase->job_end->next_job == NULL);
+		assert(job->next_job == NULL);
+		assert(phase->job_end != job);
+
 		phase->job_end->next_job = job;
 		phase->job_end = job;
 
@@ -1154,9 +1164,23 @@ discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 
 static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 {
+	assert(job->next_job != job);
+
+	if (job->status == JOB_STATUS_ERROR) {
+		return;
+	}
+
 	assert(job->status == JOB_STATUS_IDLE || job->status == JOB_STATUS_YIELD);
 
-	printf("Dispatching 0x%03zx %.*s... ", job->id, LIT(cfg_job_names[job->type]));
+	if (job->last_dispatch_time == ctx->time) {
+		ctx->time += 1;
+	}
+	job->last_dispatch_time = ctx->time;
+
+	printf("[%zu] Dispatching 0x%03zx %.*s... ",
+		   job->last_dispatch_time,
+		   job->id,
+		   LIT(cfg_job_names[job->type]));
 
 	struct job_status res;
 
@@ -1173,13 +1197,20 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 	job->status = res.status;
 
 	switch (res.status) {
-	case JOB_STATUS_OK:
-		if (job->first_dependant_node) {
-			append_job(ctx, ctx->current_phase, job->first_dependant_node);
-			job->first_dependant_node = NULL;
+	case JOB_STATUS_OK: {
+		struct cfg_job *dep = job->first_dependant_node;
+		while (dep) {
+			struct cfg_job *next = dep->next_job;
+
+			dep->next_job = NULL;
+			append_job(ctx, ctx->current_phase, dep);
+
+			dep = next;
 		}
+
+		job->first_dependant_node = NULL;
 		printf("ok\n");
-		break;
+	} break;
 
 	case JOB_STATUS_ERROR: {
 		ctx->num_jobs_failed += 1;
@@ -1213,12 +1244,12 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 			} else if (res.yield_for->status == JOB_STATUS_OK) {
 				job->next_job = NULL;
 				append_job(ctx, ctx->current_phase, job);
-				break;
-			}
 
-			// TODO: Thread-safe
-			job->next_job = res.yield_for->first_dependant_node;
-			res.yield_for->first_dependant_node = job;
+			} else {
+				// TODO: Thread-safe
+				job->next_job = res.yield_for->first_dependant_node;
+				res.yield_for->first_dependant_node = job;
+			}
 		} else {
 			printf("=== yield ===\n");
 
@@ -1229,6 +1260,7 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 
 	case JOB_STATUS_YIELD_FOR_PHASE:
 		job->status = JOB_STATUS_YIELD;
+		job->next_job = NULL;
 		append_job(ctx, res.yield_for_phase, job);
 		printf("=== yield for phase %i ===\n", res.yield_for_phase);
 		break;
@@ -1236,6 +1268,18 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 	case JOB_STATUS_IDLE:
 		panic("Job returned idle as result.");
 		break;
+	}
+
+	if (job->status == JOB_STATUS_YIELD) {
+		if (ctx->time - ctx->last_completed_job_time > CFG_JOB_MAX_CONSECUTIVE_YIELDS) {
+			printf("=== erroring due to no progress ===\n");
+			job->status = JOB_STATUS_ERROR;
+			ctx->num_jobs_failed += 1;
+		}
+	}
+
+	if (job->status  != JOB_STATUS_YIELD) {
+		ctx->last_completed_job_time = ctx->time;
 	}
 }
 
@@ -1255,6 +1299,9 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 		while (phase->job_head) {
 			struct cfg_job *job = phase->job_head;
 			phase->job_head = job->next_job;
+			if (!phase->job_head) {
+				phase->job_end = NULL;
+			}
 
 			cfg_exec_job(&ctx, job);
 		}
