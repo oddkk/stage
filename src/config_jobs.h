@@ -44,6 +44,7 @@ CFG_JOB(tuple_decl, struct {
 		struct type_tuple_item *named_items;
 		type_id *unnamed_items;
 	};
+	type_id access_func_params;
 	size_t num_items;
 	struct cfg_node *next_node_to_resolve;
 	size_t num_nodes_resolved;
@@ -81,10 +82,10 @@ CFG_JOB(compile_func, struct {
 })
 
 CFG_JOB(visit_expr, struct {
-	/* struct scope *scope; */
 	struct cfg_func_context *func_ctx;
 	struct cfg_node *node;
 	struct cfg_func_node **out_func;
+	struct scope *local_scope;
 
 	struct cfg_func_node *tmp_func;
 	unsigned int iter;
@@ -95,7 +96,9 @@ CFG_JOB(resolve_type_l_expr, struct {
 	struct cfg_node *node;
 
 	bool dispatched;
-	struct object obj;
+	struct cfg_func_context func_ctx;
+	struct cfg_func_node *func;
+	/* struct object obj; */
 	struct scope_entry entry;
 	type_id *out_type;
 })

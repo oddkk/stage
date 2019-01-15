@@ -92,6 +92,8 @@ enum vm_instruction {
 #define TYPE_NONE ((type_id)1)
 #define TYPE_TEMPLATE_PARAM ((type_id)2)
 
+#define TYPE_VALID(tid) ((tid) > TYPE_NONE)
+
 #define OBJ_UNSET ((obj_id)0)
 #define OBJ_NONE ((obj_id)1)
 

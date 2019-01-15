@@ -11,6 +11,7 @@ typedef size_t template_id;
 
 struct vm;
 struct type;
+struct scope;
 struct object;
 
 // TYPE_UNSET
@@ -34,6 +35,7 @@ void type_base_init(struct type_base *, struct string name);
 struct type {
 	struct atom *name;
 	struct type_base *base;
+	struct scope *object_scope;
 	void *data;
 
 	size_t size;

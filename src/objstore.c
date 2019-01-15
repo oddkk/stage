@@ -153,7 +153,7 @@ void print_type_repr(struct vm *vm, struct type *type)
 void print_obj_repr(struct vm *vm, struct object obj)
 {
 	struct arena mem = arena_push(&vm->memory);
-	struct type *type = &vm->store.types[obj.type];
+	struct type *type = get_type(&vm->store, obj.type);
 	struct string res;
 
 	res = type->base->obj_repr(vm, &mem, &obj);

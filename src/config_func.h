@@ -53,12 +53,19 @@ cfg_func_call_add_arg(struct cfg_func_node *func,
 					  struct cfg_func_node *arg);
 
 struct cfg_func_node *
+cfg_func_global(struct vm *, struct object);
+
+struct cfg_func_node *
 cfg_func_lit_int(struct vm *, int64_t);
 
 struct cfg_func_node *
 cfg_func_lit_str(struct vm *, struct string);
 
+int
+cfg_func_eval(struct vm *vm, struct exec_stack *stack,
+			  struct cfg_func_node *, struct object *out);
+
 void
-cfg_func_print(struct cfg_func_node *node);
+cfg_func_print(struct vm *vm, struct cfg_func_node *node);
 
 #endif

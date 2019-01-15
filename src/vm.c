@@ -598,6 +598,34 @@ type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, 
 
 		size += subtype->size;
 		num_template_params += num_template_params;
+
+		// @TODO: Check for duplicate members.
+	}
+
+
+	if (num_template_params == 0) {
+		struct scope *obj_scope;
+
+		obj_scope = scope_push(&vm->root_scope);
+
+		for (size_t i = 0; i < num_items; i++) {
+			struct object access_func = {0};
+
+			int err;
+			err = scope_insert(obj_scope,
+							   items[i].name,
+							   SCOPE_ANCHOR_ABSOLUTE,
+							   access_func, NULL);
+
+			if (err < 0) {
+				printf("Tuple has duplicate member '%.*s'.",
+					   ALIT(items[i].name));
+				// @TODO: Deallocate
+				return TYPE_NONE;
+			}
+		}
+
+		type.object_scope = obj_scope;
 	}
 
 	type.num_template_params = num_template_params;

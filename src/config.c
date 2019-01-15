@@ -568,8 +568,8 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 
 		name = data->node->FUNC_STMT.ident->IDENT;
 		data->scope_entry_id =
-			scope_insert(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
-						 get_object(&ctx->vm->store, OBJ_UNSET), NULL);
+			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
+									  get_object(&ctx->vm->store, OBJ_UNSET));
 
 		struct cfg_job *func_job;
 		func_job = DISPATCH_JOB(ctx, compile_func, CFG_PHASE_RESOLVE,
@@ -638,7 +638,7 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 
 	case CFG_COMPILE_FUNC_VISIT_BODY: {
 		printf("\n");
-		cfg_func_print(data->func);
+		cfg_func_print(ctx->vm, data->func);
 		return JOB_OK;
 	} break;
 
@@ -725,8 +725,29 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 		panic("TODO: Lambda");
 		break;
 
-	case CFG_NODE_FUNC_CALL:
-		break;
+	case CFG_NODE_FUNC_CALL: {
+		struct cfg_job *job = NULL;
+
+		switch (data->iter) {
+		case 0:
+			// Resolve function to call.
+			job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
+							   .func_ctx = data->func_ctx,
+							   .node     = data->node->FUNC_CALL.ident,
+							   .out_func = &data->tmp_func);
+			data->iter += 1;
+
+			return JOB_YIELD_FOR(job);
+
+		case 1:
+			cfg_func_print(ctx->vm, data->tmp_func);
+			data->iter += 1;
+			return JOB_YIELD;
+
+		case 2:
+			return JOB_OK;
+		}
+	} break;
 
 	case CFG_NODE_TUPLE_LIT:
 		break;
@@ -745,6 +766,29 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 		return JOB_OK;
 
 	case CFG_NODE_IDENT:
+		if (data->local_scope) {
+			struct scope_entry result;
+			scope_local_lookup(data->local_scope, data->node->IDENT, &result);
+		} else {
+			int err;
+			struct scope_entry result;
+			err = scope_lookup(data->func_ctx->inner_scope, data->node->IDENT, &result);
+
+			if (err || result.object.type == TYPE_NONE) {
+				cfg_error(ctx, data->node, "'%.*s' does not exist.",
+						  ALIT(data->node->IDENT));
+				return JOB_ERROR;
+			}
+
+			if (result.object.type == TYPE_UNSET) {
+				return JOB_YIELD;
+			}
+
+			*data->out_func =
+				cfg_func_global(ctx->vm, result.object);
+
+			return JOB_OK;
+		}
 		break;
 
 	default:
@@ -762,19 +806,25 @@ static struct job_status
 job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 {
 	if (data->dispatched) {
-		/* assert(data->entry.id != OBJ_NONE); */
-		/* struct object obj = get_object(&ctx->vm->store, data->entry.id); */
-		struct object obj = data->obj;
+		struct exec_stack stack = {0};
+		struct arena mem = arena_push(&ctx->vm->memory);
+		struct object obj;
 
-		if (obj.type == OBJ_UNSET) {
-			// Yield until the type is resolved.
-			return JOB_YIELD;
+		arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
+
+		int err;
+		err = cfg_func_eval(ctx->vm, &stack, data->func, &obj);
+
+		arena_pop(&ctx->vm->memory, mem);
+
+		if (err) {
+			return JOB_ERROR;
 		}
 
 		if (obj.type != ctx->vm->default_types.type) {
 			struct arena mem = arena_push(&ctx->vm->memory);
 
-			struct type *type = &ctx->vm->store.types[obj.type];
+			struct type *type = get_type(&ctx->vm->store, obj.type);
 
 			struct string obj_repr;
 			obj_repr = type->base->repr(ctx->vm, &mem, type);
@@ -792,10 +842,13 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 
 	struct cfg_job *job;
 
-	job = DISPATCH_JOB(ctx, resolve_l_expr, CFG_PHASE_RESOLVE,
-					   .scope = data->scope,
-					   .node = data->node,
-					   .out_entry = &data->entry);
+	data->func_ctx.outer_scope = data->scope;
+	data->func_ctx.inner_scope = scope_push(data->scope);
+
+	job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
+						.func_ctx = &data->func_ctx,
+						.node     = data->node,
+						.out_func = &data->func);
 
 	data->dispatched = true;
 
@@ -1065,11 +1118,11 @@ job_tuple_decl(struct cfg_ctx *ctx, job_tuple_decl_t *data)
 
 		data->num_items = len;
 		if (node->TUPLE_DECL.named) {
-			data->named_items = calloc(data->num_items,
-									   sizeof(struct type_tuple_item));
+			data->named_items =
+				calloc(data->num_items, sizeof(struct type_tuple_item));
 		} else {
-			data->unnamed_items = calloc(data->num_items,
-										 sizeof(type_id));
+			data->unnamed_items =
+				calloc(data->num_items, sizeof(type_id));
 		}
 
 		data->next_node_to_resolve = node->TUPLE_DECL.items;
@@ -1087,6 +1140,7 @@ job_tuple_decl(struct cfg_ctx *ctx, job_tuple_decl_t *data)
 			if (node->TUPLE_DECL.named) {
 				data->named_items[i].name = n->TUPLE_DECL_ITEM.name;
 				type_id_dest = &data->named_items[i].type;
+
 			} else {
 				type_id_dest = &data->unnamed_items[i];
 			}
@@ -1119,7 +1173,6 @@ job_tuple_decl(struct cfg_ctx *ctx, job_tuple_decl_t *data)
 											data->num_items);
 			free(data->unnamed_items);
 		}
-
 
 		return JOB_OK;
 	}

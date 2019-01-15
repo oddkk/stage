@@ -146,6 +146,17 @@ static void _scope_print(struct vm *vm, struct scope *scope, int depth)
 		print_obj_repr(vm, entry->object);
 		printf("\n");
 
+		if (entry->object.type == vm->default_types.type) {
+			type_id tid = type_obj_get(vm, entry->object);
+			struct type *type = get_type(&vm->store, tid);
+
+			if (type->object_scope) {
+				_print_indent(depth + 1);
+				printf("object scope:\n");
+				_scope_print(vm, type->object_scope, depth + 2);
+			}
+		}
+
 		if (entry->scope) {
 			_scope_print(vm, entry->scope, depth + 1);
 		}
