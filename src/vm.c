@@ -275,16 +275,26 @@ static struct string type_func_repr(struct vm *vm, struct arena *mem, struct typ
 	struct type_func *func = type->data;
 	struct string res = arena_string_init(mem);
 
-	struct type *params_type, *ret_type;
+	struct type *ret_type;
 
-	assert(func->params < vm->store.num_types);
-	assert(func->ret < vm->store.num_types);
+	ret_type = get_type(&vm->store, func->ret);
 
-	params_type = &vm->store.types[func->params];
-	ret_type = &vm->store.types[func->ret];
+	arena_string_append(mem, &res, STR("("));
 
-	arena_string_append_type_repr(&res, vm, mem, params_type);
-	arena_string_append(mem, &res, STR(" -> "));
+	for (size_t i = 0; i < func->num_params; i++) {
+		if (i != 0) {
+			arena_string_append(mem, &res, STR(", "));
+		}
+
+		arena_string_append(mem, &res, func->param_names[i]->name);
+		arena_string_append(mem, &res, STR(": "));
+
+		struct type *item_type;
+		item_type = get_type(&vm->store, func->param_types[i]);
+		arena_string_append_type_repr(&res, vm, mem, item_type);
+	}
+
+	arena_string_append(mem, &res, STR(") -> "));
 	arena_string_append_type_repr(&res, vm, mem, ret_type);
 
 	return res;
@@ -302,10 +312,12 @@ static type_id type_func_subtypes_iter(struct vm *vm, struct type *type, size_t 
 
 	type_id result;
 
-	switch (*iter) {
-	case 0:  result = func->params;
-	case 1:  result = func->ret;
-	default: result = TYPE_SUBTYPES_END;
+	if (*iter < func->num_params) {
+		result = func->param_types[*iter];
+	} else if (*iter == func->num_params) {
+		result = func->ret;
+	} else {
+		result = TYPE_SUBTYPES_END;
 	}
 
 	*iter += 1;
@@ -471,22 +483,28 @@ int vm_init(struct vm *vm)
 
 	{
 		vm->default_types.func_template_return
-			= type_register_function(vm, TYPE_NONE, TYPE_TEMPLATE_PARAM);
+			= type_register_function(vm, NULL, NULL, 0, TYPE_TEMPLATE_PARAM);
 	}
 
 
 	{
-		struct type_tuple_item params[] = {
-			{ atom_create(&vm->atom_table, STR("lhs")), vm->default_types.integer },
-			{ atom_create(&vm->atom_table, STR("rhs")), vm->default_types.integer },
+		struct atom *param_names[] = {
+			atom_create(&vm->atom_table, STR("lhs")),
+			atom_create(&vm->atom_table, STR("rhs")),
 		};
 
-		type_id param_type = type_register_named_tuple(vm, params, 2);
+		type_id param_types[] = {
+			vm->default_types.integer,
+			vm->default_types.integer,
+		};
+
+		size_t num_params = 2;
 
 		{
 			obj_id func;
-			func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
-											obj_integer_add, NULL);
+			func = obj_register_builtin_func(vm, param_names, param_types, num_params,
+											 vm->default_types.integer,
+											 obj_integer_add, NULL);
 
 			struct atom *name = atom_create(&vm->atom_table, STR("op+"));
 			scope_insert_overloadable(&vm->root_scope, name,
@@ -495,8 +513,9 @@ int vm_init(struct vm *vm)
 
 		{
 			obj_id func;
-			func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
-											obj_integer_sub, NULL);
+			func = obj_register_builtin_func(vm, param_names, param_types, num_params,
+											 vm->default_types.integer,
+											 obj_integer_sub, NULL);
 
 			struct atom *name = atom_create(&vm->atom_table, STR("op-"));
 			scope_insert_overloadable(&vm->root_scope, name,
@@ -505,8 +524,9 @@ int vm_init(struct vm *vm)
 
 		{
 			obj_id func;
-			func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
-											obj_integer_mul, NULL);
+			func = obj_register_builtin_func(vm, param_names, param_types, num_params,
+											 vm->default_types.integer,
+											 obj_integer_mul, NULL);
 
 			struct atom *name = atom_create(&vm->atom_table, STR("op*"));
 			scope_insert_overloadable(&vm->root_scope, name,
@@ -515,8 +535,9 @@ int vm_init(struct vm *vm)
 
 		{
 			obj_id func;
-			func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
-											obj_integer_div, NULL);
+			func = obj_register_builtin_func(vm, param_names, param_types, num_params,
+											 vm->default_types.integer,
+											 obj_integer_div, NULL);
 
 			struct atom *name = atom_create(&vm->atom_table, STR("op/"));
 			scope_insert_overloadable(&vm->root_scope, name,
@@ -525,13 +546,19 @@ int vm_init(struct vm *vm)
 	}
 
 	{
-		struct type_tuple_item params[] = {
-			{ atom_create(&vm->atom_table, STR("value")), vm->default_types.integer },
+		struct atom *param_names[] = {
+			atom_create(&vm->atom_table, STR("value")),
 		};
 
-		type_id param_type = type_register_named_tuple(vm, params, 1);
+		type_id param_types[] = {
+			vm->default_types.integer,
+		};
+
+		size_t num_params = 1;
+
 		obj_id func;
-		func = obj_register_builtin_func(vm, param_type, vm->default_types.integer,
+		func = obj_register_builtin_func(vm, param_names, param_types, num_params,
+										 vm->default_types.integer,
 										 debug_print_integer, NULL);
 
 		struct atom *name = atom_create(&vm->atom_table, STR("print"));
@@ -571,6 +598,19 @@ type_id type_register_enum(struct vm *vm, struct type_enum *t)
 	return register_type(&vm->store, type);
 }
 
+struct tuple_member_data {
+	type_id type;
+	uint32_t offset;
+};
+
+static_assert(sizeof(struct tuple_member_data) == sizeof(void *),
+			  "For now, tuple member data should fit in a void *.");
+
+static void tuple_access_member(struct vm *vm, struct exec_stack *stack, void *data)
+{
+	struct tuple_member_data offset = *(struct tuple_member_data *)&data;
+}
+
 type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, size_t num_items)
 {
 	struct type type = {0};
@@ -602,20 +642,50 @@ type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, 
 		// @TODO: Check for duplicate members.
 	}
 
+	type_id result;
+
+	type.num_template_params = num_template_params;
+	type.size = size;
+	type.data = (void *)tuple;
+
+	struct scope *obj_scope = NULL;
 
 	if (num_template_params == 0) {
-		struct scope *obj_scope;
-
 		obj_scope = scope_push(&vm->root_scope);
+		type.object_scope = obj_scope;
+	}
+
+	result = register_type(&vm->store, type);
+
+	if (obj_scope) {
+		size_t offset = 0;
 
 		for (size_t i = 0; i < num_items; i++) {
-			struct object access_func = {0};
+			obj_id access_func;
+
+			struct atom *param_name;
+			type_id param_type;
+			param_name = atom_create(&vm->atom_table, STR("self"));
+			param_type = result;
+
+			type_id ret_type = items[i].type;
+
+			struct tuple_member_data data = {0};
+
+			data.type = items[i].type;
+			data.offset = offset;
+
+			access_func =
+				obj_register_builtin_func(vm, &param_name, &param_type, 1,
+										  ret_type, tuple_access_member,
+										  *(void **)&data);
 
 			int err;
 			err = scope_insert(obj_scope,
 							   items[i].name,
 							   SCOPE_ANCHOR_ABSOLUTE,
-							   access_func, NULL);
+							   get_object(&vm->store, access_func),
+							   NULL);
 
 			if (err < 0) {
 				printf("Tuple has duplicate member '%.*s'.",
@@ -623,16 +693,13 @@ type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, 
 				// @TODO: Deallocate
 				return TYPE_NONE;
 			}
-		}
 
-		type.object_scope = obj_scope;
+			struct type *subtype = get_type(&vm->store, items[i].type);
+			offset += subtype->size;
+		}
 	}
 
-	type.num_template_params = num_template_params;
-	type.size = size;
-	type.data = (void *)tuple;
-
-	return register_type(&vm->store, type);
+	return result;
 }
 
 type_id type_register_unnamed_tuple(struct vm *vm, type_id *items, size_t num_items)
@@ -670,7 +737,9 @@ type_id type_register_unnamed_tuple(struct vm *vm, type_id *items, size_t num_it
 }
 
 
-type_id type_register_function(struct vm *vm, type_id params, type_id ret)
+type_id type_register_function(struct vm *vm, struct atom **param_names,
+							   type_id *param_types, size_t num_params,
+							   type_id ret)
 {
 	struct type type = {0};
 
@@ -682,16 +751,27 @@ type_id type_register_function(struct vm *vm, type_id params, type_id ret)
 	struct type_func *data;
 	data = calloc(1, sizeof(struct type_func));
 
-	data->params = params;
+	data->param_names = calloc(num_params, sizeof(struct atom *));
+	memcpy(data->param_names, param_names, num_params * sizeof(struct atom *));
+
+	data->param_types = calloc(num_params, sizeof(type_id));
+	memcpy(data->param_types, param_types, num_params * sizeof(type_id));
+
+	data->num_params = num_params;
 	data->ret = ret;
 
 	type.data = data;
 
-	struct type *params_type = &vm->store.types[params];
-	struct type *ret_type = &vm->store.types[ret];
+	type.num_template_params = 0;
 
-	type.num_template_params =
-		params_type->num_template_params + ret_type->num_template_params;
+	for (size_t i = 0; i < data->num_params; i++) {
+		struct type *param_type = get_type(&vm->store, data->param_types[i]);
+
+		type.num_template_params += param_type->num_template_params;
+	}
+
+	struct type *ret_type = get_type(&vm->store, ret);
+	type.num_template_params += ret_type->num_template_params;
 
 	return register_type(&vm->store, type);
 }
@@ -726,8 +806,10 @@ obj_id obj_register_type(struct vm *vm, type_id value)
 	return register_object(&vm->store, result);
 }
 
-obj_id obj_register_builtin_func(struct vm *vm, type_id params, type_id ret_type,
-								 vm_builtin_func value, void *data)
+obj_id obj_register_builtin_func(struct vm *vm, struct atom **param_names,
+								 type_id *params, size_t num_params,
+								 type_id ret_type, vm_builtin_func value,
+								 void *data)
 {
 	struct object result = {0};
 	struct obj_builtin_func_data obj_data = {0};
@@ -735,12 +817,29 @@ obj_id obj_register_builtin_func(struct vm *vm, type_id params, type_id ret_type
 	obj_data.func = value;
 	obj_data.data = data;
 
-	type_id type = type_register_function(vm, params, ret_type);
+	type_id type = type_register_function(vm, param_names, params,
+										  num_params, ret_type);
 
 	result.type = type;
 	result.data = &obj_data;
 
 	return register_object(&vm->store, result);
+}
+
+obj_id obj_register_builtin_func_from_tuple(struct vm *vm, type_id params, type_id ret_type,
+											vm_builtin_func value, void *data)
+{
+	struct type *params_type = get_type(&vm->store, params);
+	assert(params_type->base == &vm->default_types.tuple_base);
+	struct type_tuple *tuple = params_type->data;
+	assert(tuple->named == true);
+
+	return obj_register_builtin_func(vm,
+									 tuple->names,
+									 tuple->types,
+									 tuple->num_items,
+									 ret_type,
+									 value, data);
 }
 
 type_id type_obj_get(struct vm *vm, struct object obj)

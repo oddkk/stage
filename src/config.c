@@ -531,7 +531,7 @@ job_func_proto_decl(struct cfg_ctx *ctx, job_func_proto_decl_t *data)
 		case CFG_NODE_FUNC_PROTO: {
 			struct cfg_job *job;
 			job = resolve_type(ctx, data->node->FUNC_PROTO.ret,
-							   NULL, data->scope, &data->params, NULL);
+							   NULL, data->scope, &data->ret, NULL);
 
 			data->state = CFG_FUNC_PROTO_DECL_FINALIZE;
 
@@ -545,7 +545,25 @@ job_func_proto_decl(struct cfg_ctx *ctx, job_func_proto_decl_t *data)
 	} break;
 
 	case CFG_FUNC_PROTO_DECL_FINALIZE: {
-		*data->out_type = type_register_function(ctx->vm, data->params, data->ret);
+		struct atom **param_names = NULL;
+		type_id *param_types = NULL;
+		size_t num_params = 0;
+
+		if (data->params != ctx->vm->default_types.none) {
+			struct type *params_type = get_type(&ctx->vm->store, data->params);
+			assert(params_type->base == &ctx->vm->default_types.tuple_base);
+			struct type_tuple *tuple = params_type->data;
+			assert(tuple->named == true);
+
+			param_names = tuple->names;
+			param_types = tuple->types;
+			num_params = tuple->num_items;
+		}
+
+		*data->out_type =
+			type_register_function(ctx->vm, param_names,
+								   param_types, num_params,
+								   data->ret);
 
 		return JOB_OK;
 	} break;
@@ -992,7 +1010,7 @@ job_enum_decl(struct cfg_ctx *ctx, job_enum_decl_t *data)
 			// TODO: This shuold be automated inside type_register_enum.
 			obj_id item_constructor;
 			item_constructor =
-				obj_register_builtin_func(ctx->vm, TYPE_NONE, type,
+				obj_register_builtin_func(ctx->vm, NULL, NULL, 0, type,
 										enum_item_constructor, (void *)item);
 
 			scope_insert(enum_scope, item->name, SCOPE_ANCHOR_ABSOLUTE,

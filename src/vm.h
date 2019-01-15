@@ -134,8 +134,12 @@ typedef void (*vm_builtin_func)(struct vm *, struct exec_stack *, void *);
 obj_id obj_register_string(struct vm *vm, struct string value);
 obj_id obj_register_integer(struct vm *vm, int64_t value);
 obj_id obj_register_type(struct vm *vm, type_id value);
-obj_id obj_register_builtin_func(struct vm *vm, type_id params, type_id ret_type,
-								 vm_builtin_func value, void *data);
+obj_id obj_register_builtin_func_from_tuple(struct vm *vm, type_id params, type_id ret_type,
+											vm_builtin_func value, void *data);
+obj_id obj_register_builtin_func(struct vm *vm, struct atom **param_names,
+								 type_id *params, size_t num_params,
+								 type_id ret_type, vm_builtin_func value,
+								 void *data);
 
 type_id type_obj_get(struct vm *vm, struct object obj);
 
@@ -171,7 +175,10 @@ struct type_tuple {
 };
 
 struct type_func {
-	type_id params;
+	struct atom **param_names;
+	type_id *param_types;
+	size_t num_params;
+
 	type_id ret;
 };
 
@@ -187,7 +194,9 @@ struct obj_builtin_func_data {
 type_id type_register_enum(struct vm *vm, struct type_enum *t);
 type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, size_t num_items);
 type_id type_register_unnamed_tuple(struct vm *vm, type_id *items, size_t num_items);
-type_id type_register_function(struct vm *vm, type_id params, type_id ret);
+type_id type_register_function(struct vm *vm, struct atom **param_names,
+							   type_id *param_types, size_t num_params,
+							   type_id ret);
 
 void vm_exec(struct vm *vm, struct exec_stack *stack, void *instructions, size_t length);
 
