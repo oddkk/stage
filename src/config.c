@@ -176,48 +176,48 @@ cfg_error(struct cfg_ctx *ctx, struct cfg_node *node,
 	ctx->num_errors += 1;
 }
 
-static void
-_expr_to_string_internal(struct arena *mem, struct string *str,
-						 struct cfg_node *node)
-{
-	switch (node->type) {
-	case CFG_NODE_ACCESS:
-		_expr_to_string_internal(mem, str, node->ACCESS.lhs);
-		arena_string_append(mem, str, STR("."));
-		_expr_to_string_internal(mem, str, node->ACCESS.rhs);
-		break;
+/* static void */
+/* _expr_to_string_internal(struct arena *mem, struct string *str, */
+/* 						 struct cfg_node *node) */
+/* { */
+/* 	switch (node->type) { */
+/* 	case CFG_NODE_ACCESS: */
+/* 		_expr_to_string_internal(mem, str, node->ACCESS.lhs); */
+/* 		arena_string_append(mem, str, STR(".")); */
+/* 		_expr_to_string_internal(mem, str, node->ACCESS.rhs); */
+/* 		break; */
 
-	case CFG_NODE_SUBSCRIPT:
-		_expr_to_string_internal(mem, str, node->SUBSCRIPT.lhs);
-		arena_string_append(mem, str, STR("["));
-		_expr_to_string_internal(mem, str, node->SUBSCRIPT.index);
-		arena_string_append(mem, str, STR("]"));
-		break;
+/* 	case CFG_NODE_SUBSCRIPT: */
+/* 		_expr_to_string_internal(mem, str, node->SUBSCRIPT.lhs); */
+/* 		arena_string_append(mem, str, STR("[")); */
+/* 		_expr_to_string_internal(mem, str, node->SUBSCRIPT.index); */
+/* 		arena_string_append(mem, str, STR("]")); */
+/* 		break; */
 
-	case CFG_NODE_IDENT:
-		arena_string_append(mem, str, node->IDENT->name);
-		break;
+/* 	case CFG_NODE_IDENT: */
+/* 		arena_string_append(mem, str, node->IDENT->name); */
+/* 		break; */
 
-	default:
-		panic("Invalid node '%.*s' as expression.",
-				LIT(cfg_node_names[node->type]));
-		break;
-	}
-}
+/* 	default: */
+/* 		panic("Invalid node '%.*s' as expression.", */
+/* 				LIT(cfg_node_names[node->type])); */
+/* 		break; */
+/* 	} */
+/* } */
 
-static struct string
-expr_to_string(struct arena *mem, struct cfg_node *node)
-{
-	struct string str = {0};
+/* static struct string */
+/* expr_to_string(struct arena *mem, struct cfg_node *node) */
+/* { */
+/* 	struct string str = {0}; */
 
-	/* str.text = (uint8_t *)(mem->data + mem->head); */
-	str.text = arena_alloc(mem, 0);
-	str.length = 0;
+/* 	/\* str.text = (uint8_t *)(mem->data + mem->head); *\/ */
+/* 	str.text = arena_alloc(mem, 0); */
+/* 	str.length = 0; */
 
-	_expr_to_string_internal(mem, &str, node);
+/* 	_expr_to_string_internal(mem, &str, node); */
 
-	return str;
-}
+/* 	return str; */
+/* } */
 
 static void
 append_job(struct cfg_ctx *ctx, enum cfg_compile_phase ph, struct cfg_job *job)
@@ -853,94 +853,6 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 	data->dispatched = true;
 
 	return JOB_YIELD_FOR(job);
-}
-
-static struct job_status
-job_resolve_l_expr(struct cfg_ctx *ctx, job_resolve_l_expr_t *data)
-{
-	if (!data->l_expr_top_node) {
-		data->l_expr_top_node = data->node;
-	}
-	switch (data->node->type) {
-	case CFG_NODE_ACCESS: {
-		switch (data->state) {
-		case CFG_BINOP_LHS: {
-			struct cfg_job *lhs_job;
-			lhs_job = DISPATCH_JOB(ctx, resolve_l_expr, CFG_PHASE_RESOLVE,
-								   .scope = data->scope,
-								   .node  = data->node->ACCESS.lhs,
-								   .l_expr_top_node  = data->l_expr_top_node,
-								   .local = data->local,
-								   .out_entry = &data->entry);
-
-			return JOB_YIELD_FOR(lhs_job);
-		} break;
-
-		case CFG_BINOP_RHS: {
-			struct cfg_job *rhs_job;
-
-			if (!data->entry.scope) {
-				cfg_error(ctx, data->node->ACCESS.lhs, "This object does not contain any elements.");
-
-				return JOB_ERROR;
-			}
-
-			rhs_job = DISPATCH_JOB(ctx, resolve_l_expr, CFG_PHASE_RESOLVE,
-								   .scope = data->scope,
-								   .node  = data->node->ACCESS.rhs,
-								   .l_expr_top_node  = data->l_expr_top_node,
-								   .local = true,
-								   .out_entry = data->out_entry);
-
-			return JOB_YIELD_FOR(rhs_job);
-		} break;
-
-		case CFG_BINOP_FINALIZE:
-			return JOB_OK;
-		}
-
-	} break;
-
-	case CFG_NODE_SUBSCRIPT:
-		printf("TODO: Subscript.\n");
-		break;
-
-	case CFG_NODE_IDENT: {
-		int err;
-
-		if (data->local) {
-			err = scope_local_lookup(data->scope,
-									 data->node->IDENT,
-									 data->out_entry);
-		} else {
-			err = scope_lookup(data->scope,
-							   data->node->IDENT,
-							   data->out_entry);
-		}
-
-		if (err) {
-			struct arena mem = arena_push(&ctx->vm->memory);
-
-			struct string expr;
-
-			expr = expr_to_string(&mem, data->l_expr_top_node);
-
-			cfg_error(ctx, data->node, "Could not find '%.*s'.", LIT(expr));
-
-			arena_pop(&ctx->vm->memory, mem);
-			return JOB_ERROR;
-		}
-
-		return JOB_OK;
-	} break;
-
-	default:
-		panic("Invalid node '%.*s' in l-expr.",
-				LIT(cfg_node_names[data->node->type]));
-		break;
-	}
-
-	return JOB_ERROR;
 }
 
 int parse_config_file(struct string filename,

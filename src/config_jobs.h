@@ -102,15 +102,3 @@ CFG_JOB(resolve_type_l_expr, struct {
 	struct scope_entry entry;
 	type_id *out_type;
 })
-
-CFG_JOB(resolve_l_expr, struct {
-	struct scope *scope;
-	struct cfg_node *node;
-
-	bool local;
-	bool rhs;
-	enum cfg_binop_state state;
-	struct scope_entry entry;
-	struct scope_entry *out_entry;
-	struct cfg_node *l_expr_top_node;
-})
