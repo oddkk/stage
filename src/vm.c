@@ -599,16 +599,22 @@ type_id type_register_enum(struct vm *vm, struct type_enum *t)
 }
 
 struct tuple_member_data {
-	type_id type;
-	uint32_t offset;
+	uint16_t member_size;
+	uint16_t tuple_size;
+	uint16_t offset;
 };
 
-static_assert(sizeof(struct tuple_member_data) == sizeof(void *),
+static_assert(sizeof(struct tuple_member_data) <= sizeof(void *),
 			  "For now, tuple member data should fit in a void *.");
 
 static void tuple_access_member(struct vm *vm, struct exec_stack *stack, void *data)
 {
-	struct tuple_member_data offset = *(struct tuple_member_data *)&data;
+	struct tuple_member_data tuple_member = *(struct tuple_member_data *)&data;
+	uint8_t buffer[tuple_member.tuple_size];
+
+	stack_pop(stack, buffer, tuple_member.tuple_size);
+
+	stack_push(stack, &buffer[tuple_member.offset], tuple_member.member_size);
 }
 
 type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, size_t num_items)
@@ -670,9 +676,11 @@ type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, 
 
 			type_id ret_type = items[i].type;
 
+			struct type *subtype = get_type(&vm->store, items[i].type);
 			struct tuple_member_data data = {0};
 
-			data.type = items[i].type;
+			data.tuple_size = type.size;
+			data.member_size = subtype->size;
 			data.offset = offset;
 
 			access_func =
@@ -694,7 +702,6 @@ type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, 
 				return TYPE_NONE;
 			}
 
-			struct type *subtype = get_type(&vm->store, items[i].type);
 			offset += subtype->size;
 		}
 	}

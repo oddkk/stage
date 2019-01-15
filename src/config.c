@@ -657,6 +657,7 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 	case CFG_COMPILE_FUNC_VISIT_BODY: {
 		printf("\n");
 		cfg_func_print(ctx->vm, data->func);
+
 		return JOB_OK;
 	} break;
 
