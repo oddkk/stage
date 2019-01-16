@@ -377,6 +377,18 @@ int vm_init(struct vm *vm)
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
+		type_base_init(base, STR("scope"));
+
+		struct type scope = {0};
+		scope.name = atom_create(&vm->atom_table, STR("scope"));
+		scope.base = base;
+		scope.size = sizeof(struct scope *);
+		vm->default_types.scope = register_type(&vm->store, scope);
+		assert(vm->default_types.scope == TYPE_SCOPE);
+	}
+
+	{
+		struct type_base *base = calloc(1, sizeof(struct type_base));
 		type_base_init(base, STR("template_param"));
 
 		struct type template_param = {0};

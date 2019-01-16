@@ -112,23 +112,117 @@ cfg_func_eval(struct vm *vm, struct exec_stack *stack,
 	type_id out_type = TYPE_NONE;
 
 	switch (node->type) {
-	case CFG_FUNC_NODE_FUNC_CALL:
-		printf("TODO: Func call\n");
-		break;
+	case CFG_FUNC_NODE_FUNC_CALL: {
+		struct cfg_func_node *arg = node->func_call.args;
+		int err;
 
-	case CFG_FUNC_NODE_LOOKUP_GLOBAL: {
-		/* int err; */
-		/* err = scope_lookup(); */
-		printf("TODO: Lookup global\n");
+		size_t num_args = 0;
+
+		while (arg) {
+			struct object arg_obj;
+
+			err = cfg_func_eval(vm, stack, arg, &arg_obj);
+			if (err) {
+				return err;
+			}
+
+			num_args += 1;
+			arg = arg->next_arg;
+		}
+
+		struct object func_obj;
+
+		err = cfg_func_eval(vm, stack, node->func_call.func, &func_obj);
+		if (err) {
+			return err;
+		}
+
+		struct type *type = get_type(&vm->store, func_obj.type);
+
+		if (type->base != &vm->default_types.func_base) {
+			printf("Not a function.\n");
+			return -1;
+		}
+
+		struct type_func *type_func = type->data;
+
+		if (type_func->num_params != num_args) {
+			printf("Wrong number of arguments. Expected %zu, got %zu.\n",
+				   type_func->num_params, num_args);
+			return -1;
+		}
+
+		struct obj_builtin_func_data func;
+		assert(type->size == sizeof(struct obj_builtin_func_data));
+
+		stack_pop(stack, &func, sizeof(struct obj_builtin_func_data));
+
+		func.func(vm, stack, func.data);
+
 	} break;
 
 	case CFG_FUNC_NODE_LOOKUP_LOCAL:
-		printf("TODO: Lookup local\n");
-		break;
+	case CFG_FUNC_NODE_LOOKUP_GLOBAL: {
+		struct object out_scope;
+		int err;
 
-	case CFG_FUNC_NODE_SCOPE:
-		printf("TODO: Scope\n");
-		break;
+		err = cfg_func_eval(vm, stack, node->lookup.scope, &out_scope);
+
+		if (err) {
+			return err;
+		}
+
+		struct scope *scope = NULL;
+
+		if (node->type == CFG_FUNC_NODE_LOOKUP_GLOBAL) {
+			if (out_scope.type != TYPE_SCOPE) {
+				printf("not a scope\n");
+				return -1;
+			}
+
+			scope = *(struct scope **)out_scope.data;
+			stack_pop_void(stack, sizeof(struct scope *));
+
+		} else {
+			if (out_scope.type == TYPE_SCOPE) {
+				scope = *(struct scope **)out_scope.data;
+				stack_pop_void(stack, sizeof(struct scope *));
+			} else {
+				struct type *target_type = get_type(&vm->store, out_scope.type);
+				scope = target_type->object_scope;
+			}
+		}
+
+		assert(scope);
+
+		struct scope_entry result;
+
+		if (node->type == CFG_FUNC_NODE_LOOKUP_GLOBAL) {
+			err = scope_lookup(scope, node->lookup.name, &result);
+		} else {
+			err = scope_local_lookup(scope, node->lookup.name, &result);
+		}
+
+		if (err) {
+			printf("'%.*s' was not found.\n", ALIT(node->lookup.name));
+			return -1;
+		}
+
+		if (result.object.type == TYPE_NONE) {
+			assert(result.scope);
+			stack_push(stack, &result.scope, sizeof(struct scope *));
+			out_type = TYPE_SCOPE;
+		} else {
+			struct type *res_type = get_type(&vm->store, result.object.type);
+			stack_push(stack, result.object.data, res_type->size);
+			out_type = result.object.type;
+		}
+	} break;
+
+	case CFG_FUNC_NODE_SCOPE: {
+		stack_push(stack, &node->scope, sizeof(struct scope *));
+		out_type = TYPE_SCOPE;
+	} break;
 
 	case CFG_FUNC_NODE_GLOBAL: {
 		struct type *obj_type = get_type(&vm->store, node->obj.type);
