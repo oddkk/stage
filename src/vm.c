@@ -68,8 +68,8 @@ static void obj_integer_add(struct vm *vm, struct exec_stack *stack, void *data)
 	(void)data;
 	int64_t lhs, rhs;
 
-	stack_pop(stack, &lhs, sizeof(lhs));
 	stack_pop(stack, &rhs, sizeof(rhs));
+	stack_pop(stack, &lhs, sizeof(lhs));
 
 	int64_t result = lhs + rhs;
 
@@ -81,8 +81,8 @@ static void obj_integer_sub(struct vm *vm, struct exec_stack *stack, void *data)
 	(void)data;
 	int64_t lhs, rhs;
 
-	stack_pop(stack, &lhs, sizeof(lhs));
 	stack_pop(stack, &rhs, sizeof(rhs));
+	stack_pop(stack, &lhs, sizeof(lhs));
 
 	int64_t result = lhs - rhs;
 

@@ -15,3 +15,6 @@ some_number = 2 * 3 + 5 - 6;
 square(x: int) = x * x;
 double(x: int) -> int = 2 * x;
 double(x: (int, Bool)) = 2 * x;
+
+assert square(2) == 4;
+assert some_number == 5;

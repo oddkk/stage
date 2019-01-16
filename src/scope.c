@@ -90,6 +90,11 @@ int scope_insert_overloadable(struct scope *parent,
 		previous_overload->next_overload = id;
 	}
 
+	if (err < 0) {
+		// The element did not exist in this scope.
+		err = id_lookup_table_insert(&parent->lookup, name->name, id);
+	}
+
 	return id;
 }
 
@@ -101,11 +106,14 @@ int scope_local_lookup(struct scope *scope,
 
 	assert(name);
 
+	/* printf("looking up locally '%.*s'... ", ALIT(name)); */
 	err = id_lookup_table_lookup(&scope->lookup, name->name);
 	if (err < 0) {
+		/* printf("not found.\n"); */
 		return -1;
 	}
 
+	/* printf("found.\n"); */
 	*result = scope->entries[err];
 
 	return 0;
@@ -117,14 +125,19 @@ int scope_lookup(struct scope *scope,
 {
 	int err;
 
+	/* printf("looking up '%.*s'... ", ALIT(name)); */
 	err = scope_local_lookup(scope, name, result);
 	if (err < 0) {
 		if (scope->parent) {
+			/* printf("not found. trying parent.\n"); */
 			return scope_lookup(scope->parent, name, result);
 		} else {
+			/* printf("not found. no more parents.\n"); */
 			return err;
 		}
 	}
+
+	/* printf("found.\n"); */
 
 	return 0;
 }

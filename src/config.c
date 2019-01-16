@@ -642,6 +642,30 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		data->func_ctx.outer_scope = data->scope;
 		data->func_ctx.inner_scope = scope_push(data->scope);
 
+		struct scope *inner_scope = data->func_ctx.inner_scope;
+		struct type *func_proto = get_type(&ctx->vm->store, data->proto);
+		struct type_func *func_data = func_proto->data;
+
+		size_t offset = 0;
+
+		for (size_t i = 0; i < func_data->num_params; i++) {
+			int err;
+
+			struct object param = {0};
+			type_id param_tid = func_data->param_types[i];
+			struct type *param_type = get_type(&ctx->vm->store, param_tid);
+
+			param.data = (void *)offset;
+			param.type = param_tid;
+
+			assert(param_type->num_template_params == 0);
+
+			err = scope_insert(inner_scope, func_data->param_names[i],
+							   SCOPE_ANCHOR_STACK, param, NULL);
+
+			offset += param_type->size;
+		}
+
 		// @TODO: Insert params into inner scope
 
 		struct cfg_job *job;
@@ -656,26 +680,12 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 
 	case CFG_COMPILE_FUNC_VISIT_BODY: {
 		printf("\n");
+		cfg_func_simplify(ctx->vm, data->func);
+		printf("\n");
 		cfg_func_print(ctx->vm, data->func);
 
 		return JOB_OK;
 	} break;
-
-
-	/* case CFG_COMPILE_FUNC_EVAL_TYPES: { */
-	/* } break; */
-
-	/* case CFG_COMPILE_FUNC_EVAL_BODY_TYPE_CONSTRAINTS: { */
-	/* } break; */
-
-	/* case CFG_COMPILE_FUNC_RESOLVE_TYPES: { */
-	/* } break; */
-
-	/* case CFG_COMPILE_FUNC_OPTIMIZE: { */
-	/* } break; */
-
-	/* case CFG_COMPILE_FUNC_GEN_INSTRUCTIONS: { */
-	/* } break; */
 
 	}
 
@@ -852,17 +862,11 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 		printf("\n");
 		cfg_func_print(ctx->vm, data->func);
 
-		struct exec_stack stack = {0};
-		struct arena mem = arena_push(&ctx->vm->memory);
-		struct object obj;
-
-		arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
 
 		int err;
-		err = cfg_func_eval(ctx->vm, &stack, data->func, &obj);
+		struct object obj;
 
-		arena_pop(&ctx->vm->memory, mem);
-
+		err = cfg_func_eval_simple(ctx->vm, data->func, &obj);
 		if (err) {
 			return JOB_ERROR;
 		}
