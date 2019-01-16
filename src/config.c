@@ -690,6 +690,28 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 	switch (data->node->type) {
 
 	case CFG_NODE_ACCESS:
+		switch (data->iter) {
+		case 0:
+			job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
+							   .func_ctx    = data->func_ctx,
+							   .node        = data->node->ACCESS.lhs,
+							   .local_scope = data->local_scope,
+							   .out_func    = &data->tmp_func);
+			data->iter += 1;
+			return JOB_YIELD_FOR(job);
+
+		case 1:
+			job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
+							   .func_ctx    = data->func_ctx,
+							   .node        = data->node->ACCESS.rhs,
+							   .local_scope = data->tmp_func,
+							   .out_func    = data->out_func);
+			data->iter += 1;
+			return JOB_YIELD_FOR(job);
+
+		case 2:
+			return JOB_OK;
+		}
 		break;
 
 	case CFG_NODE_SUBSCRIPT:
@@ -712,14 +734,23 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 		}
 
 		switch (data->iter) {
-		case 0:
-			*data->out_func =
-				cfg_func_call(ctx->vm, data->func_ctx,
-							  binop_atom(&ctx->vm->atom_table,
-										 data->node->BIN_OP.op));
+		case 0: {
+			struct cfg_func_node *lookup_op;
+			struct cfg_func_node *scope;
+			struct atom *op_name;
+
+			op_name =
+				binop_atom(&ctx->vm->atom_table,
+						   data->node->BIN_OP.op);
+			scope =
+				cfg_func_scope(ctx->vm, data->func_ctx->inner_scope);
+			lookup_op = cfg_func_lookup(ctx->vm, op_name,
+										scope,
+										CFG_FUNC_LOOKUP_GLOBAL);
+			*data->out_func = cfg_func_call(ctx->vm, lookup_op);
 
 			node_to_process = data->node->BIN_OP.lhs;
-		break;
+		} break;
 
 		case 1:
 			node_to_process = data->node->BIN_OP.rhs;
@@ -786,25 +817,18 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 
 	case CFG_NODE_IDENT:
 		if (data->local_scope) {
-			struct scope_entry result;
-			scope_local_lookup(data->local_scope, data->node->IDENT, &result);
+			*data->out_func =
+				cfg_func_lookup(ctx->vm,
+								data->node->IDENT,
+								data->local_scope,
+								CFG_FUNC_LOOKUP_LOCAL);
 		} else {
-			int err;
-			struct scope_entry result;
-			err = scope_lookup(data->func_ctx->inner_scope, data->node->IDENT, &result);
-
-			if (err || result.object.type == TYPE_NONE) {
-				cfg_error(ctx, data->node, "'%.*s' does not exist.",
-						  ALIT(data->node->IDENT));
-				return JOB_ERROR;
-			}
-
-			if (result.object.type == TYPE_UNSET) {
-				return JOB_YIELD;
-			}
+			struct cfg_func_node *scope;
+			scope = cfg_func_scope(ctx->vm, data->func_ctx->inner_scope);
 
 			*data->out_func =
-				cfg_func_global(ctx->vm, result.object);
+				cfg_func_lookup(ctx->vm, data->node->IDENT, scope,
+								CFG_FUNC_LOOKUP_GLOBAL);
 
 			return JOB_OK;
 		}
@@ -825,6 +849,9 @@ static struct job_status
 job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 {
 	if (data->dispatched) {
+		printf("\n");
+		cfg_func_print(ctx->vm, data->func);
+
 		struct exec_stack stack = {0};
 		struct arena mem = arena_push(&ctx->vm->memory);
 		struct object obj;

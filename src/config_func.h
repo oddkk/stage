@@ -5,7 +5,10 @@
 
 enum cfg_func_node_type {
 	CFG_FUNC_NODE_FUNC_CALL,
+	CFG_FUNC_NODE_LOOKUP_GLOBAL,
+	CFG_FUNC_NODE_LOOKUP_LOCAL,
 	CFG_FUNC_NODE_GLOBAL,
+	CFG_FUNC_NODE_SCOPE,
 	CFG_FUNC_NODE_LIT_INT,
 	CFG_FUNC_NODE_LIT_STR,
 };
@@ -22,12 +25,18 @@ struct cfg_func_node {
 	union {
 		struct {
 			struct atom *name;
-			struct cfg_func_context *ctx;
+			/* struct scope *scope; */
+			struct cfg_func_node *scope;
+		} lookup;
+
+		struct {
+			struct cfg_func_node *func;
 			struct cfg_func_node *args;
 		} func_call;
 
-		/* obj_id global; */
 		struct object obj;
+
+		struct scope *scope;
 
 		int64_t lit_int;
 		struct string lit_str;
@@ -45,12 +54,24 @@ struct cfg_func {
 };
 
 struct cfg_func_node *
-cfg_func_call(struct vm *, struct cfg_func_context *,
-			  struct atom *);
+cfg_func_call(struct vm *, struct cfg_func_node *func);
 
 void
 cfg_func_call_add_arg(struct cfg_func_node *func,
 					  struct cfg_func_node *arg);
+
+enum cfg_func_lookup_mode {
+	CFG_FUNC_LOOKUP_GLOBAL,
+	CFG_FUNC_LOOKUP_LOCAL,
+};
+
+struct cfg_func_node *
+cfg_func_lookup(struct vm *vm, struct atom *name,
+				struct cfg_func_node *scope,
+				enum cfg_func_lookup_mode lookup_mode);
+
+struct cfg_func_node *
+cfg_func_scope(struct vm *, struct scope *);
 
 struct cfg_func_node *
 cfg_func_global(struct vm *, struct object);

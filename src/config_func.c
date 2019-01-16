@@ -3,16 +3,14 @@
 #include "utils.h"
 
 struct cfg_func_node *
-cfg_func_call(struct vm *vm, struct cfg_func_context *ctx,
-			  struct atom *name)
+cfg_func_call(struct vm *vm, struct cfg_func_node *func)
 {
 	struct cfg_func_node *node;
 
 	node = calloc(1, sizeof(struct cfg_func_node));
 
 	node->type = CFG_FUNC_NODE_FUNC_CALL;
-	node->func_call.ctx = ctx;
-	node->func_call.name = name;
+	node->func_call.func = func;
 	node->func_call.args = NULL;
 
 	return node;
@@ -32,6 +30,40 @@ cfg_func_call_add_arg(struct cfg_func_node *func,
 	}
 
 	*p = arg;
+}
+
+struct cfg_func_node *
+cfg_func_lookup(struct vm *vm, struct atom *name,
+				struct cfg_func_node *scope,
+				enum cfg_func_lookup_mode lookup_mode)
+{
+	struct cfg_func_node *node;
+
+	node = calloc(1, sizeof(struct cfg_func_node));
+
+	if (lookup_mode == CFG_FUNC_LOOKUP_LOCAL) {
+		node->type = CFG_FUNC_NODE_LOOKUP_LOCAL;
+	} else {
+		node->type = CFG_FUNC_NODE_LOOKUP_GLOBAL;
+	}
+
+	node->lookup.name = name;
+	node->lookup.scope = scope;
+
+	return node;
+}
+
+struct cfg_func_node *
+cfg_func_scope(struct vm *vm, struct scope *value)
+{
+	struct cfg_func_node *node;
+
+	node = calloc(1, sizeof(struct cfg_func_node));
+
+	node->type = CFG_FUNC_NODE_SCOPE;
+	node->scope = value;
+
+	return node;
 }
 
 struct cfg_func_node *
@@ -84,6 +116,20 @@ cfg_func_eval(struct vm *vm, struct exec_stack *stack,
 		printf("TODO: Func call\n");
 		break;
 
+	case CFG_FUNC_NODE_LOOKUP_GLOBAL: {
+		/* int err; */
+		/* err = scope_lookup(); */
+		printf("TODO: Lookup global\n");
+	} break;
+
+	case CFG_FUNC_NODE_LOOKUP_LOCAL:
+		printf("TODO: Lookup local\n");
+		break;
+
+	case CFG_FUNC_NODE_SCOPE:
+		printf("TODO: Scope\n");
+		break;
+
 	case CFG_FUNC_NODE_GLOBAL: {
 		struct type *obj_type = get_type(&vm->store, node->obj.type);
 		stack_push(stack, node->obj.data, obj_type->size);
@@ -130,13 +176,24 @@ cfg_func_print_internal(struct vm *vm, struct cfg_func_node *node, int depth)
 	_print_indent(depth);
 
 	switch (node->type) {
+	case CFG_FUNC_NODE_LOOKUP_GLOBAL:
+		printf("%.*s (global)", ALIT(node->lookup.name));
+		break;
+
+	case CFG_FUNC_NODE_LOOKUP_LOCAL:
+		printf("%.*s (local)", ALIT(node->lookup.name));
+		break;
+
+	case CFG_FUNC_NODE_SCOPE:
+		printf("scope\n");
+		break;
+
 	case CFG_FUNC_NODE_FUNC_CALL:
-		printf("%.*s", ALIT(node->func_call.name));
+		printf("call");
 		break;
 
 	case CFG_FUNC_NODE_GLOBAL: {
 		printf("global ");
-		/* struct type *type = get_type(&vm->store, node->global.type); */
 		print_obj_repr(vm, node->obj);
 	} break;
 
@@ -153,7 +210,12 @@ cfg_func_print_internal(struct vm *vm, struct cfg_func_node *node, int depth)
 
 	switch (node->type) {
 	case CFG_FUNC_NODE_FUNC_CALL:
-		cfg_func_print_internal(vm, node->func_call.args, depth + 1);
+		_print_indent(depth + 1);
+		printf("func\n");
+		cfg_func_print_internal(vm, node->func_call.func, depth + 2);
+		_print_indent(depth + 1);
+		printf("args\n");
+		cfg_func_print_internal(vm, node->func_call.args, depth + 2);
 		break;
 
 	default:

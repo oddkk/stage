@@ -85,7 +85,7 @@ CFG_JOB(visit_expr, struct {
 	struct cfg_func_context *func_ctx;
 	struct cfg_node *node;
 	struct cfg_func_node **out_func;
-	struct scope *local_scope;
+	struct cfg_func_node *local_scope;
 
 	struct cfg_func_node *tmp_func;
 	unsigned int iter;
