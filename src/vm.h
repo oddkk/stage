@@ -145,10 +145,11 @@ obj_id obj_register_builtin_func(struct vm *vm, struct atom **param_names,
 								 type_id ret_type, vm_builtin_func value,
 								 void *data);
 
-/* obj_id obj_register_func(struct vm *vm, struct atom **param_names, */
-/* 						 type_id *params, size_t num_params, */
-/* 						 type_id ret_type, vm_builtin_func value, */
-/* 						 void *data); */
+struct cfg_func_node;
+
+obj_id obj_register_native_func(struct vm *vm, struct atom **param_names,
+								type_id *params, size_t num_params,
+								type_id ret_type, struct cfg_func_node *node);
 
 type_id type_obj_get(struct vm *vm, struct object obj);
 
@@ -198,6 +199,22 @@ struct type_class {
 struct obj_builtin_func_data {
 	vm_builtin_func func;
 	void *data;
+};
+
+enum type_native_function_storage {
+	NATIVE_FUNC_STORAGE_INSTR,
+	NATIVE_FUNC_STORAGE_NODES,
+};
+
+struct obj_native_func_data {
+	enum type_native_function_storage storage;
+	union {
+		struct {
+			void *data;
+			size_t length;
+		} instr;
+		struct cfg_func_node *node;
+	};
 };
 
 enum type_function_kind {

@@ -1,5 +1,6 @@
 #include "vm.h"
 #include "utils.h"
+#include "config_func.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -326,6 +327,22 @@ static struct string type_native_func_repr(struct vm *vm, struct arena *mem, str
 	return res;
 }
 
+static void obj_eval_native_func(struct vm *vm, struct exec_stack *stack, void *data)
+{
+	struct obj_native_func_data func;
+	stack_pop(stack, &func, sizeof(struct obj_native_func_data));
+	switch (func.storage) {
+
+	case NATIVE_FUNC_STORAGE_INSTR:
+		vm_exec(vm, stack, func.instr.data, func.instr.length);
+		break;
+
+	case NATIVE_FUNC_STORAGE_NODES:
+		cfg_func_eval(vm, stack, func.node, NULL);
+		break;
+	}
+}
+
 static struct string obj_native_func_repr(struct vm *vm, struct arena *mem, struct object *object)
 {
 	struct type *type = get_type(&vm->store, object->type);
@@ -524,6 +541,7 @@ int vm_init(struct vm *vm)
 		base->repr = type_native_func_repr;
 		base->obj_repr = obj_native_func_repr;
 		base->subtypes_iter = type_func_subtypes_iter;
+		base->eval = obj_eval_native_func;
 	}
 
 	{
@@ -815,18 +833,20 @@ type_id type_register_function(struct vm *vm, struct atom **param_names,
 
 	// TODO: Better names
 	type.name = atom_create(&vm->atom_table, STR("function"));
-	type.size = sizeof(struct obj_builtin_func_data);
 
 	switch (kind) {
 	case TYPE_FUNCTION_GENERIC:
+		type.size = 0;
 		type.base = &vm->default_types.func_base;
 		break;
 
 	case TYPE_FUNCTION_BUILTIN:
+		type.size = sizeof(struct obj_builtin_func_data);
 		type.base = &vm->default_types.builtin_func_base;
 		break;
 
 	case TYPE_FUNCTION_NATIVE:
+		type.size = sizeof(struct obj_native_func_data);
 		type.base = &vm->default_types.native_func_base;
 		break;
 	}
@@ -924,6 +944,27 @@ obj_id obj_register_builtin_func_from_tuple(struct vm *vm, type_id params, type_
 									 tuple->num_items,
 									 ret_type,
 									 value, data);
+}
+
+obj_id obj_register_native_func(struct vm *vm, struct atom **param_names,
+								type_id *params, size_t num_params,
+								type_id ret_type, struct cfg_func_node *node)
+{
+	struct object result = {0};
+	struct obj_native_func_data obj_data = {0};
+
+	obj_data.storage = NATIVE_FUNC_STORAGE_NODES;
+	obj_data.node = node;
+
+	type_id type;
+	type = type_register_function(vm, param_names, params,
+								  num_params, ret_type,
+								  TYPE_FUNCTION_NATIVE);
+
+	result.type = type;
+	result.data = &obj_data;
+
+	return register_object(&vm->store, result);
 }
 
 type_id type_obj_get(struct vm *vm, struct object obj)

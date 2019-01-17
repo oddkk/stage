@@ -684,6 +684,16 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		printf("\n");
 		cfg_func_print(ctx->vm, data->func);
 
+		struct type *proto = get_type(&ctx->vm->store, data->proto);
+		struct type_func *proto_func = proto->data;
+
+		*data->out_func_obj =
+			obj_register_native_func(ctx->vm,
+									 proto_func->param_names,
+									 proto_func->param_types,
+									 proto_func->num_params,
+									 proto_func->ret, data->func);
+
 		return JOB_OK;
 	} break;
 
