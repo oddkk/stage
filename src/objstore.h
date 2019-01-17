@@ -13,6 +13,7 @@ struct vm;
 struct type;
 struct scope;
 struct object;
+struct exec_stack;
 
 // TYPE_UNSET
 #define TYPE_SUBTYPES_END ((type_id)0)
@@ -21,13 +22,17 @@ typedef struct string (*type_repr)(struct vm *vm, struct arena *mem, struct type
 typedef struct string (*obj_repr)(struct vm *vm, struct arena *mem, struct object *);
 typedef type_id (*type_subtypes_iter)(struct vm *vm, struct type *type, size_t *iter);
 typedef void (*type_free)(struct vm *vm, struct type *type);
+typedef void (*type_eval)(struct vm *, struct exec_stack *, void *);
 
 struct type_base {
 	struct string name;
 	type_repr repr;
 	obj_repr obj_repr;
 	type_free free;
+	type_eval eval;
 	type_subtypes_iter subtypes_iter;
+
+	bool abstract;
 };
 
 void type_base_init(struct type_base *, struct string name);

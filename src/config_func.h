@@ -20,7 +20,6 @@ struct cfg_func_node {
 	enum cfg_func_node_type type;
 	struct cfg_func_node *next_arg;
 
-	type_id arg_type;
 	type_id return_type;
 
 	union {

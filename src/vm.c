@@ -3,21 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* static struct string type_unset_repr(struct vm *vm, struct arena *mem, struct object *obj) */
-/* { */
-/* 	return STR("<unset>"); */
-/* } */
-
-/* static struct string type_none_repr(struct vm *vm, struct arena *mem, struct object *obj) */
-/* { */
-/* 	return STR("<none>"); */
-/* } */
-
-/* static struct string type_template_param_repr(struct vm *vm, struct arena *mem, struct object *obj) */
-/* { */
-/* 	return STR("<template param>"); */
-/* } */
-
 static void arena_string_append_type_repr(struct string *str, struct vm *vm,
 										  struct arena *mem, struct type *type)
 {
@@ -300,10 +285,57 @@ static struct string type_func_repr(struct vm *vm, struct arena *mem, struct typ
 	return res;
 }
 
-static struct string obj_func_repr(struct vm *vm, struct arena *mem, struct object *object)
+static struct string type_builtin_func_repr(struct vm *vm, struct arena *mem, struct type *type)
+{
+	struct string res = arena_string_init(mem);
+
+	arena_string_append(mem, &res, STR("builtin "));
+
+	struct string type_repr;
+
+	struct arena tmp_mem = arena_push(mem);
+	type_repr = type_func_repr(vm, &tmp_mem, type);
+	arena_pop(mem, tmp_mem);
+
+	arena_string_append(mem, &res, type_repr);
+
+	return res;
+}
+
+static void obj_eval_builtin_func(struct vm *vm, struct exec_stack *stack, void *data)
+{
+	struct obj_builtin_func_data func;
+	stack_pop(stack, &func, sizeof(struct obj_builtin_func_data));
+	func.func(vm, stack, func.data);
+}
+
+static struct string type_native_func_repr(struct vm *vm, struct arena *mem, struct type *type)
+{
+	struct string res = arena_string_init(mem);
+
+	arena_string_append(mem, &res, STR("native "));
+
+	struct string type_repr;
+
+	struct arena tmp_mem = arena_push(mem);
+	type_repr = type_func_repr(vm, &tmp_mem, type);
+	arena_pop(mem, tmp_mem);
+
+	arena_string_append(mem, &res, type_repr);
+
+	return res;
+}
+
+static struct string obj_native_func_repr(struct vm *vm, struct arena *mem, struct object *object)
 {
 	struct type *type = get_type(&vm->store, object->type);
-	return type_func_repr(vm, mem, type);
+	return type_native_func_repr(vm, mem, type);
+}
+
+static struct string obj_builtin_func_repr(struct vm *vm, struct arena *mem, struct object *object)
+{
+	struct type *type = get_type(&vm->store, object->type);
+	return type_builtin_func_repr(vm, mem, type);
 }
 
 static type_id type_func_subtypes_iter(struct vm *vm, struct type *type, size_t *iter)
@@ -473,7 +505,24 @@ int vm_init(struct vm *vm)
 		struct type_base *base = &vm->default_types.func_base;
 		type_base_init(base, STR("func"));
 		base->repr = type_func_repr;
-		base->obj_repr = obj_func_repr;
+		base->subtypes_iter = type_func_subtypes_iter;
+		base->abstract = true;
+	}
+
+	{
+		struct type_base *base = &vm->default_types.builtin_func_base;
+		type_base_init(base, STR("builtin_func"));
+		base->repr = type_builtin_func_repr;
+		base->obj_repr = obj_builtin_func_repr;
+		base->subtypes_iter = type_func_subtypes_iter;
+		base->eval = obj_eval_builtin_func;
+	}
+
+	{
+		struct type_base *base = &vm->default_types.native_func_base;
+		type_base_init(base, STR("native_func"));
+		base->repr = type_native_func_repr;
+		base->obj_repr = obj_native_func_repr;
 		base->subtypes_iter = type_func_subtypes_iter;
 	}
 
@@ -495,7 +544,9 @@ int vm_init(struct vm *vm)
 
 	{
 		vm->default_types.func_template_return
-			= type_register_function(vm, NULL, NULL, 0, TYPE_TEMPLATE_PARAM);
+			= type_register_function(vm, NULL, NULL, 0,
+									 TYPE_TEMPLATE_PARAM,
+									 TYPE_FUNCTION_GENERIC);
 	}
 
 
@@ -758,14 +809,27 @@ type_id type_register_unnamed_tuple(struct vm *vm, type_id *items, size_t num_it
 
 type_id type_register_function(struct vm *vm, struct atom **param_names,
 							   type_id *param_types, size_t num_params,
-							   type_id ret)
+							   type_id ret, enum type_function_kind kind)
 {
 	struct type type = {0};
 
 	// TODO: Better names
 	type.name = atom_create(&vm->atom_table, STR("function"));
-	type.base = &vm->default_types.func_base;
 	type.size = sizeof(struct obj_builtin_func_data);
+
+	switch (kind) {
+	case TYPE_FUNCTION_GENERIC:
+		type.base = &vm->default_types.func_base;
+		break;
+
+	case TYPE_FUNCTION_BUILTIN:
+		type.base = &vm->default_types.builtin_func_base;
+		break;
+
+	case TYPE_FUNCTION_NATIVE:
+		type.base = &vm->default_types.native_func_base;
+		break;
+	}
 
 	struct type_func *data;
 	data = calloc(1, sizeof(struct type_func));
@@ -837,7 +901,8 @@ obj_id obj_register_builtin_func(struct vm *vm, struct atom **param_names,
 	obj_data.data = data;
 
 	type_id type = type_register_function(vm, param_names, params,
-										  num_params, ret_type);
+										  num_params, ret_type,
+										  TYPE_FUNCTION_BUILTIN);
 
 	result.type = type;
 	result.data = &obj_data;

@@ -563,7 +563,7 @@ job_func_proto_decl(struct cfg_ctx *ctx, job_func_proto_decl_t *data)
 		*data->out_type =
 			type_register_function(ctx->vm, param_names,
 								   param_types, num_params,
-								   data->ret);
+								   data->ret, TYPE_FUNCTION_NATIVE);
 
 		return JOB_OK;
 	} break;

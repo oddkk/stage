@@ -192,11 +192,12 @@ cfg_func_eval(struct vm *vm, struct exec_stack *stack,
 		}
 
 		struct type *type = get_type(&vm->store, func_obj.type);
+		assert(!type->base->abstract);
 
-		if (type->base != &vm->default_types.func_base) {
-			printf("Not a function.\n");
-			return -1;
-		}
+		/* if (type->base != &vm->default_types.func_base) { */
+		/* 	printf("Not a function.\n"); */
+		/* 	return -1; */
+		/* } */
 
 		struct type_func *type_func = type->data;
 
@@ -206,12 +207,15 @@ cfg_func_eval(struct vm *vm, struct exec_stack *stack,
 			return -1;
 		}
 
-		struct obj_builtin_func_data func;
-		assert(type->size == sizeof(struct obj_builtin_func_data));
+		assert(type->base->eval != NULL);
+		type->base->eval(vm, stack, NULL);
 
-		stack_pop(stack, &func, sizeof(struct obj_builtin_func_data));
+		/* struct obj_builtin_func_data func; */
+		/* assert(type->size == sizeof(struct obj_builtin_func_data)); */
 
-		func.func(vm, stack, func.data);
+		/* stack_pop(stack, &func, sizeof(struct obj_builtin_func_data)); */
+
+		/* func.func(vm, stack, func.data); */
 
 		stack->bp = prev_bp;
 
