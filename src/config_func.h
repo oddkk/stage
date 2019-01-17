@@ -26,7 +26,6 @@ struct cfg_func_node {
 	union {
 		struct {
 			struct atom *name;
-			/* struct scope *scope; */
 			struct cfg_func_node *scope;
 		} lookup;
 
@@ -96,5 +95,10 @@ cfg_func_simplify(struct vm *vm, struct cfg_func_node *node);
 
 void
 cfg_func_print(struct vm *vm, struct cfg_func_node *node);
+
+void
+cfg_func_destroy(struct cfg_func_node *node);
+void
+cfg_func_free(struct cfg_func_node *node);
 
 #endif

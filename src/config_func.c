@@ -313,25 +313,25 @@ enum cfg_func_simplify_result {
 };
 
 static int
-cfg_func_do_simplify(struct vm *vm, struct cfg_func_node *node)
+cfg_func_do_simplify_const(struct vm *vm, struct cfg_func_node *node)
 {
-	printf("\nsimplify:\n");
+	printf("\nsimplify const:\n");
 	cfg_func_print(vm, node);
 
 	struct object result;
 	int err;
-	err = cfg_func_eval_simple(vm, node, &result);
 
+	err = cfg_func_eval_simple(vm, node, &result);
 	if (err) {
 		return err;
 	}
 
 	obj_id new_obj = register_object(&vm->store, result);
 
+	cfg_func_destroy(node);
+
 	node->type = CFG_FUNC_NODE_GLOBAL;
 	node->obj = get_object(&vm->store, new_obj);
-
-	// @TODO: Free orphaned nodes.
 
 	return 0;
 }
@@ -368,13 +368,13 @@ cfg_func_simplify_internal(struct vm *vm, struct cfg_func_node *node)
 			enum cfg_func_simplify_result res;
 			res = cfg_func_simplify_internal(vm, node->func_call.func);
 			if ((res & CFG_SIMPLIFY_CONST) != 0) {
-				cfg_func_do_simplify(vm, node->func_call.func);
+				cfg_func_do_simplify_const(vm, node->func_call.func);
 			}
 
 			while (arg) {
 				res = cfg_func_simplify_internal(vm, arg);
 				if ((res & CFG_SIMPLIFY_CONST) != 0) {
-					cfg_func_do_simplify(vm, arg);
+					cfg_func_do_simplify_const(vm, arg);
 				}
 				arg = arg->next_arg;
 			}
@@ -409,9 +409,10 @@ cfg_func_simplify_internal(struct vm *vm, struct cfg_func_node *node)
 				entry.anchor == SCOPE_ANCHOR_STACK) {
 				result &= ~CFG_SIMPLIFY_CONST;
 
+				cfg_func_destroy(node);
+
 				node->type = CFG_FUNC_NODE_STACK;
 				node->obj = entry.object;
-				// @TODO: Free orphaned nodes.
 			}
 
 		} else {
@@ -450,7 +451,7 @@ cfg_func_simplify(struct vm *vm, struct cfg_func_node *node)
 	result = cfg_func_simplify_internal(vm, node);
 
 	if ((result & CFG_SIMPLIFY_CONST) != 0) {
-		cfg_func_do_simplify(vm, node);
+		cfg_func_do_simplify_const(vm, node);
 	}
 }
 
@@ -532,4 +533,39 @@ void
 cfg_func_print(struct vm *vm, struct cfg_func_node *node)
 {
 	cfg_func_print_internal(vm, node, 0);
+}
+
+void
+cfg_func_destroy(struct cfg_func_node *node)
+{
+	switch (node->type) {
+	case CFG_FUNC_NODE_FUNC_CALL: {
+		cfg_func_free(node->func_call.func);
+
+		struct cfg_func_node *next_arg;
+		next_arg = node->func_call.args;
+		while (next_arg) {
+			struct cfg_func_node *arg;
+			arg = next_arg;
+			next_arg = next_arg->next_arg;
+
+			cfg_func_free(arg);
+		}
+	} break;
+
+	case CFG_FUNC_NODE_LOOKUP_GLOBAL:
+	case CFG_FUNC_NODE_LOOKUP_LOCAL:
+		cfg_func_free(node->lookup.scope);
+		break;
+
+	default:
+		break;
+	}
+}
+
+void
+cfg_func_free(struct cfg_func_node *node)
+{
+	cfg_func_destroy(node);
+	free(node);
 }
