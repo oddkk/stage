@@ -77,17 +77,25 @@ CFG_JOB(compile_func, struct {
 	struct cfg_node *body_node;
 	obj_id *out_func_obj;
 	type_id proto;
-	struct expr_context func_ctx;
-	struct expr_node *func;
+	struct expr expr;
+	/* struct expr_node *func; */
 })
 
 CFG_JOB(visit_expr, struct {
 	struct expr_context *func_ctx;
 	struct cfg_node *node;
-	struct expr_node **out_func;
+	struct expr *expr;
+	struct expr_node **out_expr;
 	struct expr_node *local_scope;
 
 	struct expr_node *tmp_func;
+
+	union {
+		struct {
+			struct expr_node *func;
+			struct expr_node *first_arg;
+		} func_call;
+	};
 	unsigned int iter;
 })
 
@@ -96,8 +104,8 @@ CFG_JOB(resolve_type_l_expr, struct {
 	struct cfg_node *node;
 
 	bool dispatched;
-	struct expr_context func_ctx;
-	struct expr_node *func;
+	struct expr expr;
+	/* struct expr_node *func; */
 	/* struct object obj; */
 	struct scope_entry entry;
 	type_id *out_type;

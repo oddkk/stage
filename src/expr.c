@@ -3,7 +3,29 @@
 #include "utils.h"
 
 struct expr_node *
-expr_call(struct vm *vm, struct expr_node *func)
+expr_func_decl(struct vm *vm, struct expr *expr,
+			   struct expr_func_decl_param *params,
+			   size_t num_params,
+			   struct expr_node *ret,
+			   struct expr_node *body)
+{
+	struct expr_node *node;
+
+	node = calloc(1, sizeof(struct expr_node));
+
+	node->type = EXPR_NODE_FUNC_DECL;
+	node->func_decl.params = params;
+	node->func_decl.num_params = num_params;
+	node->func_decl.ret_type = ret;
+	node->func_decl.body = body;
+
+	return node;
+}
+
+struct expr_node *
+expr_call(struct vm *vm, struct expr *expr,
+		  struct expr_node *func,
+		  struct expr_node *first_arg)
 {
 	struct expr_node *node;
 
@@ -11,31 +33,31 @@ expr_call(struct vm *vm, struct expr_node *func)
 
 	node->type = EXPR_NODE_FUNC_CALL;
 	node->func_call.func = func;
-	node->func_call.args = NULL;
+	node->func_call.args = first_arg;
 
 	return node;
 }
 
-void
-expr_call_add_arg(struct expr_node *func,
-						struct expr_node *arg)
-{
-	assert(func->type == EXPR_NODE_FUNC_CALL);
+/* void */
+/* expr_call_add_arg(struct expr_node *func, struct expr *expr, */
+/* 				  struct expr_node *arg) */
+/* { */
+/* 	assert(func->type == EXPR_NODE_FUNC_CALL); */
 
-	struct expr_node **p;
-	p = &func->func_call.args;
+/* 	struct expr_node **p; */
+/* 	p = &func->func_call.args; */
 
-	while (*p) {
-		p = &(*p)->next_arg;
-	}
+/* 	while (*p) { */
+/* 		p = &(*p)->next_arg; */
+/* 	} */
 
-	*p = arg;
-}
+/* 	*p = arg; */
+/* } */
 
 struct expr_node *
-expr_lookup(struct vm *vm, struct atom *name,
-				struct expr_node *scope,
-				enum expr_lookup_mode lookup_mode)
+expr_lookup(struct vm *vm, struct expr *expr,
+			struct atom *name, struct expr_node *scope,
+			enum expr_lookup_mode lookup_mode)
 {
 	struct expr_node *node;
 
@@ -54,7 +76,19 @@ expr_lookup(struct vm *vm, struct atom *name,
 }
 
 struct expr_node *
-expr_scope(struct vm *vm, struct scope *value)
+expr_unknown_type(struct vm *vm, struct expr *expr)
+{
+	struct expr_node *node;
+
+	node = calloc(1, sizeof(struct expr_node));
+	node->type = EXPR_NODE_UNKNOWN_TYPE;
+
+	return node;
+}
+
+struct expr_node *
+expr_scope(struct vm *vm, struct expr *expr,
+		   struct scope *value)
 {
 	struct expr_node *node;
 
@@ -67,7 +101,8 @@ expr_scope(struct vm *vm, struct scope *value)
 }
 
 struct expr_node *
-expr_global(struct vm *vm, struct object value)
+expr_global(struct vm *vm, struct expr *expr,
+			struct object value)
 {
 	struct expr_node *node;
 
@@ -80,7 +115,8 @@ expr_global(struct vm *vm, struct object value)
 }
 
 struct expr_node *
-expr_lit_int(struct vm *vm, int64_t value)
+expr_lit_int(struct vm *vm, struct expr *expr,
+			 int64_t value)
 {
 	struct expr_node *node;
 
@@ -93,7 +129,8 @@ expr_lit_int(struct vm *vm, int64_t value)
 }
 
 struct expr_node *
-expr_lit_str(struct vm *vm, struct string value)
+expr_lit_str(struct vm *vm, struct expr *expr,
+			 struct string value)
 {
 	struct expr_node *node;
 
@@ -107,7 +144,8 @@ expr_lit_str(struct vm *vm, struct string value)
 
 static int
 expr_eval_lookup(struct vm *vm, struct exec_stack *stack,
-					 struct expr_node *node, struct scope_entry *result)
+				 struct expr_node *node,
+				 struct scope_entry *result)
 {
 	assert(node->type == EXPR_NODE_LOOKUP_LOCAL ||
 		   node->type == EXPR_NODE_LOOKUP_GLOBAL);
@@ -164,6 +202,11 @@ expr_eval(struct vm *vm, struct exec_stack *stack,
 	type_id out_type = TYPE_NONE;
 
 	switch (node->type) {
+
+	case EXPR_NODE_FUNC_DECL: {
+		panic("TODO: func decl expr");
+	} break;
+
 	case EXPR_NODE_FUNC_CALL: {
 		struct expr_node *arg = node->func_call.args;
 		int err;
@@ -245,6 +288,10 @@ expr_eval(struct vm *vm, struct exec_stack *stack,
 			}
 			out_type = result.object.type;
 		}
+	} break;
+
+	case EXPR_NODE_UNKNOWN_TYPE: {
+		panic("TODO: Unknown type");
 	} break;
 
 	case EXPR_NODE_SCOPE: {
@@ -350,6 +397,10 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 
 	switch (node->type) {
 
+	case EXPR_NODE_FUNC_DECL: {
+		panic("TODO: func decl expr");
+	} break;
+
 	case EXPR_NODE_FUNC_CALL: {
 		result = CFG_SIMPLIFY_ALL;
 
@@ -425,6 +476,10 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 		}
 	} break;
 
+	case EXPR_NODE_UNKNOWN_TYPE: {
+		panic("TODO: Unknown type");
+	} break;
+
 	case EXPR_NODE_GLOBAL:
 		result = CFG_SIMPLIFY_CONST;
 		break;
@@ -475,6 +530,11 @@ expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 	_print_indent(depth);
 
 	switch (node->type) {
+
+	case EXPR_NODE_FUNC_DECL: {
+		printf("func decl");
+	} break;
+
 	case EXPR_NODE_LOOKUP_GLOBAL:
 		printf("%.*s (global)", ALIT(node->lookup.name));
 		break;
@@ -483,8 +543,12 @@ expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 		printf("%.*s (local)", ALIT(node->lookup.name));
 		break;
 
+	case EXPR_NODE_UNKNOWN_TYPE:
+		printf("unknown type");
+		break;
+
 	case EXPR_NODE_SCOPE:
-		printf("scope\n");
+		printf("scope");
 		break;
 
 	case EXPR_NODE_FUNC_CALL:
@@ -513,6 +577,22 @@ expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 	printf("\n");
 
 	switch (node->type) {
+	case EXPR_NODE_FUNC_DECL:
+		for (size_t i = 0; i < node->func_decl.num_params; i++) {
+			_print_indent(depth + 1);
+			printf("param %.*s type\n", ALIT(node->func_decl.params[i].name));
+			expr_print_internal(vm, node->func_decl.params[i].type, depth + 2);
+		}
+
+		_print_indent(depth + 1);
+		printf("ret\n");
+		expr_print_internal(vm, node->func_decl.ret_type, depth + 2);
+
+		_print_indent(depth + 1);
+		printf("body\n");
+		expr_print_internal(vm, node->func_decl.body, depth + 2);
+		break;
+
 	case EXPR_NODE_FUNC_CALL:
 		_print_indent(depth + 1);
 		printf("func\n");

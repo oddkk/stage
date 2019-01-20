@@ -423,6 +423,142 @@ resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
 	return job;
 }
 
+static struct expr_node *
+cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
+					struct scope *scope, struct expr_node *lookup_scope,
+					struct cfg_node *node)
+{
+	switch (node->type) {
+
+	case CFG_NODE_ACCESS: {
+		struct expr_node *lhs, *rhs;
+
+		lhs = cfg_node_visit_expr(ctx, expr, scope, lookup_scope,
+								  node->ACCESS.lhs);
+		rhs = cfg_node_visit_expr(ctx, expr, scope, lhs,
+								  node->ACCESS.rhs);
+
+		return rhs;
+	} break;
+
+	case CFG_NODE_SUBSCRIPT:
+		panic("TODO: Subscript");
+		break;
+
+	case CFG_NODE_BIN_OP: {
+		struct expr_node
+			*lhs, *rhs, *func,
+			*func_lookup, *local_scope;
+
+		lhs = cfg_node_visit_expr(ctx, expr, scope, NULL, node->BIN_OP.lhs);
+		rhs = cfg_node_visit_expr(ctx, expr, scope, NULL, node->BIN_OP.rhs);
+
+		lhs->next_arg = rhs;
+
+		struct atom *op_name;
+		op_name =
+			binop_atom(&ctx->vm->atom_table,
+					   node->BIN_OP.op);
+		local_scope =
+			expr_scope(ctx->vm, expr, scope);
+		func_lookup =
+			expr_lookup(ctx->vm, expr,
+						op_name, local_scope,
+						EXPR_LOOKUP_GLOBAL);
+
+		func = expr_call(ctx->vm, expr,
+						 func_lookup, lhs);
+
+		return func;
+	} break;
+
+	case CFG_NODE_LAMBDA:
+		panic("TODO: Lambda");
+		break;
+
+	case CFG_NODE_FUNC_CALL: {
+		struct expr_node *first_arg = NULL, *last_arg = NULL;
+
+		struct cfg_node *args_tuple;
+		args_tuple = node->FUNC_CALL.params;
+		assert(args_tuple->type == CFG_NODE_TUPLE_LIT);
+		assert(!args_tuple->TUPLE_LIT.named);
+
+		struct cfg_node *arg;
+		arg = args_tuple->TUPLE_LIT.items;
+
+
+		while (arg) {
+			struct expr_node *n;
+
+			n = cfg_node_visit_expr(ctx, expr,
+									scope, NULL,
+									arg->TUPLE_LIT_ITEM.value);
+
+			if (!first_arg) {
+				assert(!last_arg);
+				first_arg = n;
+				last_arg = n;
+			} else {
+				last_arg->next_arg = n;
+			}
+
+			arg = arg->next_sibling;
+		}
+
+		struct expr_node *func;
+		func = cfg_node_visit_expr(ctx, expr,
+								   scope, NULL,
+								   node->FUNC_CALL.ident);
+
+		struct expr_node *call;
+		call = expr_call(ctx->vm, expr, func, first_arg);
+
+		return call;
+	} break;
+
+	case CFG_NODE_TUPLE_LIT:
+		panic("TODO: Tuple lit");
+		break;
+
+	case CFG_NODE_ARRAY_LIT:
+		panic("TODO: Array lit");
+		break;
+
+	case CFG_NODE_NUM_LIT:
+		return expr_lit_int(ctx->vm, expr, node->NUM_LIT);
+
+	case CFG_NODE_STR_LIT:
+		return expr_lit_str(ctx->vm, expr, node->STR_LIT);
+
+	case CFG_NODE_IDENT:
+		if (lookup_scope) {
+			return expr_lookup(ctx->vm, expr,
+							   node->IDENT,
+							   lookup_scope,
+							   EXPR_LOOKUP_LOCAL);
+		} else {
+			struct expr_node *l_scope;
+			l_scope = expr_scope(ctx->vm, expr, scope);
+
+			return expr_lookup(ctx->vm, expr,
+							   node->IDENT, l_scope,
+							   EXPR_LOOKUP_GLOBAL);
+		}
+		break;
+
+	default:
+		panic("Invalid node '%.*s' in expr.",
+			  LIT(cfg_node_names[node->type]));
+		break;
+	}
+
+	panic("Unhandled node '%.*s' in expr.",
+		  LIT(cfg_node_names[node->type]));
+	return NULL;
+}
+
+
 static struct job_status
 job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 {
@@ -614,92 +750,196 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 	return JOB_OK;
 }
 
+static struct expr_func_decl_param *
+cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
+							  struct scope *scope, struct cfg_node *param_tuple,
+							  size_t *out_num_params)
+{
+	assert(param_tuple->type == CFG_NODE_TUPLE_DECL);
+
+	size_t num_params = 0;
+	struct cfg_node *param;
+	param = param_tuple->TUPLE_DECL.items;
+
+	while (param) {
+		num_params += 1;
+		param = param->next_sibling;
+	}
+
+	struct expr_func_decl_param *params;
+	params = calloc(num_params, sizeof(struct expr_func_decl_param));
+
+	size_t i = 0;
+	param = param_tuple->TUPLE_DECL.items;
+
+	while (param) {
+		params[i].name = param->TUPLE_DECL_ITEM.name;
+		params[i].type =
+			cfg_node_visit_expr(ctx, expr, scope, NULL,
+								param->TUPLE_DECL_ITEM.type);
+
+		i += 1;
+		param = param->next_sibling;
+	}
+
+	*out_num_params = num_params;
+	return params;
+}
+
 static struct job_status
 job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 {
+
 	switch (data->state) {
 	case CFG_COMPILE_FUNC_IDLE: {
-		data->state = CFG_COMPILE_FUNC_RESOLVE_SIGNATURE;
+		size_t num_params = 0;
+		struct expr_func_decl_param *params = NULL;
+		struct expr_node *ret = NULL;
+
+		data->expr.outer_scope = data->scope;
+
 		if (data->proto_node) {
-			struct cfg_job *job;
+			switch (data->proto_node->type) {
+			case CFG_NODE_FUNC_PROTO: {
+				struct cfg_node *ret_node;
+				ret_node = data->proto_node->FUNC_PROTO.ret;
 
-			job = DISPATCH_JOB(ctx, func_proto_decl, CFG_PHASE_RESOLVE,
-							.scope = data->scope,
-							.node  = data->proto_node,
-							.out_type = &data->proto);
+				ret = cfg_node_visit_expr(ctx, &data->expr,
+										  data->scope, NULL,
+										  ret_node);
 
-			return JOB_YIELD_FOR(job);
+				struct cfg_node *param_tuple;
+				param_tuple = data->proto_node->FUNC_PROTO.params;
+
+				params =
+					cfg_node_tuple_decl_to_params(ctx, &data->expr,
+												  data->scope, param_tuple,
+												  &num_params);
+			} break;
+
+			case CFG_NODE_TUPLE_DECL: {
+				params =
+					cfg_node_tuple_decl_to_params(ctx, &data->expr,
+												  data->scope, data->proto_node,
+												  &num_params);
+				ret = expr_unknown_type(ctx->vm, &data->expr);
+			} break;
+
+			case CFG_NODE_IDENT:
+				num_params = 1;
+				params = calloc(1, sizeof(struct expr_func_decl_param));
+				params[0].name = data->proto_node->IDENT;
+				params[0].type = expr_unknown_type(ctx->vm, &data->expr);
+
+				ret = expr_unknown_type(ctx->vm, &data->expr);
+				break;
+
+			default:
+				panic("Invalid node '%.*s' as function prototype.",
+					  LIT(cfg_node_names[data->proto_node->type]));
+				break;
+			}
 		} else {
-			data->proto = ctx->vm->default_types.func_template_return;
-
-			return JOB_YIELD_FOR_PHASE(CFG_PHASE_RESOLVE);
+			ret = expr_unknown_type(ctx->vm, &data->expr);
 		}
+
+		struct expr_node *body;
+		body = cfg_node_visit_expr(ctx, &data->expr, data->scope, NULL, data->body_node);
+
+		data->expr.body =
+			expr_func_decl(ctx->vm, &data->expr,
+						   params, num_params, ret, body);
 	}
-
-	case CFG_COMPILE_FUNC_RESOLVE_SIGNATURE: {
-		data->state = CFG_COMPILE_FUNC_VISIT_BODY;
-
-		data->func_ctx.outer_scope = data->scope;
-		data->func_ctx.inner_scope = scope_push(data->scope);
-
-		struct scope *inner_scope = data->func_ctx.inner_scope;
-		struct type *func_proto = get_type(&ctx->vm->store, data->proto);
-		struct type_func *func_data = func_proto->data;
-
-		size_t offset = 0;
-
-		for (size_t i = 0; i < func_data->num_params; i++) {
-			int err;
-
-			struct object param = {0};
-			type_id param_tid = func_data->param_types[i];
-			struct type *param_type = get_type(&ctx->vm->store, param_tid);
-
-			param.data = (void *)offset;
-			param.type = param_tid;
-
-			assert(param_type->num_template_params == 0);
-
-			err = scope_insert(inner_scope, func_data->param_names[i],
-							   SCOPE_ANCHOR_STACK, param, NULL);
-
-			offset += param_type->size;
-		}
-
-		// @TODO: Insert params into inner scope
-
-		struct cfg_job *job;
-
-		job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
-						   .func_ctx = &data->func_ctx,
-						   .node     = data->body_node,
-						   .out_func = &data->func);
-
-		return JOB_YIELD_FOR(job);
-	} break;
-
-	case CFG_COMPILE_FUNC_VISIT_BODY: {
+		// fallthrough
+	case CFG_COMPILE_FUNC_RESOLVE:
 		printf("\n");
-		expr_simplify(ctx->vm, data->func);
-		printf("\n");
-		expr_print(ctx->vm, data->func);
-
-		struct type *proto = get_type(&ctx->vm->store, data->proto);
-		struct type_func *proto_func = proto->data;
-
-		*data->out_func_obj =
-			obj_register_native_func(ctx->vm,
-									 proto_func->param_names,
-									 proto_func->param_types,
-									 proto_func->num_params,
-									 proto_func->ret, data->func);
-
-		return JOB_OK;
-	} break;
-
+		expr_print(ctx->vm, data->expr.body);
+		break;
 	}
 
 	return JOB_ERROR;
+
+	/* switch (data->state) { */
+	/* case CFG_COMPILE_FUNC_IDLE: { */
+	/* 	data->state = CFG_COMPILE_FUNC_RESOLVE_SIGNATURE; */
+	/* 	if (data->proto_node) { */
+	/* 		struct cfg_job *job; */
+
+	/* 		job = DISPATCH_JOB(ctx, func_proto_decl, CFG_PHASE_RESOLVE, */
+	/* 						.scope = data->scope, */
+	/* 						.node  = data->proto_node, */
+	/* 						.out_type = &data->proto); */
+
+	/* 		return JOB_YIELD_FOR(job); */
+	/* 	} else { */
+	/* 		data->proto = ctx->vm->default_types.func_template_return; */
+
+	/* 		return JOB_YIELD_FOR_PHASE(CFG_PHASE_RESOLVE); */
+	/* 	} */
+	/* } */
+
+	/* case CFG_COMPILE_FUNC_RESOLVE_SIGNATURE: { */
+	/* 	data->state = CFG_COMPILE_FUNC_VISIT_BODY; */
+
+	/* 	data->expr.outer_scope = data->scope; */
+
+	/* 	struct type *func_proto = get_type(&ctx->vm->store, data->proto); */
+	/* 	struct type_func *func_data = func_proto->data; */
+
+	/* 	size_t offset = 0; */
+
+	/* 	for (size_t i = 0; i < func_data->num_params; i++) { */
+	/* 		int err; */
+
+	/* 		struct object param = {0}; */
+	/* 		type_id param_tid = func_data->param_types[i]; */
+	/* 		struct type *param_type = get_type(&ctx->vm->store, param_tid); */
+
+	/* 		param.data = (void *)offset; */
+	/* 		param.type = param_tid; */
+
+	/* 		assert(param_type->num_template_params == 0); */
+
+	/* 		err = scope_insert(inner_scope, func_data->param_names[i], */
+	/* 						   SCOPE_ANCHOR_STACK, param, NULL); */
+
+	/* 		offset += param_type->size; */
+	/* 	} */
+
+	/* 	// @TODO: Insert params into inner scope */
+
+	/* 	struct cfg_job *job; */
+
+	/* 	job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE, */
+	/* 					   .func_ctx = &data->func_ctx, */
+	/* 					   .node     = data->body_node, */
+	/* 					   .out_func = &data->func); */
+
+	/* 	return JOB_YIELD_FOR(job); */
+	/* } break; */
+
+	/* case CFG_COMPILE_FUNC_VISIT_BODY: { */
+	/* 	printf("\n"); */
+	/* 	expr_simplify(ctx->vm, data->func); */
+	/* 	printf("\n"); */
+	/* 	expr_print(ctx->vm, data->func); */
+
+	/* 	struct type *proto = get_type(&ctx->vm->store, data->proto); */
+	/* 	struct type_func *proto_func = proto->data; */
+
+	/* 	*data->out_func_obj = */
+	/* 		obj_register_native_func(ctx->vm, */
+	/* 								 proto_func->param_names, */
+	/* 								 proto_func->param_types, */
+	/* 								 proto_func->num_params, */
+	/* 								 proto_func->ret, data->func); */
+
+	/* 	return JOB_OK; */
+	/* } break; */
+
+	/* } */
+
+	/* return JOB_ERROR; */
 }
 
 static struct job_status
@@ -716,7 +956,7 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 							   .func_ctx    = data->func_ctx,
 							   .node        = data->node->ACCESS.lhs,
 							   .local_scope = data->local_scope,
-							   .out_func    = &data->tmp_func);
+							   .out_expr    = &data->tmp_func);
 			data->iter += 1;
 			return JOB_YIELD_FOR(job);
 
@@ -725,7 +965,7 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 							   .func_ctx    = data->func_ctx,
 							   .node        = data->node->ACCESS.rhs,
 							   .local_scope = data->tmp_func,
-							   .out_func    = data->out_func);
+							   .out_expr    = data->out_expr);
 			data->iter += 1;
 			return JOB_YIELD_FOR(job);
 
@@ -748,36 +988,49 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 		assert(data->iter <= 2);
 
 		if (data->iter != 0) {
-			assert(data->tmp_func != NULL);
-			expr_call_add_arg(*data->out_func,
-								  data->tmp_func);
+
+			struct expr_node **p;
+			p = &data->func_call.first_arg;
+
+			while (*p) {
+				p = &(*p)->next_arg;
+			}
+
+			*p = data->tmp_func;
 		}
 
 		switch (data->iter) {
-		case 0: {
-			struct expr_node *lookup_op;
+		case 0:
+			node_to_process = data->node->BIN_OP.lhs;
+			break;
+
+		case 1:
+			node_to_process = data->node->BIN_OP.rhs;
+			break;
+
+		case 2: {
+			struct expr_node *func_lookup;
 			struct expr_node *scope;
 			struct atom *op_name;
 
 			op_name =
 				binop_atom(&ctx->vm->atom_table,
 						   data->node->BIN_OP.op);
+			// TODO: This should be inner scope!
 			scope =
-				expr_scope(ctx->vm, data->func_ctx->inner_scope);
-			lookup_op = expr_lookup(ctx->vm, op_name,
-										scope,
-										EXPR_LOOKUP_GLOBAL);
-			*data->out_func = expr_call(ctx->vm, lookup_op);
+				expr_scope(ctx->vm, data->expr,
+						   data->expr->outer_scope);
+			func_lookup =
+				expr_lookup(ctx->vm, data->expr,
+							op_name, scope,
+							EXPR_LOOKUP_GLOBAL);
 
-			node_to_process = data->node->BIN_OP.lhs;
-		} break;
+			*data->out_expr =
+				expr_call(ctx->vm, data->expr,
+						  func_lookup, data->func_call.first_arg);
 
-		case 1:
-			node_to_process = data->node->BIN_OP.rhs;
-			break;
-
-		case 2:
 			return JOB_OK;
+		}
 		}
 
 		assert(node_to_process);
@@ -785,7 +1038,7 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 		job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
 						   .func_ctx = data->func_ctx,
 						   .node     = node_to_process,
-						   .out_func = &data->tmp_func);
+						   .out_expr = &data->tmp_func);
 		data->iter += 1;
 
 		return JOB_YIELD_FOR(job);
@@ -804,7 +1057,7 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 			job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
 							   .func_ctx = data->func_ctx,
 							   .node     = data->node->FUNC_CALL.ident,
-							   .out_func = &data->tmp_func);
+							   .out_expr = &data->tmp_func);
 			data->iter += 1;
 
 			return JOB_YIELD_FOR(job);
@@ -826,29 +1079,33 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 		break;
 
 	case CFG_NODE_NUM_LIT:
-		*data->out_func =
-			expr_lit_int(ctx->vm, data->node->NUM_LIT);
+		*data->out_expr =
+			expr_lit_int(ctx->vm, data->expr,
+						 data->node->NUM_LIT);
 		return JOB_OK;
 
 	case CFG_NODE_STR_LIT:
-		*data->out_func =
-			expr_lit_str(ctx->vm, data->node->STR_LIT);
+		*data->out_expr =
+			expr_lit_str(ctx->vm, data->expr,
+						 data->node->STR_LIT);
 		return JOB_OK;
 
 	case CFG_NODE_IDENT:
 		if (data->local_scope) {
-			*data->out_func =
-				expr_lookup(ctx->vm,
-								data->node->IDENT,
-								data->local_scope,
-								EXPR_LOOKUP_LOCAL);
+			*data->out_expr =
+				expr_lookup(ctx->vm, data->expr,
+							data->node->IDENT,
+							data->local_scope,
+							EXPR_LOOKUP_LOCAL);
 		} else {
 			struct expr_node *scope;
-			scope = expr_scope(ctx->vm, data->func_ctx->inner_scope);
+			scope = expr_scope(ctx->vm, data->expr,
+							   data->expr->outer_scope);
 
-			*data->out_func =
-				expr_lookup(ctx->vm, data->node->IDENT, scope,
-								EXPR_LOOKUP_GLOBAL);
+			*data->out_expr =
+				expr_lookup(ctx->vm, data->expr,
+							data->node->IDENT, scope,
+							EXPR_LOOKUP_GLOBAL);
 
 			return JOB_OK;
 		}
@@ -870,13 +1127,13 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 {
 	if (data->dispatched) {
 		printf("\n");
-		expr_print(ctx->vm, data->func);
+		expr_print(ctx->vm, data->expr.body);
 
 
 		int err;
 		struct object obj;
 
-		err = expr_eval_simple(ctx->vm, data->func, &obj);
+		err = expr_eval_simple(ctx->vm, data->expr.body, &obj);
 		if (err) {
 			return JOB_ERROR;
 		}
@@ -902,13 +1159,13 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 
 	struct cfg_job *job;
 
-	data->func_ctx.outer_scope = data->scope;
-	data->func_ctx.inner_scope = scope_push(data->scope);
+	data->expr.outer_scope = data->scope;
+	/* data->expr.inner_scope = scope_push(data->scope); */
 
 	job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE,
-						.func_ctx = &data->func_ctx,
+						.expr = &data->expr,
 						.node     = data->node,
-						.out_func = &data->func);
+						.out_expr = &data->expr.body);
 
 	data->dispatched = true;
 
