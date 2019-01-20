@@ -145,11 +145,11 @@ obj_id obj_register_builtin_func(struct vm *vm, struct atom **param_names,
 								 type_id ret_type, vm_builtin_func value,
 								 void *data);
 
-struct cfg_func_node;
+struct expr_node;
 
 obj_id obj_register_native_func(struct vm *vm, struct atom **param_names,
 								type_id *params, size_t num_params,
-								type_id ret_type, struct cfg_func_node *node);
+								type_id ret_type, struct expr_node *node);
 
 type_id type_obj_get(struct vm *vm, struct object obj);
 
@@ -213,7 +213,7 @@ struct obj_native_func_data {
 			void *data;
 			size_t length;
 		} instr;
-		struct cfg_func_node *node;
+		struct expr_node *node;
 	};
 };
 

@@ -1,7 +1,7 @@
 #include "config.h"
 #include "utils.h"
 #include "dlist.h"
-#include "config_func.h"
+#include "expr.h"
 #include "objstore.h"
 #include "scope.h"
 
@@ -680,9 +680,9 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 
 	case CFG_COMPILE_FUNC_VISIT_BODY: {
 		printf("\n");
-		cfg_func_simplify(ctx->vm, data->func);
+		expr_simplify(ctx->vm, data->func);
 		printf("\n");
-		cfg_func_print(ctx->vm, data->func);
+		expr_print(ctx->vm, data->func);
 
 		struct type *proto = get_type(&ctx->vm->store, data->proto);
 		struct type_func *proto_func = proto->data;
@@ -749,25 +749,25 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 
 		if (data->iter != 0) {
 			assert(data->tmp_func != NULL);
-			cfg_func_call_add_arg(*data->out_func,
+			expr_call_add_arg(*data->out_func,
 								  data->tmp_func);
 		}
 
 		switch (data->iter) {
 		case 0: {
-			struct cfg_func_node *lookup_op;
-			struct cfg_func_node *scope;
+			struct expr_node *lookup_op;
+			struct expr_node *scope;
 			struct atom *op_name;
 
 			op_name =
 				binop_atom(&ctx->vm->atom_table,
 						   data->node->BIN_OP.op);
 			scope =
-				cfg_func_scope(ctx->vm, data->func_ctx->inner_scope);
-			lookup_op = cfg_func_lookup(ctx->vm, op_name,
+				expr_scope(ctx->vm, data->func_ctx->inner_scope);
+			lookup_op = expr_lookup(ctx->vm, op_name,
 										scope,
-										CFG_FUNC_LOOKUP_GLOBAL);
-			*data->out_func = cfg_func_call(ctx->vm, lookup_op);
+										EXPR_LOOKUP_GLOBAL);
+			*data->out_func = expr_call(ctx->vm, lookup_op);
 
 			node_to_process = data->node->BIN_OP.lhs;
 		} break;
@@ -810,7 +810,7 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 			return JOB_YIELD_FOR(job);
 
 		case 1:
-			cfg_func_print(ctx->vm, data->tmp_func);
+			expr_print(ctx->vm, data->tmp_func);
 			data->iter += 1;
 			return JOB_YIELD;
 
@@ -827,28 +827,28 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 
 	case CFG_NODE_NUM_LIT:
 		*data->out_func =
-			cfg_func_lit_int(ctx->vm, data->node->NUM_LIT);
+			expr_lit_int(ctx->vm, data->node->NUM_LIT);
 		return JOB_OK;
 
 	case CFG_NODE_STR_LIT:
 		*data->out_func =
-			cfg_func_lit_str(ctx->vm, data->node->STR_LIT);
+			expr_lit_str(ctx->vm, data->node->STR_LIT);
 		return JOB_OK;
 
 	case CFG_NODE_IDENT:
 		if (data->local_scope) {
 			*data->out_func =
-				cfg_func_lookup(ctx->vm,
+				expr_lookup(ctx->vm,
 								data->node->IDENT,
 								data->local_scope,
-								CFG_FUNC_LOOKUP_LOCAL);
+								EXPR_LOOKUP_LOCAL);
 		} else {
-			struct cfg_func_node *scope;
-			scope = cfg_func_scope(ctx->vm, data->func_ctx->inner_scope);
+			struct expr_node *scope;
+			scope = expr_scope(ctx->vm, data->func_ctx->inner_scope);
 
 			*data->out_func =
-				cfg_func_lookup(ctx->vm, data->node->IDENT, scope,
-								CFG_FUNC_LOOKUP_GLOBAL);
+				expr_lookup(ctx->vm, data->node->IDENT, scope,
+								EXPR_LOOKUP_GLOBAL);
 
 			return JOB_OK;
 		}
@@ -870,13 +870,13 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 {
 	if (data->dispatched) {
 		printf("\n");
-		cfg_func_print(ctx->vm, data->func);
+		expr_print(ctx->vm, data->func);
 
 
 		int err;
 		struct object obj;
 
-		err = cfg_func_eval_simple(ctx->vm, data->func, &obj);
+		err = expr_eval_simple(ctx->vm, data->func, &obj);
 		if (err) {
 			return JOB_ERROR;
 		}

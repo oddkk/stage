@@ -1,15 +1,15 @@
-#include "config_func.h"
+#include "expr.h"
 #include <stdlib.h>
 #include "utils.h"
 
-struct cfg_func_node *
-cfg_func_call(struct vm *vm, struct cfg_func_node *func)
+struct expr_node *
+expr_call(struct vm *vm, struct expr_node *func)
 {
-	struct cfg_func_node *node;
+	struct expr_node *node;
 
-	node = calloc(1, sizeof(struct cfg_func_node));
+	node = calloc(1, sizeof(struct expr_node));
 
-	node->type = CFG_FUNC_NODE_FUNC_CALL;
+	node->type = EXPR_NODE_FUNC_CALL;
 	node->func_call.func = func;
 	node->func_call.args = NULL;
 
@@ -17,12 +17,12 @@ cfg_func_call(struct vm *vm, struct cfg_func_node *func)
 }
 
 void
-cfg_func_call_add_arg(struct cfg_func_node *func,
-						struct cfg_func_node *arg)
+expr_call_add_arg(struct expr_node *func,
+						struct expr_node *arg)
 {
-	assert(func->type == CFG_FUNC_NODE_FUNC_CALL);
+	assert(func->type == EXPR_NODE_FUNC_CALL);
 
-	struct cfg_func_node **p;
+	struct expr_node **p;
 	p = &func->func_call.args;
 
 	while (*p) {
@@ -32,19 +32,19 @@ cfg_func_call_add_arg(struct cfg_func_node *func,
 	*p = arg;
 }
 
-struct cfg_func_node *
-cfg_func_lookup(struct vm *vm, struct atom *name,
-				struct cfg_func_node *scope,
-				enum cfg_func_lookup_mode lookup_mode)
+struct expr_node *
+expr_lookup(struct vm *vm, struct atom *name,
+				struct expr_node *scope,
+				enum expr_lookup_mode lookup_mode)
 {
-	struct cfg_func_node *node;
+	struct expr_node *node;
 
-	node = calloc(1, sizeof(struct cfg_func_node));
+	node = calloc(1, sizeof(struct expr_node));
 
-	if (lookup_mode == CFG_FUNC_LOOKUP_LOCAL) {
-		node->type = CFG_FUNC_NODE_LOOKUP_LOCAL;
+	if (lookup_mode == EXPR_LOOKUP_LOCAL) {
+		node->type = EXPR_NODE_LOOKUP_LOCAL;
 	} else {
-		node->type = CFG_FUNC_NODE_LOOKUP_GLOBAL;
+		node->type = EXPR_NODE_LOOKUP_GLOBAL;
 	}
 
 	node->lookup.name = name;
@@ -53,69 +53,69 @@ cfg_func_lookup(struct vm *vm, struct atom *name,
 	return node;
 }
 
-struct cfg_func_node *
-cfg_func_scope(struct vm *vm, struct scope *value)
+struct expr_node *
+expr_scope(struct vm *vm, struct scope *value)
 {
-	struct cfg_func_node *node;
+	struct expr_node *node;
 
-	node = calloc(1, sizeof(struct cfg_func_node));
+	node = calloc(1, sizeof(struct expr_node));
 
-	node->type = CFG_FUNC_NODE_SCOPE;
+	node->type = EXPR_NODE_SCOPE;
 	node->scope = value;
 
 	return node;
 }
 
-struct cfg_func_node *
-cfg_func_global(struct vm *vm, struct object value)
+struct expr_node *
+expr_global(struct vm *vm, struct object value)
 {
-	struct cfg_func_node *node;
+	struct expr_node *node;
 
-	node = calloc(1, sizeof(struct cfg_func_node));
+	node = calloc(1, sizeof(struct expr_node));
 
-	node->type = CFG_FUNC_NODE_GLOBAL;
+	node->type = EXPR_NODE_GLOBAL;
 	node->obj = value;
 
 	return node;
 }
 
-struct cfg_func_node *
-cfg_func_lit_int(struct vm *vm, int64_t value)
+struct expr_node *
+expr_lit_int(struct vm *vm, int64_t value)
 {
-	struct cfg_func_node *node;
+	struct expr_node *node;
 
-	node = calloc(1, sizeof(struct cfg_func_node));
+	node = calloc(1, sizeof(struct expr_node));
 
-	node->type = CFG_FUNC_NODE_LIT_INT;
+	node->type = EXPR_NODE_LIT_INT;
 	node->lit_int = value;
 
 	return node;
 }
 
-struct cfg_func_node *
-cfg_func_lit_str(struct vm *vm, struct string value)
+struct expr_node *
+expr_lit_str(struct vm *vm, struct string value)
 {
-	struct cfg_func_node *node;
+	struct expr_node *node;
 
-	node = calloc(1, sizeof(struct cfg_func_node));
+	node = calloc(1, sizeof(struct expr_node));
 
-	node->type = CFG_FUNC_NODE_LIT_STR;
+	node->type = EXPR_NODE_LIT_STR;
 	node->lit_str = value;
 
 	return node;
 }
 
 static int
-cfg_func_eval_lookup(struct vm *vm, struct exec_stack *stack,
-					 struct cfg_func_node *node, struct scope_entry *result)
+expr_eval_lookup(struct vm *vm, struct exec_stack *stack,
+					 struct expr_node *node, struct scope_entry *result)
 {
-	assert(node->type == CFG_FUNC_NODE_LOOKUP_LOCAL ||
-		   node->type == CFG_FUNC_NODE_LOOKUP_GLOBAL);
+	assert(node->type == EXPR_NODE_LOOKUP_LOCAL ||
+		   node->type == EXPR_NODE_LOOKUP_GLOBAL);
 
 	struct object out_scope;
 	int err;
 
-	err = cfg_func_eval(vm, stack, node->lookup.scope, &out_scope);
+	err = expr_eval(vm, stack, node->lookup.scope, &out_scope);
 
 	if (err) {
 		return err;
@@ -123,7 +123,7 @@ cfg_func_eval_lookup(struct vm *vm, struct exec_stack *stack,
 
 	struct scope *scope = NULL;
 
-	if (node->type == CFG_FUNC_NODE_LOOKUP_GLOBAL) {
+	if (node->type == EXPR_NODE_LOOKUP_GLOBAL) {
 		if (out_scope.type != TYPE_SCOPE) {
 			printf("not a scope\n");
 			return -1;
@@ -144,7 +144,7 @@ cfg_func_eval_lookup(struct vm *vm, struct exec_stack *stack,
 
 	assert(scope);
 
-	if (node->type == CFG_FUNC_NODE_LOOKUP_GLOBAL) {
+	if (node->type == EXPR_NODE_LOOKUP_GLOBAL) {
 		err = scope_lookup(scope, node->lookup.name, result);
 	} else {
 		err = scope_local_lookup(scope, node->lookup.name, result);
@@ -158,14 +158,14 @@ cfg_func_eval_lookup(struct vm *vm, struct exec_stack *stack,
 }
 
 int
-cfg_func_eval(struct vm *vm, struct exec_stack *stack,
-			  struct cfg_func_node *node, struct object *out)
+expr_eval(struct vm *vm, struct exec_stack *stack,
+			  struct expr_node *node, struct object *out)
 {
 	type_id out_type = TYPE_NONE;
 
 	switch (node->type) {
-	case CFG_FUNC_NODE_FUNC_CALL: {
-		struct cfg_func_node *arg = node->func_call.args;
+	case EXPR_NODE_FUNC_CALL: {
+		struct expr_node *arg = node->func_call.args;
 		int err;
 
 		uint8_t *prev_bp = stack->bp;
@@ -175,7 +175,7 @@ cfg_func_eval(struct vm *vm, struct exec_stack *stack,
 		while (arg) {
 			struct object arg_obj;
 
-			err = cfg_func_eval(vm, stack, arg, &arg_obj);
+			err = expr_eval(vm, stack, arg, &arg_obj);
 			if (err) {
 				return err;
 			}
@@ -186,7 +186,7 @@ cfg_func_eval(struct vm *vm, struct exec_stack *stack,
 
 		struct object func_obj;
 
-		err = cfg_func_eval(vm, stack, node->func_call.func, &func_obj);
+		err = expr_eval(vm, stack, node->func_call.func, &func_obj);
 		if (err) {
 			return err;
 		}
@@ -222,12 +222,12 @@ cfg_func_eval(struct vm *vm, struct exec_stack *stack,
 		out_type = type_func->ret;
 	} break;
 
-	case CFG_FUNC_NODE_LOOKUP_LOCAL:
-	case CFG_FUNC_NODE_LOOKUP_GLOBAL: {
+	case EXPR_NODE_LOOKUP_LOCAL:
+	case EXPR_NODE_LOOKUP_GLOBAL: {
 		int err;
 		struct scope_entry result;
 
-		err = cfg_func_eval_lookup(vm, stack, node, &result);
+		err = expr_eval_lookup(vm, stack, node, &result);
 		if (err) {
 			return -1;
 		}
@@ -247,29 +247,29 @@ cfg_func_eval(struct vm *vm, struct exec_stack *stack,
 		}
 	} break;
 
-	case CFG_FUNC_NODE_SCOPE: {
+	case EXPR_NODE_SCOPE: {
 		stack_push(stack, &node->scope, sizeof(struct scope *));
 		out_type = TYPE_SCOPE;
 	} break;
 
-	case CFG_FUNC_NODE_STACK: {
+	case EXPR_NODE_STACK: {
 		struct type *obj_type = get_type(&vm->store, node->obj.type);
 		stack_push(stack, stack->bp + (size_t)node->obj.data, obj_type->size);
 		out_type = node->obj.type;
 	} break;
 
-	case CFG_FUNC_NODE_GLOBAL: {
+	case EXPR_NODE_GLOBAL: {
 		struct type *obj_type = get_type(&vm->store, node->obj.type);
 		stack_push(stack, node->obj.data, obj_type->size);
 		out_type = node->obj.type;
 	} break;
 
-	case CFG_FUNC_NODE_LIT_INT:
+	case EXPR_NODE_LIT_INT:
 		stack_push(stack, &node->lit_int, sizeof(node->lit_int));
 		out_type = vm->default_types.integer;
 		break;
 
-	case CFG_FUNC_NODE_LIT_STR:
+	case EXPR_NODE_LIT_STR:
 		stack_push(stack, &node->lit_str, sizeof(node->lit_str));
 		out_type = vm->default_types.string;
 		break;
@@ -289,8 +289,8 @@ cfg_func_eval(struct vm *vm, struct exec_stack *stack,
 }
 
 int
-cfg_func_eval_simple(struct vm *vm,
-					 struct cfg_func_node *node,
+expr_eval_simple(struct vm *vm,
+					 struct expr_node *node,
 					 struct object *out)
 {
 	struct exec_stack stack = {0};
@@ -299,14 +299,14 @@ cfg_func_eval_simple(struct vm *vm,
 	arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
 
 	int err;
-	err = cfg_func_eval(vm, &stack, node, out);
+	err = expr_eval(vm, &stack, node, out);
 
 	arena_pop(&vm->memory, mem);
 
 	return err;
 }
 
-enum cfg_func_simplify_result {
+enum expr_simplify_result {
 	CFG_SIMPLIFY_ERROR = 0x0,
 	CFG_SIMPLIFY_OK = 0x1,
 	CFG_SIMPLIFY_CONST = 0x2,
@@ -317,49 +317,49 @@ enum cfg_func_simplify_result {
 };
 
 static int
-cfg_func_do_simplify_const(struct vm *vm, struct cfg_func_node *node)
+expr_do_simplify_const(struct vm *vm, struct expr_node *node)
 {
 	printf("\nsimplify const:\n");
-	cfg_func_print(vm, node);
+	expr_print(vm, node);
 
 	struct object result;
 	int err;
 
-	err = cfg_func_eval_simple(vm, node, &result);
+	err = expr_eval_simple(vm, node, &result);
 	if (err) {
 		return err;
 	}
 
 	obj_id new_obj = register_object(&vm->store, result);
 
-	cfg_func_destroy(node);
+	expr_destroy(node);
 
-	node->type = CFG_FUNC_NODE_GLOBAL;
+	node->type = EXPR_NODE_GLOBAL;
 	node->obj = get_object(&vm->store, new_obj);
 
 	return 0;
 }
 
-static enum cfg_func_simplify_result
-cfg_func_simplify_internal(struct vm *vm, struct cfg_func_node *node)
+static enum expr_simplify_result
+expr_simplify_internal(struct vm *vm, struct expr_node *node)
 {
 	assert(node);
 
-	enum cfg_func_simplify_result result;
+	enum expr_simplify_result result;
 	result = CFG_SIMPLIFY_OK;
 
 	switch (node->type) {
 
-	case CFG_FUNC_NODE_FUNC_CALL: {
+	case EXPR_NODE_FUNC_CALL: {
 		result = CFG_SIMPLIFY_ALL;
 
-		result &= cfg_func_simplify_internal(vm, node->func_call.func);
+		result &= expr_simplify_internal(vm, node->func_call.func);
 
-		struct cfg_func_node *arg;
+		struct expr_node *arg;
 		arg = node->func_call.args;
 
 		while (arg) {
-			result &= cfg_func_simplify_internal(vm, arg);
+			result &= expr_simplify_internal(vm, arg);
 			arg = arg->next_arg;
 		}
 
@@ -369,25 +369,25 @@ cfg_func_simplify_internal(struct vm *vm, struct cfg_func_node *node)
 			// the call tree as possible to reduce the number of
 			// values we have to cache in the object store.
 
-			enum cfg_func_simplify_result res;
-			res = cfg_func_simplify_internal(vm, node->func_call.func);
+			enum expr_simplify_result res;
+			res = expr_simplify_internal(vm, node->func_call.func);
 			if ((res & CFG_SIMPLIFY_CONST) != 0) {
-				cfg_func_do_simplify_const(vm, node->func_call.func);
+				expr_do_simplify_const(vm, node->func_call.func);
 			}
 
 			while (arg) {
-				res = cfg_func_simplify_internal(vm, arg);
+				res = expr_simplify_internal(vm, arg);
 				if ((res & CFG_SIMPLIFY_CONST) != 0) {
-					cfg_func_do_simplify_const(vm, arg);
+					expr_do_simplify_const(vm, arg);
 				}
 				arg = arg->next_arg;
 			}
 		}
 	} break;
 
-	case CFG_FUNC_NODE_LOOKUP_LOCAL:
-	case CFG_FUNC_NODE_LOOKUP_GLOBAL: {
-		result = cfg_func_simplify_internal(vm, node->lookup.scope);
+	case EXPR_NODE_LOOKUP_LOCAL:
+	case EXPR_NODE_LOOKUP_GLOBAL: {
+		result = expr_simplify_internal(vm, node->lookup.scope);
 
 		if ((result & CFG_SIMPLIFY_OK) != 0) {
 			break;
@@ -401,7 +401,7 @@ cfg_func_simplify_internal(struct vm *vm, struct cfg_func_node *node)
 			struct arena mem = arena_push(&vm->memory);
 
 			arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
-			err = cfg_func_eval_lookup(vm, &stack, node, &entry);
+			err = expr_eval_lookup(vm, &stack, node, &entry);
 			arena_pop(&vm->memory, mem);
 
 			if (err) {
@@ -413,9 +413,9 @@ cfg_func_simplify_internal(struct vm *vm, struct cfg_func_node *node)
 				entry.anchor == SCOPE_ANCHOR_STACK) {
 				result &= ~CFG_SIMPLIFY_CONST;
 
-				cfg_func_destroy(node);
+				expr_destroy(node);
 
-				node->type = CFG_FUNC_NODE_STACK;
+				node->type = EXPR_NODE_STACK;
 				node->obj = entry.object;
 			}
 
@@ -425,22 +425,22 @@ cfg_func_simplify_internal(struct vm *vm, struct cfg_func_node *node)
 		}
 	} break;
 
-	case CFG_FUNC_NODE_GLOBAL:
+	case EXPR_NODE_GLOBAL:
 		result = CFG_SIMPLIFY_CONST;
 		break;
 
-	case CFG_FUNC_NODE_STACK:
+	case EXPR_NODE_STACK:
 		break;
 
-	case CFG_FUNC_NODE_SCOPE:
+	case EXPR_NODE_SCOPE:
 		result = CFG_SIMPLIFY_CONST;
 		break;
 
-	case CFG_FUNC_NODE_LIT_INT:
+	case EXPR_NODE_LIT_INT:
 		result = CFG_SIMPLIFY_CONST;
 		break;
 
-	case CFG_FUNC_NODE_LIT_STR:
+	case EXPR_NODE_LIT_STR:
 		result = CFG_SIMPLIFY_CONST;
 		break;
 	}
@@ -449,13 +449,13 @@ cfg_func_simplify_internal(struct vm *vm, struct cfg_func_node *node)
 }
 
 void
-cfg_func_simplify(struct vm *vm, struct cfg_func_node *node)
+expr_simplify(struct vm *vm, struct expr_node *node)
 {
-	enum cfg_func_simplify_result result;
-	result = cfg_func_simplify_internal(vm, node);
+	enum expr_simplify_result result;
+	result = expr_simplify_internal(vm, node);
 
 	if ((result & CFG_SIMPLIFY_CONST) != 0) {
-		cfg_func_do_simplify_const(vm, node);
+		expr_do_simplify_const(vm, node);
 	}
 }
 
@@ -466,7 +466,7 @@ static void _print_indent(int depth) {
 }
 
 static void
-cfg_func_print_internal(struct vm *vm, struct cfg_func_node *node, int depth)
+expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 {
 	if (!node) {
 		return;
@@ -475,37 +475,37 @@ cfg_func_print_internal(struct vm *vm, struct cfg_func_node *node, int depth)
 	_print_indent(depth);
 
 	switch (node->type) {
-	case CFG_FUNC_NODE_LOOKUP_GLOBAL:
+	case EXPR_NODE_LOOKUP_GLOBAL:
 		printf("%.*s (global)", ALIT(node->lookup.name));
 		break;
 
-	case CFG_FUNC_NODE_LOOKUP_LOCAL:
+	case EXPR_NODE_LOOKUP_LOCAL:
 		printf("%.*s (local)", ALIT(node->lookup.name));
 		break;
 
-	case CFG_FUNC_NODE_SCOPE:
+	case EXPR_NODE_SCOPE:
 		printf("scope\n");
 		break;
 
-	case CFG_FUNC_NODE_FUNC_CALL:
+	case EXPR_NODE_FUNC_CALL:
 		printf("call");
 		break;
 
-	case CFG_FUNC_NODE_GLOBAL: {
+	case EXPR_NODE_GLOBAL: {
 		printf("global ");
 		print_obj_repr(vm, node->obj);
 	} break;
 
-	case CFG_FUNC_NODE_STACK: {
+	case EXPR_NODE_STACK: {
 		printf("local bp + 0x%lx ", (size_t)node->obj.data);
 		print_type_repr(vm, get_type(&vm->store, node->obj.type));
 	} break;
 
-	case CFG_FUNC_NODE_LIT_INT:
+	case EXPR_NODE_LIT_INT:
 		printf("%li", node->lit_int);
 		break;
 
-	case CFG_FUNC_NODE_LIT_STR:
+	case EXPR_NODE_LIT_STR:
 		printf("\"%.*s\"", LIT(node->lit_str));
 		break;
 	}
@@ -513,53 +513,53 @@ cfg_func_print_internal(struct vm *vm, struct cfg_func_node *node, int depth)
 	printf("\n");
 
 	switch (node->type) {
-	case CFG_FUNC_NODE_FUNC_CALL:
+	case EXPR_NODE_FUNC_CALL:
 		_print_indent(depth + 1);
 		printf("func\n");
-		cfg_func_print_internal(vm, node->func_call.func, depth + 2);
+		expr_print_internal(vm, node->func_call.func, depth + 2);
 		_print_indent(depth + 1);
 		printf("args\n");
-		cfg_func_print_internal(vm, node->func_call.args, depth + 2);
+		expr_print_internal(vm, node->func_call.args, depth + 2);
 		break;
 
-	case CFG_FUNC_NODE_LOOKUP_GLOBAL:
-	case CFG_FUNC_NODE_LOOKUP_LOCAL:
-		cfg_func_print_internal(vm, node->lookup.scope, depth + 1);
+	case EXPR_NODE_LOOKUP_GLOBAL:
+	case EXPR_NODE_LOOKUP_LOCAL:
+		expr_print_internal(vm, node->lookup.scope, depth + 1);
 
 	default:
 		break;
 	}
 
-	cfg_func_print_internal(vm, node->next_arg, depth);
+	expr_print_internal(vm, node->next_arg, depth);
 }
 
 void
-cfg_func_print(struct vm *vm, struct cfg_func_node *node)
+expr_print(struct vm *vm, struct expr_node *node)
 {
-	cfg_func_print_internal(vm, node, 0);
+	expr_print_internal(vm, node, 0);
 }
 
 void
-cfg_func_destroy(struct cfg_func_node *node)
+expr_destroy(struct expr_node *node)
 {
 	switch (node->type) {
-	case CFG_FUNC_NODE_FUNC_CALL: {
-		cfg_func_free(node->func_call.func);
+	case EXPR_NODE_FUNC_CALL: {
+		expr_free(node->func_call.func);
 
-		struct cfg_func_node *next_arg;
+		struct expr_node *next_arg;
 		next_arg = node->func_call.args;
 		while (next_arg) {
-			struct cfg_func_node *arg;
+			struct expr_node *arg;
 			arg = next_arg;
 			next_arg = next_arg->next_arg;
 
-			cfg_func_free(arg);
+			expr_free(arg);
 		}
 	} break;
 
-	case CFG_FUNC_NODE_LOOKUP_GLOBAL:
-	case CFG_FUNC_NODE_LOOKUP_LOCAL:
-		cfg_func_free(node->lookup.scope);
+	case EXPR_NODE_LOOKUP_GLOBAL:
+	case EXPR_NODE_LOOKUP_LOCAL:
+		expr_free(node->lookup.scope);
 		break;
 
 	default:
@@ -568,8 +568,8 @@ cfg_func_destroy(struct cfg_func_node *node)
 }
 
 void
-cfg_func_free(struct cfg_func_node *node)
+expr_free(struct expr_node *node)
 {
-	cfg_func_destroy(node);
+	expr_destroy(node);
 	free(node);
 }

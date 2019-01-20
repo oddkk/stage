@@ -1,6 +1,6 @@
 #include "vm.h"
 #include "utils.h"
-#include "config_func.h"
+#include "expr.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -338,7 +338,7 @@ static void obj_eval_native_func(struct vm *vm, struct exec_stack *stack, void *
 		break;
 
 	case NATIVE_FUNC_STORAGE_NODES:
-		cfg_func_eval(vm, stack, func.node, NULL);
+		expr_eval(vm, stack, func.node, NULL);
 		break;
 	}
 }
@@ -948,7 +948,7 @@ obj_id obj_register_builtin_func_from_tuple(struct vm *vm, type_id params, type_
 
 obj_id obj_register_native_func(struct vm *vm, struct atom **param_names,
 								type_id *params, size_t num_params,
-								type_id ret_type, struct cfg_func_node *node)
+								type_id ret_type, struct expr_node *node)
 {
 	struct object result = {0};
 	struct obj_native_func_data obj_data = {0};
