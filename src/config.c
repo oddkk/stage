@@ -512,9 +512,54 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 		return call;
 	} break;
 
-	case CFG_NODE_TUPLE_DECL:
-		panic("TODO: Tuple decl");
-		break;
+	case CFG_NODE_TUPLE_DECL: {
+		struct expr_node *first_arg = NULL, *last_arg = NULL;
+
+		struct cfg_node *args_tuple;
+		args_tuple = node;
+		assert(args_tuple->type == CFG_NODE_TUPLE_DECL);
+		// @TODO: Named tuples
+		assert(!args_tuple->TUPLE_DECL.named);
+
+		struct cfg_node *arg;
+		arg = args_tuple->TUPLE_DECL.items;
+
+
+		while (arg) {
+			struct expr_node *n;
+
+			n = cfg_node_visit_expr(ctx, expr,
+									scope, NULL,
+									arg->TUPLE_DECL_ITEM.type);
+
+			if (!first_arg) {
+				assert(!last_arg);
+				first_arg = n;
+				last_arg = n;
+			} else {
+				last_arg->next_arg = n;
+			}
+
+			arg = arg->next_sibling;
+		}
+
+		struct expr_node *local_scope, *func;
+		struct atom *tuple_func_name;
+		tuple_func_name =
+			atom_create(&ctx->vm->atom_table,
+						STR("tuple"));
+		local_scope =
+			expr_scope(ctx->vm, expr, scope);
+		func =
+			expr_lookup(ctx->vm, expr,
+						tuple_func_name, local_scope,
+						EXPR_LOOKUP_GLOBAL);
+
+		struct expr_node *call;
+		call = expr_call(ctx->vm, expr, func, first_arg);
+
+		return call;
+	} break;
 
 	case CFG_NODE_TUPLE_LIT:
 		panic("TODO: Tuple lit");
