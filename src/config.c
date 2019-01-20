@@ -404,7 +404,6 @@ resolve_type(struct cfg_ctx *ctx, struct cfg_node *node,
 
 	case CFG_NODE_IDENT:
 	case CFG_NODE_ACCESS:
-	case CFG_NODE_SUBSCRIPT:
 		job = DISPATCH_JOB(ctx, resolve_type_l_expr, CFG_PHASE_RESOLVE,
 						   .scope = scope,
 						   .node = node,
@@ -440,10 +439,6 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 
 		return rhs;
 	} break;
-
-	case CFG_NODE_SUBSCRIPT:
-		panic("TODO: Subscript");
-		break;
 
 	case CFG_NODE_BIN_OP: {
 		struct expr_node
@@ -516,6 +511,10 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 
 		return call;
 	} break;
+
+	case CFG_NODE_TUPLE_DECL:
+		panic("TODO: Tuple decl");
+		break;
 
 	case CFG_NODE_TUPLE_LIT:
 		panic("TODO: Tuple lit");
@@ -972,9 +971,6 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 		case 2:
 			return JOB_OK;
 		}
-		break;
-
-	case CFG_NODE_SUBSCRIPT:
 		break;
 
 	case CFG_NODE_BIN_OP: {

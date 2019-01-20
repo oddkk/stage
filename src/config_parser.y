@@ -278,13 +278,16 @@ subscript_expr:	expr                    { $$ = $1;  }
 l_expr:			ident                   { $$ = $1; }
 		|		l_expr '.' ident        { $$ = MKNODE(ACCESS, .lhs=$1, .rhs=$3); }
 		|		l_expr '[' subscript_expr ']'
-					{ $$ = MKNODE(SUBSCRIPT, .lhs=$1, .index=$3); }
+		{ $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_SUBSCRIPT); }
 		;
 
 type_expr:		l_expr                  { $$ = $1; }
 		|		'$' IDENTIFIER          { $$ = MKNODE(TEMPLATE_VAR, .name=$2); }
 		|		'$' IDENTIFIER '[' expr ']'
-					{ $$ = MKNODE(SUBSCRIPT, .lhs=MKNODE(TEMPLATE_VAR, .name=$2), .index=$4); }
+				{ $$ = MKNODE(BIN_OP,
+							.op=CFG_OP_SUBSCRIPT,
+							.lhs=MKNODE(TEMPLATE_VAR, .name=$2),
+							.rhs=$4); }
 		|		func_proto              { $$ = $1; }
 		|		tuple_decl              { $$ = $1; }
 		//		Array declarations are handled by l_expr

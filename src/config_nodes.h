@@ -80,11 +80,6 @@ CFG_NODE(ACCESS, struct {
 	struct cfg_node *rhs;
 })
 
-CFG_NODE(SUBSCRIPT, struct {
-	struct cfg_node *lhs;
-	struct cfg_node *index;
-})
-
 CFG_NODE(BIN_OP, struct {
 	enum cfg_bin_op op;
 	struct cfg_node *lhs;

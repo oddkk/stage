@@ -15,6 +15,7 @@
 	OP(LTE, "<=")								\
 	OP(GT, ">")									\
 	OP(LT, "<")									\
+	OP(SUBSCRIPT, "[]")							\
 
 #define CFG_BIN_OPS_MAX_LEN (2)
 
@@ -189,11 +190,6 @@ int cfg_compile(struct vm *vm, struct string cfg_dir);
 	case CFG_NODE_ACCESS:								\
 		TREE_VISIT_NODE((node), ACCESS, lhs);			\
 		TREE_VISIT_NODE((node), ACCESS, rhs);			\
-		break;											\
-														\
-	case CFG_NODE_SUBSCRIPT:							\
-		TREE_VISIT_NODE((node), SUBSCRIPT, lhs);		\
-		TREE_VISIT_NODE((node), SUBSCRIPT, index);		\
 		break;											\
 														\
 	case CFG_NODE_BIN_OP:								\
