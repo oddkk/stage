@@ -866,16 +866,16 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 					cfg_node_tuple_decl_to_params(ctx, &data->expr,
 												  data->scope, data->proto_node,
 												  &num_params);
-				ret = expr_unknown_type(ctx->vm, &data->expr);
+				ret = expr_unknown(ctx->vm, &data->expr);
 			} break;
 
 			case CFG_NODE_IDENT:
 				num_params = 1;
 				params = calloc(1, sizeof(struct expr_func_decl_param));
 				params[0].name = data->proto_node->IDENT;
-				params[0].type = expr_unknown_type(ctx->vm, &data->expr);
+				params[0].type = expr_unknown(ctx->vm, &data->expr);
 
-				ret = expr_unknown_type(ctx->vm, &data->expr);
+				ret = expr_unknown(ctx->vm, &data->expr);
 				break;
 
 			default:
@@ -884,7 +884,7 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 				break;
 			}
 		} else {
-			ret = expr_unknown_type(ctx->vm, &data->expr);
+			ret = expr_unknown(ctx->vm, &data->expr);
 		}
 
 		struct expr_node *body;

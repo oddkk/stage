@@ -2,6 +2,17 @@
 #include <stdlib.h>
 #include "utils.h"
 
+static func_type_id
+alloc_type_slot(struct expr *expr)
+{
+	func_type_id res;
+
+	res = expr->num_types;
+	expr->num_types += 1;
+
+	return res;
+}
+
 struct expr_node *
 expr_func_decl(struct vm *vm, struct expr *expr,
 			   struct expr_func_decl_param *params,
@@ -19,6 +30,24 @@ expr_func_decl(struct vm *vm, struct expr *expr,
 	node->func_decl.ret_type = ret;
 	node->func_decl.body = body;
 
+
+	node->rule.abs.num_params =
+		node->func_decl.num_params;
+
+	node->rule.abs.params =
+		calloc(node->rule.abs.num_params,
+			   sizeof(func_type_id));
+
+	for (size_t i = 0; i < node->rule.abs.num_params; i++) {
+		node->rule.abs.params[i] =
+			node->func_decl.params[i].type->rule.out;
+
+		// TODO: These should have type type.
+	}
+
+	node->rule.out =
+		node->func_decl.body->rule.out;
+
 	return node;
 }
 
@@ -35,24 +64,34 @@ expr_call(struct vm *vm, struct expr *expr,
 	node->func_call.func = func;
 	node->func_call.args = first_arg;
 
+	node->rule.app.func = alloc_type_slot(expr);
+	node->rule.app.num_args = 0;
+
+	struct expr_node *arg;
+	arg = node->func_call.args;
+	while (arg) {
+		node->rule.app.num_args += 1;
+
+		arg = arg->next_arg;
+	}
+
+	node->rule.app.args =
+		calloc(node->rule.app.num_args, sizeof(func_type_id));
+
+	size_t i = 0;
+	arg = node->func_call.args;
+	while (arg) {
+		node->rule.app.args[i] =
+			arg->rule.out;
+
+		i += 1;
+		arg = arg->next_arg;
+	}
+
+	node->rule.out = alloc_type_slot(expr);
+
 	return node;
 }
-
-/* void */
-/* expr_call_add_arg(struct expr_node *func, struct expr *expr, */
-/* 				  struct expr_node *arg) */
-/* { */
-/* 	assert(func->type == EXPR_NODE_FUNC_CALL); */
-
-/* 	struct expr_node **p; */
-/* 	p = &func->func_call.args; */
-
-/* 	while (*p) { */
-/* 		p = &(*p)->next_arg; */
-/* 	} */
-
-/* 	*p = arg; */
-/* } */
 
 struct expr_node *
 expr_lookup(struct vm *vm, struct expr *expr,
@@ -71,17 +110,19 @@ expr_lookup(struct vm *vm, struct expr *expr,
 
 	node->lookup.name = name;
 	node->lookup.scope = scope;
+	node->rule.out = alloc_type_slot(expr);
 
 	return node;
 }
 
 struct expr_node *
-expr_unknown_type(struct vm *vm, struct expr *expr)
+expr_unknown(struct vm *vm, struct expr *expr)
 {
 	struct expr_node *node;
 
 	node = calloc(1, sizeof(struct expr_node));
-	node->type = EXPR_NODE_UNKNOWN_TYPE;
+	node->type = EXPR_NODE_UNKNOWN;
+	node->rule.out = alloc_type_slot(expr);
 
 	return node;
 }
@@ -96,6 +137,7 @@ expr_scope(struct vm *vm, struct expr *expr,
 
 	node->type = EXPR_NODE_SCOPE;
 	node->scope = value;
+	node->rule.out = alloc_type_slot(expr);
 
 	return node;
 }
@@ -110,6 +152,8 @@ expr_global(struct vm *vm, struct expr *expr,
 
 	node->type = EXPR_NODE_GLOBAL;
 	node->obj = value;
+	node->rule.out = alloc_type_slot(expr);
+	// TODO: We know the type of this global.
 
 	return node;
 }
@@ -124,6 +168,8 @@ expr_lit_int(struct vm *vm, struct expr *expr,
 
 	node->type = EXPR_NODE_LIT_INT;
 	node->lit_int = value;
+	node->rule.out = alloc_type_slot(expr);
+	// TODO: We know the type of this global.
 
 	return node;
 }
@@ -138,6 +184,8 @@ expr_lit_str(struct vm *vm, struct expr *expr,
 
 	node->type = EXPR_NODE_LIT_STR;
 	node->lit_str = value;
+	node->rule.out = alloc_type_slot(expr);
+	// TODO: We know the type of this global.
 
 	return node;
 }
@@ -290,8 +338,8 @@ expr_eval(struct vm *vm, struct exec_stack *stack,
 		}
 	} break;
 
-	case EXPR_NODE_UNKNOWN_TYPE: {
-		panic("TODO: Unknown type");
+	case EXPR_NODE_UNKNOWN: {
+		panic("TODO: Unknown");
 	} break;
 
 	case EXPR_NODE_SCOPE: {
@@ -476,8 +524,8 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 		}
 	} break;
 
-	case EXPR_NODE_UNKNOWN_TYPE: {
-		panic("TODO: Unknown type");
+	case EXPR_NODE_UNKNOWN: {
+		panic("TODO: Unknown");
 	} break;
 
 	case EXPR_NODE_GLOBAL:
@@ -543,8 +591,8 @@ expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 		printf("%.*s (local)", ALIT(node->lookup.name));
 		break;
 
-	case EXPR_NODE_UNKNOWN_TYPE:
-		printf("unknown type");
+	case EXPR_NODE_UNKNOWN:
+		printf("unknown");
 		break;
 
 	case EXPR_NODE_SCOPE:
@@ -571,6 +619,42 @@ expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 
 	case EXPR_NODE_LIT_STR:
 		printf("\"%.*s\"", LIT(node->lit_str));
+		break;
+	}
+
+	switch (node->type) {
+	case EXPR_NODE_FUNC_DECL: // [ABS]
+		printf(" (");
+		for (size_t i = 0; i < node->rule.abs.num_params; i++) {
+			if (i != 0) {
+				printf(", ");
+			}
+			printf("%u", node->rule.abs.params[i]);
+		}
+		printf(") -> %u", node->rule.out);
+		break;
+
+	case EXPR_NODE_FUNC_CALL: // [APP]
+		printf(" (");
+		for (size_t i = 0; i < node->rule.app.num_args; i++) {
+			if (i != 0) {
+				printf(", ");
+			}
+			printf("%u", node->rule.app.args[i]);
+		}
+		printf(") -> %u", node->rule.out);
+
+		break;
+
+	case EXPR_NODE_LOOKUP_GLOBAL:
+	case EXPR_NODE_LOOKUP_LOCAL:
+	case EXPR_NODE_UNKNOWN:
+	case EXPR_NODE_GLOBAL:
+	case EXPR_NODE_STACK:
+	case EXPR_NODE_SCOPE:
+	case EXPR_NODE_LIT_INT:
+	case EXPR_NODE_LIT_STR: // [VAR]
+		printf(" () -> %u", node->rule.out);
 		break;
 	}
 

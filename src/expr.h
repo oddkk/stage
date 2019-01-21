@@ -8,7 +8,7 @@ enum expr_node_type {
 	EXPR_NODE_FUNC_CALL,     // [APP]
 	EXPR_NODE_LOOKUP_GLOBAL, // [VAR]
 	EXPR_NODE_LOOKUP_LOCAL,  // [VAR]
-	EXPR_NODE_UNKNOWN_TYPE,  // [VAR]
+	EXPR_NODE_UNKNOWN,       // [VAR]
 	EXPR_NODE_GLOBAL,        // [VAR]
 	EXPR_NODE_STACK,         // [VAR]
 	EXPR_NODE_SCOPE,         // [VAR]
@@ -28,19 +28,17 @@ struct expr_type_rule {
 
 		struct {
 			func_type_id func;
-			func_type_id params_begin;
-			func_type_id num_params;
-			func_type_id ret;
+			func_type_id *args;
+			func_type_id num_args;
 		} app;
 
 		struct {
-			func_type_id params_begin;
+			func_type_id *params;
 			func_type_id num_params;
-			func_type_id ret;
 		} abs;
 	};
 
-	size_t out;
+	func_type_id out;
 };
 
 struct expr_node;
@@ -113,7 +111,7 @@ expr_lookup(struct vm *, struct expr *,
 			enum expr_lookup_mode lookup_mode);
 
 struct expr_node *
-expr_unknown_type(struct vm *, struct expr *);
+expr_unknown(struct vm *, struct expr *);
 
 struct expr_node *
 expr_scope(struct vm *, struct expr *, struct scope *);
