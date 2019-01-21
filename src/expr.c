@@ -7,8 +7,11 @@ alloc_type_slot(struct expr *expr)
 {
 	func_type_id res;
 
-	res = expr->num_types;
-	expr->num_types += 1;
+	// The expr should not have already been finalized.
+	assert(expr->slots == NULL);
+
+	res = expr->num_type_slots;
+	expr->num_type_slots += 1;
 
 	return res;
 }
@@ -189,6 +192,111 @@ expr_lit_str(struct vm *vm, struct expr *expr,
 
 	return node;
 }
+
+void
+expr_finalize(struct vm *vm, struct expr *expr)
+{
+	assert(expr->slots == NULL);
+	expr->slots = calloc(expr->num_type_slots, sizeof(type_id));
+}
+
+int
+expr_bind_type(struct vm *vm, struct expr *expr,
+			   func_type_id slot, type_id type)
+{
+	assert(slot < expr->num_type_slots);
+
+	// The expr shuold have been finalized before we try to bind
+	// anything.
+	assert(expr->slots != NULL);
+
+	if (expr->slots[slot] != TYPE_UNSET) {
+		printf("Conflicting types '");
+		print_type_repr(vm, get_type(&vm->store, expr->slots[slot]));
+		printf("' and '");
+		print_type_repr(vm, get_type(&vm->store, type));
+		printf("'.\n");
+
+		expr->num_type_errors += 1;
+		return -1;
+	}
+
+	expr->slots[slot] = type;
+
+	return 0;
+}
+
+static void
+expr_bind_obvious_types(struct vm *vm, struct expr *expr,
+						struct expr_node *node)
+{
+	switch (node->type) {
+	case EXPR_NODE_FUNC_DECL:
+		assert(node->rule.abs.num_params == node->func_decl.num_params);
+		for (size_t i = 0; i < node->rule.abs.num_params; i++) {
+			expr_bind_type(vm, expr, node->rule.abs.params[i],
+						   vm->default_types.type);
+
+			expr_bind_obvious_types(vm, expr,
+									node->func_decl.params[i].type);
+		}
+
+		expr_bind_type(vm, expr, node->func_decl.ret_type->rule.out,
+					   vm->default_types.type);
+		expr_bind_obvious_types(vm, expr, node->func_decl.ret_type);
+
+		expr_bind_obvious_types(vm, expr, node->func_decl.body);
+		break;
+
+	case EXPR_NODE_FUNC_CALL: {
+		struct expr_node *arg;
+		arg = node->func_call.args;
+		while (arg) {
+			expr_bind_obvious_types(vm, expr, arg);
+			arg = arg->next_arg;
+		}
+
+		expr_bind_obvious_types(vm, expr, node->func_call.func);
+	} break;
+
+	case EXPR_NODE_LOOKUP_GLOBAL:
+	case EXPR_NODE_LOOKUP_LOCAL:
+		expr_bind_obvious_types(vm, expr, node->lookup.scope);
+		break;
+
+	case EXPR_NODE_UNKNOWN:
+		break;
+
+	case EXPR_NODE_GLOBAL:
+	case EXPR_NODE_STACK:
+		expr_bind_type(vm, expr, node->rule.out,
+					   node->obj.type);
+		break;
+
+	case EXPR_NODE_SCOPE:
+		expr_bind_type(vm, expr, node->rule.out,
+					   TYPE_SCOPE);
+		break;
+
+	case EXPR_NODE_LIT_INT:
+		expr_bind_type(vm, expr, node->rule.out,
+					   vm->default_types.integer);
+		break;
+
+	case EXPR_NODE_LIT_STR:
+		expr_bind_type(vm, expr, node->rule.out,
+					   vm->default_types.string);
+		break;
+	}
+}
+
+int
+expr_typecheck(struct vm *vm, struct expr *expr)
+{
+	expr_bind_obvious_types(vm, expr, expr->body);
+	return -1;
+}
+
 
 static int
 expr_eval_lookup(struct vm *vm, struct exec_stack *stack,
@@ -415,7 +523,7 @@ static int
 expr_do_simplify_const(struct vm *vm, struct expr_node *node)
 {
 	printf("\nsimplify const:\n");
-	expr_print(vm, node);
+	/* expr_print_internal(vm, node); */
 
 	struct object result;
 	int err;
@@ -569,7 +677,19 @@ static void _print_indent(int depth) {
 }
 
 static void
-expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
+expr_print_slot(struct vm *vm, struct expr *expr, func_type_id slot)
+{
+	if (expr->slots) {
+		printf("%u (", slot);
+		print_type_repr(vm, get_type(&vm->store, expr->slots[slot]));
+		printf(")");
+	} else {
+		printf("%u", slot);
+	}
+}
+
+static void
+expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, int depth)
 {
 	if (!node) {
 		return;
@@ -629,9 +749,10 @@ expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 			if (i != 0) {
 				printf(", ");
 			}
-			printf("%u", node->rule.abs.params[i]);
+			expr_print_slot(vm, expr, node->rule.abs.params[i]);
 		}
-		printf(") -> %u", node->rule.out);
+		printf(") -> ");
+		expr_print_slot(vm, expr, node->rule.out);
 		break;
 
 	case EXPR_NODE_FUNC_CALL: // [APP]
@@ -640,9 +761,10 @@ expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 			if (i != 0) {
 				printf(", ");
 			}
-			printf("%u", node->rule.app.args[i]);
+			expr_print_slot(vm, expr, node->rule.app.args[i]);
 		}
-		printf(") -> %u", node->rule.out);
+		printf(") -> ");
+		expr_print_slot(vm, expr, node->rule.out);
 
 		break;
 
@@ -654,7 +776,8 @@ expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 	case EXPR_NODE_SCOPE:
 	case EXPR_NODE_LIT_INT:
 	case EXPR_NODE_LIT_STR: // [VAR]
-		printf(" () -> %u", node->rule.out);
+		printf(" () -> ");
+		expr_print_slot(vm, expr, node->rule.out);
 		break;
 	}
 
@@ -665,42 +788,42 @@ expr_print_internal(struct vm *vm, struct expr_node *node, int depth)
 		for (size_t i = 0; i < node->func_decl.num_params; i++) {
 			_print_indent(depth + 1);
 			printf("param %.*s type\n", ALIT(node->func_decl.params[i].name));
-			expr_print_internal(vm, node->func_decl.params[i].type, depth + 2);
+			expr_print_internal(vm, expr, node->func_decl.params[i].type, depth + 2);
 		}
 
 		_print_indent(depth + 1);
-		printf("ret\n");
-		expr_print_internal(vm, node->func_decl.ret_type, depth + 2);
+		printf("ret type\n");
+		expr_print_internal(vm, expr, node->func_decl.ret_type, depth + 2);
 
 		_print_indent(depth + 1);
 		printf("body\n");
-		expr_print_internal(vm, node->func_decl.body, depth + 2);
+		expr_print_internal(vm, expr, node->func_decl.body, depth + 2);
 		break;
 
 	case EXPR_NODE_FUNC_CALL:
 		_print_indent(depth + 1);
 		printf("func\n");
-		expr_print_internal(vm, node->func_call.func, depth + 2);
+		expr_print_internal(vm, expr, node->func_call.func, depth + 2);
 		_print_indent(depth + 1);
 		printf("args\n");
-		expr_print_internal(vm, node->func_call.args, depth + 2);
+		expr_print_internal(vm, expr, node->func_call.args, depth + 2);
 		break;
 
 	case EXPR_NODE_LOOKUP_GLOBAL:
 	case EXPR_NODE_LOOKUP_LOCAL:
-		expr_print_internal(vm, node->lookup.scope, depth + 1);
+		expr_print_internal(vm, expr, node->lookup.scope, depth + 1);
 
 	default:
 		break;
 	}
 
-	expr_print_internal(vm, node->next_arg, depth);
+	expr_print_internal(vm, expr, node->next_arg, depth);
 }
 
 void
-expr_print(struct vm *vm, struct expr_node *node)
+expr_print(struct vm *vm, struct expr *expr)
 {
-	expr_print_internal(vm, node, 0);
+	expr_print_internal(vm, expr, expr->body, 0);
 }
 
 void

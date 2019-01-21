@@ -48,8 +48,15 @@ struct expr_func_decl_param {
 	struct expr_node *type;
 };
 
+enum expr_node_flags {
+	// Set when an expression has been completly typed.
+	EXPR_TYPED = 0x1,
+	EXPR_CONST = 0x2,
+};
+
 struct expr_node {
 	enum expr_node_type type;
+	enum expr_node_flags flags;
 	struct expr_node *next_arg;
 
 	struct expr_type_rule rule;
@@ -84,7 +91,10 @@ struct expr_node {
 struct expr {
 	struct expr_node *body;
 	struct scope *outer_scope;
-	size_t num_types;
+
+	size_t num_type_slots;
+	type_id *slots;
+	size_t num_type_errors;
 };
 
 struct expr_node *
@@ -125,6 +135,18 @@ expr_lit_int(struct vm *, struct expr *, int64_t);
 struct expr_node *
 expr_lit_str(struct vm *, struct expr *, struct string);
 
+
+
+void
+expr_finalize(struct vm *, struct expr *);
+
+int
+expr_bind_type(struct vm *, struct expr *,
+			   func_type_id, type_id);
+
+int
+expr_typecheck(struct vm *, struct expr *);
+
 int
 expr_eval_simple(struct vm *vm, struct expr_node *,
 				 struct object *out);
@@ -137,7 +159,7 @@ void
 expr_simplify(struct vm *vm, struct expr_node *node);
 
 void
-expr_print(struct vm *vm, struct expr_node *node);
+expr_print(struct vm *vm, struct expr *);
 
 void
 expr_destroy(struct expr_node *node);

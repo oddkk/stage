@@ -897,7 +897,9 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		// fallthrough
 	case CFG_COMPILE_FUNC_RESOLVE:
 		printf("\n");
-		expr_print(ctx->vm, data->expr.body);
+		expr_finalize(ctx->vm, &data->expr);
+		expr_typecheck(ctx->vm, &data->expr);
+		expr_print(ctx->vm, &data->expr);
 		break;
 	}
 
@@ -1104,7 +1106,7 @@ job_visit_expr(struct cfg_ctx *ctx, job_visit_expr_t *data)
 			return JOB_YIELD_FOR(job);
 
 		case 1:
-			expr_print(ctx->vm, data->tmp_func);
+			/* expr_print(ctx->vm, data->tmp_func); */
 			data->iter += 1;
 			return JOB_YIELD;
 
@@ -1168,7 +1170,13 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 {
 	if (data->dispatched) {
 		printf("\n");
-		expr_print(ctx->vm, data->expr.body);
+		expr_finalize(ctx->vm, &data->expr);
+
+		expr_bind_type(ctx->vm, &data->expr,
+					   data->expr.body->rule.out, ctx->vm->default_types.type);
+
+		expr_typecheck(ctx->vm, &data->expr);
+		expr_print(ctx->vm, &data->expr);
 
 
 		int err;
