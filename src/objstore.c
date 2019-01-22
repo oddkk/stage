@@ -138,6 +138,25 @@ type_id register_type(struct objstore *store, struct type type)
 	return dlist_append(store->types, store->num_types, &type);
 }
 
+bool unify_types(struct vm *vm, type_id lhs, type_id rhs, type_id *out)
+{
+	if (lhs == rhs) {
+		 *out = lhs;
+		 return true;
+	}
+
+	struct type *lhs_type = get_type(&vm->store, lhs);
+	struct type *rhs_type = get_type(&vm->store, rhs);
+
+	if (lhs_type->base->unify) {
+		return lhs_type->base->unify(vm, lhs, rhs, out);
+	} else if (rhs_type->base->unify) {
+		return rhs_type->base->unify(vm, rhs, lhs, out);
+	} else {
+		return false;
+	}
+}
+
 void print_type_repr(struct vm *vm, struct type *type)
 {
 	struct arena mem = arena_push(&vm->memory);

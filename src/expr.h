@@ -35,6 +35,7 @@ struct expr_type_rule {
 		struct {
 			func_type_id *params;
 			func_type_id num_params;
+			func_type_id ret;
 		} abs;
 	};
 

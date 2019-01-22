@@ -43,13 +43,14 @@ expr_func_decl(struct vm *vm, struct expr *expr,
 
 	for (size_t i = 0; i < node->rule.abs.num_params; i++) {
 		node->rule.abs.params[i] =
-			node->func_decl.params[i].type->rule.out;
-
-		// TODO: These should have type type.
+			alloc_type_slot(expr);
 	}
 
-	node->rule.out =
+	node->rule.abs.ret =
 		node->func_decl.body->rule.out;
+
+	node->rule.out =
+		alloc_type_slot(expr);
 
 	return node;
 }
@@ -67,7 +68,7 @@ expr_call(struct vm *vm, struct expr *expr,
 	node->func_call.func = func;
 	node->func_call.args = first_arg;
 
-	node->rule.app.func = alloc_type_slot(expr);
+	node->rule.app.func = func->rule.out;
 	node->rule.app.num_args = 0;
 
 	struct expr_node *arg;
@@ -141,6 +142,7 @@ expr_scope(struct vm *vm, struct expr *expr,
 	node->type = EXPR_NODE_SCOPE;
 	node->scope = value;
 	node->rule.out = alloc_type_slot(expr);
+	node->flags |= EXPR_CONST;
 
 	return node;
 }
@@ -156,7 +158,7 @@ expr_global(struct vm *vm, struct expr *expr,
 	node->type = EXPR_NODE_GLOBAL;
 	node->obj = value;
 	node->rule.out = alloc_type_slot(expr);
-	// TODO: We know the type of this global.
+	node->flags |= EXPR_CONST;
 
 	return node;
 }
@@ -172,7 +174,7 @@ expr_lit_int(struct vm *vm, struct expr *expr,
 	node->type = EXPR_NODE_LIT_INT;
 	node->lit_int = value;
 	node->rule.out = alloc_type_slot(expr);
-	// TODO: We know the type of this global.
+	node->flags |= EXPR_CONST;
 
 	return node;
 }
@@ -188,7 +190,7 @@ expr_lit_str(struct vm *vm, struct expr *expr,
 	node->type = EXPR_NODE_LIT_STR;
 	node->lit_str = value;
 	node->rule.out = alloc_type_slot(expr);
-	// TODO: We know the type of this global.
+	node->flags |= EXPR_CONST;
 
 	return node;
 }
@@ -210,18 +212,21 @@ expr_bind_type(struct vm *vm, struct expr *expr,
 	// anything.
 	assert(expr->slots != NULL);
 
-	if (expr->slots[slot] != TYPE_UNSET) {
+	type_id unified;
+
+	if (!unify_types(vm, expr->slots[slot], type, &unified)) {
 		printf("Conflicting types '");
 		print_type_repr(vm, get_type(&vm->store, expr->slots[slot]));
 		printf("' and '");
 		print_type_repr(vm, get_type(&vm->store, type));
-		printf("'.\n");
+		printf("'. (slot %u)\n", slot);
 
 		expr->num_type_errors += 1;
 		return -1;
 	}
 
-	expr->slots[slot] = type;
+	// @TODO: Should the type be updated if they can be generalized?
+	expr->slots[slot] = unified;
 
 	return 0;
 }
@@ -234,11 +239,12 @@ expr_bind_obvious_types(struct vm *vm, struct expr *expr,
 	case EXPR_NODE_FUNC_DECL:
 		assert(node->rule.abs.num_params == node->func_decl.num_params);
 		for (size_t i = 0; i < node->rule.abs.num_params; i++) {
-			expr_bind_type(vm, expr, node->rule.abs.params[i],
-						   vm->default_types.type);
+			struct expr_node *param;
+			param = node->func_decl.params[i].type;
 
-			expr_bind_obvious_types(vm, expr,
-									node->func_decl.params[i].type);
+			expr_bind_type(vm, expr, param->rule.out,
+						   vm->default_types.type);
+			expr_bind_obvious_types(vm, expr, param);
 		}
 
 		expr_bind_type(vm, expr, node->func_decl.ret_type->rule.out,
@@ -268,32 +274,201 @@ expr_bind_obvious_types(struct vm *vm, struct expr *expr,
 		break;
 
 	case EXPR_NODE_GLOBAL:
+		node->flags |= EXPR_CONST;
 	case EXPR_NODE_STACK:
 		expr_bind_type(vm, expr, node->rule.out,
 					   node->obj.type);
+		node->flags |= EXPR_TYPED;
 		break;
 
 	case EXPR_NODE_SCOPE:
 		expr_bind_type(vm, expr, node->rule.out,
 					   TYPE_SCOPE);
+		node->flags |= EXPR_TYPED | EXPR_CONST;
 		break;
 
 	case EXPR_NODE_LIT_INT:
 		expr_bind_type(vm, expr, node->rule.out,
 					   vm->default_types.integer);
+		node->flags |= EXPR_TYPED | EXPR_CONST;
 		break;
 
 	case EXPR_NODE_LIT_STR:
 		expr_bind_type(vm, expr, node->rule.out,
 					   vm->default_types.string);
+		node->flags |= EXPR_TYPED | EXPR_CONST;
 		break;
 	}
+}
+
+static int
+expr_try_infer_types(struct vm *vm, struct expr *expr,
+					 struct expr_node *node)
+{
+	switch (node->type) {
+	case EXPR_NODE_FUNC_DECL: {
+		size_t num_unresolved_premises = 0;
+
+		for (size_t i = 0; i < node->func_decl.num_params; i++) {
+			struct expr_node *param;
+			param = node->func_decl.params[i].type;
+			expr_try_infer_types(vm, expr, param);
+
+			if (expr->slots[param->rule.out] == TYPE_UNSET) {
+				num_unresolved_premises += 1;
+			}
+		}
+
+		struct expr_node *ret;
+		ret = node->func_decl.ret_type;
+		expr_try_infer_types(vm, expr, ret);
+
+		if (expr->slots[ret->rule.out] == TYPE_UNSET) {
+			num_unresolved_premises += 1;
+		}
+
+		expr_try_infer_types(vm, expr, node->func_decl.body);
+
+		if (num_unresolved_premises == 0) {
+			size_t num_params = node->func_decl.num_params;
+			struct atom **param_names;
+			type_id *param_types;
+
+			param_names = calloc(num_params, sizeof(struct atom *));
+			param_types = calloc(num_params, sizeof(type_id));
+
+			for (size_t i = 0; i < num_params; i++) {
+				struct expr_node *param;
+				param = node->func_decl.params[i].type;
+
+				assert(expr->slots[param->rule.out] != TYPE_UNSET);
+
+				int err;
+				struct object type_obj;
+				err = expr_eval_simple(vm, param, &type_obj);
+				if (err) {
+					return -1;
+				}
+
+				type_id type = type_obj_get(vm, type_obj);
+				expr_bind_type(vm, expr, node->rule.abs.params[i], type);
+
+				param_names[i] = node->func_decl.params[i].name;
+				param_types[i] = type;
+			}
+
+			assert(expr->slots[ret->rule.out] != TYPE_UNSET);
+			int err;
+			struct object ret_type_obj;
+			err = expr_eval_simple(vm, ret, &ret_type_obj);
+			if (err) {
+				return -1;
+			}
+
+			type_id ret_type = type_obj_get(vm, ret_type_obj);
+			expr_bind_type(vm, expr, node->rule.abs.ret, ret_type);
+
+			type_id func_type;
+			func_type =
+				type_register_function(vm, param_names, param_types,
+									   num_params, ret_type,
+									   TYPE_FUNCTION_NATIVE);
+
+			expr_bind_type(vm, expr, node->rule.out, func_type);
+
+			node->flags |= EXPR_TYPED;
+		}
+	} break;
+
+	case EXPR_NODE_FUNC_CALL: {
+		size_t num_unresolved_args = 0;
+
+		struct expr_node *arg;
+		size_t arg_i = 0;
+		arg = node->func_call.args;
+
+		type_id *param_types;
+		param_types = calloc(node->rule.app.num_args, sizeof(type_id));
+
+		while (arg) {
+			expr_try_infer_types(vm, expr, arg);
+
+			if (expr->slots[node->rule.app.args[arg_i]] == TYPE_UNSET) {
+				num_unresolved_args += 1;
+			}
+
+			param_types[arg_i] = expr->slots[node->rule.app.args[arg_i]];
+
+			arg_i += 1;
+			arg = arg->next_arg;
+		}
+
+		assert(arg_i == node->rule.app.num_args);
+
+		type_id ret_type;
+		ret_type = expr->slots[node->rule.out];
+
+		type_id func_type;
+		func_type =
+			type_register_function(vm, NULL, param_types,
+								   node->rule.app.num_args,
+								   ret_type, TYPE_FUNCTION_GENERIC);
+
+		expr_bind_type(vm, expr, node->rule.app.func, func_type);
+		expr_try_infer_types(vm, expr, node->func_call.func);
+
+	} break;
+
+	case EXPR_NODE_LOOKUP_GLOBAL:
+	case EXPR_NODE_LOOKUP_LOCAL: {
+		expr_try_infer_types(vm, expr, node->lookup.scope);
+
+		int flags = EXPR_TYPED | EXPR_CONST;
+
+		if ((node->lookup.scope->flags & flags) == flags) {
+			int err;
+			struct object obj;
+			err = expr_eval_simple(vm, node, &obj);
+
+			if (err) {
+				return -1;
+			}
+
+			expr_bind_type(vm, expr, node->rule.out, obj.type);
+			node->flags |= EXPR_TYPED | EXPR_CONST;
+		}
+	} break;
+
+	case EXPR_NODE_UNKNOWN:
+		break;
+
+	case EXPR_NODE_GLOBAL:
+	case EXPR_NODE_STACK:
+		break;
+
+	case EXPR_NODE_SCOPE:
+		break;
+
+	case EXPR_NODE_LIT_INT:
+		break;
+
+	case EXPR_NODE_LIT_STR:
+		break;
+	}
+
+	return 0;
 }
 
 int
 expr_typecheck(struct vm *vm, struct expr *expr)
 {
 	expr_bind_obvious_types(vm, expr, expr->body);
+	printf("\nbefore typecheck:\n");
+	expr_print(vm, expr);
+
+	expr_try_infer_types(vm, expr, expr->body);
+	printf("\ntypecheck iter 0:\n");
+	expr_print(vm, expr);
 	return -1;
 }
 
@@ -447,7 +622,9 @@ expr_eval(struct vm *vm, struct exec_stack *stack,
 	} break;
 
 	case EXPR_NODE_UNKNOWN: {
-		panic("TODO: Unknown");
+		type_id unset_type = TYPE_UNSET;
+		stack_push(stack, &unset_type, sizeof(type_id));
+		out_type = vm->default_types.type;
 	} break;
 
 	case EXPR_NODE_SCOPE: {
@@ -632,9 +809,8 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 		}
 	} break;
 
-	case EXPR_NODE_UNKNOWN: {
-		panic("TODO: Unknown");
-	} break;
+	case EXPR_NODE_UNKNOWN:
+		break;
 
 	case EXPR_NODE_GLOBAL:
 		result = CFG_SIMPLIFY_CONST;
@@ -744,7 +920,7 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 
 	switch (node->type) {
 	case EXPR_NODE_FUNC_DECL: // [ABS]
-		printf(" (");
+		printf(" ((");
 		for (size_t i = 0; i < node->rule.abs.num_params; i++) {
 			if (i != 0) {
 				printf(", ");
@@ -752,11 +928,16 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 			expr_print_slot(vm, expr, node->rule.abs.params[i]);
 		}
 		printf(") -> ");
+		expr_print_slot(vm, expr, node->rule.abs.ret);
+		printf(") -> ");
 		expr_print_slot(vm, expr, node->rule.out);
+		printf(")");
 		break;
 
 	case EXPR_NODE_FUNC_CALL: // [APP]
 		printf(" (");
+		expr_print_slot(vm, expr, node->rule.app.func);
+		printf(") (");
 		for (size_t i = 0; i < node->rule.app.num_args; i++) {
 			if (i != 0) {
 				printf(", ");
@@ -779,6 +960,14 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 		printf(" () -> ");
 		expr_print_slot(vm, expr, node->rule.out);
 		break;
+	}
+
+	if ((node->flags & EXPR_TYPED) != 0) {
+		printf(" TYPED");
+	}
+
+	if ((node->flags & EXPR_CONST) != 0) {
+		printf(" CONST");
 	}
 
 	printf("\n");

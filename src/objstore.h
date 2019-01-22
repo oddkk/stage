@@ -21,6 +21,7 @@ struct exec_stack;
 typedef struct string (*type_repr)(struct vm *vm, struct arena *mem, struct type *);
 typedef struct string (*obj_repr)(struct vm *vm, struct arena *mem, struct object *);
 typedef type_id (*type_subtypes_iter)(struct vm *vm, struct type *type, size_t *iter);
+typedef bool (*type_unify)(struct vm *vm, type_id lhs, type_id rhs, type_id *out);
 typedef void (*type_free)(struct vm *vm, struct type *type);
 typedef void (*type_eval)(struct vm *, struct exec_stack *, void *);
 
@@ -31,6 +32,7 @@ struct type_base {
 	type_free free;
 	type_eval eval;
 	type_subtypes_iter subtypes_iter;
+	type_unify unify;
 
 	bool abstract;
 };
@@ -71,6 +73,8 @@ struct objstore {
 };
 
 type_id register_type(struct objstore *store, struct type type);
+bool unify_types(struct vm *vm, type_id lhs, type_id rhs, type_id *out);
+
 void print_type_repr(struct vm *vm, struct type *);
 void print_obj_repr(struct vm *vm, struct object);
 

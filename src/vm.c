@@ -272,8 +272,10 @@ static struct string type_func_repr(struct vm *vm, struct arena *mem, struct typ
 			arena_string_append(mem, &res, STR(", "));
 		}
 
-		arena_string_append(mem, &res, func->param_names[i]->name);
-		arena_string_append(mem, &res, STR(": "));
+		if (func->param_names) {
+			arena_string_append(mem, &res, func->param_names[i]->name);
+			arena_string_append(mem, &res, STR(": "));
+		}
 
 		struct type *item_type;
 		item_type = get_type(&vm->store, func->param_types[i]);
@@ -854,8 +856,10 @@ type_id type_register_function(struct vm *vm, struct atom **param_names,
 	struct type_func *data;
 	data = calloc(1, sizeof(struct type_func));
 
-	data->param_names = calloc(num_params, sizeof(struct atom *));
-	memcpy(data->param_names, param_names, num_params * sizeof(struct atom *));
+	if (param_names) {
+		data->param_names = calloc(num_params, sizeof(struct atom *));
+		memcpy(data->param_names, param_names, num_params * sizeof(struct atom *));
+	}
 
 	data->param_types = calloc(num_params, sizeof(type_id));
 	memcpy(data->param_types, param_types, num_params * sizeof(type_id));

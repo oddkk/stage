@@ -899,7 +899,7 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		printf("\n");
 		expr_finalize(ctx->vm, &data->expr);
 		expr_typecheck(ctx->vm, &data->expr);
-		expr_print(ctx->vm, &data->expr);
+		/* expr_print(ctx->vm, &data->expr); */
 		break;
 	}
 
@@ -1173,10 +1173,11 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 		expr_finalize(ctx->vm, &data->expr);
 
 		expr_bind_type(ctx->vm, &data->expr,
-					   data->expr.body->rule.out, ctx->vm->default_types.type);
+					   data->expr.body->rule.out,
+					   ctx->vm->default_types.type);
 
 		expr_typecheck(ctx->vm, &data->expr);
-		expr_print(ctx->vm, &data->expr);
+		/* expr_print(ctx->vm, &data->expr); */
 
 
 		int err;
