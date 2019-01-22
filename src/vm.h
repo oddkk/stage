@@ -148,11 +148,6 @@ obj_id obj_register_builtin_func(struct vm *vm, struct atom **param_names,
 struct expr;
 struct expr_node;
 
-/* obj_id obj_register_native_func(struct vm *vm, struct atom **param_names, */
-/* 								type_id *params, size_t num_params, */
-/* 								type_id ret_type, struct expr *expr, */
-/* 								struct expr_node *node); */
-
 obj_id
 obj_register_native_func(struct vm *vm, struct expr *expr,
 						 struct expr_node *node, type_id);
@@ -240,12 +235,6 @@ type_id type_register_function(struct vm *vm, struct atom **param_names,
 							   type_id ret, enum type_function_kind kind);
 
 void vm_exec(struct vm *vm, struct exec_stack *stack, void *instructions, size_t length);
-
-/* static inline struct object vm_arg(struct exec_stack *stack, size_t arg) */
-/* { */
-/* 	assert(stack->bp > arg); */
-/* 	return stack->memory[stack->bp - arg - 1]; */
-/* } */
 
 int arena_alloc_stack(struct exec_stack *stack, struct arena *mem, size_t stack_size);
 

@@ -1069,28 +1069,6 @@ obj_id obj_register_builtin_func_from_tuple(struct vm *vm, type_id params, type_
 									 value, data);
 }
 
-/* obj_id obj_register_native_func(struct vm *vm, struct atom **param_names, */
-/* 								type_id *params, size_t num_params, */
-/* 								type_id ret_type, struct expr *expr, */
-/* 								struct expr_node *node) */
-
-/* obj_id */
-/* obj_register_native_func(struct vm *vm, struct expr *expr, */
-/* 						 struct expr_node *node, type_id type) */
-/* { */
-/* 	struct object result = {0}; */
-/* 	struct obj_native_func_data obj_data = {0}; */
-
-/* 	obj_data.storage = NATIVE_FUNC_STORAGE_NODES; */
-/* 	obj_data.node.expr = expr; */
-/* 	obj_data.node.node = node; */
-
-/* 	result.type = type; */
-/* 	result.data = &obj_data; */
-
-/* 	return register_object(&vm->store, result); */
-/* } */
-
 type_id type_obj_get(struct vm *vm, struct object obj)
 {
 	assert(obj.type == vm->default_types.type);

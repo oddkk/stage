@@ -584,12 +584,6 @@ expr_eval(struct vm *vm, struct expr *expr,
 	switch (node->type) {
 
 	case EXPR_NODE_FUNC_DECL: {
-		/* obj_id obj; */
-		/* obj = obj_register_native_func(vm, expr, node->func_decl.body, */
-		/* 							   expr->slots[node->rule.out]); */
-		/* struct object func_obj; */
-		/* func_obj = get_object(&vm->store, obj); */
-
 		struct object func_obj;
 		struct obj_native_func_data *data;
 
@@ -636,11 +630,6 @@ expr_eval(struct vm *vm, struct expr *expr,
 		struct type *type = get_type(&vm->store, func_obj.type);
 		assert(!type->base->abstract);
 
-		/* if (type->base != &vm->default_types.func_base) { */
-		/* 	printf("Not a function.\n"); */
-		/* 	return -1; */
-		/* } */
-
 		struct type_func *type_func = type->data;
 
 		if (type_func->num_params != num_args) {
@@ -651,13 +640,6 @@ expr_eval(struct vm *vm, struct expr *expr,
 
 		assert(type->base->eval != NULL);
 		type->base->eval(vm, stack, NULL);
-
-		/* struct obj_builtin_func_data func; */
-		/* assert(type->size == sizeof(struct obj_builtin_func_data)); */
-
-		/* stack_pop(stack, &func, sizeof(struct obj_builtin_func_data)); */
-
-		/* func.func(vm, stack, func.data); */
 
 		stack->bp = prev_bp;
 

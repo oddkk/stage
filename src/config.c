@@ -176,49 +176,6 @@ cfg_error(struct cfg_ctx *ctx, struct cfg_node *node,
 	ctx->num_errors += 1;
 }
 
-/* static void */
-/* _expr_to_string_internal(struct arena *mem, struct string *str, */
-/* 						 struct cfg_node *node) */
-/* { */
-/* 	switch (node->type) { */
-/* 	case CFG_NODE_ACCESS: */
-/* 		_expr_to_string_internal(mem, str, node->ACCESS.lhs); */
-/* 		arena_string_append(mem, str, STR(".")); */
-/* 		_expr_to_string_internal(mem, str, node->ACCESS.rhs); */
-/* 		break; */
-
-/* 	case CFG_NODE_SUBSCRIPT: */
-/* 		_expr_to_string_internal(mem, str, node->SUBSCRIPT.lhs); */
-/* 		arena_string_append(mem, str, STR("[")); */
-/* 		_expr_to_string_internal(mem, str, node->SUBSCRIPT.index); */
-/* 		arena_string_append(mem, str, STR("]")); */
-/* 		break; */
-
-/* 	case CFG_NODE_IDENT: */
-/* 		arena_string_append(mem, str, node->IDENT->name); */
-/* 		break; */
-
-/* 	default: */
-/* 		panic("Invalid node '%.*s' as expression.", */
-/* 				LIT(cfg_node_names[node->type])); */
-/* 		break; */
-/* 	} */
-/* } */
-
-/* static struct string */
-/* expr_to_string(struct arena *mem, struct cfg_node *node) */
-/* { */
-/* 	struct string str = {0}; */
-
-/* 	/\* str.text = (uint8_t *)(mem->data + mem->head); *\/ */
-/* 	str.text = arena_alloc(mem, 0); */
-/* 	str.length = 0; */
-
-/* 	_expr_to_string_internal(mem, &str, node); */
-
-/* 	return str; */
-/* } */
-
 static void
 append_job(struct cfg_ctx *ctx, enum cfg_compile_phase ph, struct cfg_job *job)
 {
@@ -894,7 +851,6 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		printf("\n");
 		expr_finalize(ctx->vm, &data->expr);
 		expr_typecheck(ctx->vm, &data->expr);
-		/* expr_print(ctx->vm, &data->expr); */
 
 		struct expr *expr;
 		expr = calloc(1, sizeof(struct expr));
@@ -907,97 +863,12 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		*data->out_func_obj =
 			register_object(&ctx->vm->store, func_obj);
 
-		/* *data->out_func_obj = */
-		/* 	obj_register_native_func(ctx->vm, expr, expr->body); */
-
 		return JOB_OK;
 	} break;
 
 	}
 
 	return JOB_ERROR;
-
-	/* switch (data->state) { */
-	/* case CFG_COMPILE_FUNC_IDLE: { */
-	/* 	data->state = CFG_COMPILE_FUNC_RESOLVE_SIGNATURE; */
-	/* 	if (data->proto_node) { */
-	/* 		struct cfg_job *job; */
-
-	/* 		job = DISPATCH_JOB(ctx, func_proto_decl, CFG_PHASE_RESOLVE, */
-	/* 						.scope = data->scope, */
-	/* 						.node  = data->proto_node, */
-	/* 						.out_type = &data->proto); */
-
-	/* 		return JOB_YIELD_FOR(job); */
-	/* 	} else { */
-	/* 		data->proto = ctx->vm->default_types.func_template_return; */
-
-	/* 		return JOB_YIELD_FOR_PHASE(CFG_PHASE_RESOLVE); */
-	/* 	} */
-	/* } */
-
-	/* case CFG_COMPILE_FUNC_RESOLVE_SIGNATURE: { */
-	/* 	data->state = CFG_COMPILE_FUNC_VISIT_BODY; */
-
-	/* 	data->expr.outer_scope = data->scope; */
-
-	/* 	struct type *func_proto = get_type(&ctx->vm->store, data->proto); */
-	/* 	struct type_func *func_data = func_proto->data; */
-
-	/* 	size_t offset = 0; */
-
-	/* 	for (size_t i = 0; i < func_data->num_params; i++) { */
-	/* 		int err; */
-
-	/* 		struct object param = {0}; */
-	/* 		type_id param_tid = func_data->param_types[i]; */
-	/* 		struct type *param_type = get_type(&ctx->vm->store, param_tid); */
-
-	/* 		param.data = (void *)offset; */
-	/* 		param.type = param_tid; */
-
-	/* 		assert(param_type->num_template_params == 0); */
-
-	/* 		err = scope_insert(inner_scope, func_data->param_names[i], */
-	/* 						   SCOPE_ANCHOR_STACK, param, NULL); */
-
-	/* 		offset += param_type->size; */
-	/* 	} */
-
-	/* 	// @TODO: Insert params into inner scope */
-
-	/* 	struct cfg_job *job; */
-
-	/* 	job = DISPATCH_JOB(ctx, visit_expr, CFG_PHASE_RESOLVE, */
-	/* 					   .func_ctx = &data->func_ctx, */
-	/* 					   .node     = data->body_node, */
-	/* 					   .out_func = &data->func); */
-
-	/* 	return JOB_YIELD_FOR(job); */
-	/* } break; */
-
-	/* case CFG_COMPILE_FUNC_VISIT_BODY: { */
-	/* 	printf("\n"); */
-	/* 	expr_simplify(ctx->vm, data->func); */
-	/* 	printf("\n"); */
-	/* 	expr_print(ctx->vm, data->func); */
-
-	/* 	struct type *proto = get_type(&ctx->vm->store, data->proto); */
-	/* 	struct type_func *proto_func = proto->data; */
-
-	/* 	*data->out_func_obj = */
-	/* 		obj_register_native_func(ctx->vm, */
-	/* 								 proto_func->param_names, */
-	/* 								 proto_func->param_types, */
-	/* 								 proto_func->num_params, */
-	/* 								 proto_func->ret, data->func); */
-
-	/* 	return JOB_OK; */
-	/* } break; */
-
-	/* } */
-
-	/* return JOB_ERROR; */
 }
 
 static struct job_status
