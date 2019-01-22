@@ -4,6 +4,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool
+type_unset_unify(struct vm *vm,
+				 type_id lhs, type_id rhs,
+				 type_id *out_type)
+{
+	if (lhs != TYPE_UNSET) {
+		*out_type = lhs;
+	} else {
+		*out_type = rhs;
+	}
+
+	return true;
+}
+
 static void arena_string_append_type_repr(struct string *str, struct vm *vm,
 										  struct arena *mem, struct type *type)
 {
@@ -288,6 +302,97 @@ static struct string type_func_repr(struct vm *vm, struct arena *mem, struct typ
 	return res;
 }
 
+static bool type_func_unify(struct vm *vm, type_id lhs, type_id rhs, type_id *out)
+{
+	struct type *lhs_type = get_type(&vm->store, lhs);
+	struct type_func *lhs_func = lhs_type->data;
+
+	struct type *rhs_type = get_type(&vm->store, rhs);
+	struct type_func *rhs_func = rhs_type->data;
+
+
+	if (lhs_func->num_params != rhs_func->num_params) {
+		return false;
+	}
+
+	size_t num_params = lhs_func->num_params;
+	struct atom **param_names = NULL;
+
+	bool lhs_specialized = (lhs_type->base != &vm->default_types.func_base);
+	bool rhs_specialized = (rhs_type->base != &vm->default_types.func_base);
+
+	if (lhs_specialized && rhs_specialized) {
+		printf("Cannot unify a generic function with a specialized one.");
+		return false;
+	}
+
+	if (lhs_func->param_names && rhs_func->param_names) {
+		bool equal_param_names = true;
+		for (size_t i = 0; i < num_params; i++) {
+			if (lhs_func->param_names[i] == rhs_func->param_names[i]) {
+				equal_param_names = false;
+				break;
+			}
+		}
+
+		if (equal_param_names) {
+			param_names = lhs_func->param_names;
+		} else {
+			if (lhs_specialized) {
+				param_names = lhs_func->param_names;
+			} else {
+				param_names = rhs_func->param_names;
+			}
+		}
+
+	} else if (lhs_func->param_names) {
+		param_names = lhs_func->param_names;
+	} else if (rhs_func->param_names) {
+		param_names = rhs_func->param_names;
+	}
+
+	type_id out_params[num_params];
+	// TODO: Avoid creating new a new type if nothing has changed.
+
+	for (size_t i = 0; i < num_params; i++) {
+		if (!unify_types(vm,
+						 lhs_func->param_types[i],
+						 rhs_func->param_types[i],
+						 &out_params[i])) {
+			return false;
+		}
+	}
+
+	type_id out_ret;
+
+	if (!unify_types(vm, lhs_func->ret, rhs_func->ret, &out_ret)) {
+		return false;
+	}
+
+	enum type_function_kind kind;
+	kind = TYPE_FUNCTION_GENERIC;
+
+
+	if (lhs_specialized) {
+		if (lhs_type->base == &vm->default_types.builtin_func_base) {
+			kind = TYPE_FUNCTION_BUILTIN;
+		} else if (lhs_type->base == &vm->default_types.native_func_base) {
+			kind = TYPE_FUNCTION_NATIVE;
+		}
+	} else if (rhs_specialized) {
+		if (rhs_type->base == &vm->default_types.builtin_func_base) {
+			kind = TYPE_FUNCTION_BUILTIN;
+		} else if (rhs_type->base == &vm->default_types.native_func_base) {
+			kind = TYPE_FUNCTION_NATIVE;
+		}
+	}
+
+	*out = type_register_function(vm,param_names, out_params,
+								  num_params, out_ret, kind);
+
+	return true;
+}
+
 static struct string type_builtin_func_repr(struct vm *vm, struct arena *mem, struct type *type)
 {
 	struct string res = arena_string_init(mem);
@@ -304,6 +409,7 @@ static struct string type_builtin_func_repr(struct vm *vm, struct arena *mem, st
 
 	return res;
 }
+
 
 static void obj_eval_builtin_func(struct vm *vm, struct exec_stack *stack, void *data)
 {
@@ -411,6 +517,8 @@ int vm_init(struct vm *vm)
 		unset.base = base;
 		unset.size = 0;
 		vm->default_types.unset = register_type(&vm->store, unset);
+		type_base_register_unifier(base, NULL, type_unset_unify);
+
 		assert(vm->default_types.unset == TYPE_UNSET);
 	}
 
@@ -526,6 +634,7 @@ int vm_init(struct vm *vm)
 		base->repr = type_func_repr;
 		base->subtypes_iter = type_func_subtypes_iter;
 		base->abstract = true;
+		type_base_register_unifier(base, base, type_func_unify);
 	}
 
 	{
@@ -535,6 +644,10 @@ int vm_init(struct vm *vm)
 		base->obj_repr = obj_builtin_func_repr;
 		base->subtypes_iter = type_func_subtypes_iter;
 		base->eval = obj_eval_builtin_func;
+		type_base_register_unifier(base, base, type_func_unify);
+
+		type_base_register_unifier(&vm->default_types.func_base,
+								  base, type_func_unify);
 	}
 
 	{
@@ -544,7 +657,12 @@ int vm_init(struct vm *vm)
 		base->obj_repr = obj_native_func_repr;
 		base->subtypes_iter = type_func_subtypes_iter;
 		base->eval = obj_eval_native_func;
+		type_base_register_unifier(base, base, type_func_unify);
+
+		type_base_register_unifier(&vm->default_types.func_base,
+								  base, type_func_unify);
 	}
+
 
 	{
 		struct type_base *base = &vm->default_types.enum_base;

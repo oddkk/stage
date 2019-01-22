@@ -25,6 +25,13 @@ typedef bool (*type_unify)(struct vm *vm, type_id lhs, type_id rhs, type_id *out
 typedef void (*type_free)(struct vm *vm, struct type *type);
 typedef void (*type_eval)(struct vm *, struct exec_stack *, void *);
 
+struct type_base;
+struct type_unifier {
+	// If null, this unifier matches any other type base.
+	struct type_base *other;
+	type_unify unify;
+};
+
 struct type_base {
 	struct string name;
 	type_repr repr;
@@ -32,12 +39,19 @@ struct type_base {
 	type_free free;
 	type_eval eval;
 	type_subtypes_iter subtypes_iter;
-	type_unify unify;
+	struct type_unifier *unifiers;
+	size_t num_unifiers;
 
 	bool abstract;
 };
 
-void type_base_init(struct type_base *, struct string name);
+void
+type_base_init(struct type_base *, struct string name);
+
+void
+type_base_register_unifier(struct type_base *type1,
+						   struct type_base *type2,
+						   type_unify unifier);
 
 struct type {
 	struct atom *name;
