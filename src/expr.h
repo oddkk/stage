@@ -8,7 +8,6 @@ enum expr_node_type {
 	EXPR_NODE_FUNC_CALL,     // [APP]
 	EXPR_NODE_LOOKUP_GLOBAL, // [VAR]
 	EXPR_NODE_LOOKUP_LOCAL,  // [VAR]
-	EXPR_NODE_UNKNOWN,       // [VAR]
 	EXPR_NODE_GLOBAL,        // [VAR]
 	EXPR_NODE_STACK,         // [VAR]
 	EXPR_NODE_SCOPE,         // [VAR]
@@ -125,9 +124,6 @@ expr_lookup(struct vm *, struct expr *,
 			struct atom *name,
 			struct expr_node *scope,
 			enum expr_lookup_mode lookup_mode);
-
-struct expr_node *
-expr_unknown(struct vm *, struct expr *);
 
 struct expr_node *
 expr_scope(struct vm *, struct expr *, struct scope *);

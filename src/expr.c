@@ -147,18 +147,6 @@ expr_lookup(struct vm *vm, struct expr *expr,
 }
 
 struct expr_node *
-expr_unknown(struct vm *vm, struct expr *expr)
-{
-	struct expr_node *node;
-
-	node = calloc(1, sizeof(struct expr_node));
-	node->type = EXPR_NODE_UNKNOWN;
-	node->rule.out = alloc_type_slot(expr);
-
-	return node;
-}
-
-struct expr_node *
 expr_scope(struct vm *vm, struct expr *expr,
 		   struct scope *value)
 {
@@ -297,9 +285,6 @@ expr_bind_obvious_types(struct vm *vm, struct expr *expr,
 		expr_bind_obvious_types(vm, expr, node->lookup.scope);
 		break;
 
-	case EXPR_NODE_UNKNOWN:
-		break;
-
 	case EXPR_NODE_GLOBAL:
 		node->flags |= EXPR_CONST;
 	case EXPR_NODE_STACK:
@@ -327,7 +312,11 @@ expr_bind_obvious_types(struct vm *vm, struct expr *expr,
 		break;
 
 	case EXPR_NODE_TYPE_EXPR:
-		expr_bind_obvious_types(vm, expr, node->type_expr);
+		if (node->type_expr) {
+			expr_bind_obvious_types(vm, expr, node->type_expr);
+		} else {
+			node->flags |= EXPR_TYPED | EXPR_CONST;
+		}
 		expr_bind_type(vm, expr, node->rule.out,
 					   vm->default_types.type);
 		break;
@@ -471,9 +460,6 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		}
 	} break;
 
-	case EXPR_NODE_UNKNOWN:
-		break;
-
 	case EXPR_NODE_GLOBAL:
 	case EXPR_NODE_STACK:
 		break;
@@ -488,22 +474,24 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		break;
 
 	case EXPR_NODE_TYPE_EXPR:
-		expr_try_infer_types(vm, expr, node->type_expr);
+		if (node->type_expr) {
+			expr_try_infer_types(vm, expr, node->type_expr);
 
-		if ((node->type_expr->flags & EXPR_CONST) != 0) {
-			int err;
-			struct object type_obj;
+			if ((node->type_expr->flags & EXPR_CONST) != 0) {
+				int err;
+				struct object type_obj;
 
-			err = expr_eval_simple(vm, node->type_expr, &type_obj);
-			if (err) {
-				return -1;
+				err = expr_eval_simple(vm, node->type_expr, &type_obj);
+				if (err) {
+					return -1;
+				}
+
+				type_id type = type_obj_get(vm, type_obj);
+				expr_bind_type(vm, expr, node->rule.type, type);
 			}
 
-			type_id type = type_obj_get(vm, type_obj);
-			expr_bind_type(vm, expr, node->rule.type, type);
+			node->flags = node->type_expr->flags;
 		}
-
-		node->flags = node->type_expr->flags;
 		break;
 
 	}
@@ -671,12 +659,6 @@ expr_eval(struct vm *vm, struct exec_stack *stack,
 			}
 			out_type = result.object.type;
 		}
-	} break;
-
-	case EXPR_NODE_UNKNOWN: {
-		type_id unset_type = TYPE_UNSET;
-		stack_push(stack, &unset_type, sizeof(type_id));
-		out_type = vm->default_types.type;
 	} break;
 
 	case EXPR_NODE_SCOPE: {
@@ -865,9 +847,6 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 		}
 	} break;
 
-	case EXPR_NODE_UNKNOWN:
-		break;
-
 	case EXPR_NODE_GLOBAL:
 		result = CFG_SIMPLIFY_CONST;
 		break;
@@ -947,10 +926,6 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 		printf("%.*s (local)", ALIT(node->lookup.name));
 		break;
 
-	case EXPR_NODE_UNKNOWN:
-		printf("unknown");
-		break;
-
 	case EXPR_NODE_SCOPE:
 		printf("scope");
 		break;
@@ -1015,7 +990,6 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 
 	case EXPR_NODE_LOOKUP_GLOBAL:
 	case EXPR_NODE_LOOKUP_LOCAL:
-	case EXPR_NODE_UNKNOWN:
 	case EXPR_NODE_GLOBAL:
 	case EXPR_NODE_STACK:
 	case EXPR_NODE_SCOPE:
@@ -1074,7 +1048,9 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 		break;
 
 	case EXPR_NODE_TYPE_EXPR:
-		expr_print_internal(vm, expr, node->type_expr, depth + 1);
+		if (node->type_expr) {
+			expr_print_internal(vm, expr, node->type_expr, depth + 1);
+		}
 		break;
 
 	default:
