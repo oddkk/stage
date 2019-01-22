@@ -14,6 +14,7 @@ enum expr_node_type {
 	EXPR_NODE_SCOPE,         // [VAR]
 	EXPR_NODE_LIT_INT,       // [VAR]
 	EXPR_NODE_LIT_STR,       // [VAR]
+	EXPR_NODE_TYPE_EXPR,
 };
 
 struct expr_context;
@@ -37,6 +38,8 @@ struct expr_type_rule {
 			func_type_id num_params;
 			func_type_id ret;
 		} abs;
+
+		func_type_id type;
 	};
 
 	func_type_id out;
@@ -79,6 +82,8 @@ struct expr_node {
 			struct expr_node *ret_type;
 			struct expr_node *body;
 		} func_decl;
+
+		struct expr_node *type_expr;
 
 		struct object obj;
 

@@ -1,9 +1,9 @@
-Bool :: Enum { true, false }
-Foo :: (asdf: Bool, fdsa: (foo: int, bar: str));
+# Bool :: Enum { true, false }
+# Foo :: (asdf: Bool, fdsa: (foo: int, bar: str));
 
 # foo : Foo = (Bool.false, (3, "asdf"));
 
-asdf = foo.fdsa.bar;
+# asdf = foo.fdsa.bar;
 
 two = 2;
 four = 2 + 2;
@@ -18,5 +18,5 @@ square(x: int) = x * x;
 double(x: int) -> int = 2 * x;
 double(x: (int, Bool)) = 2 * x;
 
-assert square(2) == 4;
-assert some_number == 5;
+# assert square(2) == 4;
+# assert some_number == 5;

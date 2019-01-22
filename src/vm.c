@@ -321,8 +321,9 @@ static bool type_func_unify(struct vm *vm, type_id lhs, type_id rhs, type_id *ou
 	bool lhs_specialized = (lhs_type->base != &vm->default_types.func_base);
 	bool rhs_specialized = (rhs_type->base != &vm->default_types.func_base);
 
-	if (lhs_specialized && rhs_specialized) {
-		printf("Cannot unify a generic function with a specialized one.");
+	if (lhs_specialized && rhs_specialized &&
+		rhs_type->base != rhs_type->base) {
+		printf("Cannot unify a generic function with a specialized one.\n");
 		return false;
 	}
 
