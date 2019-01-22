@@ -145,11 +145,17 @@ obj_id obj_register_builtin_func(struct vm *vm, struct atom **param_names,
 								 type_id ret_type, vm_builtin_func value,
 								 void *data);
 
+struct expr;
 struct expr_node;
 
-obj_id obj_register_native_func(struct vm *vm, struct atom **param_names,
-								type_id *params, size_t num_params,
-								type_id ret_type, struct expr_node *node);
+/* obj_id obj_register_native_func(struct vm *vm, struct atom **param_names, */
+/* 								type_id *params, size_t num_params, */
+/* 								type_id ret_type, struct expr *expr, */
+/* 								struct expr_node *node); */
+
+obj_id
+obj_register_native_func(struct vm *vm, struct expr *expr,
+						 struct expr_node *node, type_id);
 
 type_id type_obj_get(struct vm *vm, struct object obj);
 
@@ -213,7 +219,10 @@ struct obj_native_func_data {
 			void *data;
 			size_t length;
 		} instr;
-		struct expr_node *node;
+		struct {
+			struct expr *expr;
+			struct expr_node *node;
+		} node;
 	};
 };
 
@@ -240,6 +249,7 @@ void vm_exec(struct vm *vm, struct exec_stack *stack, void *instructions, size_t
 
 int arena_alloc_stack(struct exec_stack *stack, struct arena *mem, size_t stack_size);
 
+void *stack_push_void(struct exec_stack *stack, size_t size);
 void stack_push(struct exec_stack *stack, void *src, size_t size);
 void stack_pop_void(struct exec_stack *stack, size_t size);
 void stack_pop(struct exec_stack *stack, void *dest, size_t size);

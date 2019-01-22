@@ -449,14 +449,16 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		if ((node->lookup.scope->flags & flags) == flags) {
 			int err;
 			struct object obj;
-			err = expr_eval_simple(vm, node, &obj);
+
+			node->flags |= EXPR_TYPED | EXPR_CONST;
+
+			err = expr_eval_simple(vm, expr, node, &obj);
 
 			if (err) {
 				return -1;
 			}
 
 			expr_bind_type(vm, expr, node->rule.out, obj.type);
-			node->flags |= EXPR_TYPED | EXPR_CONST;
 		}
 	} break;
 
@@ -481,7 +483,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 				int err;
 				struct object type_obj;
 
-				err = expr_eval_simple(vm, node->type_expr, &type_obj);
+				err = expr_eval_simple(vm, expr, node->type_expr, &type_obj);
 				if (err) {
 					return -1;
 				}
@@ -514,7 +516,8 @@ expr_typecheck(struct vm *vm, struct expr *expr)
 
 
 static int
-expr_eval_lookup(struct vm *vm, struct exec_stack *stack,
+expr_eval_lookup(struct vm *vm, struct expr *expr,
+				 struct exec_stack *stack,
 				 struct expr_node *node,
 				 struct scope_entry *result)
 {
@@ -524,7 +527,7 @@ expr_eval_lookup(struct vm *vm, struct exec_stack *stack,
 	struct object out_scope;
 	int err;
 
-	err = expr_eval(vm, stack, node->lookup.scope, &out_scope);
+	err = expr_eval(vm, expr, stack, node->lookup.scope, &out_scope);
 
 	if (err) {
 		return err;
@@ -567,15 +570,40 @@ expr_eval_lookup(struct vm *vm, struct exec_stack *stack,
 }
 
 int
-expr_eval(struct vm *vm, struct exec_stack *stack,
-			  struct expr_node *node, struct object *out)
+expr_eval(struct vm *vm, struct expr *expr,
+		  struct exec_stack *stack,
+		  struct expr_node *node, struct object *out)
 {
 	type_id out_type = TYPE_NONE;
+
+	if ((node->flags & EXPR_TYPED) == 0) {
+		panic("Trying to evaluate an untyped expression.");
+		return -1;
+	}
 
 	switch (node->type) {
 
 	case EXPR_NODE_FUNC_DECL: {
-		panic("TODO: func decl expr");
+		/* obj_id obj; */
+		/* obj = obj_register_native_func(vm, expr, node->func_decl.body, */
+		/* 							   expr->slots[node->rule.out]); */
+		/* struct object func_obj; */
+		/* func_obj = get_object(&vm->store, obj); */
+
+		struct object func_obj;
+		struct obj_native_func_data *data;
+
+		func_obj.type = expr->slots[node->rule.out];
+		func_obj.data =
+			stack_push_void(stack, sizeof(struct obj_native_func_data));
+
+		data = func_obj.data;
+
+		data->storage = NATIVE_FUNC_STORAGE_NODES;
+		data->node.expr = expr;
+		data->node.node = node;
+
+		out_type = func_obj.type;
 	} break;
 
 	case EXPR_NODE_FUNC_CALL: {
@@ -589,7 +617,7 @@ expr_eval(struct vm *vm, struct exec_stack *stack,
 		while (arg) {
 			struct object arg_obj;
 
-			err = expr_eval(vm, stack, arg, &arg_obj);
+			err = expr_eval(vm, expr, stack, arg, &arg_obj);
 			if (err) {
 				return err;
 			}
@@ -600,7 +628,7 @@ expr_eval(struct vm *vm, struct exec_stack *stack,
 
 		struct object func_obj;
 
-		err = expr_eval(vm, stack, node->func_call.func, &func_obj);
+		err = expr_eval(vm, expr, stack, node->func_call.func, &func_obj);
 		if (err) {
 			return err;
 		}
@@ -641,7 +669,7 @@ expr_eval(struct vm *vm, struct exec_stack *stack,
 		int err;
 		struct scope_entry result;
 
-		err = expr_eval_lookup(vm, stack, node, &result);
+		err = expr_eval_lookup(vm, expr, stack, node, &result);
 		if (err) {
 			return -1;
 		}
@@ -708,8 +736,9 @@ expr_eval(struct vm *vm, struct exec_stack *stack,
 
 int
 expr_eval_simple(struct vm *vm,
-					 struct expr_node *node,
-					 struct object *out)
+				 struct expr *expr,
+				 struct expr_node *node,
+				 struct object *out)
 {
 	struct exec_stack stack = {0};
 	struct arena mem = arena_push(&vm->memory);
@@ -717,7 +746,7 @@ expr_eval_simple(struct vm *vm,
 	arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
 
 	int err;
-	err = expr_eval(vm, &stack, node, out);
+	err = expr_eval(vm, expr, &stack, node, out);
 
 	arena_pop(&vm->memory, mem);
 
@@ -735,7 +764,7 @@ enum expr_simplify_result {
 };
 
 static int
-expr_do_simplify_const(struct vm *vm, struct expr_node *node)
+expr_do_simplify_const(struct vm *vm, struct expr *expr, struct expr_node *node)
 {
 	printf("\nsimplify const:\n");
 	/* expr_print_internal(vm, node); */
@@ -743,7 +772,7 @@ expr_do_simplify_const(struct vm *vm, struct expr_node *node)
 	struct object result;
 	int err;
 
-	err = expr_eval_simple(vm, node, &result);
+	err = expr_eval_simple(vm, expr, node, &result);
 	if (err) {
 		return err;
 	}
@@ -759,7 +788,7 @@ expr_do_simplify_const(struct vm *vm, struct expr_node *node)
 }
 
 static enum expr_simplify_result
-expr_simplify_internal(struct vm *vm, struct expr_node *node)
+expr_simplify_internal(struct vm *vm, struct expr *expr, struct expr_node *node)
 {
 	assert(node);
 
@@ -775,13 +804,13 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 	case EXPR_NODE_FUNC_CALL: {
 		result = CFG_SIMPLIFY_ALL;
 
-		result &= expr_simplify_internal(vm, node->func_call.func);
+		result &= expr_simplify_internal(vm, expr, node->func_call.func);
 
 		struct expr_node *arg;
 		arg = node->func_call.args;
 
 		while (arg) {
-			result &= expr_simplify_internal(vm, arg);
+			result &= expr_simplify_internal(vm, expr, arg);
 			arg = arg->next_arg;
 		}
 
@@ -792,15 +821,15 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 			// values we have to cache in the object store.
 
 			enum expr_simplify_result res;
-			res = expr_simplify_internal(vm, node->func_call.func);
+			res = expr_simplify_internal(vm, expr, node->func_call.func);
 			if ((res & CFG_SIMPLIFY_CONST) != 0) {
-				expr_do_simplify_const(vm, node->func_call.func);
+				expr_do_simplify_const(vm, expr, node->func_call.func);
 			}
 
 			while (arg) {
-				res = expr_simplify_internal(vm, arg);
+				res = expr_simplify_internal(vm, expr, arg);
 				if ((res & CFG_SIMPLIFY_CONST) != 0) {
-					expr_do_simplify_const(vm, arg);
+					expr_do_simplify_const(vm, expr, arg);
 				}
 				arg = arg->next_arg;
 			}
@@ -809,7 +838,7 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 
 	case EXPR_NODE_LOOKUP_LOCAL:
 	case EXPR_NODE_LOOKUP_GLOBAL: {
-		result = expr_simplify_internal(vm, node->lookup.scope);
+		result = expr_simplify_internal(vm, expr, node->lookup.scope);
 
 		if ((result & CFG_SIMPLIFY_OK) != 0) {
 			break;
@@ -823,7 +852,7 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 			struct arena mem = arena_push(&vm->memory);
 
 			arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
-			err = expr_eval_lookup(vm, &stack, node, &entry);
+			err = expr_eval_lookup(vm, expr, &stack, node, &entry);
 			arena_pop(&vm->memory, mem);
 
 			if (err) {
@@ -875,13 +904,13 @@ expr_simplify_internal(struct vm *vm, struct expr_node *node)
 }
 
 void
-expr_simplify(struct vm *vm, struct expr_node *node)
+expr_simplify(struct vm *vm, struct expr *expr, struct expr_node *node)
 {
 	enum expr_simplify_result result;
-	result = expr_simplify_internal(vm, node);
+	result = expr_simplify_internal(vm, expr, node);
 
 	if ((result & CFG_SIMPLIFY_CONST) != 0) {
-		expr_do_simplify_const(vm, node);
+		expr_do_simplify_const(vm, expr, node);
 	}
 }
 

@@ -150,15 +150,17 @@ int
 expr_typecheck(struct vm *, struct expr *);
 
 int
-expr_eval_simple(struct vm *vm, struct expr_node *,
-				 struct object *out);
+expr_eval_simple(struct vm *vm, struct expr *,
+				 struct expr_node *, struct object *out);
 
 int
-expr_eval(struct vm *vm, struct exec_stack *stack,
-		  struct expr_node *, struct object *out);
+expr_eval(struct vm *vm, struct expr *,
+		  struct exec_stack *, struct expr_node *,
+		  struct object *out);
 
 void
-expr_simplify(struct vm *vm, struct expr_node *node);
+expr_simplify(struct vm *vm, struct expr *,
+			  struct expr_node *node);
 
 void
 expr_print(struct vm *vm, struct expr *);

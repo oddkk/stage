@@ -447,7 +447,7 @@ static void obj_eval_native_func(struct vm *vm, struct exec_stack *stack, void *
 		break;
 
 	case NATIVE_FUNC_STORAGE_NODES:
-		expr_eval(vm, stack, func.node, NULL);
+		expr_eval(vm, func.node.expr, stack, func.node.node, NULL);
 		break;
 	}
 }
@@ -1069,26 +1069,27 @@ obj_id obj_register_builtin_func_from_tuple(struct vm *vm, type_id params, type_
 									 value, data);
 }
 
-obj_id obj_register_native_func(struct vm *vm, struct atom **param_names,
-								type_id *params, size_t num_params,
-								type_id ret_type, struct expr_node *node)
-{
-	struct object result = {0};
-	struct obj_native_func_data obj_data = {0};
+/* obj_id obj_register_native_func(struct vm *vm, struct atom **param_names, */
+/* 								type_id *params, size_t num_params, */
+/* 								type_id ret_type, struct expr *expr, */
+/* 								struct expr_node *node) */
 
-	obj_data.storage = NATIVE_FUNC_STORAGE_NODES;
-	obj_data.node = node;
+/* obj_id */
+/* obj_register_native_func(struct vm *vm, struct expr *expr, */
+/* 						 struct expr_node *node, type_id type) */
+/* { */
+/* 	struct object result = {0}; */
+/* 	struct obj_native_func_data obj_data = {0}; */
 
-	type_id type;
-	type = type_register_function(vm, param_names, params,
-								  num_params, ret_type,
-								  TYPE_FUNCTION_NATIVE);
+/* 	obj_data.storage = NATIVE_FUNC_STORAGE_NODES; */
+/* 	obj_data.node.expr = expr; */
+/* 	obj_data.node.node = node; */
 
-	result.type = type;
-	result.data = &obj_data;
+/* 	result.type = type; */
+/* 	result.data = &obj_data; */
 
-	return register_object(&vm->store, result);
-}
+/* 	return register_object(&vm->store, result); */
+/* } */
 
 type_id type_obj_get(struct vm *vm, struct object obj)
 {
@@ -1108,6 +1109,18 @@ int arena_alloc_stack(struct exec_stack *stack, struct arena *mem, size_t stack_
 	}
 
 	return 0;
+}
+
+void *stack_push_void(struct exec_stack *stack, size_t size)
+{
+	void *result;
+
+	assert((stack->sp + size) < (stack->memory + stack->cap));
+	memset(stack->sp, 0, size);
+	result = stack->sp;
+	stack->sp += size;
+
+	return result;
 }
 
 void stack_push(struct exec_stack *stack, void *src, size_t size)

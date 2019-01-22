@@ -890,12 +890,29 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 						   params, num_params, ret, body);
 	}
 		// fallthrough
-	case CFG_COMPILE_FUNC_RESOLVE:
+	case CFG_COMPILE_FUNC_RESOLVE: {
 		printf("\n");
 		expr_finalize(ctx->vm, &data->expr);
 		expr_typecheck(ctx->vm, &data->expr);
 		/* expr_print(ctx->vm, &data->expr); */
-		break;
+
+		struct expr *expr;
+		expr = calloc(1, sizeof(struct expr));
+		*expr = data->expr;
+
+		struct object func_obj;
+
+		expr_eval_simple(ctx->vm, expr, expr->body, &func_obj);
+
+		*data->out_func_obj =
+			register_object(&ctx->vm->store, func_obj);
+
+		/* *data->out_func_obj = */
+		/* 	obj_register_native_func(ctx->vm, expr, expr->body); */
+
+		return JOB_OK;
+	} break;
+
 	}
 
 	return JOB_ERROR;
@@ -1178,7 +1195,7 @@ job_resolve_type_l_expr(struct cfg_ctx *ctx, job_resolve_type_l_expr_t *data)
 		int err;
 		struct object obj;
 
-		err = expr_eval_simple(ctx->vm, data->expr.body, &obj);
+		err = expr_eval_simple(ctx->vm, &data->expr, data->expr.body, &obj);
 		if (err) {
 			return JOB_ERROR;
 		}
