@@ -595,7 +595,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 
 		data->storage = NATIVE_FUNC_STORAGE_NODES;
 		data->node.expr = expr;
-		data->node.node = node;
+		data->node.node = node->func_decl.body;
 
 		out_type = func_obj.type;
 	} break;
