@@ -18,48 +18,6 @@ CFG_JOB(visit_decl_stmt, struct {
 	struct scope *child_scope;
 })
 
-CFG_JOB(enum_decl, struct {
-	struct scope *scope;
-	struct cfg_node *node;
-	struct cfg_node *args;
-	type_id *out_type;
-	struct scope *child_scope;
-})
-
-CFG_JOB(obj_decl, struct {
-	struct scope *scope;
-	struct cfg_node *node;
-	struct cfg_node *args;
-	type_id *out_type;
-})
-
-CFG_JOB(tuple_decl, struct {
-	struct scope *scope;
-	struct cfg_node *node;
-	struct cfg_node *args;
-	type_id *out_type;
-
-	enum cfg_tuple_decl_state state;
-	union {
-		struct type_tuple_item *named_items;
-		type_id *unnamed_items;
-	};
-	type_id access_func_params;
-	size_t num_items;
-	struct cfg_node *next_node_to_resolve;
-	size_t num_nodes_resolved;
-})
-
-CFG_JOB(func_proto_decl, struct {
-	bool initialized;
-	struct scope *scope;
-	struct cfg_node *node;
-	type_id params;
-	type_id ret;
-	type_id *out_type;
-	enum cfg_func_proto_decl_state state;
-})
-
 CFG_JOB(func_decl, struct {
 	struct scope *scope;
 	struct cfg_node *node;
@@ -78,35 +36,4 @@ CFG_JOB(compile_func, struct {
 	obj_id *out_func_obj;
 	type_id proto;
 	struct expr expr;
-	/* struct expr_node *func; */
-})
-
-CFG_JOB(visit_expr, struct {
-	struct expr_context *func_ctx;
-	struct cfg_node *node;
-	struct expr *expr;
-	struct expr_node **out_expr;
-	struct expr_node *local_scope;
-
-	struct expr_node *tmp_func;
-
-	union {
-		struct {
-			struct expr_node *func;
-			struct expr_node *first_arg;
-		} func_call;
-	};
-	unsigned int iter;
-})
-
-CFG_JOB(resolve_type_l_expr, struct {
-	struct scope *scope;
-	struct cfg_node *node;
-
-	bool dispatched;
-	struct expr expr;
-	/* struct expr_node *func; */
-	/* struct object obj; */
-	struct scope_entry entry;
-	type_id *out_type;
 })
