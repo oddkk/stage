@@ -505,13 +505,12 @@ int
 expr_typecheck(struct vm *vm, struct expr *expr)
 {
 	expr_bind_obvious_types(vm, expr, expr->body);
-	printf("\nbefore typecheck:\n");
-	expr_print(vm, expr);
 
 	expr_try_infer_types(vm, expr, expr->body);
-	printf("\ntypecheck iter 0:\n");
+	printf("typecheck iter 0:\n");
 	expr_print(vm, expr);
-	return -1;
+
+	return (expr->num_type_errors == 0) ? 0 : -1;
 }
 
 
@@ -749,7 +748,6 @@ static int
 expr_do_simplify_const(struct vm *vm, struct expr *expr, struct expr_node *node)
 {
 	printf("\nsimplify const:\n");
-	/* expr_print_internal(vm, node); */
 
 	struct object result;
 	int err;

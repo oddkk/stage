@@ -654,7 +654,15 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 	case CFG_COMPILE_FUNC_RESOLVE: {
 		printf("\n");
 		expr_finalize(ctx->vm, &data->expr);
-		expr_typecheck(ctx->vm, &data->expr);
+
+		int err;
+
+		err = expr_typecheck(ctx->vm, &data->expr);
+
+		if (err) {
+			*data->out_func_obj = OBJ_NONE;
+			return JOB_ERROR;
+		}
 
 		struct expr *expr;
 		expr = calloc(1, sizeof(struct expr));
