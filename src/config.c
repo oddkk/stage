@@ -687,6 +687,7 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		if (!err) {
 			printf("eval: ");
 			print_obj_repr(ctx->vm, test_obj);
+			printf(" ");
 		}
 #endif
 

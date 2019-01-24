@@ -215,7 +215,7 @@ void
 expr_finalize(struct vm *vm, struct expr *expr)
 {
 	assert(expr->slots == NULL);
-	expr->slots = calloc(expr->num_type_slots, sizeof(type_id));
+	expr->slots = calloc(expr->num_type_slots, sizeof(struct expr_type_slot));
 }
 
 int
@@ -230,9 +230,14 @@ expr_bind_type(struct vm *vm, struct expr *expr,
 
 	type_id unified;
 
-	if (!unify_types(vm, expr->slots[slot], type, &unified)) {
+	func_type_id real_slot;
+	real_slot = expr_get_actual_slot(expr, slot);
+
+	type_id slot_type = expr_get_slot_type(expr, real_slot);
+
+	if (!unify_types(vm, slot_type, type, &unified)) {
 		printf("Conflicting types '");
-		print_type_repr(vm, get_type(&vm->store, expr->slots[slot]));
+		print_type_repr(vm, get_type(&vm->store, expr_get_slot_type(expr, slot)));
 		printf("' and '");
 		print_type_repr(vm, get_type(&vm->store, type));
 		printf("'. (slot %u)\n", slot);
@@ -242,9 +247,33 @@ expr_bind_type(struct vm *vm, struct expr *expr,
 	}
 
 	// @TODO: Should the type be updated if they can be generalized?
-	expr->slots[slot] = unified;
+	expr->slots[real_slot].type = unified;
+	expr->slots[real_slot].state = SLOT_BOUND;
 
 	return 0;
+}
+
+func_type_id
+expr_get_actual_slot(struct expr *expr, func_type_id slot)
+{
+	while (expr->slots[slot].state == SLOT_BOUND_REF) {
+		slot = expr->slots[slot].ref;
+	}
+
+	return slot;
+}
+
+
+type_id
+expr_get_slot_type(struct expr *expr, func_type_id slot)
+{
+	slot = expr_get_actual_slot(expr, slot);
+	assert(expr->slots[slot].state != SLOT_BOUND_REF);
+	if (expr->slots[slot].state == SLOT_BOUND) {
+		return expr->slots[slot].type;
+	} else {
+		return TYPE_UNSET;
+	}
 }
 
 static void
@@ -353,7 +382,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 			ret_err &= expr_try_infer_types(vm, expr, param);
 
 			param_names[i] = node->func_decl.params[i].name;
-			param_types[i] = expr->slots[node->rule.abs.params[i]];
+			param_types[i] = expr_get_slot_type(expr, node->rule.abs.params[i]);
 
 			flags &= param->flags;
 		}
@@ -368,7 +397,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		flags &= node->func_decl.body->flags;
 
 		type_id ret_type;
-		ret_type = expr->slots[node->rule.abs.ret];
+		ret_type = expr_get_slot_type(expr, node->rule.abs.ret);
 
 		type_id func_type;
 		func_type =
@@ -394,11 +423,11 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		while (arg) {
 			ret_err &= expr_try_infer_types(vm, expr, arg);
 
-			if (expr->slots[node->rule.app.args[arg_i]] == TYPE_UNSET) {
+			if (expr_get_slot_type(expr, node->rule.app.args[arg_i]) == TYPE_UNSET) {
 				num_unresolved_args += 1;
 			}
 
-			param_types[arg_i] = expr->slots[node->rule.app.args[arg_i]];
+			param_types[arg_i] = expr_get_slot_type(expr, node->rule.app.args[arg_i]);
 
 			arg_i += 1;
 			arg = arg->next_arg;
@@ -407,7 +436,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		assert(arg_i == node->rule.app.num_args);
 
 		type_id ret_type;
-		ret_type = expr->slots[node->rule.out];
+		ret_type = expr_get_slot_type(expr, node->rule.out);
 
 		type_id func_type;
 		func_type =
@@ -423,7 +452,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		struct type *new_func_type;
 		new_func_type =
 			get_type(&vm->store,
-					 expr->slots[node->rule.app.func]);
+					 expr_get_slot_type(expr, node->rule.app.func));
 
 		struct type_func *new_func;
 		new_func = new_func_type->data;
@@ -642,7 +671,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 		struct object func_obj;
 		struct obj_native_func_data *data;
 
-		func_obj.type = expr->slots[node->rule.out];
+		func_obj.type = expr_get_slot_type(expr, node->rule.out);
 		assert(get_type(&vm->store, func_obj.type)->size ==
 			   sizeof(struct obj_native_func_data));
 		func_obj.data =
@@ -698,7 +727,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 		assert(type->base->eval != NULL);
 		type->base->eval(vm, stack, NULL);
 
-		assert(type_func->ret == expr->slots[node->rule.out]);
+		assert(type_func->ret == expr_get_slot_type(expr, node->rule.out));
 		struct type *ret_type = get_type(&vm->store, type_func->ret);
 
 		struct object ret_obj;
@@ -973,7 +1002,7 @@ expr_print_slot(struct vm *vm, struct expr *expr, func_type_id slot)
 {
 	if (expr->slots) {
 		printf("%u (", slot);
-		print_type_repr(vm, get_type(&vm->store, expr->slots[slot]));
+		print_type_repr(vm, get_type(&vm->store, expr_get_slot_type(expr, slot)));
 		printf(")");
 	} else {
 		printf("%u", slot);

@@ -100,12 +100,26 @@ enum expr_typecheck_state {
 	EXPR_TYPECHECK_ERROR,
 };
 
+enum expr_type_slot_state {
+	SLOT_UNBOUND = 0,
+	SLOT_BOUND,
+	SLOT_BOUND_REF,
+};
+
+struct expr_type_slot {
+	enum expr_type_slot_state state;
+	union {
+		type_id type;
+		func_type_id ref;
+	};
+};
+
 struct expr {
 	struct expr_node *body;
 	struct scope *outer_scope;
 
 	size_t num_type_slots;
-	type_id *slots;
+	struct expr_type_slot *slots;
 	size_t num_type_errors;
 
 	enum expr_typecheck_state state;
@@ -155,6 +169,13 @@ expr_finalize(struct vm *, struct expr *);
 int
 expr_bind_type(struct vm *, struct expr *,
 			   func_type_id, type_id);
+
+func_type_id
+expr_get_actual_slot(struct expr *expr, func_type_id slot);
+
+
+type_id
+expr_get_slot_type(struct expr *expr, func_type_id slot);
 
 // Returns 0 if done, -1 if error and 1 if yield.
 int
