@@ -203,13 +203,13 @@ bool unify_types(struct vm *vm, type_id lhs, type_id rhs, type_id *out)
 			struct type_unifier *uni;
 			uni = &rhs_type->base->unifiers[i];
 
-			assert(uni->other != rhs_type->base ||
-				!"unifiers where not applied symmetrically");
-
 			if (uni->other == NULL) {
 				unifier = uni;
 				break;
 			}
+
+			assert(uni->other != lhs_type->base ||
+				!"unifiers where not applied symmetrically");
 		}
 	}
 

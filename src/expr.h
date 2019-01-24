@@ -93,6 +93,13 @@ struct expr_node {
 	};
 };
 
+enum expr_typecheck_state {
+	EXPR_TYPECHECK_IDLE = 0,
+	EXPR_TYPECHECK_INFER_TYPES,
+	EXPR_TYPECHECK_DONE,
+	EXPR_TYPECHECK_ERROR,
+};
+
 struct expr {
 	struct expr_node *body;
 	struct scope *outer_scope;
@@ -100,6 +107,9 @@ struct expr {
 	size_t num_type_slots;
 	type_id *slots;
 	size_t num_type_errors;
+
+	enum expr_typecheck_state state;
+	size_t num_infer;
 };
 
 struct expr_node *
@@ -146,6 +156,7 @@ int
 expr_bind_type(struct vm *, struct expr *,
 			   func_type_id, type_id);
 
+// Returns 0 if done, -1 if error and 1 if yield.
 int
 expr_typecheck(struct vm *, struct expr *);
 

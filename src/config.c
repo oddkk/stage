@@ -649,19 +649,21 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		data->expr.body =
 			expr_func_decl(ctx->vm, &data->expr,
 						   params, num_params, ret, body);
+
+		data->state = CFG_COMPILE_FUNC_RESOLVE;
 	}
 		// fallthrough
 	case CFG_COMPILE_FUNC_RESOLVE: {
-		printf("\n");
-		expr_finalize(ctx->vm, &data->expr);
-
 		int err;
 
+		// printf("\n");
 		err = expr_typecheck(ctx->vm, &data->expr);
 
-		if (err) {
+		if (err < 0) {
 			*data->out_func_obj = OBJ_NONE;
 			return JOB_ERROR;
+		} else if (err > 0) {
+			return JOB_YIELD;
 		}
 
 		struct expr *expr;

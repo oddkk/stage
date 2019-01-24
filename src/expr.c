@@ -323,10 +323,19 @@ expr_bind_obvious_types(struct vm *vm, struct expr *expr,
 	}
 }
 
-static int
+enum expr_infer_types_error {
+	EXPR_INFER_TYPES_OK    = 0x3, // 0b11
+	EXPR_INFER_TYPES_YIELD = 0x1, // 0b01
+	EXPR_INFER_TYPES_ERROR = 0x0, // 0b00
+};
+
+static enum expr_infer_types_error
 expr_try_infer_types(struct vm *vm, struct expr *expr,
 					 struct expr_node *node)
 {
+	enum expr_infer_types_error ret_err;
+	ret_err = EXPR_INFER_TYPES_OK;
+
 	switch (node->type) {
 	case EXPR_NODE_FUNC_DECL: {
 		enum expr_node_flags flags;
@@ -339,7 +348,8 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		for (size_t i = 0; i < node->func_decl.num_params; i++) {
 			struct expr_node *param;
 			param = node->func_decl.params[i].type;
-			expr_try_infer_types(vm, expr, param);
+
+			ret_err &= expr_try_infer_types(vm, expr, param);
 
 			param_names[i] = node->func_decl.params[i].name;
 			param_types[i] = expr->slots[node->rule.abs.params[i]];
@@ -349,10 +359,10 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 		struct expr_node *ret;
 		ret = node->func_decl.ret_type;
-		expr_try_infer_types(vm, expr, ret);
+		ret_err &= expr_try_infer_types(vm, expr, ret);
 		flags &= ret->flags;
 
-		expr_try_infer_types(vm, expr, node->func_decl.body);
+		ret_err &= expr_try_infer_types(vm, expr, node->func_decl.body);
 
 		flags &= node->func_decl.body->flags;
 
@@ -368,7 +378,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		expr_bind_type(vm, expr, node->rule.out, func_type);
 
 		node->flags = flags;
-	} break;
+	} return ret_err;
 
 	case EXPR_NODE_FUNC_CALL: {
 		size_t num_unresolved_args = 0;
@@ -381,7 +391,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		param_types = calloc(node->rule.app.num_args, sizeof(type_id));
 
 		while (arg) {
-			expr_try_infer_types(vm, expr, arg);
+			ret_err &= expr_try_infer_types(vm, expr, arg);
 
 			if (expr->slots[node->rule.app.args[arg_i]] == TYPE_UNSET) {
 				num_unresolved_args += 1;
@@ -407,7 +417,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		free(param_types);
 
 		expr_bind_type(vm, expr, node->rule.app.func, func_type);
-		expr_try_infer_types(vm, expr, node->func_call.func);
+		ret_err &= expr_try_infer_types(vm, expr, node->func_call.func);
 
 		struct type *new_func_type;
 		new_func_type =
@@ -425,7 +435,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		while (arg) {
 			expr_bind_type(vm, expr, node->rule.app.args[arg_i],
 						   new_func->param_types[arg_i]);
-			expr_try_infer_types(vm, expr, arg);
+			ret_err &= expr_try_infer_types(vm, expr, arg);
 
 			all_params_flags &= arg->flags;
 
@@ -437,47 +447,56 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 					   new_func->ret);
 
 		node->flags = node->func_call.func->flags & all_params_flags;
-
-	} break;
+	} return ret_err;
 
 	case EXPR_NODE_LOOKUP_GLOBAL:
 	case EXPR_NODE_LOOKUP_LOCAL: {
-		expr_try_infer_types(vm, expr, node->lookup.scope);
+		ret_err &= expr_try_infer_types(vm, expr, node->lookup.scope);
 
 		int flags = EXPR_TYPED | EXPR_CONST;
 
 		if ((node->lookup.scope->flags & flags) == flags) {
 			int err;
 			struct object obj;
+			enum expr_node_flags prev_flags;
+			prev_flags = node->flags;
 
 			node->flags |= EXPR_TYPED | EXPR_CONST;
 
 			err = expr_eval_simple(vm, expr, node, &obj);
 
 			if (err) {
-				return -1;
+				// The object was not found.
+				node->flags = prev_flags;
+				return EXPR_INFER_TYPES_ERROR;
+			}
+
+			if (obj.type == TYPE_UNSET) {
+				// The object has not yet been initialized.
+				node->flags = prev_flags;
+				return ret_err & EXPR_INFER_TYPES_YIELD;
 			}
 
 			expr_bind_type(vm, expr, node->rule.out, obj.type);
 		}
-	} break;
+	} return ret_err;
 
 	case EXPR_NODE_GLOBAL:
 	case EXPR_NODE_STACK:
-		break;
+		return ret_err;
 
 	case EXPR_NODE_SCOPE:
-		break;
+		return ret_err;
 
 	case EXPR_NODE_LIT_INT:
-		break;
+		return ret_err;
 
 	case EXPR_NODE_LIT_STR:
-		break;
+		return ret_err;
 
 	case EXPR_NODE_TYPE_EXPR:
 		if (node->type_expr) {
-			expr_try_infer_types(vm, expr, node->type_expr);
+			ret_err &= expr_try_infer_types(vm, expr, node->type_expr);
 
 			if ((node->type_expr->flags & EXPR_CONST) != 0) {
 				int err;
@@ -485,7 +504,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 				err = expr_eval_simple(vm, expr, node->type_expr, &type_obj);
 				if (err) {
-					return -1;
+					return EXPR_INFER_TYPES_ERROR;
 				}
 
 				type_id type = type_obj_get(vm, type_obj);
@@ -494,23 +513,59 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 			node->flags = node->type_expr->flags;
 		}
-		break;
+		return ret_err;
 
 	}
 
-	return 0;
+	panic("Unhandled expr node in infer types.");
+	return EXPR_INFER_TYPES_ERROR;
 }
 
 int
 expr_typecheck(struct vm *vm, struct expr *expr)
 {
-	expr_bind_obvious_types(vm, expr, expr->body);
+	switch (expr->state) {
+	case EXPR_TYPECHECK_IDLE:
+		expr_finalize(vm, expr);
+		expr_bind_obvious_types(vm, expr, expr->body);
+		expr->state = EXPR_TYPECHECK_INFER_TYPES;
 
-	expr_try_infer_types(vm, expr, expr->body);
-	printf("typecheck iter 0:\n");
-	expr_print(vm, expr);
+		// fallthrough
 
-	return (expr->num_type_errors == 0) ? 0 : -1;
+	case EXPR_TYPECHECK_INFER_TYPES: {
+		enum expr_infer_types_error err;
+		err = expr_try_infer_types(vm, expr, expr->body);
+#if 0
+		printf("typecheck iter %zu:\n", expr->num_infer);
+		expr_print(vm, expr);
+#endif
+		expr->num_infer += 1;
+
+		switch (err) {
+		case EXPR_INFER_TYPES_OK:
+			if (expr->num_type_errors == 0) {
+				expr->state = EXPR_TYPECHECK_DONE;
+				return 0;
+			} else {
+				expr->state = EXPR_TYPECHECK_ERROR;
+				return -1;
+			}
+
+		case EXPR_INFER_TYPES_ERROR:
+			expr->state = EXPR_TYPECHECK_ERROR;
+			return -1;
+
+		case EXPR_INFER_TYPES_YIELD:
+			return 1;
+		}
+	}
+
+	case EXPR_TYPECHECK_DONE:
+		return 0;
+
+	case EXPR_TYPECHECK_ERROR:
+		return -1;
+	}
 }
 
 
