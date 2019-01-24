@@ -695,9 +695,19 @@ expr_eval(struct vm *vm, struct expr *expr,
 		assert(type->base->eval != NULL);
 		type->base->eval(vm, stack, NULL);
 
+		assert(type_func->ret == expr->slots[node->rule.out]);
+		struct type *ret_type = get_type(&vm->store, type_func->ret);
+
+		struct object ret_obj;
+		ret_obj.type = type_func->ret;
+		ret_obj.data = stack->sp - ret_type->size;
+
+		stack->sp = stack->bp;
 		stack->bp = prev_bp;
 
-		out_type = type_func->ret;
+		stack_push(stack, ret_obj.data, ret_type->size);
+
+		out_type = ret_obj.type;
 	} break;
 
 	case EXPR_NODE_LOOKUP_LOCAL:

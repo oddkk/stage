@@ -1104,7 +1104,7 @@ void *stack_push_void(struct exec_stack *stack, size_t size)
 void stack_push(struct exec_stack *stack, void *src, size_t size)
 {
 	assert((stack->sp + size) < (stack->memory + stack->cap));
-	memcpy(stack->sp, src, size);
+	memmove(stack->sp, src, size);
 	stack->sp += size;
 }
 

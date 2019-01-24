@@ -305,7 +305,8 @@ func_proto:		tuple_decl "->" type_expr
 					{ $$ = MKNODE(FUNC_PROTO, .params=$1, .ret=$3); }
 		;
 
-func_call:		l_expr tuple_lit       { $$ = MKNODE(FUNC_CALL, .ident=$1, .params=$2); }
+func_call:		l_expr tuple_lit       { $$ = MKNODE(FUNC_CALL, .ident=$1, .params=$2);   }
+		|		l_expr '(' ')'         { $$ = MKNODE(FUNC_CALL, .ident=$1, .params=NULL); }
 		;
 
 

@@ -374,29 +374,31 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 
 		struct cfg_node *args_tuple;
 		args_tuple = node->FUNC_CALL.params;
-		assert(args_tuple->type == CFG_NODE_TUPLE_LIT);
-		assert(!args_tuple->TUPLE_LIT.named);
+		if (args_tuple) {
+			assert(args_tuple->type == CFG_NODE_TUPLE_LIT);
+			assert(!args_tuple->TUPLE_LIT.named);
 
-		struct cfg_node *arg;
-		arg = args_tuple->TUPLE_LIT.items;
+			struct cfg_node *arg;
+			arg = args_tuple->TUPLE_LIT.items;
 
 
-		while (arg) {
-			struct expr_node *n;
+			while (arg) {
+				struct expr_node *n;
 
-			n = cfg_node_visit_expr(ctx, expr,
-									scope, NULL,
-									arg->TUPLE_LIT_ITEM.value);
+				n = cfg_node_visit_expr(ctx, expr,
+										scope, NULL,
+										arg->TUPLE_LIT_ITEM.value);
 
-			if (!first_arg) {
-				assert(!last_arg);
-				first_arg = n;
-				last_arg = n;
-			} else {
-				last_arg->next_arg = n;
+				if (!first_arg) {
+					assert(!last_arg);
+					first_arg = n;
+					last_arg = n;
+				} else {
+					last_arg->next_arg = n;
+				}
+
+				arg = arg->next_sibling;
 			}
-
-			arg = arg->next_sibling;
 		}
 
 		struct expr_node *func;
@@ -673,6 +675,15 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		struct object func_obj;
 
 		expr_eval_simple(ctx->vm, expr, expr->body, &func_obj);
+
+#if 0
+		struct object test_obj;
+		err = expr_eval_simple(ctx->vm, expr, expr->body->func_decl.body, &test_obj);
+		if (!err) {
+			printf("eval: ");
+			print_obj_repr(ctx->vm, test_obj);
+		}
+#endif
 
 		*data->out_func_obj =
 			register_object(&ctx->vm->store, func_obj);
