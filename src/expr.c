@@ -1,5 +1,6 @@
 #include "expr.h"
 #include <stdlib.h>
+#include <string.h>
 #include "utils.h"
 
 static func_type_id
@@ -642,6 +643,8 @@ expr_eval(struct vm *vm, struct expr *expr,
 		struct obj_native_func_data *data;
 
 		func_obj.type = expr->slots[node->rule.out];
+		assert(get_type(&vm->store, func_obj.type)->size ==
+			   sizeof(struct obj_native_func_data));
 		func_obj.data =
 			stack_push_void(stack, sizeof(struct obj_native_func_data));
 

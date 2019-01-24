@@ -94,8 +94,8 @@ static void obj_integer_mul(struct vm *vm, struct exec_stack *stack, void *data)
 	(void)data;
 	int64_t lhs, rhs;
 
-	stack_pop(stack, &lhs, sizeof(lhs));
 	stack_pop(stack, &rhs, sizeof(rhs));
+	stack_pop(stack, &lhs, sizeof(lhs));
 
 	int64_t result = lhs * rhs;
 
@@ -107,8 +107,8 @@ static void obj_integer_div(struct vm *vm, struct exec_stack *stack, void *data)
 	(void)data;
 	int64_t lhs, rhs;
 
-	stack_pop(stack, &lhs, sizeof(lhs));
 	stack_pop(stack, &rhs, sizeof(rhs));
+	stack_pop(stack, &lhs, sizeof(lhs));
 
 	int64_t result = lhs / rhs;
 
@@ -440,6 +440,7 @@ static void obj_eval_native_func(struct vm *vm, struct exec_stack *stack, void *
 {
 	struct obj_native_func_data func;
 	stack_pop(stack, &func, sizeof(struct obj_native_func_data));
+
 	switch (func.storage) {
 
 	case NATIVE_FUNC_STORAGE_INSTR:
@@ -448,6 +449,10 @@ static void obj_eval_native_func(struct vm *vm, struct exec_stack *stack, void *
 
 	case NATIVE_FUNC_STORAGE_NODES:
 		expr_eval(vm, func.node.expr, stack, func.node.node, NULL);
+		break;
+
+	default:
+		panic("Invalid native func storage.");
 		break;
 	}
 }
@@ -486,7 +491,7 @@ static type_id type_func_subtypes_iter(struct vm *vm, struct type *type, size_t 
 static void debug_print_integer(struct vm *vm, struct exec_stack *stack, void *data)
 {
 	int64_t value;
-	stack_pop(stack, &value, sizeof(int64_t));
+	stack_peek(stack, &value, sizeof(int64_t));
 
 	printf("debug print: %li\n", value);
 }
@@ -1119,6 +1124,12 @@ void stack_pop(struct exec_stack *stack, void *dest, size_t size)
 	assert((stack->sp - stack->memory) >= size);
 	stack->sp -= size;
 	memcpy(dest, stack->sp, size);
+}
+
+void stack_peek(struct exec_stack *stack, void *dest, size_t size)
+{
+	assert((stack->sp - stack->memory) >= size);
+	memcpy(dest, stack->sp - size, size);
 }
 
 inline static void *instr_read_pointer(void **data)

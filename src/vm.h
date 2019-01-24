@@ -242,6 +242,7 @@ void *stack_push_void(struct exec_stack *stack, size_t size);
 void stack_push(struct exec_stack *stack, void *src, size_t size);
 void stack_pop_void(struct exec_stack *stack, size_t size);
 void stack_pop(struct exec_stack *stack, void *dest, size_t size);
+void stack_peek(struct exec_stack *stack, void *dest, size_t size);
 
 int vm_init(struct vm *);
 

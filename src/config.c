@@ -676,7 +676,12 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 
 		expr_eval_simple(ctx->vm, expr, expr->body, &func_obj);
 
-#if 0
+		// NOTE: The object has to be registered right after the eval,
+		// otherwise the object might get overwritten on the arena.
+		*data->out_func_obj =
+			register_object(&ctx->vm->store, func_obj);
+
+#if 1
 		struct object test_obj;
 		err = expr_eval_simple(ctx->vm, expr, expr->body->func_decl.body, &test_obj);
 		if (!err) {
@@ -684,9 +689,6 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 			print_obj_repr(ctx->vm, test_obj);
 		}
 #endif
-
-		*data->out_func_obj =
-			register_object(&ctx->vm->store, func_obj);
 
 		return JOB_OK;
 	} break;
