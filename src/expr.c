@@ -47,11 +47,34 @@ expr_func_decl(struct vm *vm, struct expr *expr,
 
 	node = calloc(1, sizeof(struct expr_node));
 
+	expr_init_func_decl(vm, expr, node, params,
+						num_params, ret, body);
+
+	return node;
+}
+
+struct expr_node *
+expr_init_func_decl(struct vm *vm, struct expr *expr,
+					struct expr_node *node,
+					struct expr_func_decl_param *params,
+					size_t num_params,
+					struct expr_node *ret,
+					struct expr_node *body)
+{
 	node->type = EXPR_NODE_FUNC_DECL;
 	node->func_decl.params = params;
 	node->func_decl.num_params = num_params;
 	node->func_decl.ret_type = ret;
 	node->func_decl.body = body;
+	node->func_decl.scope.outer_scope = expr->outer_scope;
+	node->func_decl.scope.num_entries = node->func_decl.num_params;
+
+	node->func_decl.scope.entry_names =
+		calloc(node->func_decl.scope.num_entries,
+			   sizeof(struct atom *));
+	node->func_decl.scope.entry_types =
+		calloc(node->func_decl.scope.num_entries,
+			   sizeof(func_type_id));
 
 
 	node->rule.abs.num_params =
@@ -69,6 +92,11 @@ expr_func_decl(struct vm *vm, struct expr *expr,
 
 		node->rule.abs.params[i] =
 			node->func_decl.params[i].type->rule.type;
+
+		node->func_decl.scope.entry_names[i] =
+			node->func_decl.params[i].name;
+		node->func_decl.scope.entry_types[i] =
+			node->rule.abs.params[i];
 	}
 
 	node->func_decl.ret_type =
@@ -120,6 +148,24 @@ expr_call(struct vm *vm, struct expr *expr,
 		arg = arg->next_arg;
 	}
 
+	node->rule.out = alloc_type_slot(expr);
+
+	return node;
+}
+
+struct expr_node *
+expr_lookup_func_scope(struct vm *vm, struct expr *expr,
+					   struct atom *name,
+					   struct expr_func_scope *scope)
+{
+	struct expr_node *node;
+
+	node = calloc(1, sizeof(struct expr_node));
+
+	node->type = EXPR_NODE_LOOKUP_FUNC;
+
+	node->lookup.name = name;
+	node->lookup.func_scope = scope;
 	node->rule.out = alloc_type_slot(expr);
 
 	return node;
@@ -253,6 +299,23 @@ expr_bind_type(struct vm *vm, struct expr *expr,
 	return 0;
 }
 
+int
+expr_bind_ref_slot(struct vm *vm, struct expr *expr,
+				   func_type_id slot, func_type_id other)
+{
+	assert(expr->slots[slot].state != SLOT_BOUND_REF);
+
+	type_id old_type = TYPE_UNSET;
+	if (expr->slots[slot].state == SLOT_BOUND) {
+		old_type = expr->slots[slot].type;
+	}
+
+	expr->slots[slot].state = SLOT_BOUND_REF;
+	expr->slots[slot].ref = other;
+
+	return expr_bind_type(vm, expr, other, old_type);
+}
+
 func_type_id
 expr_get_actual_slot(struct expr *expr, func_type_id slot)
 {
@@ -308,6 +371,19 @@ expr_bind_obvious_types(struct vm *vm, struct expr *expr,
 		}
 
 		expr_bind_obvious_types(vm, expr, node->func_call.func);
+	} break;
+
+	case EXPR_NODE_LOOKUP_FUNC: {
+		struct expr_func_scope *func_scope = node->lookup.func_scope;
+		bool found = false;
+		for (size_t i = 0; i < func_scope->num_entries; i++) {
+			if (func_scope->entry_names[i] == node->lookup.name) {
+				expr_bind_ref_slot(vm, expr, node->rule.out,
+								   func_scope->entry_types[i]);
+				found = true;
+				break;
+			}
+		}
 	} break;
 
 	case EXPR_NODE_LOOKUP_GLOBAL:
@@ -479,6 +555,48 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		node->flags = node->func_call.func->flags & all_params_flags;
 	} return ret_err;
 
+	case EXPR_NODE_LOOKUP_FUNC: {
+		struct expr_func_scope *func_scope = node->lookup.func_scope;
+		bool found = false;
+		for (size_t i = 0; i < func_scope->num_entries; i++) {
+			if (func_scope->entry_names[i] == node->lookup.name) {
+				found = true;
+				break;
+			}
+		}
+		if (found) {
+			if (expr_get_slot_type(expr, node->rule.out) != TYPE_UNSET) {
+				node->flags |= EXPR_TYPED;
+			}
+			return ret_err;
+		} else {
+			int err;
+			struct object obj;
+			enum expr_node_flags prev_flags;
+			prev_flags = node->flags;
+
+			node->flags |= EXPR_TYPED | EXPR_CONST;
+
+			err = expr_eval_simple(vm, expr, node, &obj);
+
+			if (err) {
+				// The object was not found.
+				node->flags = prev_flags;
+				return EXPR_INFER_TYPES_ERROR;
+			}
+
+			if (obj.type == TYPE_UNSET) {
+				// The object has not yet been initialized.
+				node->flags = prev_flags;
+				return ret_err & EXPR_INFER_TYPES_YIELD;
+			}
+
+			expr_bind_type(vm, expr, node->rule.out, obj.type);
+
+			return ret_err;
+		}
+	} break;
+
 	case EXPR_NODE_LOOKUP_GLOBAL:
 	case EXPR_NODE_LOOKUP_LOCAL: {
 		ret_err &= expr_try_infer_types(vm, expr, node->lookup.scope);
@@ -565,7 +683,7 @@ expr_typecheck(struct vm *vm, struct expr *expr)
 	case EXPR_TYPECHECK_INFER_TYPES: {
 		enum expr_infer_types_error err;
 		err = expr_try_infer_types(vm, expr, expr->body);
-#if 0
+#if 1
 		printf("typecheck iter %zu:\n", expr->num_infer);
 		expr_print(vm, expr);
 #endif
@@ -691,7 +809,6 @@ expr_eval(struct vm *vm, struct expr *expr,
 		int err;
 
 		uint8_t *prev_bp = stack->bp;
-		stack->bp = stack->sp;
 
 		size_t num_args = 0;
 		while (arg) {
@@ -705,6 +822,8 @@ expr_eval(struct vm *vm, struct expr *expr,
 			num_args += 1;
 			arg = arg->next_arg;
 		}
+
+		stack->bp = stack->sp;
 
 		struct object func_obj;
 
@@ -742,6 +861,51 @@ expr_eval(struct vm *vm, struct expr *expr,
 		out_type = ret_obj.type;
 	} break;
 
+	case EXPR_NODE_LOOKUP_FUNC: {
+		struct expr_func_scope *func_scope = node->lookup.func_scope;
+
+		size_t offset = 0;
+		bool found = false;
+
+		for (ssize_t i = func_scope->num_entries - 1; i >= 0; i--) {
+			type_id tid = expr_get_slot_type(expr, func_scope->entry_types[i]);
+			struct type *type = get_type(&vm->store, tid);
+
+			offset += type->size;
+
+			if (func_scope->entry_names[i] == node->lookup.name) {
+				stack_push(stack, stack->bp - offset, type->size);
+				out_type = tid;
+				found = true;
+				break;
+			}
+		}
+
+		if (!found) {
+			int err;
+			struct scope_entry result;
+
+			err = scope_lookup(func_scope->outer_scope,
+							   node->lookup.name, &result);
+
+			if (err) {
+				printf("'%.*s' was not found.\n", ALIT(node->lookup.name));
+				return -1;
+			}
+
+			if (result.object.type == TYPE_NONE) {
+				assert(result.scope);
+				stack_push(stack, &result.scope, sizeof(struct scope *));
+				out_type = TYPE_SCOPE;
+			} else {
+				struct type *res_type = get_type(&vm->store, result.object.type);
+				stack_push(stack, result.object.data, res_type->size);
+				out_type = result.object.type;
+			}
+		}
+
+	} break;
+
 	case EXPR_NODE_LOOKUP_LOCAL:
 	case EXPR_NODE_LOOKUP_GLOBAL: {
 		int err;
@@ -758,11 +922,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 			out_type = TYPE_SCOPE;
 		} else {
 			struct type *res_type = get_type(&vm->store, result.object.type);
-			if (result.anchor == SCOPE_ANCHOR_STACK) {
-				stack_push(stack, stack->bp + (size_t)result.object.data, res_type->size);
-			} else {
-				stack_push(stack, result.object.data, res_type->size);
-			}
+			stack_push(stack, result.object.data, res_type->size);
 			out_type = result.object.type;
 		}
 	} break;
@@ -913,6 +1073,10 @@ expr_simplify_internal(struct vm *vm, struct expr *expr, struct expr_node *node)
 		}
 	} break;
 
+	case EXPR_NODE_LOOKUP_FUNC:
+		panic("TODO: lookup func");
+		break;
+
 	case EXPR_NODE_LOOKUP_LOCAL:
 	case EXPR_NODE_LOOKUP_GLOBAL: {
 		result = expr_simplify_internal(vm, expr, node->lookup.scope);
@@ -1024,6 +1188,10 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 		printf("func decl");
 	} break;
 
+	case EXPR_NODE_LOOKUP_FUNC:
+		printf("%.*s (func)", ALIT(node->lookup.name));
+		break;
+
 	case EXPR_NODE_LOOKUP_GLOBAL:
 		printf("%.*s (global)", ALIT(node->lookup.name));
 		break;
@@ -1096,6 +1264,7 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 
 	case EXPR_NODE_LOOKUP_GLOBAL:
 	case EXPR_NODE_LOOKUP_LOCAL:
+	case EXPR_NODE_LOOKUP_FUNC:
 	case EXPR_NODE_GLOBAL:
 	case EXPR_NODE_STACK:
 	case EXPR_NODE_SCOPE:

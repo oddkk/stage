@@ -5,22 +5,38 @@
 
 # asdf = foo.fdsa.bar;
 
-two = 2;
-four = 2 + 2;
-some_number = 2 * 3 + 5 - 6 + print(four());
+# two = 2;
+# four = 2 + 2;
+# some_number = 2 * 3 + 5 - 6 + print(four());
 
 # print <- some_number;
 
-# foo = print(some_number);
+# foo = print(some_number());
 
 # some_string = "foo";
 # some_string2 = "foo" + "bar";
 
 # op*(lhs: int, rhs: int) -> int;
 
-# square(x: int) = x * x;
+square(x: int) = x * x;
 # double(x: int) -> int = 2 * x;
 # double(x: (int, Bool)) = 2 * x;
 
+test = print(square(4));
+
 # assert square(2) == 4;
 # assert some_number == 5;
+
+# fib(n: int) =
+# 	if n > 1 then
+# 		fib(n - 1) + fib(n - 2)
+# 	else
+# 		1;
+
+# Option(T: type) :: Enum { Some(T), None };
+
+# bind(in: Option($T), fun: ($T) -> Option($U)) =
+# 	match in {
+# 		  Some(t) => fun(t),
+# 		  None    => None
+# 	};

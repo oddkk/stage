@@ -6,6 +6,7 @@
 enum expr_node_type {
 	EXPR_NODE_FUNC_DECL,     // [ABS]
 	EXPR_NODE_FUNC_CALL,     // [APP]
+	EXPR_NODE_LOOKUP_FUNC,   // [VAR]
 	EXPR_NODE_LOOKUP_GLOBAL, // [VAR]
 	EXPR_NODE_LOOKUP_LOCAL,  // [VAR]
 	EXPR_NODE_GLOBAL,        // [VAR]
@@ -57,6 +58,14 @@ enum expr_node_flags {
 	EXPR_CONST = 0x2,
 };
 
+struct expr_func_scope {
+	struct atom **entry_names;
+	func_type_id *entry_types;
+	size_t num_entries;
+
+	struct scope *outer_scope;
+};
+
 struct expr_node {
 	enum expr_node_type type;
 	enum expr_node_flags flags;
@@ -67,7 +76,11 @@ struct expr_node {
 	union {
 		struct {
 			struct atom *name;
-			struct expr_node *scope;
+
+			union {
+				struct expr_node *scope;
+				struct expr_func_scope *func_scope;
+			};
 		} lookup;
 
 		struct {
@@ -80,6 +93,8 @@ struct expr_node {
 			size_t num_params;
 			struct expr_node *ret_type;
 			struct expr_node *body;
+
+			struct expr_func_scope scope;
 		} func_decl;
 
 		struct expr_node *type_expr;
@@ -133,6 +148,15 @@ expr_func_decl(struct vm *, struct expr *,
 			   struct expr_node *ret,
 			   struct expr_node *body);
 
+// Initializes node as a func decl.
+struct expr_node *
+expr_init_func_decl(struct vm *vm, struct expr *expr,
+					struct expr_node *node,
+					struct expr_func_decl_param *params,
+					size_t num_params,
+					struct expr_node *ret,
+					struct expr_node *body);
+
 struct expr_node *
 expr_call(struct vm *, struct expr *,
 		  struct expr_node *func,
@@ -142,6 +166,11 @@ enum expr_lookup_mode {
 	EXPR_LOOKUP_GLOBAL,
 	EXPR_LOOKUP_LOCAL,
 };
+
+struct expr_node *
+expr_lookup_func_scope(struct vm *, struct expr *,
+					   struct atom *name,
+					   struct expr_func_scope *scope);
 
 struct expr_node *
 expr_lookup(struct vm *, struct expr *,
@@ -169,6 +198,11 @@ expr_finalize(struct vm *, struct expr *);
 int
 expr_bind_type(struct vm *, struct expr *,
 			   func_type_id, type_id);
+
+int
+expr_bind_ref_slot(struct vm *, struct expr *,
+				   func_type_id, func_type_id other);
+
 
 func_type_id
 expr_get_actual_slot(struct expr *expr, func_type_id slot);

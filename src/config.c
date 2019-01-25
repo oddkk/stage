@@ -323,6 +323,7 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 static struct expr_node *
 cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 					struct scope *scope, struct expr_node *lookup_scope,
+					struct expr_func_scope *func_scope,
 					struct cfg_node *node)
 {
 	switch (node->type) {
@@ -331,9 +332,9 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 		struct expr_node *lhs, *rhs;
 
 		lhs = cfg_node_visit_expr(ctx, expr, scope, lookup_scope,
-								  node->ACCESS.lhs);
+								  func_scope, node->ACCESS.lhs);
 		rhs = cfg_node_visit_expr(ctx, expr, scope, lhs,
-								  node->ACCESS.rhs);
+								  func_scope, node->ACCESS.rhs);
 
 		return rhs;
 	} break;
@@ -343,8 +344,10 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 			*lhs, *rhs, *func,
 			*func_lookup, *local_scope;
 
-		lhs = cfg_node_visit_expr(ctx, expr, scope, NULL, node->BIN_OP.lhs);
-		rhs = cfg_node_visit_expr(ctx, expr, scope, NULL, node->BIN_OP.rhs);
+		lhs = cfg_node_visit_expr(ctx, expr, scope, NULL,
+								  func_scope, node->BIN_OP.lhs);
+		rhs = cfg_node_visit_expr(ctx, expr, scope, NULL,
+								  func_scope, node->BIN_OP.rhs);
 
 		lhs->next_arg = rhs;
 
@@ -386,7 +389,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 				struct expr_node *n;
 
 				n = cfg_node_visit_expr(ctx, expr,
-										scope, NULL,
+										scope, NULL, func_scope,
 										arg->TUPLE_LIT_ITEM.value);
 
 				if (!first_arg) {
@@ -403,7 +406,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 
 		struct expr_node *func;
 		func = cfg_node_visit_expr(ctx, expr,
-								   scope, NULL,
+								   scope, NULL, func_scope,
 								   node->FUNC_CALL.ident);
 
 		struct expr_node *call;
@@ -429,7 +432,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 			struct expr_node *n;
 
 			n = cfg_node_visit_expr(ctx, expr,
-									scope, NULL,
+									scope, NULL, func_scope,
 									arg->TUPLE_DECL_ITEM.type);
 
 			if (!first_arg) {
@@ -483,11 +486,17 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 							   EXPR_LOOKUP_LOCAL);
 		} else {
 			struct expr_node *l_scope;
-			l_scope = expr_scope(ctx->vm, expr, scope);
+			if (func_scope) {
+				return expr_lookup_func_scope(ctx->vm, expr,
+											  node->IDENT,
+											  func_scope);
+			} else {
+				l_scope = expr_scope(ctx->vm, expr, scope);
 
-			return expr_lookup(ctx->vm, expr,
-							   node->IDENT, l_scope,
-							   EXPR_LOOKUP_GLOBAL);
+				return expr_lookup(ctx->vm, expr,
+								   node->IDENT, l_scope,
+								   EXPR_LOOKUP_GLOBAL);
+			}
 		}
 		break;
 
@@ -560,6 +569,7 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 static struct expr_func_decl_param *
 cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
 							  struct scope *scope, struct cfg_node *param_tuple,
+							  struct expr_func_scope *func_scope,
 							  size_t *out_num_params)
 {
 	assert(param_tuple->type == CFG_NODE_TUPLE_DECL);
@@ -582,7 +592,7 @@ cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
 	while (param) {
 		params[i].name = param->TUPLE_DECL_ITEM.name;
 		params[i].type =
-			cfg_node_visit_expr(ctx, expr, scope, NULL,
+			cfg_node_visit_expr(ctx, expr, scope, NULL, func_scope,
 								param->TUPLE_DECL_ITEM.type);
 
 		i += 1;
@@ -612,8 +622,7 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 				ret_node = data->proto_node->FUNC_PROTO.ret;
 
 				ret = cfg_node_visit_expr(ctx, &data->expr,
-										  data->scope, NULL,
-										  ret_node);
+										  data->scope, NULL, NULL, ret_node);
 
 				struct cfg_node *param_tuple;
 				param_tuple = data->proto_node->FUNC_PROTO.params;
@@ -621,14 +630,14 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 				params =
 					cfg_node_tuple_decl_to_params(ctx, &data->expr,
 												  data->scope, param_tuple,
-												  &num_params);
+												  NULL, &num_params);
 			} break;
 
 			case CFG_NODE_TUPLE_DECL: {
 				params =
 					cfg_node_tuple_decl_to_params(ctx, &data->expr,
 												  data->scope, data->proto_node,
-												  &num_params);
+												  NULL, &num_params);
 			} break;
 
 			case CFG_NODE_IDENT:
@@ -645,12 +654,21 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 			}
 		}
 
+		struct expr_node *decl_node;
+		decl_node = calloc(1, sizeof(struct expr_node));
+
+		// We need to prealloc decl_node before we visit its body
+		// because we need a reference to its inner scope
+		// (func_scope). Note that the scope is not yet initialized,
+		// but this should be fine.
+
 		struct expr_node *body;
-		body = cfg_node_visit_expr(ctx, &data->expr, data->scope, NULL, data->body_node);
+		body = cfg_node_visit_expr(ctx, &data->expr, data->scope,
+								   NULL, &decl_node->func_decl.scope, data->body_node);
 
 		data->expr.body =
-			expr_func_decl(ctx->vm, &data->expr,
-						   params, num_params, ret, body);
+			expr_init_func_decl(ctx->vm, &data->expr, decl_node,
+								params, num_params, ret, body);
 
 		data->state = CFG_COMPILE_FUNC_RESOLVE;
 	}
@@ -681,7 +699,7 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 		*data->out_func_obj =
 			register_object(&ctx->vm->store, func_obj);
 
-#if 1
+#if 0
 		struct object test_obj;
 		err = expr_eval_simple(ctx->vm, expr, expr->body->func_decl.body, &test_obj);
 		if (!err) {
@@ -690,6 +708,7 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 			printf(" ");
 		}
 #endif
+
 
 		return JOB_OK;
 	} break;
