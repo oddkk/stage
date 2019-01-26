@@ -1,5 +1,7 @@
 # Bool :: Enum { true, false }
 # Foo :: (asdf: Bool, fdsa: (foo: int, bar: str));
+# Foo :: (Bool, (int, str));
+# Foo :: (int, (int, str));
 
 # foo : Foo = (Bool.false, (3, "asdf"));
 

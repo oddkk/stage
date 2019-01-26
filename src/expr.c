@@ -260,8 +260,11 @@ expr_lit_str(struct vm *vm, struct expr *expr,
 void
 expr_finalize(struct vm *vm, struct expr *expr)
 {
-	assert(expr->slots == NULL);
-	expr->slots = calloc(expr->num_type_slots, sizeof(struct expr_type_slot));
+	if (expr->slots == NULL) {
+		expr->slots =
+			calloc(expr->num_type_slots,
+				   sizeof(struct expr_type_slot));
+	}
 }
 
 int

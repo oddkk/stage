@@ -512,19 +512,6 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 }
 
 
-static struct job_status
-job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
-{
-	struct cfg_node *node = data->stmt;
-	assert(node->DECL_STMT.decl != NULL);
-
-	if (!data->initialized) {
-		return JOB_OK;
-	}
-
-	return JOB_OK;
-}
-
 static struct expr_func_decl_param *
 cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
 							  struct scope *scope, struct cfg_node *param_tuple,
@@ -561,6 +548,98 @@ cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
 	*out_num_params = num_params;
 	return params;
 }
+
+static struct job_status
+job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
+{
+	struct cfg_node *node = data->stmt;
+	assert(node->type == CFG_NODE_DECL_STMT);
+	assert(node->DECL_STMT.decl != NULL);
+
+	if (!data->initialized) {
+		data->initialized = true;
+
+		struct atom *name;
+
+		assert(node->DECL_STMT.name->type == CFG_NODE_IDENT);
+		name = node->DECL_STMT.name->IDENT;
+		data->scope_entry_id =
+			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
+									  get_object(&ctx->vm->store, OBJ_UNSET));
+
+		size_t num_params = 0;
+		struct expr_func_decl_param *params = NULL;
+
+		struct expr_node *decl_node = NULL;
+		struct expr_func_scope *func_scope = NULL;
+
+		if (node->DECL_STMT.args) {
+			params =
+				cfg_node_tuple_decl_to_params(ctx, &data->expr,
+											  data->scope, node->DECL_STMT.args,
+											  NULL, &num_params);
+
+			decl_node = calloc(1, sizeof(struct expr_node));
+			func_scope = &decl_node->func_decl.scope;
+		}
+
+		// We need to prealloc decl_node before we visit its body
+		// because we need a reference to its inner scope
+		// (func_scope). Note that the scope is not yet initialized,
+		// but this should be fine.
+
+		struct cfg_node *body_node;
+		body_node = node->DECL_STMT.decl;
+
+		struct expr_node *body;
+		body = cfg_node_visit_expr(ctx, &data->expr, data->scope,
+								   NULL, func_scope, body_node);
+
+		if (params) {
+			data->expr.body =
+				expr_init_func_decl(ctx->vm, &data->expr, decl_node,
+									params, num_params, NULL, body);
+
+			expr_finalize(ctx->vm, &data->expr);
+			expr_bind_type(ctx->vm, &data->expr,
+						   data->expr.body->rule.abs.ret,
+						   ctx->vm->default_types.type);
+		} else {
+			data->expr.body = body;
+			expr_finalize(ctx->vm, &data->expr);
+			expr_bind_type(ctx->vm, &data->expr,
+						   data->expr.body->rule.out,
+						   ctx->vm->default_types.type);
+		}
+
+		struct cfg_job *decl_job;
+		decl_job = DISPATCH_JOB(ctx, typecheck_expr, CFG_PHASE_RESOLVE,
+								.expr = &data->expr);
+
+		return JOB_YIELD_FOR(decl_job);
+	}
+
+	struct expr *expr;
+	expr = calloc(1, sizeof(struct expr));
+	*expr = data->expr;
+
+	struct object obj;
+
+	expr_eval_simple(ctx->vm, expr, expr->body, &obj);
+
+	// NOTE: The object has to be registered right after the eval,
+	// otherwise the object might get overwritten on the arena.
+	obj_id obj_id =
+		register_object(&ctx->vm->store, obj);
+
+	struct scope_entry *entry;
+
+	entry = &data->scope->entries[data->scope_entry_id];
+	entry->object = get_object(&ctx->vm->store, obj_id);
+
+	return JOB_OK;
+}
+
 
 static struct job_status
 job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)

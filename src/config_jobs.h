@@ -14,8 +14,7 @@ CFG_JOB(visit_decl_stmt, struct {
 
 	int scope_entry_id;
 	bool initialized;
-	type_id type;
-	struct scope *child_scope;
+	struct expr expr;
 })
 
 CFG_JOB(func_decl, struct {

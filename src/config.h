@@ -65,37 +65,6 @@ struct cfg_node {
 
 extern struct string cfg_node_names[CFG_NODES_LEN];
 
-enum cfg_compile_func_state {
-	CFG_COMPILE_FUNC_IDLE = 0,
-	CFG_COMPILE_FUNC_RESOLVE,
-	/* CFG_COMPILE_FUNC_RESOLVE_SIGNATURE, */
-	/* CFG_COMPILE_FUNC_VISIT_BODY, */
-
-	/* CFG_COMPILE_FUNC_EVAL_TYPES, */
-	/* CFG_COMPILE_FUNC_EVAL_BODY_TYPE_CONSTRAINTS, */
-	/* CFG_COMPILE_FUNC_RESOLVE_TYPES, */
-	/* CFG_COMPILE_FUNC_OPTIMIZE, */
-	/* CFG_COMPILE_FUNC_GEN_INSTRUCTIONS, */
-};
-
-enum cfg_func_proto_decl_state {
-	CFG_FUNC_PROTO_DECL_RESOLVE_PARAMS = 0,
-	CFG_FUNC_PROTO_DECL_RESOLVE_RET,
-	CFG_FUNC_PROTO_DECL_FINALIZE,
-};
-
-enum cfg_tuple_decl_state {
-	CFG_TUPLE_DECL_GET_LENGTH = 0,
-	CFG_TUPLE_DECL_RESOLVE_TYPES,
-	CFG_TUPLE_DECL_FINALIZE,
-};
-
-enum cfg_binop_state {
-	CFG_BINOP_LHS = 0,
-	CFG_BINOP_RHS,
-	CFG_BINOP_FINALIZE,
-};
-
 enum cfg_job_type {
 #define CFG_JOB(name, data) CFG_JOB_##name,
 	#include "config_jobs.h"
