@@ -299,6 +299,9 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 		break;
 
 	case CFG_NODE_ASSIGN_STMT:
+		DISPATCH_JOB(ctx, assign_stmt, CFG_PHASE_DISCOVER,
+					 .scope = parent_scope,
+					 .node = node);
 		break;
 
 	case CFG_NODE_BIND:
@@ -745,6 +748,63 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 
 	entry = &data->scope->entries[data->scope_entry_id];
 	entry->object = get_object(&ctx->vm->store, func_obj_id);
+
+	return JOB_OK;
+}
+
+static struct job_status
+job_assign_stmt(struct cfg_ctx *ctx, job_assign_stmt_t *data)
+{
+	assert(data->node->type == CFG_NODE_ASSIGN_STMT);
+	assert(data->node->ASSIGN_STMT.ident->type == CFG_NODE_IDENT);
+
+	if (!data->initialized) {
+		data->initialized = true;
+
+		struct atom *name;
+
+		name = data->node->ASSIGN_STMT.ident->IDENT;
+		data->scope_entry_id =
+			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
+									  get_object(&ctx->vm->store, OBJ_UNSET));
+
+		data->expr.outer_scope = data->scope;
+
+		if (data->node->ASSIGN_STMT.type) {
+			panic("TODO: assign stmt type.");
+		}
+
+		struct cfg_node *body_node;
+		body_node = data->node->ASSIGN_STMT.body;
+
+		data->expr.body =
+			cfg_node_visit_expr(ctx, &data->expr, data->scope,
+								NULL, NULL, body_node);
+
+		struct cfg_job *job;
+		job = DISPATCH_JOB(ctx, typecheck_expr, CFG_PHASE_RESOLVE,
+						   .expr = &data->expr);
+
+		return JOB_YIELD_FOR(job);
+	}
+
+	struct object obj;
+	int err;
+
+	err = expr_eval_simple(ctx->vm, &data->expr, data->expr.body, &obj);
+	if (err) {
+		return JOB_ERROR;
+	}
+
+	// NOTE: The object has to be registered right after the eval,
+	// otherwise the object might get overwritten on the arena.
+	obj_id obj_id =
+		register_object(&ctx->vm->store, obj);
+
+	struct scope_entry *entry;
+
+	entry = &data->scope->entries[data->scope_entry_id];
+	entry->object = get_object(&ctx->vm->store, obj_id);
 
 	return JOB_OK;
 }

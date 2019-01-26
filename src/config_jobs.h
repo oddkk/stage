@@ -26,6 +26,16 @@ CFG_JOB(func_decl, struct {
 	struct expr expr;
 })
 
+CFG_JOB(assign_stmt, struct {
+	struct scope *scope;
+	struct cfg_node *node;
+
+	int scope_entry_id;
+	bool initialized;
+	struct expr expr;
+})
+
+
 CFG_JOB(typecheck_expr, struct {
 	struct expr *expr;
 })

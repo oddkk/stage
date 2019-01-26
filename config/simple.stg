@@ -20,7 +20,11 @@
 
 # op*(lhs: int, rhs: int) -> int;
 
+asdf := square(5) * add(3, square(4));
+
 square(x: int) = x * x;
+add(x: int, y: int) = print(x) + print(y);
+
 # double(x: int) -> int = 2 * x;
 # double(x: (int, Bool)) = 2 * x;
 
