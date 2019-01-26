@@ -22,7 +22,7 @@
 
 
 
-
+assert square(5) == 25;
 
 
 asdf := square(5) * add(3, square(4));

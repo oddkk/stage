@@ -115,6 +115,19 @@ static void obj_integer_div(struct vm *vm, struct exec_stack *stack, void *data)
 	stack_push(stack, &result, sizeof(result));
 }
 
+static void obj_integer_eq(struct vm *vm, struct exec_stack *stack, void *data)
+{
+	(void)data;
+	int64_t lhs, rhs;
+
+	stack_pop(stack, &rhs, sizeof(rhs));
+	stack_pop(stack, &lhs, sizeof(lhs));
+
+	int64_t result = lhs == rhs;
+
+	stack_push(stack, &result, sizeof(result));
+}
+
 static struct string obj_string_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
 	struct string value = *(struct string *)obj->data;
@@ -679,6 +692,40 @@ int vm_init(struct vm *vm)
 	}
 
 	{
+		struct type_enum *bool_data;
+		bool_data = calloc(1, sizeof(struct type_enum));
+		bool_data->num_items = 2;
+		bool_data->items = calloc(2, sizeof(struct type_enum_item));
+		bool_data->items[0].name = atom_create(&vm->atom_table, STR("false"));
+		bool_data->items[0].type = TYPE_NONE;
+		bool_data->items[1].name = atom_create(&vm->atom_table, STR("true"));
+		bool_data->items[1].type = TYPE_NONE;
+
+		vm->default_types.boolean =
+			type_register_enum(vm, bool_data);
+
+		obj_id obj = obj_register_type(vm, vm->default_types.boolean);
+		scope_insert(&vm->root_scope, atom_create(&vm->atom_table, STR("bool")),
+					 SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, obj), NULL);
+
+		int64_t value;
+		struct object entry = {0};
+		entry.type = vm->default_types.boolean;
+		entry.data = &value;
+
+		value = 0;
+		obj_id false_obj = register_object(&vm->store, entry);
+
+		value = 1;
+		obj_id true_obj = register_object(&vm->store, entry);
+
+		scope_insert(&vm->root_scope, atom_create(&vm->atom_table, STR("false")),
+					 SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, false_obj), NULL);
+		scope_insert(&vm->root_scope, atom_create(&vm->atom_table, STR("true")),
+					 SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, true_obj), NULL);
+	}
+
+	{
 		struct type_base *base = &vm->default_types.tuple_base;
 		type_base_init(base, STR("tuple"));
 		base->repr = type_tuple_repr;
@@ -750,6 +797,17 @@ int vm_init(struct vm *vm)
 			scope_insert_overloadable(&vm->root_scope, name,
 									  SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, func));
 		}
+
+		{
+			obj_id func;
+			func = obj_register_builtin_func(vm, param_names, param_types, num_params,
+											 vm->default_types.boolean,
+											 obj_integer_eq, NULL);
+
+			struct atom *name = atom_create(&vm->atom_table, STR("op=="));
+			scope_insert_overloadable(&vm->root_scope, name,
+									  SCOPE_ANCHOR_ABSOLUTE, get_object(&vm->store, func));
+		}
 	}
 
 	{
@@ -801,6 +859,7 @@ type_id type_register_enum(struct vm *vm, struct type_enum *t)
 
 	type.num_template_params = num_template_params;
 	t->size = size;
+	type.size = t->size + sizeof(int64_t);
 
 	return register_type(&vm->store, type);
 }

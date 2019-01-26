@@ -114,6 +114,7 @@ struct vm {
 		type_id type;
 		type_id integer;
 		type_id string;
+		type_id boolean;
 
 		type_id func_template_return;
 

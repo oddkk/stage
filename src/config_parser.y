@@ -204,7 +204,7 @@ use_expr1:		use_expr1 '.' ident        { $$ = MKNODE(ACCESS, .lhs=$1, .rhs=$3); 
 		|		ident                      { $$ = $1; }
 		;
 
-assert_stmt:	"assert" expr              { $$ = NULL; }
+assert_stmt:	"assert" expr              { $$ = MKNODE(ASSERT_STMT, .expr=$2); }
 		;
 
 func_stmt:		ident func_proto '=' expr  { $$ = MKNODE(FUNC_STMT, .ident=$1, .proto=$2, .body=$4); }

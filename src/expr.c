@@ -756,6 +756,10 @@ expr_eval_lookup(struct vm *vm, struct expr *expr,
 		} else {
 			struct type *target_type = get_type(&vm->store, out_scope.type);
 			scope = target_type->object_scope;
+			if (!scope) {
+				printf("%.*s has no scope.\n", ALIT(target_type->name));
+				return -1;
+			}
 		}
 	}
 

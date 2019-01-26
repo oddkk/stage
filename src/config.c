@@ -290,6 +290,9 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 		break;
 
 	case CFG_NODE_ASSERT_STMT:
+		DISPATCH_JOB(ctx, assert_stmt, CFG_PHASE_DISCOVER,
+					 .scope = parent_scope,
+					 .node = node);
 		break;
 
 	case CFG_NODE_FUNC_STMT:
@@ -807,6 +810,54 @@ job_assign_stmt(struct cfg_ctx *ctx, job_assign_stmt_t *data)
 	entry->object = get_object(&ctx->vm->store, obj_id);
 
 	return JOB_OK;
+}
+
+static struct job_status
+job_assert_stmt(struct cfg_ctx *ctx, job_assert_stmt_t *data)
+{
+	assert(data->node->type == CFG_NODE_ASSERT_STMT);
+
+	if (!data->initialized) {
+		data->initialized = true;
+
+		data->expr.outer_scope = data->scope;
+
+		struct cfg_node *body_node;
+		body_node = data->node->ASSERT_STMT.expr;
+
+		data->expr.body =
+			cfg_node_visit_expr(ctx, &data->expr, data->scope,
+								NULL, NULL, body_node);
+
+		expr_finalize(ctx->vm, &data->expr);
+		expr_bind_type(ctx->vm, &data->expr,
+					   data->expr.body->rule.out,
+					   ctx->vm->default_types.boolean);
+
+		struct cfg_job *job;
+		job = DISPATCH_JOB(ctx, typecheck_expr, CFG_PHASE_RESOLVE,
+						   .expr = &data->expr);
+
+		return JOB_YIELD_FOR(job);
+	}
+
+	struct object obj;
+	int err;
+
+	err = expr_eval_simple(ctx->vm, &data->expr, data->expr.body, &obj);
+	if (err) {
+		return JOB_ERROR;
+	}
+
+	assert(obj.type == ctx->vm->default_types.boolean);
+
+	int64_t value = *(int64_t *)obj.data;
+
+	if (value == 0) {
+		return JOB_ERROR;
+	} else {
+		return JOB_OK;
+	}
 }
 
 static struct job_status
