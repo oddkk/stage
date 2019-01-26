@@ -686,7 +686,7 @@ expr_typecheck(struct vm *vm, struct expr *expr)
 	case EXPR_TYPECHECK_INFER_TYPES: {
 		enum expr_infer_types_error err;
 		err = expr_try_infer_types(vm, expr, expr->body);
-#if 1
+#if 0
 		printf("typecheck iter %zu:\n", expr->num_infer);
 		expr_print(vm, expr);
 #endif
