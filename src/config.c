@@ -525,47 +525,6 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 	return JOB_OK;
 }
 
-static struct job_status
-job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
-{
-	assert(data->node->type == CFG_NODE_FUNC_STMT);
-	assert(data->node->FUNC_STMT.ident->type == CFG_NODE_IDENT);
-
-	if (!data->initialized) {
-		data->initialized = true;
-
-		struct atom *name;
-
-		name = data->node->FUNC_STMT.ident->IDENT;
-		data->scope_entry_id =
-			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
-									  get_object(&ctx->vm->store, OBJ_UNSET));
-
-		struct cfg_job *func_job;
-		func_job = DISPATCH_JOB(ctx, compile_func, CFG_PHASE_RESOLVE,
-								.scope = data->scope,
-								.proto_node = data->node->FUNC_STMT.proto,
-								.body_node  = data->node->FUNC_STMT.body,
-								.out_func_obj = &data->func_object);
-
-		return JOB_YIELD_FOR(func_job);
-	}
-
-	// The object should have been defined before we are called
-	// again.
-	if (!OBJ_VALID(data->func_object)) {
-		return JOB_ERROR;
-	}
-	assert(OBJ_VALID(data->func_object));
-
-	struct scope_entry *entry;
-
-	entry = &data->scope->entries[data->scope_entry_id];
-	entry->object = get_object(&ctx->vm->store, data->func_object);
-
-	return JOB_OK;
-}
-
 static struct expr_func_decl_param *
 cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
 							  struct scope *scope, struct cfg_node *param_tuple,
@@ -604,28 +563,41 @@ cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
 }
 
 static struct job_status
-job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
+job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 {
+	assert(data->node->type == CFG_NODE_FUNC_STMT);
+	assert(data->node->FUNC_STMT.ident->type == CFG_NODE_IDENT);
 
-	switch (data->state) {
-	case CFG_COMPILE_FUNC_IDLE: {
+	if (!data->initialized) {
+		data->initialized = true;
+
+		struct atom *name;
+
+		name = data->node->FUNC_STMT.ident->IDENT;
+		data->scope_entry_id =
+			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
+									  get_object(&ctx->vm->store, OBJ_UNSET));
+
+		data->expr.outer_scope = data->scope;
+
+		struct cfg_node *proto_node = data->node->FUNC_STMT.proto;
+		struct cfg_node *body_node = data->node->FUNC_STMT.body;
+
 		size_t num_params = 0;
 		struct expr_func_decl_param *params = NULL;
 		struct expr_node *ret = NULL;
 
-		data->expr.outer_scope = data->scope;
-
-		if (data->proto_node) {
-			switch (data->proto_node->type) {
+		if (proto_node) {
+			switch (proto_node->type) {
 			case CFG_NODE_FUNC_PROTO: {
 				struct cfg_node *ret_node;
-				ret_node = data->proto_node->FUNC_PROTO.ret;
+				ret_node = proto_node->FUNC_PROTO.ret;
 
 				ret = cfg_node_visit_expr(ctx, &data->expr,
 										  data->scope, NULL, NULL, ret_node);
 
 				struct cfg_node *param_tuple;
-				param_tuple = data->proto_node->FUNC_PROTO.params;
+				param_tuple = proto_node->FUNC_PROTO.params;
 
 				params =
 					cfg_node_tuple_decl_to_params(ctx, &data->expr,
@@ -636,20 +608,20 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 			case CFG_NODE_TUPLE_DECL: {
 				params =
 					cfg_node_tuple_decl_to_params(ctx, &data->expr,
-												  data->scope, data->proto_node,
+												  data->scope, proto_node,
 												  NULL, &num_params);
 			} break;
 
 			case CFG_NODE_IDENT:
 				num_params = 1;
 				params = calloc(1, sizeof(struct expr_func_decl_param));
-				params[0].name = data->proto_node->IDENT;
+				params[0].name = proto_node->IDENT;
 				params[0].type = NULL;
 				break;
 
 			default:
 				panic("Invalid node '%.*s' as function prototype.",
-					  LIT(cfg_node_names[data->proto_node->type]));
+					  LIT(cfg_node_names[proto_node->type]));
 				break;
 			}
 		}
@@ -664,58 +636,54 @@ job_compile_func(struct cfg_ctx *ctx, job_compile_func_t *data)
 
 		struct expr_node *body;
 		body = cfg_node_visit_expr(ctx, &data->expr, data->scope,
-								   NULL, &decl_node->func_decl.scope, data->body_node);
+								   NULL, &decl_node->func_decl.scope, body_node);
 
 		data->expr.body =
 			expr_init_func_decl(ctx->vm, &data->expr, decl_node,
 								params, num_params, ret, body);
 
-		data->state = CFG_COMPILE_FUNC_RESOLVE;
-	}
-		// fallthrough
-	case CFG_COMPILE_FUNC_RESOLVE: {
-		int err;
+		struct cfg_job *func_job;
+		func_job = DISPATCH_JOB(ctx, typecheck_expr, CFG_PHASE_RESOLVE,
+								.expr = &data->expr);
 
-		// printf("\n");
-		err = expr_typecheck(ctx->vm, &data->expr);
-
-		if (err < 0) {
-			*data->out_func_obj = OBJ_NONE;
-			return JOB_ERROR;
-		} else if (err > 0) {
-			return JOB_YIELD;
-		}
-
-		struct expr *expr;
-		expr = calloc(1, sizeof(struct expr));
-		*expr = data->expr;
-
-		struct object func_obj;
-
-		expr_eval_simple(ctx->vm, expr, expr->body, &func_obj);
-
-		// NOTE: The object has to be registered right after the eval,
-		// otherwise the object might get overwritten on the arena.
-		*data->out_func_obj =
-			register_object(&ctx->vm->store, func_obj);
-
-#if 0
-		struct object test_obj;
-		err = expr_eval_simple(ctx->vm, expr, expr->body->func_decl.body, &test_obj);
-		if (!err) {
-			printf("eval: ");
-			print_obj_repr(ctx->vm, test_obj);
-			printf(" ");
-		}
-#endif
-
-
-		return JOB_OK;
-	} break;
-
+		return JOB_YIELD_FOR(func_job);
 	}
 
-	return JOB_ERROR;
+	struct expr *expr;
+	expr = calloc(1, sizeof(struct expr));
+	*expr = data->expr;
+
+	struct object func_obj;
+
+	expr_eval_simple(ctx->vm, expr, expr->body, &func_obj);
+
+	// NOTE: The object has to be registered right after the eval,
+	// otherwise the object might get overwritten on the arena.
+	obj_id func_obj_id =
+		register_object(&ctx->vm->store, func_obj);
+
+	struct scope_entry *entry;
+
+	entry = &data->scope->entries[data->scope_entry_id];
+	entry->object = get_object(&ctx->vm->store, func_obj_id);
+
+	return JOB_OK;
+}
+
+static struct job_status
+job_typecheck_expr(struct cfg_ctx *ctx, job_typecheck_expr_t *data)
+{
+	int err;
+
+	err = expr_typecheck(ctx->vm, data->expr);
+
+	if (err < 0) {
+		return JOB_ERROR;
+	} else if (err > 0) {
+		return JOB_YIELD;
+	}
+
+	return JOB_OK;
 }
 
 int parse_config_file(struct string filename,

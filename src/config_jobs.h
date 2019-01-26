@@ -23,17 +23,10 @@ CFG_JOB(func_decl, struct {
 	struct cfg_node *node;
 
 	int scope_entry_id;
-	obj_id func_object;
 	bool initialized;
-	obj_id *out_object;
+	struct expr expr;
 })
 
-CFG_JOB(compile_func, struct {
-	enum cfg_compile_func_state state;
-	struct scope *scope;
-	struct cfg_node *proto_node;
-	struct cfg_node *body_node;
-	obj_id *out_func_obj;
-	type_id proto;
-	struct expr expr;
+CFG_JOB(typecheck_expr, struct {
+	struct expr *expr;
 })
