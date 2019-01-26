@@ -20,15 +20,24 @@
 
 # op*(lhs: int, rhs: int) -> int;
 
+
+
+
+
+
 asdf := square(5) * add(3, square(4));
 
 square(x: int) = x * x;
-add(x: int, y: int) = print(x) + print(y);
+add(x: int, y: int) = x + y;
+
+
+
+
 
 # double(x: int) -> int = 2 * x;
 # double(x: (int, Bool)) = 2 * x;
 
-test = print(square(4) + square(6));
+# test = print(square(4) + square(6));
 
 # assert square(2) == 4;
 # assert some_number == 5;

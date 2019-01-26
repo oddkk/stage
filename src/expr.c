@@ -812,6 +812,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 		int err;
 
 		uint8_t *prev_bp = stack->bp;
+		uint8_t *prev_sp = stack->sp;
 
 		size_t num_args = 0;
 		while (arg) {
@@ -856,7 +857,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 		ret_obj.type = type_func->ret;
 		ret_obj.data = stack->sp - ret_type->size;
 
-		stack->sp = stack->bp;
+		stack->sp = prev_sp;
 		stack->bp = prev_bp;
 
 		stack_push(stack, ret_obj.data, ret_type->size);
