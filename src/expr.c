@@ -650,6 +650,15 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 		if (node->type_expr) {
 			ret_err &= expr_try_infer_types(mod, expr, node->type_expr);
 
+			if (expr_get_slot_type(expr, node->type_expr->rule.out) != mod->vm->default_types.type) {
+				printf("Expected 'type', got '");
+				print_type_repr(mod->vm,
+								vm_get_type(mod->vm, expr_get_slot_type(expr,
+																   node->type_expr->rule.out)));
+				printf("'. (slot %u)\n", node->type_expr->rule.out);
+				return ret_err | EXPR_INFER_TYPES_ERROR;
+			}
+
 			if ((node->type_expr->flags & EXPR_CONST) != 0) {
 				int err;
 				struct object type_obj;
@@ -1023,7 +1032,7 @@ expr_do_simplify_const(struct stg_module *mod, struct expr *expr, struct expr_no
 		return err;
 	}
 
-	struct object new_obj = register_object(&mod->store, result);
+	struct object new_obj = register_object(mod->vm, &mod->store, result);
 
 	expr_destroy(node);
 

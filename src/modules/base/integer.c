@@ -69,7 +69,7 @@ obj_register_integer(struct vm *vm, struct objstore *store, int64_t value)
 	result.type = vm->default_types.integer;
 	result.data = &value;
 
-	return register_object(store, result);
+	return register_object(vm, store, result);
 }
 
 void base_register_integer(struct stg_module *mod)

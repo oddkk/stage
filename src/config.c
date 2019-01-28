@@ -677,7 +677,7 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
 	// NOTE: The object has to be registered right after the eval,
 	// otherwise the object might get overwritten on the arena.
 	struct object new_obj =
-		register_object(&mod->store, obj);
+		register_object(mod->vm, &mod->store, obj);
 
 	struct scope_entry *entry;
 
@@ -786,7 +786,7 @@ job_func_decl(struct cfg_ctx *ctx, struct stg_module *mod, job_func_decl_t *data
 	// NOTE: The object has to be registered right after the eval,
 	// otherwise the object might get overwritten on the arena.
 	struct object new_func_obj =
-		register_object(&mod->store, func_obj);
+		register_object(mod->vm, &mod->store, func_obj);
 
 	struct scope_entry *entry;
 
@@ -843,7 +843,7 @@ job_assign_stmt(struct cfg_ctx *ctx, struct stg_module *mod, job_assign_stmt_t *
 	// NOTE: The object has to be registered right after the eval,
 	// otherwise the object might get overwritten on the arena.
 	struct object new_obj =
-		register_object(&mod->store, obj);
+		register_object(mod->vm, &mod->store, obj);
 
 	struct scope_entry *entry;
 
@@ -1270,6 +1270,8 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 	// TODO: We should somehow initialize through the init method
 	// instead of outside of register.
 	mod = vm_register_module(vm, &modinfo);
+
+	scope_use(&mod->root_scope, &vm->modules[0]->root_scope);
 
 	discover_config_files(&ctx, mod, cfg_dir);
 

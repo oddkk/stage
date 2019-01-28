@@ -44,6 +44,9 @@ struct scope {
 	struct scope_entry *entries;
 	size_t num_entries;
 
+	struct scope **used_scopes;
+	size_t num_used_scopes;
+
 	struct objstore *store;
 };
 
@@ -59,6 +62,8 @@ int scope_insert_overloadable(struct scope *parent,
 							  struct atom *name,
 							  enum scope_object_anchor anchor,
 							  struct object object);
+
+void scope_use(struct scope *target, struct scope *other);
 
 int scope_local_lookup(struct scope *scope,
 					   struct atom *name,

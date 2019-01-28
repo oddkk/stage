@@ -98,6 +98,11 @@ int scope_insert_overloadable(struct scope *parent,
 	return id;
 }
 
+void scope_use(struct scope *target, struct scope *other)
+{
+	dlist_append(target->used_scopes, target->num_used_scopes, &other);
+}
+
 int scope_local_lookup(struct scope *scope,
 					   struct atom *name,
 					   struct scope_entry *result)
@@ -106,14 +111,17 @@ int scope_local_lookup(struct scope *scope,
 
 	assert(name);
 
-	/* printf("looking up locally '%.*s'... ", ALIT(name)); */
 	err = id_lookup_table_lookup(&scope->lookup, name->name);
 	if (err < 0) {
-		/* printf("not found.\n"); */
+		for (size_t i = 0; i < scope->num_used_scopes; i++) {
+			err = scope_local_lookup(scope->used_scopes[i], name, result);
+			if (err >= 0) {
+				return 0;
+			}
+		}
 		return -1;
 	}
 
-	/* printf("found.\n"); */
 	*result = scope->entries[err];
 
 	return 0;

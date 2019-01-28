@@ -335,7 +335,7 @@ obj_register_builtin_func(struct vm *vm, struct objstore *store,
 	result.type = type;
 	result.data = &obj_data;
 
-	return register_object(store, result);
+	return register_object(vm, store, result);
 }
 
 /* obj_id obj_register_builtin_func_from_tuple(struct vm *vm, struct objstore *store, */

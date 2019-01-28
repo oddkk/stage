@@ -66,7 +66,7 @@ stg_register_builtin_type(struct stg_module *mod,
 	obj.data = &tid;
 
 	struct object new_obj;
-	new_obj = register_object(&mod->store, obj);
+	new_obj = register_object(mod->vm, &mod->store, obj);
 
 	scope_insert(&mod->root_scope, t.name,
 				 SCOPE_ANCHOR_ABSOLUTE,

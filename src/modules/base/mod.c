@@ -8,6 +8,7 @@ void base_register_str(struct stg_module *mod);
 void base_register_func(struct stg_module *mod);
 void base_register_tuple(struct stg_module *mod);
 void base_register_enum(struct stg_module *mod);
+void base_register_functions(struct stg_module *mod);
 
 static bool
 type_unset_unify(struct vm *vm, struct objstore *store,
@@ -90,6 +91,8 @@ int mod_base_init(struct stg_module *mod)
 	base_register_str(mod);
 	base_register_integer(mod);
 	base_register_tuple(mod);
+
+	base_register_functions(mod);
 
 	return 0;
 }

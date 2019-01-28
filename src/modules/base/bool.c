@@ -6,6 +6,7 @@ struct type_base base_bool_base = {
 
 void base_register_bool(struct stg_module *mod)
 {
-	stg_register_builtin_type(mod, &base_bool_base,
-							  STG_TYPE_DATA(STG_BOOL));
+	mod->vm->default_types.boolean =
+		stg_register_builtin_type(mod, &base_bool_base,
+								  STG_TYPE_DATA(STG_BOOL));
 }

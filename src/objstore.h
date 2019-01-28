@@ -103,7 +103,7 @@ void print_type_repr(struct vm *vm, struct type *);
 void print_obj_repr(struct vm *vm, struct object);
 
 struct object
-register_object(struct objstore *store, struct object obj);
+register_object(struct vm *, struct objstore *store, struct object obj);
 
 static inline struct object get_object(struct objstore *store, obj_id id) {
 	struct object *obj;

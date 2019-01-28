@@ -89,7 +89,7 @@ type_base_register_unifier(struct type_base *type1,
 }
 
 struct object
-register_object(struct objstore *store, struct object obj) {
+register_object(struct vm *vm, struct objstore *store, struct object obj) {
 	if (store->page_size == 0) {
 		store->page_size = sysconf(_SC_PAGESIZE);
 		store->elements_per_page = store->page_size / sizeof(struct object);
@@ -124,8 +124,7 @@ register_object(struct objstore *store, struct object obj) {
 
 	store->last_page_num_used += 1;
 
-	assert(obj.type <= store->num_types);
-	struct type *type = &store->types[obj.type];
+	struct type *type = vm_get_type(vm, obj.type);
 
 	if (store->data_pages == NULL ||
 		store->last_page_num_used + type->size >= store->page_size) {

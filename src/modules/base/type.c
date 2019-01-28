@@ -27,7 +27,7 @@ obj_register_type(struct vm *vm, struct objstore *store, type_id value)
 	result.type = vm->default_types.type;
 	result.data = &value;
 
-	return register_object(store, result);
+	return register_object(vm, store, result);
 }
 
 type_id type_obj_get(struct vm *vm, struct object obj)
@@ -39,8 +39,7 @@ type_id type_obj_get(struct vm *vm, struct object obj)
 void base_register_type(struct stg_module *mod)
 {
 	type_id tid;
-	tid =
-		stg_register_builtin_type(mod, &base_type_base,
-								  STG_TYPE_DATA(STG_TYPE));
+	tid = stg_register_builtin_type(mod, &base_type_base,
+									STG_TYPE_DATA(STG_TYPE));
 	mod->vm->default_types.type = tid;
 }

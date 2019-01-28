@@ -20,7 +20,7 @@ obj_register_string(struct vm *vm, struct objstore *store,
 	result.type = vm->default_types.string;
 	result.data = &value;
 
-	return register_object(store, result);
+	return register_object(vm, store, result);
 }
 
 
