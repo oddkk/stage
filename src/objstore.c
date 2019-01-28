@@ -18,8 +18,7 @@ static struct string default_type_repr(struct vm *vm, struct arena *mem,
 static struct string default_obj_repr(struct vm *vm, struct arena *mem,
 									  struct object *object)
 {
-	assert(object->type < vm->store.num_types);
-	struct type *type = &vm->store.types[object->type];
+	struct type *type = vm_get_type(vm, object->type);
 	return type->base->name;
 }
 
@@ -35,6 +34,21 @@ void type_base_init(struct type_base *base, struct string name)
 	base->repr = default_type_repr;
 	base->obj_repr = default_obj_repr;
 	base->subtypes_iter = default_type_subtypes_iter;
+}
+
+void type_base_init_unfilled(struct type_base *base)
+{
+	if (base->repr == NULL) {
+		base->repr = default_type_repr;
+	}
+
+	if (base->obj_repr == NULL) {
+		base->obj_repr = default_obj_repr;
+	}
+
+	if (base->subtypes_iter == NULL) {
+		base->subtypes_iter = default_type_subtypes_iter;
+	}
 }
 
 void
@@ -74,7 +88,8 @@ type_base_register_unifier(struct type_base *type1,
 	}
 }
 
-obj_id register_object(struct objstore *store, struct object obj) {
+struct object
+register_object(struct objstore *store, struct object obj) {
 	if (store->page_size == 0) {
 		store->page_size = sysconf(_SC_PAGESIZE);
 		store->elements_per_page = store->page_size / sizeof(struct object);
@@ -86,7 +101,7 @@ obj_id register_object(struct objstore *store, struct object obj) {
 		struct object **new_pages = realloc(store->pages, new_size);
 		if (!new_pages) {
 			perror("realloc");
-			return 0;
+			return OBJ_NONE;
 		}
 
 		new_pages[store->num_pages] = mmap(NULL, store->page_size,
@@ -96,7 +111,7 @@ obj_id register_object(struct objstore *store, struct object obj) {
 
 		if (new_pages[store->num_pages] == MAP_FAILED) {
 			perror("mmap");
-			return 0;
+			return OBJ_NONE;
 		}
 
 		store->pages = new_pages;
@@ -119,7 +134,7 @@ obj_id register_object(struct objstore *store, struct object obj) {
 
 		if (!new_pages) {
 			perror("realloc");
-			return 0;
+			return OBJ_NONE;
 		}
 
 		new_pages[store->num_data_pages] = mmap(NULL, store->page_size,
@@ -129,7 +144,7 @@ obj_id register_object(struct objstore *store, struct object obj) {
 
 		if (new_pages[store->num_data_pages] == MAP_FAILED) {
 			perror("mmap");
-			return 0;
+			return OBJ_NONE;
 		}
 
 		store->data_pages = new_pages;
@@ -153,7 +168,7 @@ obj_id register_object(struct objstore *store, struct object obj) {
 
 	store->pages[id / store->elements_per_page][id % store->elements_per_page] = o;
 
-	return id;
+	return o;
 }
 
 void free_objstore(struct objstore *store) {
@@ -172,18 +187,20 @@ void free_objstore(struct objstore *store) {
 
 type_id register_type(struct objstore *store, struct type type)
 {
-	return dlist_append(store->types, store->num_types, &type);
+	modtype_id mtid;
+	mtid = dlist_append(store->types, store->num_types, &type);
+	return TYPE_ID(store->mod_id, mtid);
 }
 
-bool unify_types(struct vm *vm, type_id lhs, type_id rhs, type_id *out)
+bool unify_types(struct vm *vm, struct objstore *store, type_id lhs, type_id rhs, type_id *out)
 {
 	if (lhs == rhs) {
 		 *out = lhs;
 		 return true;
 	}
 
-	struct type *lhs_type = get_type(&vm->store, lhs);
-	struct type *rhs_type = get_type(&vm->store, rhs);
+	struct type *lhs_type = vm_get_type(vm, lhs);
+	struct type *rhs_type = vm_get_type(vm, rhs);
 
 	struct type_unifier *unifier = NULL;
 
@@ -217,7 +234,7 @@ bool unify_types(struct vm *vm, type_id lhs, type_id rhs, type_id *out)
 		return false;
 	}
 
-	return unifier->unify(vm, lhs, rhs, out);
+	return unifier->unify(vm, store, lhs, rhs, out);
 }
 
 void print_type_repr(struct vm *vm, struct type *type)
@@ -235,7 +252,7 @@ void print_type_repr(struct vm *vm, struct type *type)
 void print_obj_repr(struct vm *vm, struct object obj)
 {
 	struct arena mem = arena_push(&vm->memory);
-	struct type *type = get_type(&vm->store, obj.type);
+	struct type *type = vm_get_type(vm, obj.type);
 	struct string res;
 
 	res = type->base->obj_repr(vm, &mem, &obj);
@@ -243,3 +260,32 @@ void print_obj_repr(struct vm *vm, struct object obj)
 
 	arena_pop(&vm->memory, mem);
 }
+
+void
+arena_string_append_type_repr(struct string *str, struct vm *vm,
+							  struct arena *mem, struct type *type)
+{
+	struct string type_repr;
+
+	struct arena tmp_mem = arena_push(mem);
+	type_repr = type->base->repr(vm, &tmp_mem, type);
+	arena_pop(mem, tmp_mem);
+
+	arena_string_append(mem, str, type_repr);
+}
+
+void
+arena_string_append_obj_repr(struct string *str, struct vm *vm,
+							 struct arena *mem, struct object *object)
+{
+	struct string repr;
+	struct type *type;
+	type = vm_get_type(vm, object->type);
+
+	struct arena tmp_mem = arena_push(mem);
+	repr = type->base->obj_repr(vm, &tmp_mem, object);
+	arena_pop(mem, tmp_mem);
+
+	arena_string_append(mem, str, repr);
+}
+

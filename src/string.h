@@ -31,4 +31,8 @@ int64_t string_to_int64_base2(struct string str);
 int64_t string_to_int64_base10(struct string str);
 int64_t string_to_int64_base16(struct string str);
 
+int read_character(struct string str, char **it);
+bool string_split(struct string in, struct string *result,
+				  struct string *rest, int sep);
+
 #endif

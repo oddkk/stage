@@ -2,6 +2,7 @@
 #define STAGE_CONFIG_H
 
 #include "vm.h"
+#include "module.h"
 
 #define CFG_BIN_OPS								\
 	OP(ADD, "+")								\
@@ -15,6 +16,7 @@
 	OP(LTE, "<=")								\
 	OP(GT, ">")									\
 	OP(LT, "<")									\
+	OP(BIND, "->")								\
 	OP(SUBSCRIPT, "[]")							\
 
 #define CFG_BIN_OPS_MAX_LEN (2)

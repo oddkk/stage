@@ -99,6 +99,8 @@ struct cfg_job {
 	struct cfg_job *next_job;
 	struct cfg_job *first_dependant_node;
 
+	struct stg_module *mod;
+
 #define CFG_JOB(name, data) job_##name##_t name;
 	union {
 #include "config_jobs.h"
@@ -217,15 +219,17 @@ dispatch_job(struct cfg_ctx *ctx, enum cfg_compile_phase phase, struct cfg_job j
 	return new_job;
 }
 
-#define DISPATCH_JOB(ctx, name, phase, ...)						\
+#define DISPATCH_JOB(ctx, _mod, name, phase, ...)				\
 	dispatch_job((ctx), (phase),								\
 				 (struct cfg_job){								\
 					 .type=CFG_JOB_##name,						\
-						 .name = (job_##name##_t){__VA_ARGS__}	\
+					 .mod = _mod,								\
+					 .name = (job_##name##_t){__VA_ARGS__}		\
 				 })
 
 static struct scope *
 instantiate_scope_by_access_pattern(struct cfg_ctx *ctx,
+									struct stg_module *mod,
 									struct scope *parent,
 									struct cfg_node *node)
 {
@@ -233,12 +237,12 @@ instantiate_scope_by_access_pattern(struct cfg_ctx *ctx,
 	case CFG_NODE_ACCESS: {
 		struct scope *scope;
 
-		scope = instantiate_scope_by_access_pattern(ctx, parent, node->ACCESS.lhs);
+		scope = instantiate_scope_by_access_pattern(ctx, mod,parent, node->ACCESS.lhs);
 		if (!scope) {
 			return NULL;
 		}
 
-		return instantiate_scope_by_access_pattern(ctx, scope, node->ACCESS.rhs);
+		return instantiate_scope_by_access_pattern(ctx, mod,scope, node->ACCESS.rhs);
 	} break;
 
 	case CFG_NODE_IDENT: {
@@ -254,7 +258,7 @@ instantiate_scope_by_access_pattern(struct cfg_ctx *ctx,
 
 		scope = scope_push(parent);
 		scope_insert(parent, node->IDENT, SCOPE_ANCHOR_NONE,
-					 get_object(&ctx->vm->store, OBJ_NONE), scope);
+					 OBJ_NONE, scope);
 		return scope;
 	} break;
 
@@ -266,7 +270,8 @@ instantiate_scope_by_access_pattern(struct cfg_ctx *ctx,
 	return NULL;
 }
 
-static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struct cfg_node *stmt)
+static void dispatch_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
+						  struct scope *parent_scope, struct cfg_node *stmt)
 {
 	assert(stmt->type == CFG_NODE_STMT);
 
@@ -281,7 +286,7 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 	switch (node->type) {
 
 	case CFG_NODE_DECL_STMT: {
-		DISPATCH_JOB(ctx, visit_decl_stmt, CFG_PHASE_DISCOVER,
+		DISPATCH_JOB(ctx, mod, visit_decl_stmt, CFG_PHASE_DISCOVER,
 					 .scope = parent_scope,
 					 .stmt = node);
 	} break;
@@ -290,31 +295,35 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 		break;
 
 	case CFG_NODE_ASSERT_STMT:
-		DISPATCH_JOB(ctx, assert_stmt, CFG_PHASE_DISCOVER,
+		DISPATCH_JOB(ctx, mod, assert_stmt, CFG_PHASE_DISCOVER,
 					 .scope = parent_scope,
 					 .node = node);
 		break;
 
 	case CFG_NODE_FUNC_STMT:
-		DISPATCH_JOB(ctx, func_decl, CFG_PHASE_DISCOVER,
+		DISPATCH_JOB(ctx, mod, func_decl, CFG_PHASE_DISCOVER,
 					 .scope = parent_scope,
 					 .node = node);
 		break;
 
 	case CFG_NODE_ASSIGN_STMT:
-		DISPATCH_JOB(ctx, assign_stmt, CFG_PHASE_DISCOVER,
+		DISPATCH_JOB(ctx, mod, assign_stmt, CFG_PHASE_DISCOVER,
 					 .scope = parent_scope,
 					 .node = node);
 		break;
 
 	case CFG_NODE_BIND:
+		DISPATCH_JOB(ctx, mod, expr_stmt, CFG_PHASE_DISCOVER,
+					 .scope = parent_scope,
+					 .node = node);
 		break;
 
 	case CFG_NODE_NAMESPACE: {
 		struct scope *ns_scope;
-		ns_scope = instantiate_scope_by_access_pattern(ctx, parent_scope, node->NAMESPACE.name);
+		ns_scope = instantiate_scope_by_access_pattern(ctx, mod, parent_scope,
+													   node->NAMESPACE.name);
 
-		DISPATCH_JOB(ctx, visit_stmt_list, CFG_PHASE_DISCOVER,
+		DISPATCH_JOB(ctx, mod, visit_stmt_list, CFG_PHASE_DISCOVER,
 					 .scope = ns_scope,
 					 .first_stmt = node->NAMESPACE.body);
 	} break;
@@ -327,8 +336,9 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct scope *parent_scope, struc
 }
 
 static struct expr_node *
-cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
-					struct scope *scope, struct expr_node *lookup_scope,
+cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
+					struct expr *expr, struct scope *scope,
+					struct expr_node *lookup_scope,
 					struct expr_func_scope *func_scope,
 					struct cfg_node *node)
 {
@@ -337,9 +347,9 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 	case CFG_NODE_ACCESS: {
 		struct expr_node *lhs, *rhs;
 
-		lhs = cfg_node_visit_expr(ctx, expr, scope, lookup_scope,
+		lhs = cfg_node_visit_expr(ctx, mod, expr, scope, lookup_scope,
 								  func_scope, node->ACCESS.lhs);
-		rhs = cfg_node_visit_expr(ctx, expr, scope, lhs,
+		rhs = cfg_node_visit_expr(ctx, mod, expr, scope, lhs,
 								  func_scope, node->ACCESS.rhs);
 
 		return rhs;
@@ -350,26 +360,55 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 			*lhs, *rhs, *func,
 			*func_lookup, *local_scope;
 
-		lhs = cfg_node_visit_expr(ctx, expr, scope, NULL,
+		lhs = cfg_node_visit_expr(ctx, mod, expr, scope, NULL,
 								  func_scope, node->BIN_OP.lhs);
-		rhs = cfg_node_visit_expr(ctx, expr, scope, NULL,
+		rhs = cfg_node_visit_expr(ctx, mod, expr, scope, NULL,
 								  func_scope, node->BIN_OP.rhs);
 
 		lhs->next_arg = rhs;
 
 		struct atom *op_name;
 		op_name =
-			binop_atom(&ctx->vm->atom_table,
+			binop_atom(mod->atom_table,
 					   node->BIN_OP.op);
 		local_scope =
-			expr_scope(ctx->vm, expr, scope);
+			expr_scope(mod, expr, scope);
 		func_lookup =
-			expr_lookup(ctx->vm, expr,
+			expr_lookup(mod, expr,
 						op_name, local_scope,
 						EXPR_LOOKUP_GLOBAL);
 
-		func = expr_call(ctx->vm, expr,
+		func = expr_call(mod, expr,
 						 func_lookup, lhs);
+
+		return func;
+	} break;
+
+	case CFG_NODE_BIND: {
+		struct expr_node
+			*src, *drain, *func,
+			*func_lookup, *local_scope;
+
+		src = cfg_node_visit_expr(ctx, mod, expr, scope, NULL,
+								  func_scope, node->BIND.src);
+		drain = cfg_node_visit_expr(ctx, mod, expr, scope, NULL,
+									func_scope, node->BIND.drain);
+
+		src->next_arg = drain;
+
+		struct atom *op_name;
+		op_name =
+			binop_atom(mod->atom_table,
+					   CFG_OP_BIND);
+		local_scope =
+			expr_scope(mod, expr, scope);
+		func_lookup =
+			expr_lookup(mod, expr,
+						op_name, local_scope,
+						EXPR_LOOKUP_GLOBAL);
+
+		func = expr_call(mod, expr,
+						 func_lookup, src);
 
 		return func;
 	} break;
@@ -394,7 +433,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 			while (arg) {
 				struct expr_node *n;
 
-				n = cfg_node_visit_expr(ctx, expr,
+				n = cfg_node_visit_expr(ctx, mod, expr,
 										scope, NULL, func_scope,
 										arg->TUPLE_LIT_ITEM.value);
 
@@ -411,12 +450,12 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 		}
 
 		struct expr_node *func;
-		func = cfg_node_visit_expr(ctx, expr,
+		func = cfg_node_visit_expr(ctx, mod, expr,
 								   scope, NULL, func_scope,
 								   node->FUNC_CALL.ident);
 
 		struct expr_node *call;
-		call = expr_call(ctx->vm, expr, func, first_arg);
+		call = expr_call(mod, expr, func, first_arg);
 
 		return call;
 	} break;
@@ -437,7 +476,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 		while (arg) {
 			struct expr_node *n;
 
-			n = cfg_node_visit_expr(ctx, expr,
+			n = cfg_node_visit_expr(ctx, mod, expr,
 									scope, NULL, func_scope,
 									arg->TUPLE_DECL_ITEM.type);
 
@@ -455,17 +494,17 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 		struct expr_node *local_scope, *func;
 		struct atom *tuple_func_name;
 		tuple_func_name =
-			atom_create(&ctx->vm->atom_table,
+			atom_create(mod->atom_table,
 						STR("tuple"));
 		local_scope =
-			expr_scope(ctx->vm, expr, scope);
+			expr_scope(mod, expr, scope);
 		func =
-			expr_lookup(ctx->vm, expr,
+			expr_lookup(mod, expr,
 						tuple_func_name, local_scope,
 						EXPR_LOOKUP_GLOBAL);
 
 		struct expr_node *call;
-		call = expr_call(ctx->vm, expr, func, first_arg);
+		call = expr_call(mod, expr, func, first_arg);
 
 		return call;
 	} break;
@@ -479,27 +518,27 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 		break;
 
 	case CFG_NODE_NUM_LIT:
-		return expr_lit_int(ctx->vm, expr, node->NUM_LIT);
+		return expr_lit_int(mod, expr, node->NUM_LIT);
 
 	case CFG_NODE_STR_LIT:
-		return expr_lit_str(ctx->vm, expr, node->STR_LIT);
+		return expr_lit_str(mod, expr, node->STR_LIT);
 
 	case CFG_NODE_IDENT:
 		if (lookup_scope) {
-			return expr_lookup(ctx->vm, expr,
+			return expr_lookup(mod, expr,
 							   node->IDENT,
 							   lookup_scope,
 							   EXPR_LOOKUP_LOCAL);
 		} else {
 			struct expr_node *l_scope;
 			if (func_scope) {
-				return expr_lookup_func_scope(ctx->vm, expr,
+				return expr_lookup_func_scope(mod, expr,
 											  node->IDENT,
 											  func_scope);
 			} else {
-				l_scope = expr_scope(ctx->vm, expr, scope);
+				l_scope = expr_scope(mod, expr, scope);
 
-				return expr_lookup(ctx->vm, expr,
+				return expr_lookup(mod, expr,
 								   node->IDENT, l_scope,
 								   EXPR_LOOKUP_GLOBAL);
 			}
@@ -519,8 +558,9 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct expr *expr,
 
 
 static struct expr_func_decl_param *
-cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
-							  struct scope *scope, struct cfg_node *param_tuple,
+cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct stg_module *mod,
+							  struct expr *expr, struct scope *scope,
+							  struct cfg_node *param_tuple,
 							  struct expr_func_scope *func_scope,
 							  size_t *out_num_params)
 {
@@ -544,7 +584,7 @@ cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
 	while (param) {
 		params[i].name = param->TUPLE_DECL_ITEM.name;
 		params[i].type =
-			cfg_node_visit_expr(ctx, expr, scope, NULL, func_scope,
+			cfg_node_visit_expr(ctx, mod, expr, scope, NULL, func_scope,
 								param->TUPLE_DECL_ITEM.type);
 
 		i += 1;
@@ -556,7 +596,8 @@ cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct expr *expr,
 }
 
 static struct job_status
-job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
+job_visit_decl_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
+					job_visit_decl_stmt_t *data)
 {
 	struct cfg_node *node = data->stmt;
 	assert(node->type == CFG_NODE_DECL_STMT);
@@ -571,7 +612,7 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 		name = node->DECL_STMT.name->IDENT;
 		data->scope_entry_id =
 			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
-									  get_object(&ctx->vm->store, OBJ_UNSET));
+									  OBJ_UNSET);
 
 		size_t num_params = 0;
 		struct expr_func_decl_param *params = NULL;
@@ -581,7 +622,7 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 
 		if (node->DECL_STMT.args) {
 			params =
-				cfg_node_tuple_decl_to_params(ctx, &data->expr,
+				cfg_node_tuple_decl_to_params(ctx, mod, &data->expr,
 											  data->scope, node->DECL_STMT.args,
 											  NULL, &num_params);
 
@@ -598,28 +639,28 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 		body_node = node->DECL_STMT.decl;
 
 		struct expr_node *body;
-		body = cfg_node_visit_expr(ctx, &data->expr, data->scope,
+		body = cfg_node_visit_expr(ctx, mod, &data->expr, data->scope,
 								   NULL, func_scope, body_node);
 
 		if (params) {
 			data->expr.body =
-				expr_init_func_decl(ctx->vm, &data->expr, decl_node,
+				expr_init_func_decl(mod, &data->expr, decl_node,
 									params, num_params, NULL, body);
 
-			expr_finalize(ctx->vm, &data->expr);
-			expr_bind_type(ctx->vm, &data->expr,
+			expr_finalize(mod, &data->expr);
+			expr_bind_type(mod, &data->expr,
 						   data->expr.body->rule.abs.ret,
 						   ctx->vm->default_types.type);
 		} else {
 			data->expr.body = body;
-			expr_finalize(ctx->vm, &data->expr);
-			expr_bind_type(ctx->vm, &data->expr,
+			expr_finalize(mod, &data->expr);
+			expr_bind_type(mod, &data->expr,
 						   data->expr.body->rule.out,
 						   ctx->vm->default_types.type);
 		}
 
 		struct cfg_job *decl_job;
-		decl_job = DISPATCH_JOB(ctx, typecheck_expr, CFG_PHASE_RESOLVE,
+		decl_job = DISPATCH_JOB(ctx, mod, typecheck_expr, CFG_PHASE_RESOLVE,
 								.expr = &data->expr);
 
 		return JOB_YIELD_FOR(decl_job);
@@ -631,24 +672,24 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, job_visit_decl_stmt_t *data)
 
 	struct object obj;
 
-	expr_eval_simple(ctx->vm, expr, expr->body, &obj);
+	expr_eval_simple(mod->vm, expr, expr->body, &obj);
 
 	// NOTE: The object has to be registered right after the eval,
 	// otherwise the object might get overwritten on the arena.
-	obj_id obj_id =
-		register_object(&ctx->vm->store, obj);
+	struct object new_obj =
+		register_object(&mod->store, obj);
 
 	struct scope_entry *entry;
 
 	entry = &data->scope->entries[data->scope_entry_id];
-	entry->object = get_object(&ctx->vm->store, obj_id);
+	entry->object = new_obj;
 
 	return JOB_OK;
 }
 
 
 static struct job_status
-job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
+job_func_decl(struct cfg_ctx *ctx, struct stg_module *mod, job_func_decl_t *data)
 {
 	assert(data->node->type == CFG_NODE_FUNC_STMT);
 	assert(data->node->FUNC_STMT.ident->type == CFG_NODE_IDENT);
@@ -661,7 +702,7 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 		name = data->node->FUNC_STMT.ident->IDENT;
 		data->scope_entry_id =
 			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
-									  get_object(&ctx->vm->store, OBJ_UNSET));
+									  OBJ_UNSET);
 
 		data->expr.outer_scope = data->scope;
 
@@ -678,21 +719,21 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 				struct cfg_node *ret_node;
 				ret_node = proto_node->FUNC_PROTO.ret;
 
-				ret = cfg_node_visit_expr(ctx, &data->expr,
+				ret = cfg_node_visit_expr(ctx, mod, &data->expr,
 										  data->scope, NULL, NULL, ret_node);
 
 				struct cfg_node *param_tuple;
 				param_tuple = proto_node->FUNC_PROTO.params;
 
 				params =
-					cfg_node_tuple_decl_to_params(ctx, &data->expr,
+					cfg_node_tuple_decl_to_params(ctx, mod, &data->expr,
 												  data->scope, param_tuple,
 												  NULL, &num_params);
 			} break;
 
 			case CFG_NODE_TUPLE_DECL: {
 				params =
-					cfg_node_tuple_decl_to_params(ctx, &data->expr,
+					cfg_node_tuple_decl_to_params(ctx, mod, &data->expr,
 												  data->scope, proto_node,
 												  NULL, &num_params);
 			} break;
@@ -720,15 +761,15 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 		// but this should be fine.
 
 		struct expr_node *body;
-		body = cfg_node_visit_expr(ctx, &data->expr, data->scope,
+		body = cfg_node_visit_expr(ctx, mod, &data->expr, data->scope,
 								   NULL, &decl_node->func_decl.scope, body_node);
 
 		data->expr.body =
-			expr_init_func_decl(ctx->vm, &data->expr, decl_node,
+			expr_init_func_decl(mod, &data->expr, decl_node,
 								params, num_params, ret, body);
 
 		struct cfg_job *func_job;
-		func_job = DISPATCH_JOB(ctx, typecheck_expr, CFG_PHASE_RESOLVE,
+		func_job = DISPATCH_JOB(ctx, mod, typecheck_expr, CFG_PHASE_RESOLVE,
 								.expr = &data->expr);
 
 		return JOB_YIELD_FOR(func_job);
@@ -740,23 +781,23 @@ job_func_decl(struct cfg_ctx *ctx, job_func_decl_t *data)
 
 	struct object func_obj;
 
-	expr_eval_simple(ctx->vm, expr, expr->body, &func_obj);
+	expr_eval_simple(mod->vm, expr, expr->body, &func_obj);
 
 	// NOTE: The object has to be registered right after the eval,
 	// otherwise the object might get overwritten on the arena.
-	obj_id func_obj_id =
-		register_object(&ctx->vm->store, func_obj);
+	struct object new_func_obj =
+		register_object(&mod->store, func_obj);
 
 	struct scope_entry *entry;
 
 	entry = &data->scope->entries[data->scope_entry_id];
-	entry->object = get_object(&ctx->vm->store, func_obj_id);
+	entry->object = new_func_obj;
 
 	return JOB_OK;
 }
 
 static struct job_status
-job_assign_stmt(struct cfg_ctx *ctx, job_assign_stmt_t *data)
+job_assign_stmt(struct cfg_ctx *ctx, struct stg_module *mod, job_assign_stmt_t *data)
 {
 	assert(data->node->type == CFG_NODE_ASSIGN_STMT);
 	assert(data->node->ASSIGN_STMT.ident->type == CFG_NODE_IDENT);
@@ -769,7 +810,7 @@ job_assign_stmt(struct cfg_ctx *ctx, job_assign_stmt_t *data)
 		name = data->node->ASSIGN_STMT.ident->IDENT;
 		data->scope_entry_id =
 			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
-									  get_object(&ctx->vm->store, OBJ_UNSET));
+									  OBJ_UNSET);
 
 		data->expr.outer_scope = data->scope;
 
@@ -781,11 +822,11 @@ job_assign_stmt(struct cfg_ctx *ctx, job_assign_stmt_t *data)
 		body_node = data->node->ASSIGN_STMT.body;
 
 		data->expr.body =
-			cfg_node_visit_expr(ctx, &data->expr, data->scope,
+			cfg_node_visit_expr(ctx, mod, &data->expr, data->scope,
 								NULL, NULL, body_node);
 
 		struct cfg_job *job;
-		job = DISPATCH_JOB(ctx, typecheck_expr, CFG_PHASE_RESOLVE,
+		job = DISPATCH_JOB(ctx, mod, typecheck_expr, CFG_PHASE_RESOLVE,
 						   .expr = &data->expr);
 
 		return JOB_YIELD_FOR(job);
@@ -801,19 +842,19 @@ job_assign_stmt(struct cfg_ctx *ctx, job_assign_stmt_t *data)
 
 	// NOTE: The object has to be registered right after the eval,
 	// otherwise the object might get overwritten on the arena.
-	obj_id obj_id =
-		register_object(&ctx->vm->store, obj);
+	struct object new_obj =
+		register_object(&mod->store, obj);
 
 	struct scope_entry *entry;
 
 	entry = &data->scope->entries[data->scope_entry_id];
-	entry->object = get_object(&ctx->vm->store, obj_id);
+	entry->object = new_obj;
 
 	return JOB_OK;
 }
 
 static struct job_status
-job_assert_stmt(struct cfg_ctx *ctx, job_assert_stmt_t *data)
+job_assert_stmt(struct cfg_ctx *ctx, struct stg_module *mod, job_assert_stmt_t *data)
 {
 	assert(data->node->type == CFG_NODE_ASSERT_STMT);
 
@@ -826,16 +867,16 @@ job_assert_stmt(struct cfg_ctx *ctx, job_assert_stmt_t *data)
 		body_node = data->node->ASSERT_STMT.expr;
 
 		data->expr.body =
-			cfg_node_visit_expr(ctx, &data->expr, data->scope,
+			cfg_node_visit_expr(ctx, mod, &data->expr, data->scope,
 								NULL, NULL, body_node);
 
-		expr_finalize(ctx->vm, &data->expr);
-		expr_bind_type(ctx->vm, &data->expr,
+		expr_finalize(mod, &data->expr);
+		expr_bind_type(mod, &data->expr,
 					   data->expr.body->rule.out,
 					   ctx->vm->default_types.boolean);
 
 		struct cfg_job *job;
-		job = DISPATCH_JOB(ctx, typecheck_expr, CFG_PHASE_RESOLVE,
+		job = DISPATCH_JOB(ctx, mod, typecheck_expr, CFG_PHASE_RESOLVE,
 						   .expr = &data->expr);
 
 		return JOB_YIELD_FOR(job);
@@ -862,11 +903,57 @@ job_assert_stmt(struct cfg_ctx *ctx, job_assert_stmt_t *data)
 }
 
 static struct job_status
-job_typecheck_expr(struct cfg_ctx *ctx, job_typecheck_expr_t *data)
+job_expr_stmt(struct cfg_ctx *ctx, struct stg_module *mod, job_expr_stmt_t *data)
+{
+	struct cfg_node *expr_node = NULL;
+
+	switch (data->node->type) {
+	case CFG_NODE_BIND:
+		expr_node = data->node;
+		break;
+
+	default:
+		panic("Invalid node '%.*s' as expr stmt.",
+			  LIT(cfg_node_names[data->node->type]));
+		break;
+	}
+
+	assert(expr_node);
+
+	if (!data->initialized) {
+		data->initialized = true;
+
+		data->expr.outer_scope = data->scope;
+
+		data->expr.body =
+			cfg_node_visit_expr(ctx, mod, &data->expr, data->scope,
+								NULL, NULL, expr_node);
+
+		struct cfg_job *job;
+		job = DISPATCH_JOB(ctx, mod, typecheck_expr, CFG_PHASE_RESOLVE,
+						   .expr = &data->expr);
+
+		return JOB_YIELD_FOR(job);
+	}
+
+	struct object obj;
+	int err;
+
+	err = expr_eval_simple(ctx->vm, &data->expr, data->expr.body, &obj);
+	if (err) {
+		return JOB_ERROR;
+	}
+
+	return JOB_OK;
+}
+
+
+static struct job_status
+job_typecheck_expr(struct cfg_ctx *ctx, struct stg_module *mod, job_typecheck_expr_t *data)
 {
 	int err;
 
-	err = expr_typecheck(ctx->vm, data->expr);
+	err = expr_typecheck(mod, data->expr);
 
 	if (err < 0) {
 		return JOB_ERROR;
@@ -884,7 +971,8 @@ int parse_config_file(struct string filename,
 					  struct cfg_node **out_node);
 
 static struct job_status
-job_parse_file(struct cfg_ctx *ctx, job_parse_file_t *data)
+job_parse_file(struct cfg_ctx *ctx, struct stg_module *mod,
+			   job_parse_file_t *data)
 {
 	int err;
 	struct cfg_node *node;
@@ -903,7 +991,8 @@ job_parse_file(struct cfg_ctx *ctx, job_parse_file_t *data)
 	ctx->file_names = new_file_names;
 	ctx->file_names[file_id] = data->file_name;
 
-	err = parse_config_file(data->file_name, &ctx->vm->atom_table, &ctx->vm->memory, file_id, &node);
+	err = parse_config_file(data->file_name, mod->atom_table,
+							&ctx->vm->memory, file_id, &node);
 	if (err) {
 		return JOB_ERROR;
 	}
@@ -911,7 +1000,7 @@ job_parse_file(struct cfg_ctx *ctx, job_parse_file_t *data)
 	assert(node);
 	assert(node->type == CFG_NODE_MODULE);
 
-	DISPATCH_JOB(ctx, visit_stmt_list, CFG_PHASE_DISCOVER,
+	DISPATCH_JOB(ctx, mod, visit_stmt_list, CFG_PHASE_DISCOVER,
 				 .scope = data->mod_scope,
 				 .first_stmt = node->MODULE.body);
 
@@ -919,13 +1008,14 @@ job_parse_file(struct cfg_ctx *ctx, job_parse_file_t *data)
 }
 
 static struct job_status
-job_visit_stmt_list(struct cfg_ctx *ctx, job_visit_stmt_list_t *data)
+job_visit_stmt_list(struct cfg_ctx *ctx, struct stg_module *mod,
+					job_visit_stmt_list_t *data)
 {
 	struct cfg_node *stmt = data->first_stmt;
 	while (stmt) {
 		assert(stmt->type == CFG_NODE_STMT);
 
-		dispatch_stmt(ctx, data->scope, stmt);
+		dispatch_stmt(ctx, mod, data->scope, stmt);
 		stmt = stmt->next_sibling;
 	}
 
@@ -947,7 +1037,8 @@ has_extension(struct string str, struct string ext)
 }
 
 static void
-discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
+discover_config_files(struct cfg_ctx *ctx, struct stg_module *mod,
+					  struct string cfg_dir)
 {
 	/* // TODO: Ensure zero-terminated */
 	char *paths[] = {cfg_dir.text, NULL};
@@ -955,7 +1046,7 @@ discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 	FTS *ftsp;
 	ftsp = fts_open(paths, FTS_PHYSICAL, NULL);
 
-	struct scope *scope = &ctx->vm->root_scope;
+	struct scope *scope = &mod->root_scope;
 
 	FTSENT *f;
 	while ((f = fts_read(ftsp)) != NULL) {
@@ -972,7 +1063,7 @@ discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 				// Remove the ".stg" suffix
 				name.length = f->fts_namelen - 4;
 
-				struct atom *atom = atom_create(&ctx->vm->atom_table, name);
+				struct atom *atom = atom_create(mod->atom_table, name);
 				struct string file_name = {0};
 				struct scope *mod_scope;
 
@@ -980,9 +1071,9 @@ discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 
 				mod_scope = scope_push(scope);
 				scope_insert(scope, atom, SCOPE_ANCHOR_NONE,
-							 get_object(&ctx->vm->store, OBJ_NONE), mod_scope);
+							 OBJ_NONE, mod_scope);
 
-				DISPATCH_JOB(ctx, parse_file, CFG_PHASE_DISCOVER,
+				DISPATCH_JOB(ctx, mod, parse_file, CFG_PHASE_DISCOVER,
 							 .mod_scope = mod_scope,
 							 .file_name = file_name);
 			}
@@ -996,10 +1087,10 @@ discover_config_files(struct cfg_ctx *ctx, struct string cfg_dir)
 				name.text = f->fts_name;
 				name.length = f->fts_namelen;
 
-				struct atom *atom = atom_create(&ctx->vm->atom_table, name);
+				struct atom *atom = atom_create(mod->atom_table, name);
 
 				scope_insert(scope->parent, atom, SCOPE_ANCHOR_NONE,
-							 get_object(&ctx->vm->store, OBJ_NONE), scope);
+							 OBJ_NONE, scope);
 			}
 			break;
 
@@ -1048,7 +1139,7 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 	struct job_status res;
 
 	switch (job->type) {
-#define CFG_JOB(name, data) case CFG_JOB_##name: res = job_##name(ctx, &job->name); break;
+#define CFG_JOB(name, data) case CFG_JOB_##name: res = job_##name(ctx, job->mod, &job->name); break;
 #include "config_jobs.h"
 #undef CFG_JOB
 
@@ -1167,7 +1258,20 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 	ctx.vm = vm;
 	ctx.mem = &vm->memory;
 
-	discover_config_files(&ctx, cfg_dir);
+	struct stg_module_info modinfo;
+	memset(&modinfo, 0, sizeof(struct stg_module_info));
+
+	// TODO: Have an actual name.
+	modinfo.name = STR("native");
+	modinfo.version.major = 1;
+	modinfo.version.minor = 0;
+
+	struct stg_module *mod;
+	// TODO: We should somehow initialize through the init method
+	// instead of outside of register.
+	mod = vm_register_module(vm, &modinfo);
+
+	discover_config_files(&ctx, mod, cfg_dir);
 
 	for (; ctx.current_phase < CFG_NUM_PHASES; ctx.current_phase += 1) {
 		struct cfg_phase *phase = &ctx.phases[ctx.current_phase];

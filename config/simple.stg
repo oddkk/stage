@@ -20,9 +20,14 @@
 
 # op*(lhs: int, rhs: int) -> int;
 
+# printer := Print("asdf");
+# printer <- Node(\a a * 2) <- Node(3);
+# printer <- Node(3);
 
 
 assert square(5) == 25;
+# assert square(5) == 26;
+# assert (\a a)(2) == 2;
 
 
 asdf := square(5) * add(3, square(4));

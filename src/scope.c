@@ -149,6 +149,7 @@ static void _print_indent(int depth) {
 }
 
 #include "vm.h"
+#include "modules/base/mod.h"
 
 static void _scope_print(struct vm *vm, struct scope *scope, int depth)
 {
@@ -161,7 +162,7 @@ static void _scope_print(struct vm *vm, struct scope *scope, int depth)
 
 		if (entry->object.type == vm->default_types.type) {
 			type_id tid = type_obj_get(vm, entry->object);
-			struct type *type = get_type(&vm->store, tid);
+			struct type *type = vm_get_type(vm, tid);
 
 			if (type->object_scope) {
 				_print_indent(depth + 1);

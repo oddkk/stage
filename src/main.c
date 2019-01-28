@@ -82,6 +82,8 @@ static bool check_clock_support()
 	return true;
 }
 
+extern struct stg_module_info mod_base;
+
 int main(int argc, char *argv[])
 {
 	int err;
@@ -99,6 +101,8 @@ int main(int argc, char *argv[])
 		printf("Failed to initialize vm.\n");
 		return -1;
 	}
+
+	vm_register_module(&vm, &mod_base);
 
 	err = cfg_compile(&vm, STR("./config/"));
 	if (err) {

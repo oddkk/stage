@@ -43,7 +43,13 @@ CFG_JOB(assert_stmt, struct {
 	struct expr expr;
 })
 
+CFG_JOB(expr_stmt, struct {
+	struct scope *scope;
+	struct cfg_node *node;
 
+	bool initialized;
+	struct expr expr;
+})
 
 CFG_JOB(typecheck_expr, struct {
 	struct expr *expr;

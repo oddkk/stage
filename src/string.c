@@ -150,3 +150,42 @@ int64_t string_to_int64_base16(struct string str)
 	}
 	return res;
 }
+
+int read_character(struct string str, char **it)
+{
+	int result;
+
+	if (*it >= str.text + str.length) {
+		return 0;
+	}
+
+	result = **it;
+	*it += 1;
+
+	return result;
+}
+
+bool string_split(struct string in, struct string *result,
+				  struct string *rest, int sep)
+{
+	char *it = in.text;
+	int c;
+
+	if (in.length == 0) {
+		return false;
+	}
+
+	while ((c = read_character(in, &it)) && c != sep);
+
+	result->text = in.text;
+	result->length = it - in.text;
+
+	rest->length = in.length - result->length;
+	rest->text = it;
+
+	if (c == sep) {
+		result->length -= 1;
+	}
+
+	return true;
+}

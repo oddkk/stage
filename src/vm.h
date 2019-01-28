@@ -95,16 +95,20 @@ enum vm_instruction {
 
 #define TYPE_VALID(tid) ((tid) > TYPE_NONE)
 
-#define OBJ_UNSET ((obj_id)0)
-#define OBJ_NONE ((obj_id)1)
+#define OBJ_UNSET ((struct object){.type=TYPE_UNSET})
+#define OBJ_NONE ((struct object){.type=TYPE_NONE})
 
-#define OBJ_VALID(oid) ((oid) > OBJ_NONE)
+struct stg_module;
+struct stg_module_info;
 
 struct vm {
-	struct objstore store;
+	/* struct objstore store; */
 	struct scope root_scope;
 	struct arena memory;
 	struct atom_table atom_table;
+
+	struct stg_module **modules;
+	size_t num_modules;
 
 	struct {
 		type_id unset;
@@ -116,13 +120,13 @@ struct vm {
 		type_id string;
 		type_id boolean;
 
-		type_id func_template_return;
+		/* type_id func_template_return; */
 
-		struct type_base builtin_func_base;
-		struct type_base native_func_base;
-		struct type_base func_base;
-		struct type_base enum_base;
-		struct type_base tuple_base;
+		/* struct type_base builtin_func_base; */
+		/* struct type_base native_func_base; */
+		/* struct type_base func_base; */
+		/* struct type_base enum_base; */
+		/* struct type_base tuple_base; */
 	} default_types;
 
 };
@@ -136,114 +140,38 @@ struct exec_stack {
 
 typedef void (*vm_builtin_func)(struct vm *, struct exec_stack *, void *);
 
-obj_id obj_register_string(struct vm *vm, struct string value);
-obj_id obj_register_integer(struct vm *vm, int64_t value);
-obj_id obj_register_type(struct vm *vm, type_id value);
-obj_id obj_register_builtin_func_from_tuple(struct vm *vm, type_id params, type_id ret_type,
-											vm_builtin_func value, void *data);
-obj_id obj_register_builtin_func(struct vm *vm, struct atom **param_names,
-								 type_id *params, size_t num_params,
-								 type_id ret_type, vm_builtin_func value,
-								 void *data);
+struct stg_module *
+vm_register_module(struct vm *vm, struct stg_module_info *);
 
-struct expr;
-struct expr_node;
+struct type *
+vm_get_type(struct vm *, type_id);
 
-obj_id
-obj_register_native_func(struct vm *vm, struct expr *expr,
-						 struct expr_node *node, type_id);
+struct type *
+vm_find_type(struct vm *, struct string mod, struct string name);
 
-type_id type_obj_get(struct vm *vm, struct object obj);
+type_id
+vm_find_type_id(struct vm *, struct string mod, struct string name);
 
-struct type_enum_item {
-	struct atom *name;
-	type_id type;
+void
+vm_exec(struct vm *vm, struct exec_stack *stack, void *instructions, size_t length);
 
-	int64_t value;
-	struct type_enum *owner;
-};
+int
+arena_alloc_stack(struct exec_stack *stack, struct arena *mem, size_t stack_size);
 
-struct type_enum {
-	size_t num_items;
-	struct type_enum_item *items;
+void *
+stack_push_void(struct exec_stack *stack, size_t size);
 
-	// Number of bytes, excluding the size of the enum value.
-	size_t size;
-};
+void
+stack_push(struct exec_stack *stack, void *src, size_t size);
 
-struct type_tuple_item {
-	struct atom *name;
-	type_id type;
-};
+void
+stack_pop_void(struct exec_stack *stack, size_t size);
 
-struct type_tuple {
-	struct atom **names;
-	type_id *types;
-	size_t num_items;
-	bool named;
+void
+stack_pop(struct exec_stack *stack, void *dest, size_t size);
 
-	// Number of bytes
-	size_t size;
-};
-
-struct type_func {
-	struct atom **param_names;
-	type_id *param_types;
-	size_t num_params;
-
-	type_id ret;
-};
-
-struct type_class {
-	int _dc;
-};
-
-struct obj_builtin_func_data {
-	vm_builtin_func func;
-	void *data;
-};
-
-enum type_native_function_storage {
-	NATIVE_FUNC_STORAGE_INSTR,
-	NATIVE_FUNC_STORAGE_NODES,
-};
-
-struct obj_native_func_data {
-	enum type_native_function_storage storage;
-	union {
-		struct {
-			void *data;
-			size_t length;
-		} instr;
-		struct {
-			struct expr *expr;
-			struct expr_node *node;
-		} node;
-	};
-};
-
-enum type_function_kind {
-	TYPE_FUNCTION_GENERIC,
-	TYPE_FUNCTION_BUILTIN,
-	TYPE_FUNCTION_NATIVE,
-};
-
-type_id type_register_enum(struct vm *vm, struct type_enum *t);
-type_id type_register_named_tuple(struct vm *vm, struct type_tuple_item *items, size_t num_items);
-type_id type_register_unnamed_tuple(struct vm *vm, type_id *items, size_t num_items);
-type_id type_register_function(struct vm *vm, struct atom **param_names,
-							   type_id *param_types, size_t num_params,
-							   type_id ret, enum type_function_kind kind);
-
-void vm_exec(struct vm *vm, struct exec_stack *stack, void *instructions, size_t length);
-
-int arena_alloc_stack(struct exec_stack *stack, struct arena *mem, size_t stack_size);
-
-void *stack_push_void(struct exec_stack *stack, size_t size);
-void stack_push(struct exec_stack *stack, void *src, size_t size);
-void stack_pop_void(struct exec_stack *stack, size_t size);
-void stack_pop(struct exec_stack *stack, void *dest, size_t size);
-void stack_peek(struct exec_stack *stack, void *dest, size_t size);
+void
+stack_peek(struct exec_stack *stack, void *dest, size_t size);
 
 int vm_init(struct vm *);
 

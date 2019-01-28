@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
+#include "modules/base/mod.h"
 
 static func_type_id
 alloc_type_slot(struct expr *expr)
@@ -18,7 +19,7 @@ alloc_type_slot(struct expr *expr)
 }
 
 static struct expr_node *
-expr_type_expr(struct vm *vm, struct expr *expr,
+expr_type_expr(struct stg_module *mod, struct expr *expr,
 			   struct expr_node *type_expr, func_type_id slot)
 {
 	struct expr_node *node;
@@ -37,7 +38,7 @@ expr_type_expr(struct vm *vm, struct expr *expr,
 }
 
 struct expr_node *
-expr_func_decl(struct vm *vm, struct expr *expr,
+expr_func_decl(struct stg_module *mod, struct expr *expr,
 			   struct expr_func_decl_param *params,
 			   size_t num_params,
 			   struct expr_node *ret,
@@ -47,14 +48,14 @@ expr_func_decl(struct vm *vm, struct expr *expr,
 
 	node = calloc(1, sizeof(struct expr_node));
 
-	expr_init_func_decl(vm, expr, node, params,
+	expr_init_func_decl(mod, expr, node, params,
 						num_params, ret, body);
 
 	return node;
 }
 
 struct expr_node *
-expr_init_func_decl(struct vm *vm, struct expr *expr,
+expr_init_func_decl(struct stg_module *mod, struct expr *expr,
 					struct expr_node *node,
 					struct expr_func_decl_param *params,
 					size_t num_params,
@@ -86,7 +87,7 @@ expr_init_func_decl(struct vm *vm, struct expr *expr,
 
 	for (size_t i = 0; i < node->rule.abs.num_params; i++) {
 		node->func_decl.params[i].type =
-			expr_type_expr(vm, expr,
+			expr_type_expr(mod, expr,
 						   node->func_decl.params[i].type,
 						   alloc_type_slot(expr));
 
@@ -100,7 +101,7 @@ expr_init_func_decl(struct vm *vm, struct expr *expr,
 	}
 
 	node->func_decl.ret_type =
-		expr_type_expr(vm, expr, node->func_decl.ret_type,
+		expr_type_expr(mod, expr, node->func_decl.ret_type,
 					   node->func_decl.body->rule.out);
 	node->rule.abs.ret =
 		node->func_decl.body->rule.out;
@@ -112,7 +113,7 @@ expr_init_func_decl(struct vm *vm, struct expr *expr,
 }
 
 struct expr_node *
-expr_call(struct vm *vm, struct expr *expr,
+expr_call(struct stg_module *mod, struct expr *expr,
 		  struct expr_node *func,
 		  struct expr_node *first_arg)
 {
@@ -154,7 +155,7 @@ expr_call(struct vm *vm, struct expr *expr,
 }
 
 struct expr_node *
-expr_lookup_func_scope(struct vm *vm, struct expr *expr,
+expr_lookup_func_scope(struct stg_module *mod, struct expr *expr,
 					   struct atom *name,
 					   struct expr_func_scope *scope)
 {
@@ -172,7 +173,7 @@ expr_lookup_func_scope(struct vm *vm, struct expr *expr,
 }
 
 struct expr_node *
-expr_lookup(struct vm *vm, struct expr *expr,
+expr_lookup(struct stg_module *mod, struct expr *expr,
 			struct atom *name, struct expr_node *scope,
 			enum expr_lookup_mode lookup_mode)
 {
@@ -194,7 +195,7 @@ expr_lookup(struct vm *vm, struct expr *expr,
 }
 
 struct expr_node *
-expr_scope(struct vm *vm, struct expr *expr,
+expr_scope(struct stg_module *mod, struct expr *expr,
 		   struct scope *value)
 {
 	struct expr_node *node;
@@ -210,7 +211,7 @@ expr_scope(struct vm *vm, struct expr *expr,
 }
 
 struct expr_node *
-expr_global(struct vm *vm, struct expr *expr,
+expr_global(struct stg_module *mod, struct expr *expr,
 			struct object value)
 {
 	struct expr_node *node;
@@ -226,7 +227,7 @@ expr_global(struct vm *vm, struct expr *expr,
 }
 
 struct expr_node *
-expr_lit_int(struct vm *vm, struct expr *expr,
+expr_lit_int(struct stg_module *mod, struct expr *expr,
 			 int64_t value)
 {
 	struct expr_node *node;
@@ -242,7 +243,7 @@ expr_lit_int(struct vm *vm, struct expr *expr,
 }
 
 struct expr_node *
-expr_lit_str(struct vm *vm, struct expr *expr,
+expr_lit_str(struct stg_module *mod, struct expr *expr,
 			 struct string value)
 {
 	struct expr_node *node;
@@ -258,7 +259,7 @@ expr_lit_str(struct vm *vm, struct expr *expr,
 }
 
 void
-expr_finalize(struct vm *vm, struct expr *expr)
+expr_finalize(struct stg_module *mod, struct expr *expr)
 {
 	if (expr->slots == NULL) {
 		expr->slots =
@@ -268,7 +269,7 @@ expr_finalize(struct vm *vm, struct expr *expr)
 }
 
 int
-expr_bind_type(struct vm *vm, struct expr *expr,
+expr_bind_type(struct stg_module *mod, struct expr *expr,
 			   func_type_id slot, type_id type)
 {
 	assert(slot < expr->num_type_slots);
@@ -284,11 +285,11 @@ expr_bind_type(struct vm *vm, struct expr *expr,
 
 	type_id slot_type = expr_get_slot_type(expr, real_slot);
 
-	if (!unify_types(vm, slot_type, type, &unified)) {
+	if (!unify_types(mod->vm, &mod->store, slot_type, type, &unified)) {
 		printf("Conflicting types '");
-		print_type_repr(vm, get_type(&vm->store, expr_get_slot_type(expr, slot)));
+		print_type_repr(mod->vm, vm_get_type(mod->vm, expr_get_slot_type(expr, slot)));
 		printf("' and '");
-		print_type_repr(vm, get_type(&vm->store, type));
+		print_type_repr(mod->vm, vm_get_type(mod->vm, type));
 		printf("'. (slot %u)\n", slot);
 
 		expr->num_type_errors += 1;
@@ -303,7 +304,7 @@ expr_bind_type(struct vm *vm, struct expr *expr,
 }
 
 int
-expr_bind_ref_slot(struct vm *vm, struct expr *expr,
+expr_bind_ref_slot(struct stg_module *mod, struct expr *expr,
 				   func_type_id slot, func_type_id other)
 {
 	assert(expr->slots[slot].state != SLOT_BOUND_REF);
@@ -316,7 +317,7 @@ expr_bind_ref_slot(struct vm *vm, struct expr *expr,
 	expr->slots[slot].state = SLOT_BOUND_REF;
 	expr->slots[slot].ref = other;
 
-	return expr_bind_type(vm, expr, other, old_type);
+	return expr_bind_type(mod, expr, other, old_type);
 }
 
 func_type_id
@@ -343,7 +344,7 @@ expr_get_slot_type(struct expr *expr, func_type_id slot)
 }
 
 static void
-expr_bind_obvious_types(struct vm *vm, struct expr *expr,
+expr_bind_obvious_types(struct stg_module *mod, struct expr *expr,
 						struct expr_node *node)
 {
 	switch (node->type) {
@@ -353,27 +354,27 @@ expr_bind_obvious_types(struct vm *vm, struct expr *expr,
 			struct expr_node *param;
 			param = node->func_decl.params[i].type;
 
-			expr_bind_type(vm, expr, param->rule.out,
-						   vm->default_types.type);
-			expr_bind_obvious_types(vm, expr, param);
+			expr_bind_type(mod, expr, param->rule.out,
+						   mod->vm->default_types.type);
+			expr_bind_obvious_types(mod, expr, param);
 		}
 
-		expr_bind_type(vm, expr, node->func_decl.ret_type->rule.out,
-					   vm->default_types.type);
-		expr_bind_obvious_types(vm, expr, node->func_decl.ret_type);
+		expr_bind_type(mod, expr, node->func_decl.ret_type->rule.out,
+					   mod->vm->default_types.type);
+		expr_bind_obvious_types(mod, expr, node->func_decl.ret_type);
 
-		expr_bind_obvious_types(vm, expr, node->func_decl.body);
+		expr_bind_obvious_types(mod, expr, node->func_decl.body);
 		break;
 
 	case EXPR_NODE_FUNC_CALL: {
 		struct expr_node *arg;
 		arg = node->func_call.args;
 		while (arg) {
-			expr_bind_obvious_types(vm, expr, arg);
+			expr_bind_obvious_types(mod, expr, arg);
 			arg = arg->next_arg;
 		}
 
-		expr_bind_obvious_types(vm, expr, node->func_call.func);
+		expr_bind_obvious_types(mod, expr, node->func_call.func);
 	} break;
 
 	case EXPR_NODE_LOOKUP_FUNC: {
@@ -381,7 +382,7 @@ expr_bind_obvious_types(struct vm *vm, struct expr *expr,
 		bool found = false;
 		for (size_t i = 0; i < func_scope->num_entries; i++) {
 			if (func_scope->entry_names[i] == node->lookup.name) {
-				expr_bind_ref_slot(vm, expr, node->rule.out,
+				expr_bind_ref_slot(mod, expr, node->rule.out,
 								   func_scope->entry_types[i]);
 				found = true;
 				break;
@@ -391,43 +392,43 @@ expr_bind_obvious_types(struct vm *vm, struct expr *expr,
 
 	case EXPR_NODE_LOOKUP_GLOBAL:
 	case EXPR_NODE_LOOKUP_LOCAL:
-		expr_bind_obvious_types(vm, expr, node->lookup.scope);
+		expr_bind_obvious_types(mod, expr, node->lookup.scope);
 		break;
 
 	case EXPR_NODE_GLOBAL:
 		node->flags |= EXPR_CONST;
 	case EXPR_NODE_STACK:
-		expr_bind_type(vm, expr, node->rule.out,
+		expr_bind_type(mod, expr, node->rule.out,
 					   node->obj.type);
 		node->flags |= EXPR_TYPED;
 		break;
 
 	case EXPR_NODE_SCOPE:
-		expr_bind_type(vm, expr, node->rule.out,
+		expr_bind_type(mod, expr, node->rule.out,
 					   TYPE_SCOPE);
 		node->flags |= EXPR_TYPED | EXPR_CONST;
 		break;
 
 	case EXPR_NODE_LIT_INT:
-		expr_bind_type(vm, expr, node->rule.out,
-					   vm->default_types.integer);
+		expr_bind_type(mod, expr, node->rule.out,
+					   mod->vm->default_types.integer);
 		node->flags |= EXPR_TYPED | EXPR_CONST;
 		break;
 
 	case EXPR_NODE_LIT_STR:
-		expr_bind_type(vm, expr, node->rule.out,
-					   vm->default_types.string);
+		expr_bind_type(mod, expr, node->rule.out,
+					   mod->vm->default_types.string);
 		node->flags |= EXPR_TYPED | EXPR_CONST;
 		break;
 
 	case EXPR_NODE_TYPE_EXPR:
 		if (node->type_expr) {
-			expr_bind_obvious_types(vm, expr, node->type_expr);
+			expr_bind_obvious_types(mod, expr, node->type_expr);
 		} else {
 			node->flags |= EXPR_TYPED | EXPR_CONST;
 		}
-		expr_bind_type(vm, expr, node->rule.out,
-					   vm->default_types.type);
+		expr_bind_type(mod, expr, node->rule.out,
+					   mod->vm->default_types.type);
 		break;
 	}
 }
@@ -439,7 +440,7 @@ enum expr_infer_types_error {
 };
 
 static enum expr_infer_types_error
-expr_try_infer_types(struct vm *vm, struct expr *expr,
+expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 					 struct expr_node *node)
 {
 	enum expr_infer_types_error ret_err;
@@ -458,7 +459,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 			struct expr_node *param;
 			param = node->func_decl.params[i].type;
 
-			ret_err &= expr_try_infer_types(vm, expr, param);
+			ret_err &= expr_try_infer_types(mod, expr, param);
 
 			param_names[i] = node->func_decl.params[i].name;
 			param_types[i] = expr_get_slot_type(expr, node->rule.abs.params[i]);
@@ -468,10 +469,10 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 		struct expr_node *ret;
 		ret = node->func_decl.ret_type;
-		ret_err &= expr_try_infer_types(vm, expr, ret);
+		ret_err &= expr_try_infer_types(mod, expr, ret);
 		flags &= ret->flags;
 
-		ret_err &= expr_try_infer_types(vm, expr, node->func_decl.body);
+		ret_err &= expr_try_infer_types(mod, expr, node->func_decl.body);
 
 		flags &= node->func_decl.body->flags;
 
@@ -480,11 +481,11 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 		type_id func_type;
 		func_type =
-			type_register_function(vm, param_names, param_types,
+			type_register_function(mod->vm, &mod->store, param_names, param_types,
 								   num_params, ret_type,
 								   TYPE_FUNCTION_NATIVE);
 
-		expr_bind_type(vm, expr, node->rule.out, func_type);
+		expr_bind_type(mod, expr, node->rule.out, func_type);
 
 		node->flags = flags;
 	} return ret_err;
@@ -500,7 +501,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		param_types = calloc(node->rule.app.num_args, sizeof(type_id));
 
 		while (arg) {
-			ret_err &= expr_try_infer_types(vm, expr, arg);
+			ret_err &= expr_try_infer_types(mod, expr, arg);
 
 			if (expr_get_slot_type(expr, node->rule.app.args[arg_i]) == TYPE_UNSET) {
 				num_unresolved_args += 1;
@@ -519,18 +520,18 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 		type_id func_type;
 		func_type =
-			type_register_function(vm, NULL, param_types,
+			type_register_function(mod->vm, &mod->store, NULL, param_types,
 								   node->rule.app.num_args,
 								   ret_type, TYPE_FUNCTION_GENERIC);
 
 		free(param_types);
 
-		expr_bind_type(vm, expr, node->rule.app.func, func_type);
-		ret_err &= expr_try_infer_types(vm, expr, node->func_call.func);
+		expr_bind_type(mod, expr, node->rule.app.func, func_type);
+		ret_err &= expr_try_infer_types(mod, expr, node->func_call.func);
 
 		struct type *new_func_type;
 		new_func_type =
-			get_type(&vm->store,
+			vm_get_type(mod->vm,
 					 expr_get_slot_type(expr, node->rule.app.func));
 
 		struct type_func *new_func;
@@ -542,9 +543,9 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 		arg = node->func_call.args;
 
 		while (arg) {
-			expr_bind_type(vm, expr, node->rule.app.args[arg_i],
+			expr_bind_type(mod, expr, node->rule.app.args[arg_i],
 						   new_func->param_types[arg_i]);
-			ret_err &= expr_try_infer_types(vm, expr, arg);
+			ret_err &= expr_try_infer_types(mod, expr, arg);
 
 			all_params_flags &= arg->flags;
 
@@ -552,7 +553,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 			arg = arg->next_arg;
 		}
 
-		expr_bind_type(vm, expr, node->rule.out,
+		expr_bind_type(mod, expr, node->rule.out,
 					   new_func->ret);
 
 		node->flags = node->func_call.func->flags & all_params_flags;
@@ -580,7 +581,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 			node->flags |= EXPR_TYPED | EXPR_CONST;
 
-			err = expr_eval_simple(vm, expr, node, &obj);
+			err = expr_eval_simple(mod->vm, expr, node, &obj);
 
 			if (err) {
 				// The object was not found.
@@ -594,7 +595,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 				return ret_err & EXPR_INFER_TYPES_YIELD;
 			}
 
-			expr_bind_type(vm, expr, node->rule.out, obj.type);
+			expr_bind_type(mod, expr, node->rule.out, obj.type);
 
 			return ret_err;
 		}
@@ -602,7 +603,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 	case EXPR_NODE_LOOKUP_GLOBAL:
 	case EXPR_NODE_LOOKUP_LOCAL: {
-		ret_err &= expr_try_infer_types(vm, expr, node->lookup.scope);
+		ret_err &= expr_try_infer_types(mod, expr, node->lookup.scope);
 
 		int flags = EXPR_TYPED | EXPR_CONST;
 
@@ -614,7 +615,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 			node->flags |= EXPR_TYPED | EXPR_CONST;
 
-			err = expr_eval_simple(vm, expr, node, &obj);
+			err = expr_eval_simple(mod->vm, expr, node, &obj);
 
 			if (err) {
 				// The object was not found.
@@ -628,7 +629,7 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 				return ret_err & EXPR_INFER_TYPES_YIELD;
 			}
 
-			expr_bind_type(vm, expr, node->rule.out, obj.type);
+			expr_bind_type(mod, expr, node->rule.out, obj.type);
 		}
 	} return ret_err;
 
@@ -647,19 +648,19 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 
 	case EXPR_NODE_TYPE_EXPR:
 		if (node->type_expr) {
-			ret_err &= expr_try_infer_types(vm, expr, node->type_expr);
+			ret_err &= expr_try_infer_types(mod, expr, node->type_expr);
 
 			if ((node->type_expr->flags & EXPR_CONST) != 0) {
 				int err;
 				struct object type_obj;
 
-				err = expr_eval_simple(vm, expr, node->type_expr, &type_obj);
+				err = expr_eval_simple(mod->vm, expr, node->type_expr, &type_obj);
 				if (err) {
 					return EXPR_INFER_TYPES_ERROR;
 				}
 
-				type_id type = type_obj_get(vm, type_obj);
-				expr_bind_type(vm, expr, node->rule.type, type);
+				type_id type = type_obj_get(mod->vm, type_obj);
+				expr_bind_type(mod, expr, node->rule.type, type);
 			}
 
 			node->flags = node->type_expr->flags;
@@ -673,22 +674,22 @@ expr_try_infer_types(struct vm *vm, struct expr *expr,
 }
 
 int
-expr_typecheck(struct vm *vm, struct expr *expr)
+expr_typecheck(struct stg_module *mod, struct expr *expr)
 {
 	switch (expr->state) {
 	case EXPR_TYPECHECK_IDLE:
-		expr_finalize(vm, expr);
-		expr_bind_obvious_types(vm, expr, expr->body);
+		expr_finalize(mod, expr);
+		expr_bind_obvious_types(mod, expr, expr->body);
 		expr->state = EXPR_TYPECHECK_INFER_TYPES;
 
 		// fallthrough
 
 	case EXPR_TYPECHECK_INFER_TYPES: {
 		enum expr_infer_types_error err;
-		err = expr_try_infer_types(vm, expr, expr->body);
+		err = expr_try_infer_types(mod, expr, expr->body);
 #if 0
 		printf("typecheck iter %zu:\n", expr->num_infer);
-		expr_print(vm, expr);
+		expr_print(mod->vm, expr);
 #endif
 		expr->num_infer += 1;
 
@@ -754,7 +755,7 @@ expr_eval_lookup(struct vm *vm, struct expr *expr,
 			scope = *(struct scope **)out_scope.data;
 			stack_pop_void(stack, sizeof(struct scope *));
 		} else {
-			struct type *target_type = get_type(&vm->store, out_scope.type);
+			struct type *target_type = vm_get_type(vm, out_scope.type);
 			scope = target_type->object_scope;
 			if (!scope) {
 				printf("%.*s has no scope.\n", ALIT(target_type->name));
@@ -797,7 +798,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 		struct obj_native_func_data *data;
 
 		func_obj.type = expr_get_slot_type(expr, node->rule.out);
-		assert(get_type(&vm->store, func_obj.type)->size ==
+		assert(vm_get_type(vm, func_obj.type)->size ==
 			   sizeof(struct obj_native_func_data));
 		func_obj.data =
 			stack_push_void(stack, sizeof(struct obj_native_func_data));
@@ -840,7 +841,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 			return err;
 		}
 
-		struct type *type = get_type(&vm->store, func_obj.type);
+		struct type *type = vm_get_type(vm, func_obj.type);
 		assert(!type->base->abstract);
 
 		struct type_func *type_func = type->data;
@@ -855,7 +856,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 		type->base->eval(vm, stack, NULL);
 
 		assert(type_func->ret == expr_get_slot_type(expr, node->rule.out));
-		struct type *ret_type = get_type(&vm->store, type_func->ret);
+		struct type *ret_type = vm_get_type(vm, type_func->ret);
 
 		struct object ret_obj;
 		ret_obj.type = type_func->ret;
@@ -877,7 +878,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 
 		for (ssize_t i = func_scope->num_entries - 1; i >= 0; i--) {
 			type_id tid = expr_get_slot_type(expr, func_scope->entry_types[i]);
-			struct type *type = get_type(&vm->store, tid);
+			struct type *type = vm_get_type(vm, tid);
 
 			offset += type->size;
 
@@ -906,7 +907,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 				stack_push(stack, &result.scope, sizeof(struct scope *));
 				out_type = TYPE_SCOPE;
 			} else {
-				struct type *res_type = get_type(&vm->store, result.object.type);
+				struct type *res_type = vm_get_type(vm, result.object.type);
 				stack_push(stack, result.object.data, res_type->size);
 				out_type = result.object.type;
 			}
@@ -929,7 +930,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 			stack_push(stack, &result.scope, sizeof(struct scope *));
 			out_type = TYPE_SCOPE;
 		} else {
-			struct type *res_type = get_type(&vm->store, result.object.type);
+			struct type *res_type = vm_get_type(vm, result.object.type);
 			stack_push(stack, result.object.data, res_type->size);
 			out_type = result.object.type;
 		}
@@ -941,13 +942,13 @@ expr_eval(struct vm *vm, struct expr *expr,
 	} break;
 
 	case EXPR_NODE_STACK: {
-		struct type *obj_type = get_type(&vm->store, node->obj.type);
+		struct type *obj_type = vm_get_type(vm, node->obj.type);
 		stack_push(stack, stack->bp + (size_t)node->obj.data, obj_type->size);
 		out_type = node->obj.type;
 	} break;
 
 	case EXPR_NODE_GLOBAL: {
-		struct type *obj_type = get_type(&vm->store, node->obj.type);
+		struct type *obj_type = vm_get_type(vm, node->obj.type);
 		stack_push(stack, node->obj.data, obj_type->size);
 		out_type = node->obj.type;
 	} break;
@@ -971,7 +972,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 		struct type *type;
 		struct object res = {0};
 
-		type = get_type(&vm->store, out_type);
+		type = vm_get_type(vm, out_type);
 		res.data = stack->sp - type->size;
 		res.type = out_type;
 		*out = res;
@@ -1010,30 +1011,30 @@ enum expr_simplify_result {
 };
 
 static int
-expr_do_simplify_const(struct vm *vm, struct expr *expr, struct expr_node *node)
+expr_do_simplify_const(struct stg_module *mod, struct expr *expr, struct expr_node *node)
 {
 	printf("\nsimplify const:\n");
 
 	struct object result;
 	int err;
 
-	err = expr_eval_simple(vm, expr, node, &result);
+	err = expr_eval_simple(mod->vm, expr, node, &result);
 	if (err) {
 		return err;
 	}
 
-	obj_id new_obj = register_object(&vm->store, result);
+	struct object new_obj = register_object(&mod->store, result);
 
 	expr_destroy(node);
 
 	node->type = EXPR_NODE_GLOBAL;
-	node->obj = get_object(&vm->store, new_obj);
+	node->obj = new_obj;
 
 	return 0;
 }
 
 static enum expr_simplify_result
-expr_simplify_internal(struct vm *vm, struct expr *expr, struct expr_node *node)
+expr_simplify_internal(struct stg_module *mod, struct expr *expr, struct expr_node *node)
 {
 	assert(node);
 
@@ -1049,13 +1050,13 @@ expr_simplify_internal(struct vm *vm, struct expr *expr, struct expr_node *node)
 	case EXPR_NODE_FUNC_CALL: {
 		result = CFG_SIMPLIFY_ALL;
 
-		result &= expr_simplify_internal(vm, expr, node->func_call.func);
+		result &= expr_simplify_internal(mod, expr, node->func_call.func);
 
 		struct expr_node *arg;
 		arg = node->func_call.args;
 
 		while (arg) {
-			result &= expr_simplify_internal(vm, expr, arg);
+			result &= expr_simplify_internal(mod, expr, arg);
 			arg = arg->next_arg;
 		}
 
@@ -1066,15 +1067,15 @@ expr_simplify_internal(struct vm *vm, struct expr *expr, struct expr_node *node)
 			// values we have to cache in the object store.
 
 			enum expr_simplify_result res;
-			res = expr_simplify_internal(vm, expr, node->func_call.func);
+			res = expr_simplify_internal(mod, expr, node->func_call.func);
 			if ((res & CFG_SIMPLIFY_CONST) != 0) {
-				expr_do_simplify_const(vm, expr, node->func_call.func);
+				expr_do_simplify_const(mod, expr, node->func_call.func);
 			}
 
 			while (arg) {
-				res = expr_simplify_internal(vm, expr, arg);
+				res = expr_simplify_internal(mod, expr, arg);
 				if ((res & CFG_SIMPLIFY_CONST) != 0) {
-					expr_do_simplify_const(vm, expr, arg);
+					expr_do_simplify_const(mod, expr, arg);
 				}
 				arg = arg->next_arg;
 			}
@@ -1087,7 +1088,7 @@ expr_simplify_internal(struct vm *vm, struct expr *expr, struct expr_node *node)
 
 	case EXPR_NODE_LOOKUP_LOCAL:
 	case EXPR_NODE_LOOKUP_GLOBAL: {
-		result = expr_simplify_internal(vm, expr, node->lookup.scope);
+		result = expr_simplify_internal(mod, expr, node->lookup.scope);
 
 		if ((result & CFG_SIMPLIFY_OK) != 0) {
 			break;
@@ -1098,11 +1099,11 @@ expr_simplify_internal(struct vm *vm, struct expr *expr, struct expr_node *node)
 			int err;
 
 			struct exec_stack stack = {0};
-			struct arena mem = arena_push(&vm->memory);
+			struct arena mem = arena_push(&mod->vm->memory);
 
 			arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
-			err = expr_eval_lookup(vm, expr, &stack, node, &entry);
-			arena_pop(&vm->memory, mem);
+			err = expr_eval_lookup(mod->vm, expr, &stack, node, &entry);
+			arena_pop(&mod->vm->memory, mem);
 
 			if (err) {
 				return CFG_SIMPLIFY_ERROR;
@@ -1153,13 +1154,13 @@ expr_simplify_internal(struct vm *vm, struct expr *expr, struct expr_node *node)
 }
 
 void
-expr_simplify(struct vm *vm, struct expr *expr, struct expr_node *node)
+expr_simplify(struct stg_module *mod, struct expr *expr, struct expr_node *node)
 {
 	enum expr_simplify_result result;
-	result = expr_simplify_internal(vm, expr, node);
+	result = expr_simplify_internal(mod, expr, node);
 
 	if ((result & CFG_SIMPLIFY_CONST) != 0) {
-		expr_do_simplify_const(vm, expr, node);
+		expr_do_simplify_const(mod, expr, node);
 	}
 }
 
@@ -1174,7 +1175,7 @@ expr_print_slot(struct vm *vm, struct expr *expr, func_type_id slot)
 {
 	if (expr->slots) {
 		printf("%u (", slot);
-		print_type_repr(vm, get_type(&vm->store, expr_get_slot_type(expr, slot)));
+		print_type_repr(vm, vm_get_type(vm, expr_get_slot_type(expr, slot)));
 		printf(")");
 	} else {
 		printf("%u", slot);
@@ -1223,7 +1224,7 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 
 	case EXPR_NODE_STACK: {
 		printf("local bp + 0x%lx ", (size_t)node->obj.data);
-		print_type_repr(vm, get_type(&vm->store, node->obj.type));
+		print_type_repr(vm, vm_get_type(vm, node->obj.type));
 	} break;
 
 	case EXPR_NODE_LIT_INT:
