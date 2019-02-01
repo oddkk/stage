@@ -62,12 +62,12 @@ channel_has_path(struct channel_system *cnls, channel_id from, channel_id to)
 }
 
 int
-bind_channel(struct channel_system *cnls, channel_id cnl_id, channel_id src)
+bind_channel(struct channel_system *cnls, channel_id src, channel_id dest)
 {
-	struct channel *cnl = &cnls->channels[cnl_id];
+	struct channel *cnl = &cnls->channels[dest];
 
-	if (channel_has_path(cnls, cnl_id, src)) {
-		printf("Channels have cycle (%zu -> %zu)\n", src, cnl_id);
+	if (channel_has_path(cnls, dest, src)) {
+		printf("Channels have cycle (%zu -> %zu)\n", src, dest);
 		return -1;
 	}
 

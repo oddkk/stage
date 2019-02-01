@@ -7,13 +7,14 @@
 
 # asdf = foo.fdsa.bar;
 
-# two = 2;
-# four = 2 + 2;
-# some_number = 2 * 3 + 5 - 6 + print(four());
+two = 2;
+four = 2 + 2;
+some_number := 2 * 3 + 5 - 6 + print(four());
+
+foo := print(some_number);
+# bar := print("asdf");
 
 # print <- some_number;
-
-# foo = print(some_number());
 
 # some_string = "foo";
 # some_string2 = "foo" + "bar";

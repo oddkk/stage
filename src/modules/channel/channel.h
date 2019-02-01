@@ -44,7 +44,7 @@ void
 unbind_channel(struct channel_system *, channel_id);
 
 int
-bind_channel(struct channel_system *, channel_id, channel_id);
+bind_channel(struct channel_system *, channel_id src, channel_id dest);
 
 void
 bind_channel_const(struct channel_system *, channel_id, int64_t);

@@ -15,8 +15,16 @@ BUILTIN_PURE(print, debug_print_int, STG_INT, (STG_INT, in))
 	return in;
 }
 
+BUILTIN_PURE(print, debug_print_str, STG_STR, (STG_STR, in))
+{
+	printf("debug print: %.*s\n", LIT(in));
+
+	return in;
+}
+
 void
 base_register_functions(struct stg_module *mod)
 {
 	stg_register_builtin_func(mod, debug_print_int, NULL);
+	stg_register_builtin_func(mod, debug_print_str, NULL);
 }

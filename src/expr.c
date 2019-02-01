@@ -788,6 +788,28 @@ expr_eval_lookup(struct vm *vm, struct expr *expr,
 	return err;
 }
 
+static int
+expr_eval_push_args(struct vm *vm, struct expr *expr,
+					struct exec_stack *stack, struct expr_node *arg)
+{
+	if (!arg) {
+		return 0;
+	}
+
+	int err = 0;
+	struct object arg_obj;
+
+	err |= expr_eval_push_args(vm, expr, stack, arg->next_arg);
+
+	err |= expr_eval(vm, expr, stack, arg, &arg_obj);
+
+	if (err) {
+		return err;
+	}
+
+	return 0;
+}
+
 int
 expr_eval(struct vm *vm, struct expr *expr,
 		  struct exec_stack *stack,
@@ -822,23 +844,28 @@ expr_eval(struct vm *vm, struct expr *expr,
 	} break;
 
 	case EXPR_NODE_FUNC_CALL: {
-		struct expr_node *arg = node->func_call.args;
 		int err;
 
 		uint8_t *prev_bp = stack->bp;
 		uint8_t *prev_sp = stack->sp;
 
-		size_t num_args = 0;
-		while (arg) {
-			struct object arg_obj;
+		/* size_t num_args = 0; */
+		/* while (arg) { */
+		/* 	struct object arg_obj; */
 
-			err = expr_eval(vm, expr, stack, arg, &arg_obj);
-			if (err) {
-				return err;
-			}
+		/* 	err = expr_eval(vm, expr, stack, arg, &arg_obj); */
+		/* 	if (err) { */
+		/* 		return err; */
+		/* 	} */
 
-			num_args += 1;
-			arg = arg->next_arg;
+		/* 	num_args += 1; */
+		/* 	arg = arg->next_arg; */
+		/* } */
+
+		err = expr_eval_push_args(vm, expr, stack,
+								  node->func_call.args);
+		if (err) {
+			return err;
 		}
 
 		stack->bp = stack->sp;
@@ -855,11 +882,14 @@ expr_eval(struct vm *vm, struct expr *expr,
 
 		struct type_func *type_func = type->data;
 
-		if (type_func->num_params != num_args) {
-			printf("Wrong number of arguments. Expected %zu, got %zu.\n",
-				   type_func->num_params, num_args);
-			return -1;
-		}
+		// TODO: Is this check necessary? We already know the types
+		// are ok after the type inference/check.
+
+		/* if (type_func->num_params != num_args) { */
+		/* 	printf("Wrong number of arguments. Expected %zu, got %zu.\n", */
+		/* 		   type_func->num_params, num_args); */
+		/* 	return -1; */
+		/* } */
 
 		assert(type->base->eval != NULL);
 		type->base->eval(vm, stack, NULL);

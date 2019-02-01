@@ -37,9 +37,9 @@ stg_register_builtin_func(struct stg_module *mod,
 
 	struct atom *func_name;
 	func_name = atom_create(mod->atom_table, func.name);
-	scope_insert(&mod->root_scope, func_name,
-				 SCOPE_ANCHOR_ABSOLUTE,
-				 obj, NULL);
+	scope_insert_overloadable(&mod->root_scope, func_name,
+							  SCOPE_ANCHOR_ABSOLUTE,
+							  obj);
 }
 
 type_id

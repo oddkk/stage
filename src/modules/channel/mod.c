@@ -13,6 +13,10 @@ print_node_callback(struct vm *vm, void *user_data,
 	return inputs[0];
 }
 
+/* BUILTIN_IMPURE(PrintNode, print_int_node_callback, STG_INT, (STG_INT, in)) */
+/* { */
+/* } */
+
 BUILTIN_PURE(Print, print_node_construct, CNL_NODE, (STG_STR, name))
 {
 	struct channel_system *cnls = data;
