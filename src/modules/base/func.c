@@ -338,24 +338,6 @@ obj_register_builtin_func(struct vm *vm, struct objstore *store,
 	return register_object(vm, store, result);
 }
 
-/* obj_id obj_register_builtin_func_from_tuple(struct vm *vm, struct objstore *store, */
-/* 											type_id params, type_id ret_type, */
-/* 											vm_builtin_func value, void *data) */
-/* { */
-/* 	struct type *params_type = vm_get_type(vm, params); */
-/* 	assert(params_type->base == &vm->default_types.tuple_base); */
-/* 	struct type_tuple *tuple = params_type->data; */
-/* 	assert(tuple->named == true); */
-
-/* 	return obj_register_builtin_func(vm, store, */
-/* 									 tuple->names, */
-/* 									 tuple->types, */
-/* 									 tuple->num_items, */
-/* 									 ret_type, */
-/* 									 value, data); */
-/* } */
-
-
 void
 base_register_func(struct stg_module *mod)
 {

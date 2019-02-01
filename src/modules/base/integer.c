@@ -78,14 +78,14 @@ void base_register_integer(struct stg_module *mod)
 		stg_register_builtin_type(mod, &base_integer_base,
 								  STG_TYPE_DATA(STG_INT));
 
-	stg_register_builtin_func(mod, obj_integer_add);
-	stg_register_builtin_func(mod, obj_integer_sub);
-	stg_register_builtin_func(mod, obj_integer_mul);
-	stg_register_builtin_func(mod, obj_integer_div);
-	stg_register_builtin_func(mod, obj_integer_eq);
-	stg_register_builtin_func(mod, obj_integer_neq);
-	stg_register_builtin_func(mod, obj_integer_gt);
-	stg_register_builtin_func(mod, obj_integer_lt);
-	stg_register_builtin_func(mod, obj_integer_gte);
-	stg_register_builtin_func(mod, obj_integer_lte);
+	stg_register_builtin_func(mod, obj_integer_add, NULL);
+	stg_register_builtin_func(mod, obj_integer_sub, NULL);
+	stg_register_builtin_func(mod, obj_integer_mul, NULL);
+	stg_register_builtin_func(mod, obj_integer_div, NULL);
+	stg_register_builtin_func(mod, obj_integer_eq,  NULL);
+	stg_register_builtin_func(mod, obj_integer_neq, NULL);
+	stg_register_builtin_func(mod, obj_integer_gt,  NULL);
+	stg_register_builtin_func(mod, obj_integer_lt,  NULL);
+	stg_register_builtin_func(mod, obj_integer_gte, NULL);
+	stg_register_builtin_func(mod, obj_integer_lte, NULL);
 }

@@ -5,7 +5,8 @@
 
 void
 stg_register_builtin_func(struct stg_module *mod,
-						  struct stg_builtin_func func)
+						  struct stg_builtin_func func,
+						  void *data)
 {
 	struct atom **param_names;
 	type_id *param_types;
@@ -32,7 +33,7 @@ stg_register_builtin_func(struct stg_module *mod,
 	obj = obj_register_builtin_func(mod->vm, &mod->store,
 									param_names, param_types,
 									func.num_params, ret_type, func.func,
-									NULL);
+									data);
 
 	struct atom *func_name;
 	func_name = atom_create(mod->atom_table, func.name);

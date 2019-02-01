@@ -8,6 +8,11 @@ CFG_JOB(visit_stmt_list, struct {
 	struct cfg_node *first_stmt;
 })
 
+CFG_JOB(use_stmt, struct {
+	struct scope *scope;
+	struct cfg_node *node;
+})
+
 CFG_JOB(visit_decl_stmt, struct {
 	struct scope *scope;
 	struct cfg_node *stmt;

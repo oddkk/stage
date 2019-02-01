@@ -47,11 +47,6 @@ struct type_func {
 	type_id ret;
 };
 
-
-/* obj_id obj_register_builtin_func_from_tuple(struct vm *, struct objstore *, */
-/* 											type_id params, type_id ret_type, */
-/* 											vm_builtin_func value, void *data); */
-
 struct object
 obj_register_builtin_func(struct vm *, struct objstore *,
 								 struct atom **param_names,

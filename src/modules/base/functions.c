@@ -18,5 +18,5 @@ BUILTIN_PURE(print, debug_print_int, STG_INT, (STG_INT, in))
 void
 base_register_functions(struct stg_module *mod)
 {
-	stg_register_builtin_func(mod, debug_print_int);
+	stg_register_builtin_func(mod, debug_print_int, NULL);
 }

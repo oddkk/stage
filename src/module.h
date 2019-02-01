@@ -27,6 +27,8 @@ struct stg_module {
 	struct scope root_scope;
 	struct atom_table *atom_table;
 	struct vm *vm;
+
+	void *data;
 };
 
 enum builtin_func_kind {
@@ -147,10 +149,8 @@ struct stg_builtin_func {
 
 void
 stg_register_builtin_func(struct stg_module *mod,
-						  struct stg_builtin_func func);
-
-/* struct stg_type_data { */
-/* }; */
+						  struct stg_builtin_func func,
+						  void *data);
 
 type_id
 stg_register_builtin_type(struct stg_module *mod,

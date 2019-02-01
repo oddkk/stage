@@ -285,13 +285,16 @@ static void dispatch_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
 
 	switch (node->type) {
 
-	case CFG_NODE_DECL_STMT: {
+	case CFG_NODE_DECL_STMT:
 		DISPATCH_JOB(ctx, mod, visit_decl_stmt, CFG_PHASE_DISCOVER,
 					 .scope = parent_scope,
 					 .stmt = node);
-	} break;
+		break;
 
 	case CFG_NODE_USE_STMT:
+		DISPATCH_JOB(ctx, mod, use_stmt, CFG_PHASE_DISCOVER,
+					 .scope = parent_scope,
+					 .node = node);
 		break;
 
 	case CFG_NODE_ASSERT_STMT:
@@ -593,6 +596,29 @@ cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct stg_module *mod,
 
 	*out_num_params = num_params;
 	return params;
+}
+
+static struct job_status
+job_use_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
+			 job_use_stmt_t *data)
+{
+	struct cfg_node *node = data->node;
+	assert(node->type == CFG_NODE_USE_STMT);
+	assert(node->USE_STMT.ident->type == CFG_NODE_IDENT);
+
+	struct atom *name = node->USE_STMT.ident->IDENT;
+	for (size_t i = 0; i < mod->vm->num_modules; i++) {
+		struct atom *modname =
+			atom_create(mod->atom_table,
+						mod->vm->modules[i]->info.name);
+		if (modname == name) {
+			scope_use(&mod->root_scope, &mod->vm->modules[i]->root_scope);
+			return JOB_OK;
+		}
+	}
+
+	cfg_error(ctx, data->node, "Could not find module '%.*s'.", ALIT(name));
+	return JOB_ERROR;
 }
 
 static struct job_status

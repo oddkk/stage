@@ -83,6 +83,7 @@ static bool check_clock_support()
 }
 
 extern struct stg_module_info mod_base;
+extern struct stg_module_info mod_channel;
 
 int main(int argc, char *argv[])
 {
@@ -103,6 +104,7 @@ int main(int argc, char *argv[])
 	}
 
 	vm_register_module(&vm, &mod_base);
+	vm_register_module(&vm, &mod_channel);
 
 	err = cfg_compile(&vm, STR("./config/"));
 	if (err) {
