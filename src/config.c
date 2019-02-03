@@ -343,6 +343,112 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 					struct expr *expr, struct scope *scope,
 					struct expr_node *lookup_scope,
 					struct expr_func_scope *func_scope,
+					struct cfg_node *node);
+
+static struct expr_func_decl_param *
+cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct stg_module *mod,
+							  struct expr *expr, struct scope *scope,
+							  struct cfg_node *param_tuple,
+							  struct expr_func_scope *func_scope,
+							  size_t *out_num_params)
+{
+	assert(param_tuple->type == CFG_NODE_TUPLE_DECL);
+
+	size_t num_params = 0;
+	struct cfg_node *param;
+	param = param_tuple->TUPLE_DECL.items;
+
+	while (param) {
+		num_params += 1;
+		param = param->next_sibling;
+	}
+
+	struct expr_func_decl_param *params;
+	params = calloc(num_params, sizeof(struct expr_func_decl_param));
+
+	size_t i = 0;
+	param = param_tuple->TUPLE_DECL.items;
+
+	while (param) {
+		params[i].name = param->TUPLE_DECL_ITEM.name;
+		params[i].type =
+			cfg_node_visit_expr(ctx, mod, expr, scope, NULL, func_scope,
+								param->TUPLE_DECL_ITEM.type);
+
+		i += 1;
+		param = param->next_sibling;
+	}
+
+	*out_num_params = num_params;
+	return params;
+}
+
+
+static int
+cfg_node_visit_func_proto(struct cfg_ctx *ctx, struct stg_module *mod,
+						  struct expr *expr, struct scope *scope,
+						  struct expr_node *lookup_scope,
+						  struct expr_func_scope *func_scope,
+						  struct cfg_node *proto_node,
+						  size_t *out_num_params,
+						  struct expr_func_decl_param **out_params,
+						  struct expr_node **out_ret)
+{
+	size_t num_params = 0;
+	struct expr_func_decl_param *params = NULL;
+	struct expr_node *ret = NULL;
+
+	if (proto_node) {
+		switch (proto_node->type) {
+		case CFG_NODE_FUNC_PROTO: {
+			struct cfg_node *ret_node;
+			ret_node = proto_node->FUNC_PROTO.ret;
+
+			ret = cfg_node_visit_expr(ctx, mod, expr,
+									  scope, NULL, NULL, ret_node);
+
+			struct cfg_node *param_tuple;
+			param_tuple = proto_node->FUNC_PROTO.params;
+
+			params =
+				cfg_node_tuple_decl_to_params(ctx, mod, expr,
+											  scope, param_tuple,
+											  NULL, &num_params);
+		} break;
+
+		case CFG_NODE_TUPLE_DECL: {
+			params =
+				cfg_node_tuple_decl_to_params(ctx, mod, expr,
+											  scope, proto_node,
+											  NULL, &num_params);
+		} break;
+
+		case CFG_NODE_IDENT:
+			num_params = 1;
+			params = calloc(1, sizeof(struct expr_func_decl_param));
+			params[0].name = proto_node->IDENT;
+			params[0].type = NULL;
+			break;
+
+		default:
+			panic("Invalid node '%.*s' as function prototype.",
+				  LIT(cfg_node_names[proto_node->type]));
+			break;
+		}
+	}
+
+	*out_num_params = num_params;
+	*out_params = params;
+	*out_ret = ret;
+
+	return 0;
+}
+
+static struct expr_node *
+cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
+					struct expr *expr, struct scope *scope,
+					struct expr_node *lookup_scope,
+					struct expr_func_scope *func_scope,
 					struct cfg_node *node)
 {
 	switch (node->type) {
@@ -416,9 +522,39 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 		return func;
 	} break;
 
-	case CFG_NODE_LAMBDA:
-		panic("TODO: Lambda");
-		break;
+	case CFG_NODE_LAMBDA: {
+		struct cfg_node *proto_node;
+		proto_node = node->LAMBDA.proto;
+
+		size_t num_params = 0;
+		struct expr_func_decl_param *params = NULL;
+		struct expr_node *ret = NULL;
+
+		// Resolve the names and params of the params.
+		cfg_node_visit_func_proto(ctx, mod, expr, scope,
+								  lookup_scope, func_scope, proto_node,
+								  &num_params, &params, &ret);
+
+		struct cfg_node *body_node;
+		body_node = node->LAMBDA.body;
+
+		struct expr_node *decl_node;
+		decl_node = calloc(1, sizeof(struct expr_node));
+
+		// We need to prealloc decl_node before we visit its body
+		// because we need a reference to its inner scope
+		// (func_scope). Note that the scope is not yet initialized,
+		// but this should be fine.
+
+		struct expr_node *body;
+		body = cfg_node_visit_expr(ctx, mod, expr, scope,
+								   NULL, &decl_node->func_decl.scope, body_node);
+
+		expr_init_func_decl(mod, expr, decl_node,
+							params, num_params, ret, body);
+
+		return decl_node;
+	} break;
 
 	case CFG_NODE_FUNC_CALL: {
 		struct expr_node *first_arg = NULL, *last_arg = NULL;
@@ -559,44 +695,6 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 	return NULL;
 }
 
-
-static struct expr_func_decl_param *
-cfg_node_tuple_decl_to_params(struct cfg_ctx *ctx, struct stg_module *mod,
-							  struct expr *expr, struct scope *scope,
-							  struct cfg_node *param_tuple,
-							  struct expr_func_scope *func_scope,
-							  size_t *out_num_params)
-{
-	assert(param_tuple->type == CFG_NODE_TUPLE_DECL);
-
-	size_t num_params = 0;
-	struct cfg_node *param;
-	param = param_tuple->TUPLE_DECL.items;
-
-	while (param) {
-		num_params += 1;
-		param = param->next_sibling;
-	}
-
-	struct expr_func_decl_param *params;
-	params = calloc(num_params, sizeof(struct expr_func_decl_param));
-
-	size_t i = 0;
-	param = param_tuple->TUPLE_DECL.items;
-
-	while (param) {
-		params[i].name = param->TUPLE_DECL_ITEM.name;
-		params[i].type =
-			cfg_node_visit_expr(ctx, mod, expr, scope, NULL, func_scope,
-								param->TUPLE_DECL_ITEM.type);
-
-		i += 1;
-		param = param->next_sibling;
-	}
-
-	*out_num_params = num_params;
-	return params;
-}
 
 static struct job_status
 job_use_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
@@ -739,44 +837,9 @@ job_func_decl(struct cfg_ctx *ctx, struct stg_module *mod, job_func_decl_t *data
 		struct expr_func_decl_param *params = NULL;
 		struct expr_node *ret = NULL;
 
-		if (proto_node) {
-			switch (proto_node->type) {
-			case CFG_NODE_FUNC_PROTO: {
-				struct cfg_node *ret_node;
-				ret_node = proto_node->FUNC_PROTO.ret;
-
-				ret = cfg_node_visit_expr(ctx, mod, &data->expr,
-										  data->scope, NULL, NULL, ret_node);
-
-				struct cfg_node *param_tuple;
-				param_tuple = proto_node->FUNC_PROTO.params;
-
-				params =
-					cfg_node_tuple_decl_to_params(ctx, mod, &data->expr,
-												  data->scope, param_tuple,
-												  NULL, &num_params);
-			} break;
-
-			case CFG_NODE_TUPLE_DECL: {
-				params =
-					cfg_node_tuple_decl_to_params(ctx, mod, &data->expr,
-												  data->scope, proto_node,
-												  NULL, &num_params);
-			} break;
-
-			case CFG_NODE_IDENT:
-				num_params = 1;
-				params = calloc(1, sizeof(struct expr_func_decl_param));
-				params[0].name = proto_node->IDENT;
-				params[0].type = NULL;
-				break;
-
-			default:
-				panic("Invalid node '%.*s' as function prototype.",
-					  LIT(cfg_node_names[proto_node->type]));
-				break;
-			}
-		}
+		cfg_node_visit_func_proto(ctx, mod, &data->expr, data->scope,
+								  NULL, NULL, proto_node,
+								  &num_params, &params, &ret);
 
 		struct expr_node *decl_node;
 		decl_node = calloc(1, sizeof(struct expr_node));

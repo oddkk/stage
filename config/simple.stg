@@ -11,25 +11,6 @@ two = 2;
 four = 2 + 2;
 some_number := 2 * 3 + 5 - 6 + print(four());
 
-foo := print(some_number);
-bar := print("asdf");
-
-d = print(four());
-dd := d();
-
-# d = print(3);
-# dd := d();
-
-f = print("fasdf");
-ff := f();
-
-# print <- some_number;
-
-# some_string = "foo";
-# some_string2 = "foo" + "bar";
-
-# op*(lhs: int, rhs: int) -> int;
-
 use channel;
 
 printer := Print("asdf");
@@ -42,16 +23,20 @@ assert square(5) == 25;
 # assert (\a a)(2) == 2;
 
 
-asdf := square(5) * add(3, square(4));
+lam := \(a: int) a;
+
+assert lam(2) == 2;
+
+# asdf := square(5) * add(3, square(4));
 
 square(x: int) = x * x;
-add(x: int, y: int) = x + y;
+# add(x: int, y: int) = x + y;
 
 
 
 
 
-double(x: int) -> int = 2 * x;
+# double(x: int) -> int = 2 * x;
 # double(x: (int, Bool)) = 2 * x;
 
 # test = print(square(4) + square(6));
