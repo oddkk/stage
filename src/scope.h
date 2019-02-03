@@ -78,13 +78,19 @@ int scope_lookup(struct scope *scope,
 
 void scope_print(struct vm *vm, struct scope *scope);
 
+struct scope_iter {
+	struct scope *scope;
+	size_t next_use_index;
+	struct scope_entry *entry;
+};
+
 // Returns 0 if found overload, in this case *iter is a pointer to
 // that element. Returns -1 if no element was found, and 1 if an
 // element previously was found, but there are no more matches.
 int scope_iterate_overloads(struct scope *scope, struct atom *name,
-							struct scope_entry **iter);
+							struct scope_iter *iter);
 
 int scope_iterate_local_overloads(struct scope *scope, struct atom *name,
-								  struct scope_entry **iter);
+								  struct scope_iter *iter);
 
 #endif

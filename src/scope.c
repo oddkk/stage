@@ -205,62 +205,83 @@ void scope_print(struct vm *vm, struct scope *scope)
 /* 	return res.id; */
 /* } */
 
-int scope_iterate_overloads(struct scope *scope, struct atom *name,
-							struct scope_entry **iter)
+int
+scope_iterate_overloads(struct scope *scope, struct atom *name,
+						struct scope_iter *iter)
 {
 	int err = 1;
-	struct scope *current_scope;
 
-	if (*iter) {
-		current_scope = (*iter)->parent;
-	} else {
-		current_scope = scope;
+	if (!iter->scope) {
+		iter->scope = scope;
+		iter->next_use_index = 0;
+		iter->entry = NULL;
 	}
 
-	bool found = (*iter != NULL);
-
-	while (current_scope && err != 0) {
-		err = scope_iterate_local_overloads(current_scope, name, iter);
+	while (iter->scope && err != 0) {
+		err = scope_iterate_local_overloads(iter->scope, name, iter);
 
 		if (err == 0) {
 			return 0;
 		}
 
-		current_scope = current_scope->parent;
+		iter->scope = iter->scope->parent;
+		iter->next_use_index = 0;
+		iter->entry = NULL;
 	}
 
-	return found ? 1 : -1;
+	return -1;
 }
 
-int scope_iterate_local_overloads(struct scope *scope, struct atom *name,
-								  struct scope_entry **iter)
+int
+scope_iterate_local_overloads(struct scope *scope, struct atom *name,
+							  struct scope_iter *iter)
 {
 	assert(scope != NULL);
 
-	if (*iter == NULL) {
+	if (!iter->scope) {
+		iter->scope = scope;
+	}
+
+	if (iter->entry == NULL) {
 		int err;
 		err = id_lookup_table_lookup(&scope->lookup, name->name);
 
-		if (err < 0) {
-			return (*iter != NULL) ? 1 : -1;
+		if (err >= 0) {
+			iter->entry = &scope->entries[err];
+			return 0;
 		}
 
-		*iter = &scope->entries[err];
-
-		return 0;
-	}
-
-	struct scope_entry *entry = *iter;
-	struct scope *parent = entry->parent;
-
-	if (entry->next_overload >= 0) {
-		assert(entry->next_overload < parent->num_entries);
-		*iter = &parent->entries[entry->next_overload];
-
-		return 0;
-
+		/* return (*iter != NULL) ? 1 : -1; */
 	} else {
-		*iter = NULL;
-		return 1;
+		struct scope_entry *entry = iter->entry;
+		struct scope *parent = entry->parent;
+
+		if (entry->next_overload >= 0) {
+			assert(entry->next_overload < parent->num_entries);
+			iter->entry = &parent->entries[entry->next_overload];
+
+			return 0;
+		}
 	}
+
+
+	while (iter->next_use_index < iter->scope->num_used_scopes) {
+		iter->entry = NULL;
+
+		struct scope *next_use_scope =
+			iter->scope->used_scopes[iter->next_use_index];
+
+		iter->next_use_index += 1;
+
+		int err;
+		err = scope_iterate_local_overloads(next_use_scope, name, iter);
+
+		if (err == 0) {
+			return 0;
+		}
+
+	}
+
+	iter->entry = NULL;
+	return 1;
 }

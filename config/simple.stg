@@ -12,7 +12,7 @@ four = 2 + 2;
 some_number := 2 * 3 + 5 - 6 + print(four());
 
 foo := print(some_number);
-# bar := print("asdf");
+bar := print("asdf");
 
 # print <- some_number;
 

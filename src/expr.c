@@ -568,6 +568,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 				break;
 			}
 		}
+
 		if (found) {
 			if (expr_get_slot_type(expr, node->rule.out) != TYPE_UNSET) {
 				node->flags |= EXPR_TYPED;
@@ -734,10 +735,12 @@ static int
 expr_eval_lookup(struct vm *vm, struct expr *expr,
 				 struct exec_stack *stack,
 				 struct expr_node *node,
+				 type_id expected_type,
 				 struct scope_entry *result)
 {
 	assert(node->type == EXPR_NODE_LOOKUP_LOCAL ||
 		   node->type == EXPR_NODE_LOOKUP_GLOBAL);
+
 
 	struct object out_scope;
 	int err;
@@ -775,17 +778,37 @@ expr_eval_lookup(struct vm *vm, struct expr *expr,
 
 	assert(scope);
 
-	if (node->type == EXPR_NODE_LOOKUP_GLOBAL) {
-		err = scope_lookup(scope, node->lookup.name, result);
-	} else {
-		err = scope_local_lookup(scope, node->lookup.name, result);
+	int iter_err = 0;
+	struct scope_iter iter = {0};
+	size_t num_matching_entries = 0;
+	while (iter_err == 0) {
+		if (node->type == EXPR_NODE_LOOKUP_GLOBAL) {
+			iter_err = scope_iterate_overloads(scope, node->lookup.name, &iter);
+		} else {
+			iter_err = scope_iterate_local_overloads(scope, node->lookup.name, &iter);
+		}
+
+		if (iter_err != 0) {
+			break;
+		}
+
+		type_id out_type;
+		if (unify_types(vm, &expr->mod->store,
+						expected_type,
+						iter.entry->object.type, &out_type)) {
+			*result = *iter.entry;
+			num_matching_entries += 1;
+		}
 	}
 
-	if (err) {
+	if (num_matching_entries == 0) {
 		printf("'%.*s' was not found.\n", ALIT(node->lookup.name));
+		return -1;
+	} else if (num_matching_entries > 1) {
+		return 1;
 	}
 
-	return err;
+	return 0;
 }
 
 static int
@@ -819,7 +842,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 
 	if ((node->flags & EXPR_TYPED) == 0) {
 		panic("Trying to evaluate an untyped expression.");
-		return -1;
+		return EXPR_EVAL_ERROR;
 	}
 
 	switch (node->type) {
@@ -865,7 +888,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 		err = expr_eval_push_args(vm, expr, stack,
 								  node->func_call.args);
 		if (err) {
-			return err;
+			return EXPR_EVAL_ERROR;
 		}
 
 		stack->bp = stack->sp;
@@ -937,8 +960,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 							   node->lookup.name, &result);
 
 			if (err) {
-				printf("'%.*s' was not found.\n", ALIT(node->lookup.name));
-				return -1;
+				return err;
 			}
 
 			if (result.object.type == TYPE_NONE) {
@@ -959,19 +981,23 @@ expr_eval(struct vm *vm, struct expr *expr,
 		int err;
 		struct scope_entry result;
 
-		err = expr_eval_lookup(vm, expr, stack, node, &result);
-		if (err) {
-			return -1;
-		}
-
-		if (result.object.type == TYPE_NONE) {
-			assert(result.scope);
-			stack_push(stack, &result.scope, sizeof(struct scope *));
-			out_type = TYPE_SCOPE;
+		err = expr_eval_lookup(vm, expr, stack, node,
+							   expr_get_slot_type(expr, node->rule.out),
+							   &result);
+		if (err < 0) {
+			return err;
+		} else if (err > 0) {
+			out_type = TYPE_UNSET;
 		} else {
-			struct type *res_type = vm_get_type(vm, result.object.type);
-			stack_push(stack, result.object.data, res_type->size);
-			out_type = result.object.type;
+			if (result.object.type == TYPE_NONE) {
+				assert(result.scope);
+				stack_push(stack, &result.scope, sizeof(struct scope *));
+				out_type = TYPE_SCOPE;
+			} else {
+				struct type *res_type = vm_get_type(vm, result.object.type);
+				stack_push(stack, result.object.data, res_type->size);
+				out_type = result.object.type;
+			}
 		}
 	} break;
 
@@ -1141,7 +1167,9 @@ expr_simplify_internal(struct stg_module *mod, struct expr *expr, struct expr_no
 			struct arena mem = arena_push(&mod->vm->memory);
 
 			arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
-			err = expr_eval_lookup(mod->vm, expr, &stack, node, &entry);
+			err = expr_eval_lookup(mod->vm, expr, &stack, node,
+								   expr_get_slot_type(expr, node->rule.out),
+								   &entry);
 			arena_pop(&mod->vm->memory, mem);
 
 			if (err) {

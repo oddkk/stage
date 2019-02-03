@@ -140,6 +140,14 @@ struct expr {
 
 	enum expr_typecheck_state state;
 	size_t num_infer;
+
+	// TODO: It seems wrong that an expr should have a reference to
+	// its module, as it is called with either mod or vm for typecheck
+	// and eval. We have it here because we need to create new types
+	// for function overloads type unification. The function
+	// overloads, and all lookups, should be moved to the typecheck
+	// stage.
+	struct stg_module *mod;
 };
 
 struct expr_node *
@@ -219,6 +227,12 @@ expr_typecheck(struct stg_module *, struct expr *);
 int
 expr_eval_simple(struct vm *, struct expr *,
 				 struct expr_node *, struct object *out);
+
+enum expr_eval_error {
+	EXPR_EVAL_OK = 0,
+	EXPR_EVAL_ERROR = -1,
+	EXPR_EVAL_YIELD = 1,
+};
 
 int
 expr_eval(struct vm *, struct expr *,

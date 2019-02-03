@@ -979,6 +979,7 @@ job_typecheck_expr(struct cfg_ctx *ctx, struct stg_module *mod, job_typecheck_ex
 {
 	int err;
 
+	data->expr->mod = mod;
 	err = expr_typecheck(mod, data->expr);
 
 	if (err < 0) {
