@@ -4,6 +4,8 @@
 #include "utils.h"
 #include "modules/base/mod.h"
 
+#define TYPECHECK_DEBUG 0
+
 static func_type_id
 alloc_type_slot(struct expr *expr)
 {
@@ -584,10 +586,18 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			err = expr_eval_simple(mod->vm, expr, node, &obj);
 
-			if (err) {
+			// TODO: We should not rely on the return value of
+			// expr_eval. In this case we might only have to call
+			// expr_resolve_scope_lookup?
+			if (err < 0) {
 				// The object was not found.
 				node->flags = prev_flags;
 				return EXPR_INFER_TYPES_ERROR;
+			} else if (err > 0) {
+				// We do not have enough type information to uniquly
+				// determine the entry.
+				node->flags = prev_flags;
+				return ret_err & EXPR_INFER_TYPES_YIELD;
 			}
 
 			if (obj.type == TYPE_UNSET) {
@@ -697,7 +707,7 @@ expr_typecheck(struct stg_module *mod, struct expr *expr)
 	case EXPR_TYPECHECK_INFER_TYPES: {
 		enum expr_infer_types_error err;
 		err = expr_try_infer_types(mod, expr, expr->body);
-#if 0
+#if TYPECHECK_DEBUG
 		printf("typecheck iter %zu:\n", expr->num_infer);
 		expr_print(mod->vm, expr);
 #endif
@@ -730,6 +740,46 @@ expr_typecheck(struct stg_module *mod, struct expr *expr)
 	}
 }
 
+static int
+expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
+						  struct scope *scope,
+						  struct atom *name,
+						  type_id expected_type,
+						  bool global_lookup,
+						  struct scope_entry *result)
+{
+	int iter_err = 0;
+	struct scope_iter iter = {0};
+	size_t num_matching_entries = 0;
+	while (iter_err == 0) {
+		if (global_lookup) {
+			iter_err = scope_iterate_overloads(scope, name, &iter);
+		} else {
+			iter_err = scope_iterate_local_overloads(scope, name, &iter);
+		}
+
+		if (iter_err != 0) {
+			break;
+		}
+
+		type_id out_type;
+		if (unify_types(vm, &expr->mod->store,
+						expected_type,
+						iter.entry->object.type, &out_type)) {
+			*result = *iter.entry;
+			num_matching_entries += 1;
+		}
+	}
+
+	if (num_matching_entries == 0) {
+		printf("'%.*s' was not found.\n", ALIT(name));
+		return -1;
+	} else if (num_matching_entries > 1) {
+		return 1;
+	}
+
+	return 0;
+}
 
 static int
 expr_eval_lookup(struct vm *vm, struct expr *expr,
@@ -777,38 +827,14 @@ expr_eval_lookup(struct vm *vm, struct expr *expr,
 	}
 
 	assert(scope);
+	bool global_lookup =
+		(node->type == EXPR_NODE_LOOKUP_GLOBAL);
 
-	int iter_err = 0;
-	struct scope_iter iter = {0};
-	size_t num_matching_entries = 0;
-	while (iter_err == 0) {
-		if (node->type == EXPR_NODE_LOOKUP_GLOBAL) {
-			iter_err = scope_iterate_overloads(scope, node->lookup.name, &iter);
-		} else {
-			iter_err = scope_iterate_local_overloads(scope, node->lookup.name, &iter);
-		}
-
-		if (iter_err != 0) {
-			break;
-		}
-
-		type_id out_type;
-		if (unify_types(vm, &expr->mod->store,
-						expected_type,
-						iter.entry->object.type, &out_type)) {
-			*result = *iter.entry;
-			num_matching_entries += 1;
-		}
-	}
-
-	if (num_matching_entries == 0) {
-		printf("'%.*s' was not found.\n", ALIT(node->lookup.name));
-		return -1;
-	} else if (num_matching_entries > 1) {
-		return 1;
-	}
-
-	return 0;
+	return expr_resolve_scope_lookup(vm, expr, scope,
+									 node->lookup.name,
+									 expected_type,
+									 global_lookup,
+									 result);
 }
 
 static int
@@ -956,8 +982,11 @@ expr_eval(struct vm *vm, struct expr *expr,
 			int err;
 			struct scope_entry result;
 
-			err = scope_lookup(func_scope->outer_scope,
-							   node->lookup.name, &result);
+			err = expr_resolve_scope_lookup(vm, expr,
+											func_scope->outer_scope,
+											node->lookup.name,
+											expr_get_slot_type(expr, node->rule.out),
+											true, &result);
 
 			if (err) {
 				return err;
