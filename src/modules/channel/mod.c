@@ -33,6 +33,18 @@ BUILTIN_PURE(Print, print_node_construct, CNL_NODE, (STG_STR, name))
 	return inputs[0];
 }
 
+BUILTIN_PURE(Node, node_type_constructor, STG_TYPE, (STG_TYPE, T))
+{
+	/* struct channel_system *cnls = data; */
+	/* channel_id cnl = alloc_channel(cnls); */
+
+	/* bind_channel_const(cnls, cnl, val); */
+
+	/* return cnl; */
+
+	return 0;
+}
+
 BUILTIN_PURE(Node, int_node_construct, CNL_NODE, (STG_INT, val))
 {
 	struct channel_system *cnls = data;
@@ -68,6 +80,7 @@ int mod_channel_init(struct stg_module *mod)
 							  STG_TYPE_DATA(CNL_NODE));
 	stg_register_builtin_func(mod, print_node_construct, sys);
 	stg_register_builtin_func(mod, int_node_construct, sys);
+	stg_register_builtin_func(mod, node_type_constructor, sys);
 	stg_register_builtin_func(mod, node_bind, sys);
 	return 0;
 }

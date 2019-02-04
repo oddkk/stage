@@ -59,10 +59,18 @@ int scope_insert_overloadable(struct scope *parent,
 
 	struct scope_entry *previous_overload = NULL;
 
+	int id;
+	struct scope_entry *entry;
+
+	id = dlist_alloc(parent->entries, parent->num_entries);
+	entry = &parent->entries[id];
+
 	if (err >= 0) {
 		previous_overload = &parent->entries[err];
 
 		if (!previous_overload->overloadable) {
+			printf("%.*s not overloadable\n", ALIT(name));
+			parent->num_entries -= 1;
 			return -3;
 		}
 
@@ -70,12 +78,6 @@ int scope_insert_overloadable(struct scope *parent,
 			previous_overload = &parent->entries[previous_overload->next_overload];
 		}
 	}
-
-	int id;
-	struct scope_entry *entry;
-
-	id = dlist_alloc(parent->entries, parent->num_entries);
-	entry = &parent->entries[id];
 
 	entry->overloadable = true;
 	entry->name = name;
@@ -133,19 +135,14 @@ int scope_lookup(struct scope *scope,
 {
 	int err;
 
-	/* printf("looking up '%.*s'... ", ALIT(name)); */
 	err = scope_local_lookup(scope, name, result);
 	if (err < 0) {
 		if (scope->parent) {
-			/* printf("not found. trying parent.\n"); */
 			return scope_lookup(scope->parent, name, result);
 		} else {
-			/* printf("not found. no more parents.\n"); */
 			return err;
 		}
 	}
-
-	/* printf("found.\n"); */
 
 	return 0;
 }
@@ -250,8 +247,6 @@ scope_iterate_local_overloads(struct scope *scope, struct atom *name,
 			iter->entry = &scope->entries[err];
 			return 0;
 		}
-
-		/* return (*iter != NULL) ? 1 : -1; */
 	} else {
 		struct scope_entry *entry = iter->entry;
 		struct scope *parent = entry->parent;
@@ -279,7 +274,6 @@ scope_iterate_local_overloads(struct scope *scope, struct atom *name,
 		if (err == 0) {
 			return 0;
 		}
-
 	}
 
 	iter->entry = NULL;

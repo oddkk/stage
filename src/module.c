@@ -37,9 +37,15 @@ stg_register_builtin_func(struct stg_module *mod,
 
 	struct atom *func_name;
 	func_name = atom_create(mod->atom_table, func.name);
-	scope_insert_overloadable(&mod->root_scope, func_name,
-							  SCOPE_ANCHOR_ABSOLUTE,
-							  obj);
+	int err;
+	err = scope_insert_overloadable(&mod->root_scope, func_name,
+									SCOPE_ANCHOR_ABSOLUTE,
+									obj);
+
+	if (err < 0) {
+		panic("Failed to insert %.*s.%.*s.\n",
+			  LIT(mod->info.name), LIT(func.name));
+	}
 }
 
 type_id
@@ -69,9 +75,16 @@ stg_register_builtin_type(struct stg_module *mod,
 	struct object new_obj;
 	new_obj = register_object(mod->vm, &mod->store, obj);
 
-	scope_insert(&mod->root_scope, t.name,
-				 SCOPE_ANCHOR_ABSOLUTE,
-				 new_obj, NULL);
+	int err;
+
+	err = scope_insert(&mod->root_scope, t.name,
+					   SCOPE_ANCHOR_ABSOLUTE,
+					   new_obj, NULL);
+
+	if (err < 0) {
+		panic("Failed to insert %.*s.%.*s.\n",
+			  LIT(type.mod), LIT(type.name));
+	}
 
 	return tid;
 }
