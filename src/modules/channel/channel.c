@@ -1,4 +1,5 @@
 #include "channel.h"
+#include "../base/mod.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -78,7 +79,7 @@ bind_channel(struct channel_system *cnls, channel_id src, channel_id dest)
 }
 
 void
-bind_channel_const(struct channel_system *cnls, channel_id cnl_id, int64_t val)
+bind_channel_const(struct channel_system *cnls, channel_id cnl_id, struct object val)
 {
 	struct channel *cnl = &cnls->channels[cnl_id];
 	cnl->kind = CHANNEL_CONSTANT;
@@ -88,41 +89,77 @@ bind_channel_const(struct channel_system *cnls, channel_id cnl_id, int64_t val)
 void
 bind_channel_callback(struct channel_system *cnls, channel_id cnl_id,
 					  channel_id *inputs, size_t num_inputs,
-					  channel_callback callback, void *data)
+					  struct object callback, void *data)
 {
 	struct channel *cnl = &cnls->channels[cnl_id];
 	cnl->kind = CHANNEL_CALLBACK;
 	cnl->callback.num_inputs = num_inputs;
 	cnl->callback.inputs = inputs;
-	cnl->callback.callback = callback;
+	cnl->callback.func = callback;
 	cnl->callback.user_data = data;
 }
 
-int64_t
-eval_channel(struct channel_system *cnls, channel_id cnl_id)
+struct object
+eval_channel(struct vm *vm, struct channel_system *cnls, struct exec_stack *stack, channel_id cnl_id)
 {
 	struct channel *cnl = &cnls->channels[cnl_id];
 
 	switch (cnl->kind) {
-	case CHANNEL_UNBOUND:
-		return 0;
+	case CHANNEL_UNBOUND: {
+		struct type *type = vm_get_type(vm, cnl->out_type);
+		struct object res;
+		res.type = cnl->out_type;
+		res.data = stack->sp;
+
+		stack_push_void(stack, type->size);
+		return res;
+	}
 
 	case CHANNEL_BOUND:
-		return eval_channel(cnls, cnl->src);
+		return eval_channel(vm, cnls, stack, cnl->src);
 
-	case CHANNEL_CONSTANT:
-		return cnl->constant;
+	case CHANNEL_CONSTANT: {
+		assert(cnl->constant.type == cnl->out_type);
+		struct type *type = vm_get_type(vm, cnl->out_type);
+		struct object res;
+		res.type = cnl->out_type;
+		res.data = stack->sp;
+
+		stack_push(stack, cnl->constant.data, type->size);
+		return res;
+	}
 
 	case CHANNEL_CALLBACK: {
-		int64_t args[cnl->callback.num_inputs];
-		for (size_t i = 0; i < cnl->callback.num_inputs; i++) {
-			args[i] = eval_channel(cnls, cnl->callback.inputs[i]);
+		uint8_t *prev_bp = stack->bp;
+		uint8_t *prev_sp = stack->sp;
+
+		for (ssize_t i = cnl->callback.num_inputs - 1; i >= 0; i--) {
+			eval_channel(vm, cnls, stack, cnl->callback.inputs[i]);
 		}
-		return cnl->callback.callback(NULL, cnl->callback.user_data,
-									  cnl->callback.num_inputs, args);
-	} break;
+
+		stack->bp = stack->sp;
+
+		struct type *func_type;
+		func_type = vm_get_type(vm, cnl->callback.func.type);
+
+		func_type->base->eval(vm, stack, cnl->callback.user_data);
+
+		struct type_func *type_func = func_type->data;
+		struct type *ret_type = vm_get_type(vm, type_func->ret);
+
+		struct object res;
+		res.type = cnl->out_type;
+		res.data = stack->sp - ret_type->size;
+
+		stack->sp = prev_sp;
+		stack->bp = prev_bp;
+
+		stack_push(stack, res.data, ret_type->size);
+
+		return res;
+	}
 	}
 
 	panic("Invalid channel kind.");
-	return 0;
+	return OBJ_NONE;
 }

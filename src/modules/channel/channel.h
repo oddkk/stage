@@ -10,19 +10,22 @@ enum channel_kind {
 	CHANNEL_CALLBACK,
 };
 
-typedef int64_t (*channel_callback)(struct vm *, void *user_data,
-									size_t num_inputs, int64_t *inputs);
+/* typedef int64_t (*channel_callback)(struct vm *, void *user_data, */
+/* 									size_t num_inputs, int64_t *inputs); */
 
 struct channel {
 	enum channel_kind kind;
 
+	type_id out_type;
+
 	union {
 		channel_id src;
-		int64_t constant;
+		struct object constant;
 		struct {
 			size_t num_inputs;
+			type_id func_type;
+			struct object func;
 			channel_id *inputs;
-			channel_callback callback;
 			void *user_data;
 		} callback;
 	};
@@ -47,14 +50,14 @@ int
 bind_channel(struct channel_system *, channel_id src, channel_id dest);
 
 void
-bind_channel_const(struct channel_system *, channel_id, int64_t);
+bind_channel_const(struct channel_system *, channel_id, struct object);
 
 void
 bind_channel_callback(struct channel_system *, channel_id,
 					  channel_id *inputs, size_t num_inputs,
-					  channel_callback callback, void *data);
+					  struct object callback, void *data);
 
-int64_t
-eval_channel(struct channel_system *cnls, channel_id cnl_id);
+struct object
+eval_channel(struct vm *vm, struct channel_system *cnls, struct exec_stack *stack, channel_id cnl_id);
 
 #endif

@@ -3,21 +3,14 @@
 #include "../base/mod.h"
 #include <stdlib.h>
 
-static int64_t
-print_node_callback(struct vm *vm, void *user_data,
-					size_t num_inputs, int64_t *inputs)
+BUILTIN_IMPURE(PrintNode, print_int_node_callback, STG_INT, (STG_INT, in))
 {
-	struct string *str = user_data;
-	assert(num_inputs == 1);
-	printf("%.*s = %li\n", LIT(*str), inputs[0]);
-	return inputs[0];
+	struct string *str = data;
+	printf("%.*s = %li\n", LIT(*str), in);
+	return in;
 }
 
-/* BUILTIN_IMPURE(PrintNode, print_int_node_callback, STG_INT, (STG_INT, in)) */
-/* { */
-/* } */
-
-BUILTIN_PURE(Print, print_node_construct, CNL_NODE, (STG_STR, name))
+BUILTIN_IMPURE(Print, print_node_construct, CNL_NODE, (STG_STR, name))
 {
 	struct channel_system *cnls = data;
 	channel_id cnl = alloc_channel(cnls);
@@ -50,7 +43,10 @@ BUILTIN_PURE(Node, int_node_construct, CNL_NODE, (STG_INT, val))
 	struct channel_system *cnls = data;
 	channel_id cnl = alloc_channel(cnls);
 
-	bind_channel_const(cnls, cnl, val);
+	struct object const_val;
+	const_val = obj_register_integer(vm, &mod->store, val);
+
+	bind_channel_const(cnls, cnl, const_val);
 
 	return cnl;
 }
@@ -59,8 +55,6 @@ BUILTIN_IMPURE(op->, node_bind, CNL_NODE, (CNL_NODE, src), (CNL_NODE, drain))
 {
 	struct channel_system *cnls = data;
 	bind_channel(cnls, src, drain);
-
-	printf("bound (val) %li\n", eval_channel(cnls, drain));
 	return 0;
 }
 
