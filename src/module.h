@@ -17,6 +17,8 @@ struct stg_module_info {
 
 	int  (*init)(struct stg_module *);
 	void (*free)(struct stg_module *);
+
+	int  (*start)(struct stg_module *);
 };
 
 struct stg_module {

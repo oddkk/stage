@@ -177,5 +177,8 @@ void
 stack_peek(struct exec_stack *stack, void *dest, size_t size);
 
 int vm_init(struct vm *);
+void vm_destroy(struct vm *);
+
+int vm_start(struct vm *);
 
 #endif

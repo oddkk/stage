@@ -28,6 +28,36 @@ int vm_init(struct vm *vm)
 	return 0;
 }
 
+void vm_destroy(struct vm *vm)
+{
+	for (size_t i = 0; i < vm->num_modules; i++) {
+		struct stg_module *mod = vm->modules[i];
+
+		if (mod->info.free) {
+			mod->info.free(mod);
+		}
+
+		free(mod);
+	}
+
+	free(vm->modules);
+	free(vm->memory.data);
+	// TODO: Free scopes
+	// TODO: Free atom table
+}
+
+int vm_start(struct vm *vm)
+{
+	for (size_t i = 0; i < vm->num_modules; i++) {
+		struct stg_module *mod = vm->modules[i];
+		if (mod->info.start) {
+			mod->info.start(mod);
+		}
+	}
+
+	return 0;
+}
+
 
 struct stg_module *
 vm_register_module(struct vm *vm, struct stg_module_info *info)
