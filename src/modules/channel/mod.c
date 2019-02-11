@@ -27,7 +27,7 @@ void bind_channel_builtin(
 		inputs[i] = alloc_channel(cnls, param_type_id);
 	}
 
-	bind_channel_callback(cnls, cnl_id, inputs, func.num_params,
+	bind_channel_callback(mod, cnls, cnl_id, inputs, func.num_params,
 			callback, user_data);
 }
 
@@ -75,7 +75,7 @@ BUILTIN_PURE(Node, int_node_construct, CNL_NODE, (STG_INT, val))
 	struct object const_val;
 	const_val = obj_register_integer(vm, &mod->store, val);
 
-	bind_channel_const(cnls, cnl, const_val);
+	bind_channel_const(mod, cnls, cnl, const_val);
 
 	return cnl;
 }
@@ -86,7 +86,7 @@ print_channel_downstream(struct channel_system *cnls);
 BUILTIN_IMPURE(op->, node_bind, CNL_NODE, (CNL_NODE, src), (CNL_NODE, drain))
 {
 	struct channel_system *cnls = data;
-	bind_channel(cnls, src, drain);
+	bind_channel(mod, cnls, src, drain);
 	return 0;
 }
 

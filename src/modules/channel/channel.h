@@ -67,13 +67,13 @@ void
 unbind_channel(struct channel_system *, channel_id);
 
 int
-bind_channel(struct channel_system *, channel_id src, channel_id dest);
+bind_channel(struct stg_module *, struct channel_system *, channel_id src, channel_id dest);
 
-void
-bind_channel_const(struct channel_system *, channel_id, struct object);
+int
+bind_channel_const(struct stg_module *, struct channel_system *, channel_id, struct object);
 
-void
-bind_channel_callback(struct channel_system *, channel_id,
+int
+bind_channel_callback(struct stg_module *, struct channel_system *, channel_id,
 					  channel_id *inputs, size_t num_inputs,
 					  struct object callback, void *data);
 
