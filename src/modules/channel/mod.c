@@ -100,7 +100,7 @@ int mod_channel_init(struct stg_module *mod)
 	sys = calloc(1, sizeof(struct channel_system));
 	mod->data = sys;
 
-	channel_system_init(sys, 1024);
+	channel_system_init(sys, 1024, mod->vm);
 
 	stg_register_builtin_type(mod, &channel_node_base,
 							  STG_TYPE_DATA(CNL_NODE));
@@ -111,8 +111,19 @@ int mod_channel_init(struct stg_module *mod)
 	return 0;
 }
 
+int mod_channel_start(struct stg_module *mod)
+{
+	struct channel_system *cnls = mod->data;
+	channel_system_start(cnls);
+	return 0;
+}
+
 void mod_channel_free(struct stg_module *mod)
 {
+	struct channel_system *cnls = mod->data;
+
+	channel_system_destroy(cnls);
+
 	free(mod->data);
 }
 
@@ -122,4 +133,6 @@ struct stg_module_info mod_channel = {
 
 	.init = mod_channel_init,
 	.free = mod_channel_free,
+
+	.start = mod_channel_start,
 };

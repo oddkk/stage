@@ -17,6 +17,9 @@ printer := Print("asdf");
 # printer <- Node(\a a * 2) <- Node(3);
 printer <- Node(3);
 
+printer2 := Print("foobar");
+printer2 <- Node(56);
+
 
 assert square(5) == 25;
 # assert square(5) == 26;

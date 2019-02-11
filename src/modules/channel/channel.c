@@ -32,24 +32,6 @@ mark_channel(uintmax_t *mask, channel_id cnl)
 // }
 
 void
-channel_system_init(struct channel_system *cnls, size_t cap)
-{
-	cnls->num_channels = 0;
-	cnls->cap_channels = cap;
-	cnls->channels = calloc(cnls->cap_channels,
-							sizeof(struct channel));
-
-	assert(cnls->cap_channels % mask_bits_per_unit == 0);
-	cnls->downstream_channels =
-		alloc_channel_bitfield(cnls->cap_channels * cnls->cap_channels);
-
-	cnls->dirty_channels =
-		alloc_channel_bitfield(cnls->cap_channels);
-	cnls->notify_channels =
-		alloc_channel_bitfield(cnls->cap_channels);
-}
-
-void
 channel_mark_dependency(struct channel_system *cnls, channel_id src, channel_id drain)
 {
 	mark_channel(cnls->downstream_channels, (src * cnls->cap_channels) + drain);
@@ -75,6 +57,60 @@ channel_mask_or(uintmax_t *out, uintmax_t *in, size_t len)
 	for (size_t i = 0; i < mask_num_units(len); i++) {
 		out[i] |= in[i];
 	}
+}
+
+static void *
+channel_system_run(void *cnls);
+
+int
+channel_system_init(struct channel_system *cnls, size_t cap, struct vm *vm)
+{
+	cnls->vm = vm;
+	cnls->num_channels = 0;
+	cnls->cap_channels = cap;
+	cnls->channels = calloc(cnls->cap_channels,
+							sizeof(struct channel));
+
+	assert(cnls->cap_channels % mask_bits_per_unit == 0);
+	cnls->downstream_channels =
+		alloc_channel_bitfield(cnls->cap_channels * cnls->cap_channels);
+
+	cnls->dirty_channels =
+		alloc_channel_bitfield(cnls->cap_channels);
+	cnls->notify_channels =
+		alloc_channel_bitfield(cnls->cap_channels);
+
+	return 0;
+}
+
+int
+channel_system_start(struct channel_system *cnls)
+{
+	int err;
+
+	err = pthread_create(&cnls->thread, NULL, channel_system_run, cnls);
+	if (err) {
+		perror("pthread");
+		return err;
+	}
+
+	return 0;
+}
+
+void
+channel_system_destroy(struct channel_system *cnls)
+{
+	if (cnls->should_quit) {
+		// Someone else is already destroying the system.
+		return;
+	}
+	cnls->should_quit = true;
+	pthread_join(cnls->thread, NULL);
+
+	free(cnls->channels);
+	free(cnls->downstream_channels);
+	free(cnls->dirty_channels);
+	free(cnls->notify_channels);
 }
 
 channel_id
@@ -170,6 +206,7 @@ int
 bind_channel(struct channel_system *cnls, channel_id src, channel_id dest)
 {
 	struct channel *cnl = get_channel(cnls, dest);
+	struct channel *src_cnl = get_channel(cnls, src);
 
 	if (channel_has_path(cnls, dest, src)) {
 		printf("Channels have cycle (%zu -> %zu)\n", src, dest);
@@ -181,8 +218,17 @@ bind_channel(struct channel_system *cnls, channel_id src, channel_id dest)
 	cnl->kind = CHANNEL_BOUND;
 	cnl->src = src;
 
+	// TODO: Unify out types
+	if (cnl->out_type != src_cnl->out_type) {
+		printf("Warning: Channel types does not match (%zu != %zu).",
+				cnl->out_type, src_cnl->out_type);
+	}
+	cnl->out_type = src_cnl->out_type;
+
 	uintmax_t *this_deps = get_downstream_channels(cnls, dest);
 	refresh_channel_dep_mask(cnls, this_deps, dest);
+
+	mark_channel_dirty(cnls, dest);
 
 	return 0;
 }
@@ -196,6 +242,13 @@ bind_channel_const(struct channel_system *cnls, channel_id cnl_id, struct object
 
 	cnl->kind = CHANNEL_CONSTANT;
 	cnl->constant = val;
+
+	// TODO: Unify out types
+	if (cnl->out_type != val.type) {
+		printf("Warning: Channel types does not match (%zu != %zu).",
+				cnl->out_type, val.type);
+	}
+	cnl->out_type = val.type;
 }
 
 void
@@ -213,14 +266,28 @@ bind_channel_callback(struct channel_system *cnls, channel_id cnl_id,
 	cnl->callback.func = callback;
 	cnl->callback.user_data = data;
 
+	struct type *func_type = vm_get_type(cnls->vm, callback.type);
+	struct type_func *func_data = func_type->data;
+
+	// TODO: Unify out types
+	if (cnl->out_type != func_data->ret) {
+		printf("Warning: Channel types does not match (%zu != %zu).",
+				cnl->out_type, func_data->ret);
+	}
+	cnl->out_type = func_data->ret;
+
 	uintmax_t *this_deps = get_downstream_channels(cnls, cnl_id);
 	refresh_channel_dep_mask(cnls, this_deps, cnl_id);
+
+	mark_channel_dirty(cnls, cnl_id);
 }
 
 void
 mark_channel_dirty(struct channel_system *cnls, channel_id cnl)
 {
-	mark_channel(cnls->dirty_channels, cnl);
+	channel_mask_or(cnls->dirty_channels,
+			get_downstream_channels(cnls, cnl),
+			cnls->cap_channels);
 }
 
 void
@@ -272,6 +339,8 @@ eval_channel(struct vm *vm, struct channel_system *cnls, struct exec_stack *stac
 		struct type *func_type;
 		func_type = vm_get_type(vm, cnl->callback.func.type);
 
+		stack_push(stack, cnl->callback.func.data, func_type->size);
+
 		func_type->base->eval(vm, stack, cnl->callback.user_data);
 
 		struct type_func *type_func = func_type->data;
@@ -292,4 +361,58 @@ eval_channel(struct vm *vm, struct channel_system *cnls, struct exec_stack *stac
 
 	panic("Invalid channel kind.");
 	return OBJ_NONE;
+}
+
+static inline int
+channel_ffs(uintmax_t val)
+{
+#if defined(__clang__)
+	return __builtin_ctz(val);
+#elif defined(__GNUC__)
+	return __builtin_fft(val);
+#else
+#error "channel_ffs not implement for this platform yet."
+#endif
+}
+
+static void
+channel_do_notify(struct channel_system *cnls, channel_id id)
+{
+	printf("Notify %zu\n", id);
+
+	struct exec_stack stack;
+	struct arena mem = arena_push(&cnls->vm->memory);
+
+	arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
+
+	eval_channel(cnls->vm, cnls, &stack, id);
+
+	arena_pop(&cnls->vm->memory, mem);
+}
+
+static void *
+channel_system_run(void *data)
+{
+	struct channel_system *cnls = data;
+	printf("Started channel system.\n");
+
+	while (!cnls->should_quit) {
+		for (size_t i = 0; i < mask_num_units(cnls->num_channels); i++) {
+			uintmax_t to_notify =
+				cnls->dirty_channels[i] & cnls->notify_channels[i];
+			uintmax_t remaining = to_notify;
+			while (remaining != 0) {
+				int b = channel_ffs(remaining);
+
+				channel_do_notify(cnls, (i * sizeof(uintmax_t) * 8) + b);
+
+				remaining &= ~((uintmax_t)1 << b);
+			}
+			cnls->dirty_channels[i] &= ~to_notify;
+		}
+	}
+
+	printf("Channel system stopped.\n");
+
+	return NULL;
 }

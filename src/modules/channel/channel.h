@@ -2,6 +2,7 @@
 #define STG_CHANNEL_CHANNEL_H
 
 #include "mod.h"
+#include <pthread.h>
 
 enum channel_kind {
 	CHANNEL_UNBOUND = 0,
@@ -36,10 +37,21 @@ struct channel_system {
 	uintmax_t *downstream_channels;
 	uintmax_t *dirty_channels;
 	uintmax_t *notify_channels;
+
+	struct vm *vm;
+
+	pthread_t thread;
+	bool should_quit;
 };
 
+int
+channel_system_init(struct channel_system *, size_t cap, struct vm *vm);
+
+int
+channel_system_start(struct channel_system *);
+
 void
-channel_system_init(struct channel_system *, size_t cap);
+channel_system_destroy(struct channel_system *);
 
 static inline struct channel *
 get_channel(struct channel_system *cnls, channel_id cnl)
