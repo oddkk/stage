@@ -584,7 +584,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			node->flags |= EXPR_TYPED | EXPR_CONST;
 
-			err = expr_eval_simple(mod->vm, expr, node, &obj);
+			err = expr_eval_simple(mod->vm, mod, expr, node, &obj);
 
 			// TODO: We should not rely on the return value of
 			// expr_eval. In this case we might only have to call
@@ -626,7 +626,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			node->flags |= EXPR_TYPED | EXPR_CONST;
 
-			err = expr_eval_simple(mod->vm, expr, node, &obj);
+			err = expr_eval_simple(mod->vm, mod, expr, node, &obj);
 
 			if (err) {
 				// The object was not found.
@@ -674,7 +674,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 				int err;
 				struct object type_obj;
 
-				err = expr_eval_simple(mod->vm, expr, node->type_expr, &type_obj);
+				err = expr_eval_simple(mod->vm, mod, expr, node->type_expr, &type_obj);
 				if (err) {
 					return EXPR_INFER_TYPES_ERROR;
 				}
@@ -1077,6 +1077,7 @@ expr_eval(struct vm *vm, struct expr *expr,
 
 int
 expr_eval_simple(struct vm *vm,
+				 struct stg_module *mod,
 				 struct expr *expr,
 				 struct expr_node *node,
 				 struct object *out)
@@ -1085,6 +1086,7 @@ expr_eval_simple(struct vm *vm,
 	struct arena mem = arena_push(&vm->memory);
 
 	arena_alloc_stack(&stack, &mem, 1024); //mem.capacity - mem.head - 1);
+	stack.mod = mod;
 
 	int err;
 	err = expr_eval(vm, expr, &stack, node, out);
@@ -1112,7 +1114,7 @@ expr_do_simplify_const(struct stg_module *mod, struct expr *expr, struct expr_no
 	struct object result;
 	int err;
 
-	err = expr_eval_simple(mod->vm, expr, node, &result);
+	err = expr_eval_simple(mod->vm, NULL, expr, node, &result);
 	if (err) {
 		return err;
 	}

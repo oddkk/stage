@@ -3,6 +3,34 @@
 #include <string.h>
 #include <stdlib.h>
 
+#define mask_bits_per_unit (sizeof(uintmax_t) * 8)
+#define mask_num_units(num) ((num + mask_bits_per_unit - 1) / mask_bits_per_unit)
+#define mask_length(num) (mask_num_units(num) * sizeof(uintmax_t))
+
+static inline uintmax_t *
+alloc_channel_bitfield(size_t num)
+{
+	return calloc(mask_num_units(num), sizeof(uintmax_t));
+}
+
+// static inline bool
+// channel_is_marked(uintmax_t *mask, channel_id cnl)
+// {
+// 	return (mask[cnl / mask_bits_per_unit] >> (cnl % mask_bits_per_unit)) & 0x1;
+// }
+
+static inline void
+mark_channel(uintmax_t *mask, channel_id cnl)
+{
+	mask[cnl / mask_bits_per_unit] |= (uintmax_t)1 << ((cnl % mask_bits_per_unit));
+}
+
+// static inline void
+// unmark_channel(uintmax_t *mask, channel_id cnl)
+// {
+// 	mask[cnl / mask_bits_per_unit] &= ~((uintmax_t)1 << (cnl % mask_bits_per_unit));
+// }
+
 void
 channel_system_init(struct channel_system *cnls, size_t cap)
 {
@@ -10,16 +38,54 @@ channel_system_init(struct channel_system *cnls, size_t cap)
 	cnls->cap_channels = cap;
 	cnls->channels = calloc(cnls->cap_channels,
 							sizeof(struct channel));
+
+	assert(cnls->cap_channels % mask_bits_per_unit == 0);
+	cnls->downstream_channels =
+		alloc_channel_bitfield(cnls->cap_channels * cnls->cap_channels);
+
+	cnls->dirty_channels =
+		alloc_channel_bitfield(cnls->cap_channels);
+	cnls->notify_channels =
+		alloc_channel_bitfield(cnls->cap_channels);
+}
+
+void
+channel_mark_dependency(struct channel_system *cnls, channel_id src, channel_id drain)
+{
+	mark_channel(cnls->downstream_channels, (src * cnls->cap_channels) + drain);
+}
+
+inline static uintmax_t *
+get_downstream_channels(struct channel_system *cnls, channel_id cnl)
+{
+	return &cnls->downstream_channels[cnl * mask_num_units(cnls->cap_channels)];
+}
+
+
+void
+channel_clear_dependency(struct channel_system *cnls, channel_id cnl)
+{
+	memset(get_downstream_channels(cnls, cnl), 0,
+			mask_length(cnls->cap_channels));
+}
+
+static inline void
+channel_mask_or(uintmax_t *out, uintmax_t *in, size_t len)
+{
+	for (size_t i = 0; i < mask_num_units(len); i++) {
+		out[i] |= in[i];
+	}
 }
 
 channel_id
-alloc_channel(struct channel_system *cnls)
+alloc_channel(struct channel_system *cnls, type_id type)
 {
 	assert(cnls->num_channels + 1 < cnls->cap_channels);
 	channel_id id = cnls->num_channels;
 	cnls->num_channels += 1;
 
 	memset(&cnls->channels[id], 0, sizeof(struct channel));
+	channel_mark_dependency(cnls, id, id);
 
 	return id;
 }
@@ -27,7 +93,7 @@ alloc_channel(struct channel_system *cnls)
 void
 unbind_channel(struct channel_system *cnls, channel_id cnl_id)
 {
-	struct channel *cnl = &cnls->channels[cnl_id];
+	struct channel *cnl = get_channel(cnls, cnl_id);
 	cnl->kind = CHANNEL_UNBOUND;
 }
 
@@ -38,7 +104,7 @@ channel_has_path(struct channel_system *cnls, channel_id from, channel_id to)
 		return true;
 	}
 
-	struct channel *cnl = &cnls->channels[to];
+	struct channel *cnl = get_channel(cnls, to);
 	switch (cnl->kind) {
 	case CHANNEL_UNBOUND:
 		return false;
@@ -62,18 +128,61 @@ channel_has_path(struct channel_system *cnls, channel_id from, channel_id to)
 	return false;
 }
 
+static void
+refresh_channel_dep_mask(struct channel_system *cnls, uintmax_t *in_deps, channel_id cnl_id)
+{
+	uintmax_t *this_deps = get_downstream_channels(cnls, cnl_id);
+
+	channel_mask_or(this_deps, in_deps, cnls->cap_channels);
+	channel_mark_dependency(cnls, cnl_id, cnl_id);
+
+	struct channel *cnl = get_channel(cnls, cnl_id);
+
+
+	switch (cnl->kind) {
+	case CHANNEL_UNBOUND:
+		return;
+
+	case CHANNEL_BOUND:
+		channel_mark_dependency(cnls,
+				cnl->src, cnl_id);
+		refresh_channel_dep_mask(cnls, this_deps, cnl->src);
+		return;
+
+	case CHANNEL_CONSTANT:
+		return;
+
+	case CHANNEL_CALLBACK:
+		for (size_t i = 0; i < cnl->callback.num_inputs; i++) {
+			channel_mark_dependency(cnls,
+					cnl->callback.inputs[i], cnl_id);
+			refresh_channel_dep_mask(cnls, this_deps,
+					cnl->callback.inputs[i]);
+		}
+		return;
+	}
+
+	panic("Invalid channel kind.");
+	return;
+}
+
 int
 bind_channel(struct channel_system *cnls, channel_id src, channel_id dest)
 {
-	struct channel *cnl = &cnls->channels[dest];
+	struct channel *cnl = get_channel(cnls, dest);
 
 	if (channel_has_path(cnls, dest, src)) {
 		printf("Channels have cycle (%zu -> %zu)\n", src, dest);
 		return -1;
 	}
 
+	assert(cnl->kind == CHANNEL_UNBOUND);
+
 	cnl->kind = CHANNEL_BOUND;
 	cnl->src = src;
+
+	uintmax_t *this_deps = get_downstream_channels(cnls, dest);
+	refresh_channel_dep_mask(cnls, this_deps, dest);
 
 	return 0;
 }
@@ -82,6 +191,9 @@ void
 bind_channel_const(struct channel_system *cnls, channel_id cnl_id, struct object val)
 {
 	struct channel *cnl = &cnls->channels[cnl_id];
+
+	assert(cnl->kind == CHANNEL_UNBOUND);
+
 	cnl->kind = CHANNEL_CONSTANT;
 	cnl->constant = val;
 }
@@ -92,11 +204,29 @@ bind_channel_callback(struct channel_system *cnls, channel_id cnl_id,
 					  struct object callback, void *data)
 {
 	struct channel *cnl = &cnls->channels[cnl_id];
+
+	assert(cnl->kind == CHANNEL_UNBOUND);
+
 	cnl->kind = CHANNEL_CALLBACK;
 	cnl->callback.num_inputs = num_inputs;
 	cnl->callback.inputs = inputs;
 	cnl->callback.func = callback;
 	cnl->callback.user_data = data;
+
+	uintmax_t *this_deps = get_downstream_channels(cnls, cnl_id);
+	refresh_channel_dep_mask(cnls, this_deps, cnl_id);
+}
+
+void
+mark_channel_dirty(struct channel_system *cnls, channel_id cnl)
+{
+	mark_channel(cnls->dirty_channels, cnl);
+}
+
+void
+mark_channel_notify(struct channel_system *cnls, channel_id cnl)
+{
+	mark_channel(cnls->notify_channels, cnl);
 }
 
 struct object

@@ -136,6 +136,9 @@ struct exec_stack {
 	uint8_t *bp;
 	uint8_t *sp;
 	size_t cap;
+
+	struct vm *vm;
+	struct stg_module *mod;
 };
 
 typedef void (*vm_builtin_func)(struct vm *, struct exec_stack *, void *);

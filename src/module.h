@@ -114,7 +114,7 @@ struct stg_builtin_func {
 
 #define STG_BUILTIN(_name, _cname, func_kind, ret, ...)					\
 	static EVAL(STG_TYPE_CTYPE(ret))									\
-		_##_cname(struct vm *vm, void *data,								\
+		_##_cname(struct vm *vm, struct stg_module *mod, void *data, 	\
 				 MAP_LIST(_STG_BUILTIN_PARAM, __VA_ARGS__));			\
 	static void _call_##_cname(struct vm *vm,							\
 							  struct exec_stack *stack,					\
@@ -122,7 +122,7 @@ struct stg_builtin_func {
 	{																	\
 		MAP(_STG_BUILTIN_READ_ARG, __VA_ARGS__);						\
 		EVAL(STG_TYPE_CTYPE(ret)) result =								\
-			_##_cname(vm, data,											\
+			_##_cname(vm, stack->mod, data,								\
 					 MAP_LIST(_STG_BUILTIN_ARG, __VA_ARGS__));			\
 		stack_push(stack, &result, sizeof(EVAL(STG_TYPE_CTYPE(ret))));	\
 	}																	\
@@ -139,13 +139,18 @@ struct stg_builtin_func {
 		.kind = func_kind,												\
 	};																	\
 	static EVAL(STG_TYPE_CTYPE(ret))									\
-		_##_cname(struct vm *vm, void *data,							\
+		_##_cname(struct vm *vm, struct stg_module *mod, void *data,	\
 				 MAP_LIST(_STG_BUILTIN_PARAM, __VA_ARGS__))
 
 #define BUILTIN_PURE(name, cname, ret, ...) \
 	STG_BUILTIN(name, cname, STG_BUILTIN_FUNC_PURE, ret, __VA_ARGS__)
 #define BUILTIN_IMPURE(name, cname, ret, ...) \
 	STG_BUILTIN(name, cname, STG_BUILTIN_FUNC_IMPURE, ret, __VA_ARGS__)
+
+struct object
+stg_register_builtin_func_obj(struct stg_module *mod,
+							  struct stg_builtin_func func,
+							  void *data);
 
 void
 stg_register_builtin_func(struct stg_module *mod,

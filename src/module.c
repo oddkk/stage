@@ -3,10 +3,10 @@
 #include "modules/base/mod.h"
 #include <stdlib.h>
 
-void
-stg_register_builtin_func(struct stg_module *mod,
-						  struct stg_builtin_func func,
-						  void *data)
+struct object
+stg_register_builtin_func_obj(struct stg_module *mod,
+		struct stg_builtin_func func,
+		void *data)
 {
 	struct atom **param_names;
 	type_id *param_types;
@@ -28,12 +28,23 @@ stg_register_builtin_func(struct stg_module *mod,
 			stg_resolve_type(mod->vm,
 							 func.ret_type);
 
-
 	struct object obj;
 	obj = obj_register_builtin_func(mod->vm, &mod->store,
 									param_names, param_types,
 									func.num_params, ret_type, func.func,
 									data);
+
+	return obj;
+}
+
+void
+stg_register_builtin_func(struct stg_module *mod,
+						  struct stg_builtin_func func,
+						  void *data)
+{
+	struct object obj;
+	obj = stg_register_builtin_func_obj(
+			mod, func, data);
 
 	struct atom *func_name;
 	func_name = atom_create(mod->atom_table, func.name);

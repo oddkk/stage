@@ -225,7 +225,7 @@ int
 expr_typecheck(struct stg_module *, struct expr *);
 
 int
-expr_eval_simple(struct vm *, struct expr *,
+expr_eval_simple(struct vm *, struct stg_module *mod, struct expr *,
 				 struct expr_node *, struct object *out);
 
 enum expr_eval_error {

@@ -796,7 +796,7 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
 
 	struct object obj;
 
-	expr_eval_simple(mod->vm, expr, expr->body, &obj);
+	expr_eval_simple(mod->vm, mod, expr, expr->body, &obj);
 
 	// NOTE: The object has to be registered right after the eval,
 	// otherwise the object might get overwritten on the arena.
@@ -870,7 +870,7 @@ job_func_decl(struct cfg_ctx *ctx, struct stg_module *mod, job_func_decl_t *data
 
 	struct object func_obj;
 
-	expr_eval_simple(mod->vm, expr, expr->body, &func_obj);
+	expr_eval_simple(mod->vm, mod, expr, expr->body, &func_obj);
 
 	// NOTE: The object has to be registered right after the eval,
 	// otherwise the object might get overwritten on the arena.
@@ -924,7 +924,7 @@ job_assign_stmt(struct cfg_ctx *ctx, struct stg_module *mod, job_assign_stmt_t *
 	struct object obj;
 	int err;
 
-	err = expr_eval_simple(ctx->vm, &data->expr, data->expr.body, &obj);
+	err = expr_eval_simple(ctx->vm, mod, &data->expr, data->expr.body, &obj);
 	if (err) {
 		return JOB_ERROR;
 	}
@@ -974,7 +974,7 @@ job_assert_stmt(struct cfg_ctx *ctx, struct stg_module *mod, job_assert_stmt_t *
 	struct object obj;
 	int err;
 
-	err = expr_eval_simple(ctx->vm, &data->expr, data->expr.body, &obj);
+	err = expr_eval_simple(ctx->vm, mod, &data->expr, data->expr.body, &obj);
 	if (err) {
 		return JOB_ERROR;
 	}
@@ -1028,7 +1028,7 @@ job_expr_stmt(struct cfg_ctx *ctx, struct stg_module *mod, job_expr_stmt_t *data
 	struct object obj;
 	int err;
 
-	err = expr_eval_simple(ctx->vm, &data->expr, data->expr.body, &obj);
+	err = expr_eval_simple(ctx->vm, mod, &data->expr, data->expr.body, &obj);
 	if (err) {
 		return JOB_ERROR;
 	}
