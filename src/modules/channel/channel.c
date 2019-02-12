@@ -121,6 +121,7 @@ alloc_channel(struct channel_system *cnls, type_id type)
 	cnls->num_channels += 1;
 
 	memset(&cnls->channels[id], 0, sizeof(struct channel));
+	cnls->channels[id].out_type = type;
 	channel_mark_dependency(cnls, id, id);
 
 	return id;
