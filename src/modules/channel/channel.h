@@ -44,6 +44,9 @@ struct channel_system {
 	bool should_quit;
 };
 
+struct channel_system *
+get_channel_system(struct vm *vm);
+
 int
 channel_system_init(struct channel_system *, size_t cap, struct vm *vm);
 

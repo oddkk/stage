@@ -89,6 +89,20 @@ vm_register_module(struct vm *vm, struct stg_module_info *info)
 	return mod;
 }
 
+struct stg_module *
+vm_get_module(struct vm *vm, struct string mod_name)
+{
+	struct stg_module *mod = NULL;
+
+	for (uint32_t mid = 0; mid < vm->num_modules; mid++) {
+		if (string_equal(vm->modules[mid]->info.name, mod_name)) {
+			mod = vm->modules[mid];
+		}
+	}
+
+	return mod;
+}
+
 struct type *
 vm_get_type(struct vm *vm, type_id tid)
 {
@@ -104,11 +118,13 @@ vm_find_type_id(struct vm *vm, struct string mod_name, struct string name)
 {
 	struct stg_module *mod = NULL;
 
-	for (uint32_t mid = 0; mid < vm->num_modules; mid++) {
-		if (string_equal(vm->modules[mid]->info.name, mod_name)) {
-			mod = vm->modules[mid];
-		}
-	}
+	mod = vm_get_module(vm, mod_name);
+
+	// for (uint32_t mid = 0; mid < vm->num_modules; mid++) {
+	// 	if (string_equal(vm->modules[mid]->info.name, mod_name)) {
+	// 		mod = vm->modules[mid];
+	// 	}
+	// }
 
 	assert(mod != NULL);
 

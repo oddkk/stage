@@ -146,6 +146,9 @@ typedef void (*vm_builtin_func)(struct vm *, struct exec_stack *, void *);
 struct stg_module *
 vm_register_module(struct vm *vm, struct stg_module_info *);
 
+struct stg_module *
+vm_get_module(struct vm *vm, struct string name);
+
 struct type *
 vm_get_type(struct vm *, type_id);
 

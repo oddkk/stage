@@ -3,6 +3,15 @@
 #include <string.h>
 #include <stdlib.h>
 
+struct channel_system *
+get_channel_system(struct vm *vm)
+{
+	struct stg_module *mod;
+	mod = vm_get_module(vm, STR(MOD_CHANNEL));
+	assert(mod != NULL);
+	return (struct channel_system *)mod->data;
+}
+
 #define mask_bits_per_unit (sizeof(uintmax_t) * 8)
 #define mask_num_units(num) ((num + mask_bits_per_unit - 1) / mask_bits_per_unit)
 #define mask_length(num) (mask_num_units(num) * sizeof(uintmax_t))
