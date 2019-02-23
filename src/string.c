@@ -49,11 +49,9 @@ struct string string_duplicate_cstr(char *str)
 	return result;
 }
 
-struct string arena_sprintf(struct arena *arena, char *fmt, ...)
+static inline struct string
+arena_vsprintf(struct arena *arena, char *fmt, va_list ap)
 {
-	va_list ap;
-
-	va_start(ap, fmt);
 	char *out = (char *)&arena->data[arena->head];
 
 	size_t cap = arena->capacity - arena->head;
@@ -76,6 +74,20 @@ struct string arena_sprintf(struct arena *arena, char *fmt, ...)
 
 	result.text = out;
 	result.length = err;
+
+	return result;
+}
+
+struct string arena_sprintf(struct arena *arena, char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+
+	struct string result;
+	result = arena_vsprintf(arena, fmt, ap);
+
+	va_end(ap);
 
 	return result;
 }
@@ -105,6 +117,24 @@ int arena_string_append(struct arena *mem, struct string *str, struct string in)
 	appendage[in.length + 1] = 0;
 
 	return 0;
+}
+
+void arena_string_append_sprintf(struct arena *mem, struct string *str, char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+
+	struct arena tmp_mem = arena_push(mem);
+
+	struct string result;
+	result = arena_vsprintf(&tmp_mem, fmt, ap);
+
+	arena_pop(mem, tmp_mem);
+
+	arena_string_append(mem, str, result);
+
+	va_end(ap);
 }
 
 int64_t string_to_int64_base2(struct string str)
