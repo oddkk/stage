@@ -126,4 +126,12 @@ type_id type_register_named_tuple(struct vm *, struct objstore *,
 type_id type_register_unnamed_tuple(struct vm *, struct objstore *,
 									type_id *items, size_t num_items);
 
+struct type_array {
+	type_id type;
+	size_t length;
+};
+
+type_id type_register_array(struct vm *, struct objstore *,
+							type_id type, size_t length);
+
 #endif
