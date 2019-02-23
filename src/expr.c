@@ -64,13 +64,17 @@ expr_init_func_decl(struct stg_module *mod, struct expr *expr,
 					struct expr_node *ret,
 					struct expr_node *body)
 {
+	struct expr *func_expr = &node->func_decl.expr;
+
 	node->type = EXPR_NODE_FUNC_DECL;
 	node->func_decl.params = params;
 	node->func_decl.num_params = num_params;
 	node->func_decl.ret_type = ret;
-	node->func_decl.body = body;
 	node->func_decl.scope.outer_scope = expr->outer_scope;
 	node->func_decl.scope.num_entries = node->func_decl.num_params;
+	func_expr->body = body;
+	func_expr->outer_scope = expr->outer_scope;
+	func_expr->mod = mod;
 
 	node->func_decl.scope.entry_names =
 		calloc(node->func_decl.scope.num_entries,
@@ -89,9 +93,9 @@ expr_init_func_decl(struct stg_module *mod, struct expr *expr,
 
 	for (size_t i = 0; i < node->rule.abs.num_params; i++) {
 		node->func_decl.params[i].type =
-			expr_type_expr(mod, expr,
+			expr_type_expr(mod, func_expr,
 						   node->func_decl.params[i].type,
-						   alloc_type_slot(expr));
+						   alloc_type_slot(func_expr));
 
 		node->rule.abs.params[i] =
 			node->func_decl.params[i].type->rule.type;
@@ -103,10 +107,10 @@ expr_init_func_decl(struct stg_module *mod, struct expr *expr,
 	}
 
 	node->func_decl.ret_type =
-		expr_type_expr(mod, expr, node->func_decl.ret_type,
-					   node->func_decl.body->rule.out);
+		expr_type_expr(mod, func_expr, node->func_decl.ret_type,
+					   node->func_decl.expr.body->rule.out);
 	node->rule.abs.ret =
-		node->func_decl.body->rule.out;
+		node->func_decl.expr.body->rule.out;
 
 	node->rule.out =
 		alloc_type_slot(expr);
@@ -356,16 +360,19 @@ expr_bind_obvious_types(struct stg_module *mod, struct expr *expr,
 			struct expr_node *param;
 			param = node->func_decl.params[i].type;
 
-			expr_bind_type(mod, expr, param->rule.out,
+			expr_bind_type(mod, &node->func_decl.expr, param->rule.out,
 						   mod->vm->default_types.type);
-			expr_bind_obvious_types(mod, expr, param);
+			expr_bind_obvious_types(mod, &node->func_decl.expr, param);
 		}
 
-		expr_bind_type(mod, expr, node->func_decl.ret_type->rule.out,
+		expr_bind_type(mod, &node->func_decl.expr,
+					   node->func_decl.ret_type->rule.out,
 					   mod->vm->default_types.type);
-		expr_bind_obvious_types(mod, expr, node->func_decl.ret_type);
+		expr_bind_obvious_types(mod, &node->func_decl.expr,
+								node->func_decl.ret_type);
 
-		expr_bind_obvious_types(mod, expr, node->func_decl.body);
+		expr_bind_obvious_types(mod, &node->func_decl.expr,
+								node->func_decl.expr.body);
 		break;
 
 	case EXPR_NODE_FUNC_CALL: {
@@ -453,6 +460,8 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 		enum expr_node_flags flags;
 		flags = EXPR_TYPED | EXPR_CONST;
 
+		struct expr *func_expr = &node->func_decl.expr;
+
 		size_t num_params = node->func_decl.num_params;
 		struct atom *param_names[num_params];
 		type_id param_types[num_params];
@@ -461,25 +470,25 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 			struct expr_node *param;
 			param = node->func_decl.params[i].type;
 
-			ret_err &= expr_try_infer_types(mod, expr, param);
+			ret_err &= expr_try_infer_types(mod, func_expr, param);
 
 			param_names[i] = node->func_decl.params[i].name;
-			param_types[i] = expr_get_slot_type(expr, node->rule.abs.params[i]);
+			param_types[i] = expr_get_slot_type(func_expr, node->rule.abs.params[i]);
 
 			flags &= param->flags;
 		}
 
 		struct expr_node *ret;
 		ret = node->func_decl.ret_type;
-		ret_err &= expr_try_infer_types(mod, expr, ret);
+		ret_err &= expr_try_infer_types(mod, func_expr, ret);
 		flags &= ret->flags;
 
-		ret_err &= expr_try_infer_types(mod, expr, node->func_decl.body);
+		ret_err &= expr_try_infer_types(mod, func_expr, func_expr->body);
 
-		flags &= node->func_decl.body->flags;
+		flags &= func_expr->body->flags;
 
 		type_id ret_type;
-		ret_type = expr_get_slot_type(expr, node->rule.abs.ret);
+		ret_type = expr_get_slot_type(func_expr, node->rule.abs.ret);
 
 		type_id func_type;
 		func_type =
@@ -710,6 +719,7 @@ expr_typecheck(struct stg_module *mod, struct expr *expr)
 #if TYPECHECK_DEBUG
 		printf("typecheck iter %zu:\n", expr->num_infer);
 		expr_print(mod->vm, expr);
+		printf("\n");
 #endif
 		expr->num_infer += 1;
 
@@ -886,8 +896,8 @@ expr_eval(struct vm *vm, struct expr *expr,
 		data = func_obj.data;
 
 		data->storage = NATIVE_FUNC_STORAGE_NODES;
-		data->node.expr = expr;
-		data->node.node = node->func_decl.body;
+		data->node.expr = &node->func_decl.expr;
+		data->node.node = node->func_decl.expr.body;
 
 		out_type = func_obj.type;
 	} break;
@@ -1345,10 +1355,10 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 			if (i != 0) {
 				printf(", ");
 			}
-			expr_print_slot(vm, expr, node->rule.abs.params[i]);
+			expr_print_slot(vm, &node->func_decl.expr, node->rule.abs.params[i]);
 		}
 		printf(") -> ");
-		expr_print_slot(vm, expr, node->rule.abs.ret);
+		expr_print_slot(vm, &node->func_decl.expr, node->rule.abs.ret);
 		printf(") -> ");
 		expr_print_slot(vm, expr, node->rule.out);
 		printf(")");
@@ -1403,16 +1413,17 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, in
 		for (size_t i = 0; i < node->func_decl.num_params; i++) {
 			_print_indent(depth + 1);
 			printf("param %.*s type\n", ALIT(node->func_decl.params[i].name));
-			expr_print_internal(vm, expr, node->func_decl.params[i].type, depth + 2);
+			expr_print_internal(vm, &node->func_decl.expr,
+								node->func_decl.params[i].type, depth + 2);
 		}
 
 		_print_indent(depth + 1);
 		printf("ret type\n");
-		expr_print_internal(vm, expr, node->func_decl.ret_type, depth + 2);
+		expr_print_internal(vm, &node->func_decl.expr, node->func_decl.ret_type, depth + 2);
 
 		_print_indent(depth + 1);
 		printf("body\n");
-		expr_print_internal(vm, expr, node->func_decl.body, depth + 2);
+		expr_print_internal(vm, &node->func_decl.expr, node->func_decl.expr.body, depth + 2);
 		break;
 
 	case EXPR_NODE_FUNC_CALL:

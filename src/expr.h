@@ -67,6 +67,33 @@ struct expr_func_scope {
 	struct scope *outer_scope;
 };
 
+enum expr_typecheck_state {
+	EXPR_TYPECHECK_IDLE = 0,
+	EXPR_TYPECHECK_INFER_TYPES,
+	EXPR_TYPECHECK_DONE,
+	EXPR_TYPECHECK_ERROR,
+};
+
+struct expr {
+	struct expr_node *body;
+	struct scope *outer_scope;
+
+	size_t num_type_slots;
+	struct expr_type_slot *slots;
+	size_t num_type_errors;
+
+	enum expr_typecheck_state state;
+	size_t num_infer;
+
+	// TODO: It seems wrong that an expr should have a reference to
+	// its module, as it is called with either mod or vm for typecheck
+	// and eval. We have it here because we need to create new types
+	// for function overloads type unification. The function
+	// overloads, and all lookups, should be moved to the typecheck
+	// stage.
+	struct stg_module *mod;
+};
+
 struct expr_node {
 	enum expr_node_type type;
 	enum expr_node_flags flags;
@@ -93,8 +120,8 @@ struct expr_node {
 			struct expr_func_decl_param *params;
 			size_t num_params;
 			struct expr_node *ret_type;
-			struct expr_node *body;
 
+			struct expr expr;
 			struct expr_func_scope scope;
 		} func_decl;
 
@@ -109,15 +136,9 @@ struct expr_node {
 	};
 };
 
-enum expr_typecheck_state {
-	EXPR_TYPECHECK_IDLE = 0,
-	EXPR_TYPECHECK_INFER_TYPES,
-	EXPR_TYPECHECK_DONE,
-	EXPR_TYPECHECK_ERROR,
-};
-
 enum expr_type_slot_state {
 	SLOT_UNBOUND = 0,
+	SLOT_UNBOUND_TEMPLATE,
 	SLOT_BOUND,
 	SLOT_BOUND_REF,
 };
@@ -128,26 +149,6 @@ struct expr_type_slot {
 		type_id type;
 		func_type_id ref;
 	};
-};
-
-struct expr {
-	struct expr_node *body;
-	struct scope *outer_scope;
-
-	size_t num_type_slots;
-	struct expr_type_slot *slots;
-	size_t num_type_errors;
-
-	enum expr_typecheck_state state;
-	size_t num_infer;
-
-	// TODO: It seems wrong that an expr should have a reference to
-	// its module, as it is called with either mod or vm for typecheck
-	// and eval. We have it here because we need to create new types
-	// for function overloads type unification. The function
-	// overloads, and all lookups, should be moved to the typecheck
-	// stage.
-	struct stg_module *mod;
 };
 
 struct expr_node *

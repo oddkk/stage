@@ -530,16 +530,19 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 		struct expr_func_decl_param *params = NULL;
 		struct expr_node *ret = NULL;
 
+		struct expr_node *decl_node;
+		decl_node = calloc(1, sizeof(struct expr_node));
+
+		struct expr *func_expr = &decl_node->func_decl.expr;
+
+
 		// Resolve the names and params of the params.
-		cfg_node_visit_func_proto(ctx, mod, expr, scope,
+		cfg_node_visit_func_proto(ctx, mod, func_expr, scope,
 								  lookup_scope, func_scope, proto_node,
 								  &num_params, &params, &ret);
 
 		struct cfg_node *body_node;
 		body_node = node->LAMBDA.body;
-
-		struct expr_node *decl_node;
-		decl_node = calloc(1, sizeof(struct expr_node));
 
 		// We need to prealloc decl_node before we visit its body
 		// because we need a reference to its inner scope
@@ -547,11 +550,12 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 		// but this should be fine.
 
 		struct expr_node *body;
-		body = cfg_node_visit_expr(ctx, mod, expr, scope,
+		body = cfg_node_visit_expr(ctx, mod, func_expr, scope,
 								   NULL, &decl_node->func_decl.scope, body_node);
 
 		expr_init_func_decl(mod, expr, decl_node,
 							params, num_params, ret, body);
+		expr_finalize(mod, func_expr);
 
 		return decl_node;
 	} break;
@@ -743,15 +747,17 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
 
 		struct expr_node *decl_node = NULL;
 		struct expr_func_scope *func_scope = NULL;
+		struct expr *func_expr = &data->expr;
 
 		if (node->DECL_STMT.args) {
-			params =
-				cfg_node_tuple_decl_to_params(ctx, mod, &data->expr,
-											  data->scope, node->DECL_STMT.args,
-											  NULL, &num_params);
-
 			decl_node = calloc(1, sizeof(struct expr_node));
 			func_scope = &decl_node->func_decl.scope;
+			func_expr = &decl_node->func_decl.expr;
+			params =
+				cfg_node_tuple_decl_to_params(ctx, mod, func_expr,
+											  data->scope, node->DECL_STMT.args,
+											  func_scope, &num_params);
+
 		}
 
 		// We need to prealloc decl_node before we visit its body
@@ -763,22 +769,24 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
 		body_node = node->DECL_STMT.decl;
 
 		struct expr_node *body;
-		body = cfg_node_visit_expr(ctx, mod, &data->expr, data->scope,
+		body = cfg_node_visit_expr(ctx, mod, func_expr, data->scope,
 								   NULL, func_scope, body_node);
 
 		if (params) {
 			data->expr.body =
-				expr_init_func_decl(mod, &data->expr, decl_node,
+				expr_init_func_decl(mod, func_expr, decl_node,
 									params, num_params, NULL, body);
 
-			expr_finalize(mod, &data->expr);
-			expr_bind_type(mod, &data->expr,
+			expr_finalize(mod, func_expr);
+			expr_bind_type(mod, func_expr,
 						   data->expr.body->rule.abs.ret,
 						   ctx->vm->default_types.type);
+
+			expr_finalize(mod, &data->expr);
 		} else {
 			data->expr.body = body;
-			expr_finalize(mod, &data->expr);
-			expr_bind_type(mod, &data->expr,
+			expr_finalize(mod, func_expr);
+			expr_bind_type(mod, func_expr,
 						   data->expr.body->rule.out,
 						   ctx->vm->default_types.type);
 		}
@@ -837,12 +845,14 @@ job_func_decl(struct cfg_ctx *ctx, struct stg_module *mod, job_func_decl_t *data
 		struct expr_func_decl_param *params = NULL;
 		struct expr_node *ret = NULL;
 
-		cfg_node_visit_func_proto(ctx, mod, &data->expr, data->scope,
-								  NULL, NULL, proto_node,
-								  &num_params, &params, &ret);
-
 		struct expr_node *decl_node;
 		decl_node = calloc(1, sizeof(struct expr_node));
+
+		struct expr *func_expr = &decl_node->func_decl.expr;
+
+		cfg_node_visit_func_proto(ctx, mod, func_expr, data->scope,
+								  NULL, NULL, proto_node,
+								  &num_params, &params, &ret);
 
 		// We need to prealloc decl_node before we visit its body
 		// because we need a reference to its inner scope
@@ -850,12 +860,14 @@ job_func_decl(struct cfg_ctx *ctx, struct stg_module *mod, job_func_decl_t *data
 		// but this should be fine.
 
 		struct expr_node *body;
-		body = cfg_node_visit_expr(ctx, mod, &data->expr, data->scope,
+		body = cfg_node_visit_expr(ctx, mod, func_expr, data->scope,
 								   NULL, &decl_node->func_decl.scope, body_node);
 
 		data->expr.body =
 			expr_init_func_decl(mod, &data->expr, decl_node,
 								params, num_params, ret, body);
+
+		expr_finalize(mod, func_expr);
 
 		struct cfg_job *func_job;
 		func_job = DISPATCH_JOB(ctx, mod, typecheck_expr, CFG_PHASE_RESOLVE,
