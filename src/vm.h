@@ -111,22 +111,10 @@ struct vm {
 	size_t num_modules;
 
 	struct {
-		type_id unset;
-		type_id none;
-		type_id scope;
-		type_id template_param;
 		type_id type;
 		type_id integer;
 		type_id string;
 		type_id boolean;
-
-		/* type_id func_template_return; */
-
-		/* struct type_base builtin_func_base; */
-		/* struct type_base native_func_base; */
-		/* struct type_base func_base; */
-		/* struct type_base enum_base; */
-		/* struct type_base tuple_base; */
 	} default_types;
 
 };

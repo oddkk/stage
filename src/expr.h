@@ -137,11 +137,15 @@ struct expr_node {
 };
 
 enum expr_type_slot_state {
-	SLOT_UNBOUND = 0,
-	SLOT_UNBOUND_TEMPLATE,
-	SLOT_BOUND,
-	SLOT_BOUND_REF,
+	SLOT_UNBOUND   = 0,
+	SLOT_BOUND     = 1,
+	SLOT_BOUND_REF = 2,
+
+	SLOT_TEMPLATE = 8,
 };
+
+#define SLOT_STATE(slot) ((uint8_t)(slot) & (~(uint8_t)SLOT_TEMPLATE))
+#define SLOT_IS_TEMPLATE(slot) (!!((uint8_t)(slot) & ((uint8_t)SLOT_TEMPLATE)))
 
 struct expr_type_slot {
 	enum expr_type_slot_state state;
@@ -209,6 +213,10 @@ int
 expr_bind_type(struct stg_module *, struct expr *,
 			   func_type_id, type_id);
 
+void
+expr_slot_mark_template(struct stg_module *, struct expr *,
+						func_type_id);
+
 int
 expr_bind_ref_slot(struct stg_module *, struct expr *,
 				   func_type_id, func_type_id other);
@@ -220,6 +228,9 @@ expr_get_actual_slot(struct expr *expr, func_type_id slot);
 
 type_id
 expr_get_slot_type(struct expr *expr, func_type_id slot);
+
+type_id
+expr_slot_is_template(struct expr *expr, func_type_id slot);
 
 // Returns 0 if done, -1 if error and 1 if yield.
 int

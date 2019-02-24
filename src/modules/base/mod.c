@@ -25,6 +25,21 @@ type_unset_unify(struct vm *vm, struct objstore *store,
 	return true;
 }
 
+static bool
+type_template_param_unify(struct vm *vm, struct objstore *store,
+				 type_id lhs, type_id rhs,
+				 type_id *out_type)
+{
+	if (lhs != TYPE_TEMPLATE_PARAM) {
+		*out_type = lhs;
+	} else {
+		*out_type = rhs;
+	}
+
+	return true;
+}
+
+
 int mod_base_init(struct stg_module *mod)
 {
 	assert(mod->id == 0);
@@ -73,6 +88,8 @@ int mod_base_init(struct stg_module *mod)
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
 		type_base_init(base, STR("template_param"));
+
+		type_base_register_unifier(base, NULL, type_template_param_unify);
 
 		struct type template_param = {0};
 		template_param.name = atom_create(mod->atom_table, STR("template_param"));

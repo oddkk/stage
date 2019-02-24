@@ -304,19 +304,27 @@ expr_bind_type(struct stg_module *mod, struct expr *expr,
 
 	// @TODO: Should the type be updated if they can be generalized?
 	expr->slots[real_slot].type = unified;
-	expr->slots[real_slot].state = SLOT_BOUND;
+	expr->slots[real_slot].state =
+		SLOT_BOUND | (expr->slots[real_slot].state & SLOT_TEMPLATE);
 
 	return 0;
+}
+
+void
+expr_slot_mark_template(struct stg_module *mod, struct expr *expr,
+						func_type_id slot)
+{
+	expr->slots[slot].state |= SLOT_TEMPLATE;
 }
 
 int
 expr_bind_ref_slot(struct stg_module *mod, struct expr *expr,
 				   func_type_id slot, func_type_id other)
 {
-	assert(expr->slots[slot].state != SLOT_BOUND_REF);
+	assert(SLOT_STATE(expr->slots[slot].state) != SLOT_BOUND_REF);
 
 	type_id old_type = TYPE_UNSET;
-	if (expr->slots[slot].state == SLOT_BOUND) {
+	if (SLOT_STATE(expr->slots[slot].state) == SLOT_BOUND) {
 		old_type = expr->slots[slot].type;
 	}
 
@@ -329,7 +337,7 @@ expr_bind_ref_slot(struct stg_module *mod, struct expr *expr,
 func_type_id
 expr_get_actual_slot(struct expr *expr, func_type_id slot)
 {
-	while (expr->slots[slot].state == SLOT_BOUND_REF) {
+	while (SLOT_STATE(expr->slots[slot].state) == SLOT_BOUND_REF) {
 		slot = expr->slots[slot].ref;
 	}
 
@@ -341,12 +349,18 @@ type_id
 expr_get_slot_type(struct expr *expr, func_type_id slot)
 {
 	slot = expr_get_actual_slot(expr, slot);
-	assert(expr->slots[slot].state != SLOT_BOUND_REF);
-	if (expr->slots[slot].state == SLOT_BOUND) {
+	assert(SLOT_STATE(expr->slots[slot].state) != SLOT_BOUND_REF);
+	if (SLOT_STATE(expr->slots[slot].state) == SLOT_BOUND) {
 		return expr->slots[slot].type;
 	} else {
 		return TYPE_UNSET;
 	}
+}
+
+type_id
+expr_slot_is_template(struct expr *expr, func_type_id slot)
+{
+	return SLOT_IS_TEMPLATE(expr->slots[slot].state);
 }
 
 static void
@@ -435,6 +449,7 @@ expr_bind_obvious_types(struct stg_module *mod, struct expr *expr,
 			expr_bind_obvious_types(mod, expr, node->type_expr);
 		} else {
 			node->flags |= EXPR_TYPED | EXPR_CONST;
+			expr_bind_type(mod, expr, node->rule.type, TYPE_TEMPLATE_PARAM);
 		}
 		expr_bind_type(mod, expr, node->rule.out,
 					   mod->vm->default_types.type);
@@ -1067,9 +1082,15 @@ expr_eval(struct vm *vm, struct expr *expr,
 		out_type = vm->default_types.string;
 		break;
 
-	case EXPR_NODE_TYPE_EXPR:
-		panic("TODO: type expr");
-		break;
+	case EXPR_NODE_TYPE_EXPR: {
+		if (node->type_expr != NULL) {
+			expr_eval(vm, expr, stack, node->type_expr, NULL);
+		} else {
+			type_id type = TYPE_TEMPLATE_PARAM;
+			stack_push(stack, &type, sizeof(type));
+		}
+		out_type = vm->default_types.type;
+	} break;
 	}
 
 	if (out) {
@@ -1287,6 +1308,10 @@ expr_print_slot(struct vm *vm, struct expr *expr, func_type_id slot)
 		printf(")");
 	} else {
 		printf("%u", slot);
+	}
+
+	if (expr_slot_is_template(expr, slot)) {
+		printf("[template]");
 	}
 }
 
