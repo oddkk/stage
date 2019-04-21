@@ -20,6 +20,7 @@ struct scope;
 struct object;
 struct objstore;
 struct exec_stack;
+struct stg_module;
 
 // TYPE_UNSET
 #define TYPE_SUBTYPES_END ((type_id)0)
@@ -30,6 +31,7 @@ typedef type_id (*type_subtypes_iter)(struct vm *vm, struct type *type, size_t *
 typedef bool (*type_unify)(struct vm *vm, struct objstore *, type_id lhs, type_id rhs, type_id *out);
 typedef void (*type_free)(struct vm *vm, struct type *type);
 typedef void (*type_eval)(struct vm *, struct exec_stack *, void *);
+typedef struct expr_node *(*type_call_expr)(struct stg_module *, struct object obj);
 
 struct type_base;
 struct type_unifier {
@@ -44,6 +46,7 @@ struct type_base {
 	obj_repr obj_repr;
 	type_free free;
 	type_eval eval;
+	type_call_expr call_expr;
 	type_subtypes_iter subtypes_iter;
 	struct type_unifier *unifiers;
 	size_t num_unifiers;

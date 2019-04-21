@@ -1214,7 +1214,7 @@ discover_config_files(struct cfg_ctx *ctx, struct stg_module *mod,
 	fts_close(ftsp);
 }
 
-#define CFG_DEBUG_JOBS 0
+#define CFG_DEBUG_JOBS 1
 
 static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 {

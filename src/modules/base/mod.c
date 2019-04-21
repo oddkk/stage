@@ -30,7 +30,7 @@ type_template_param_unify(struct vm *vm, struct objstore *store,
 				 type_id lhs, type_id rhs,
 				 type_id *out_type)
 {
-	if (lhs != TYPE_TEMPLATE_PARAM) {
+	if (lhs != TYPE_TEMPLATE_PARAM || rhs == TYPE_UNSET) {
 		*out_type = lhs;
 	} else {
 		*out_type = rhs;

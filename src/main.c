@@ -112,6 +112,8 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	return 0;
+
 	vm_start(&vm);
 
 	uint64_t tick_period = NSEC / 1000;

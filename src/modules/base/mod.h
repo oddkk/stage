@@ -80,8 +80,9 @@ struct obj_native_func_data {
 			size_t length;
 		} instr;
 		struct {
-			struct expr *expr;
-			struct expr_node *node;
+			// struct expr *expr;
+			// struct expr_node *node;
+			struct expr_node *decl_node;
 		} node;
 	};
 };

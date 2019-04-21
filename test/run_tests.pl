@@ -3,6 +3,7 @@ use strict;
 use warnings;
 
 use File::Path 'rmtree';
+use File::Path 'mkpath';
 use File::Find;
 use File::Basename;
 use Term::ANSIColor;
@@ -70,7 +71,7 @@ sub compile_project {
 	foreach my $file (@files) {
 		my $dirname = dirname($file);
 		my $out_dir = "$project_build_dir/$dirname";
-		mkdir $out_dir;
+		mkpath($out_dir);
 		$project_compile_out .= qx{
 		clang $color_arg -c -g -Wall -DSTAGE_TEST=1 -pedantic $file -o $project_build_dir/$file.o 2>&1
 		};
@@ -128,8 +129,12 @@ clang $color_arg -g -lm -Wall -pedantic -I$src_dir $project_objects $test_dir/$f
 
 closedir($dir);
 
-my $percent = $successful_test_cases / $test_cases * 100;
-print "$successful_test_cases / $test_cases tests passed ($percent%).\n";
+if ($test_cases > 0) {
+	my $percent = $successful_test_cases / $test_cases * 100;
+	print "$successful_test_cases / $test_cases tests passed ($percent%).\n";
+} else {
+	print "No test cases.\n"
+}
 
-# rmtree([$build_dir]);
+rmtree([$build_dir]);
 exit 0;

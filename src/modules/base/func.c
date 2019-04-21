@@ -7,6 +7,8 @@ static struct string type_func_repr(struct vm *vm, struct arena *mem, struct typ
 static bool type_func_unify(struct vm *vm, struct objstore *, type_id lhs, type_id rhs, type_id *out);
 static struct string type_builtin_func_repr(struct vm *vm, struct arena *mem, struct type *type);
 static void obj_eval_builtin_func(struct vm *vm, struct exec_stack *stack, void *data);
+// static struct expr_node *type_func_expr_builtin_func(struct stg_module *mod, struct object obj);
+static struct expr_node *type_func_expr_native_func(struct stg_module *mod, struct object obj);
 static struct string type_native_func_repr(struct vm *vm, struct arena *mem, struct type *type);
 static void obj_eval_native_func(struct vm *vm, struct exec_stack *stack, void *data);
 static struct string obj_native_func_repr(struct vm *vm, struct arena *mem, struct object *object);
@@ -22,6 +24,7 @@ struct type_base base_generic_func_base = {
 struct type_base base_native_func_base = {
 	.name = STR("native func"),
 	.repr = type_native_func_repr,
+	.call_expr = type_func_expr_native_func,
 	.obj_repr = obj_native_func_repr,
 	.subtypes_iter = type_func_subtypes_iter,
 	.eval = obj_eval_native_func,
@@ -30,6 +33,7 @@ struct type_base base_native_func_base = {
 struct type_base base_builtin_func_base = {
 	.name = STR("builtin func"),
 	.repr = type_builtin_func_repr,
+	// .call_expr = type_func_expr_builtin_func,
 	.obj_repr = obj_builtin_func_repr,
 	.subtypes_iter = type_func_subtypes_iter,
 	.eval = obj_eval_builtin_func,
@@ -189,6 +193,25 @@ static void obj_eval_builtin_func(struct vm *vm, struct exec_stack *stack, void 
 	func.func(vm, stack, func.data);
 }
 
+// static struct expr_node *type_func_expr_builtin_func(struct stg_module *mod, struct object obj)
+// {
+// 	struct obj_builtin_func_data *func;
+// 	func = obj.data;
+// 	return NULL;
+// }
+
+static struct expr_node *type_func_expr_native_func(struct stg_module *mod, struct object obj)
+{
+	struct obj_native_func_data *func;
+	func = obj.data;
+	if (func->storage == NATIVE_FUNC_STORAGE_NODES) {
+		// TODO: Make sure func->node.node is the actual function declaration.
+		return func->node.decl_node;
+	} else {
+		return NULL;
+	}
+}
+
 static struct string type_native_func_repr(struct vm *vm, struct arena *mem, struct type *type)
 {
 	struct string res = arena_string_init(mem);
@@ -218,7 +241,9 @@ static void obj_eval_native_func(struct vm *vm, struct exec_stack *stack, void *
 		break;
 
 	case NATIVE_FUNC_STORAGE_NODES:
-		expr_eval(vm, func.node.expr, stack, func.node.node, NULL);
+		assert(func.node.decl_node->type == EXPR_NODE_FUNC_DECL);
+		expr_eval(vm, &func.node.decl_node->func_decl.expr, stack,
+				func.node.decl_node->func_decl.expr.body, NULL);
 		break;
 
 	default:

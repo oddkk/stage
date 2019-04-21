@@ -6,6 +6,7 @@
 
 enum expr_node_type {
 	EXPR_NODE_FUNC_DECL,     // [ABS]
+	//EXPR_NODE_FUNC_BUILTIN,  // [ABS]
 	EXPR_NODE_FUNC_CALL,     // [APP]
 	EXPR_NODE_LOOKUP_FUNC,   // [VAR]
 	EXPR_NODE_LOOKUP_GLOBAL, // [VAR]
@@ -20,7 +21,7 @@ enum expr_node_type {
 
 struct expr_context;
 
-typedef unsigned int func_type_id;
+typedef int func_type_id;
 
 struct expr_type_rule {
 	union {
@@ -55,8 +56,9 @@ struct expr_func_decl_param {
 
 enum expr_node_flags {
 	// Set when an expression has been completly typed.
-	EXPR_TYPED = 0x1,
-	EXPR_CONST = 0x2,
+	EXPR_TEMPLATE = 0x1,
+	EXPR_TYPED = 0x3,
+	EXPR_CONST = 0x4,
 };
 
 struct expr_func_scope {
@@ -81,6 +83,8 @@ struct expr {
 	size_t num_type_slots;
 	struct expr_type_slot *slots;
 	size_t num_type_errors;
+
+	// func_type_id slot_offset;
 
 	enum expr_typecheck_state state;
 	size_t num_infer;
@@ -114,6 +118,9 @@ struct expr_node {
 		struct {
 			struct expr_node *func;
 			struct expr_node *args;
+
+			struct expr_node *func_expr;
+			func_type_id slot_offset;
 		} func_call;
 
 		struct {
@@ -123,6 +130,7 @@ struct expr_node {
 
 			struct expr expr;
 			struct expr_func_scope scope;
+			bool use_external_expr;
 		} func_decl;
 
 		struct expr_node *type_expr;
@@ -240,6 +248,10 @@ int
 expr_eval_simple(struct vm *, struct stg_module *mod, struct expr *,
 				 struct expr_node *, struct object *out);
 
+int
+expr_eval_simple_offset(struct vm *, struct stg_module *mod, struct expr *,
+				 struct expr_node *, func_type_id slot_offset, struct object *out);
+
 enum expr_eval_error {
 	EXPR_EVAL_OK = 0,
 	EXPR_EVAL_ERROR = -1,
@@ -250,10 +262,6 @@ int
 expr_eval(struct vm *, struct expr *,
 		  struct exec_stack *, struct expr_node *,
 		  struct object *out);
-
-void
-expr_simplify(struct stg_module *, struct expr *,
-			  struct expr_node *node);
 
 void
 expr_print(struct vm *, struct expr *);
