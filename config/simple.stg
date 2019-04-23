@@ -1,7 +1,7 @@
 op*(a: str, b: str) -> str = "asdf";
 
 func := \a a * a;
-# asdf := func(2);
+asdf := func(2);
 fdsa := func("a");
 
 

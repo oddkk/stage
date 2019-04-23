@@ -410,6 +410,59 @@ expr_slot_is_template(struct expr *expr, func_type_id slot)
 	return SLOT_IS_TEMPLATE(expr->slots[slot].state);
 }
 
+static int
+expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
+						  struct scope *scope,
+						  struct atom *name,
+						  type_id expected_type,
+						  bool global_lookup,
+						  struct scope_entry *result)
+{
+	printf("looking for '%.*s': ", ALIT(name));
+	print_type_repr(vm, vm_get_type(vm, expected_type));
+	printf("\n");
+
+	int iter_err = 0;
+	struct scope_iter iter = {0};
+	size_t num_matching_entries = 0;
+	while (iter_err == 0) {
+		if (global_lookup) {
+			iter_err = scope_iterate_overloads(scope, name, &iter);
+		} else {
+			iter_err = scope_iterate_local_overloads(scope, name, &iter);
+		}
+
+		if (iter_err != 0) {
+			break;
+		}
+
+		printf("  candidate: ");
+		print_type_repr(vm, vm_get_type(vm, iter.entry->object.type));
+
+		type_id out_type;
+		if (unify_types(vm, &expr->mod->store,
+						expected_type,
+						iter.entry->object.type, &out_type)) {
+			printf(" match: ");
+			print_type_repr(vm, vm_get_type(vm, out_type));
+			*result = *iter.entry;
+			num_matching_entries += 1;
+		}
+		printf("\n");
+	}
+
+	if (num_matching_entries == 0) {
+		printf("'%.*s' was not found.\n", ALIT(name));
+		return -1;
+	} else if (num_matching_entries > 1) {
+		printf("%zu matching results for %.*s.\n", num_matching_entries, ALIT(name));
+		return 1;
+	}
+
+	return 0;
+}
+
+
 static void
 expr_bind_obvious_types(struct stg_module *mod, struct expr *expr,
 						struct expr_node *node)
@@ -576,157 +629,57 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 		struct expr_node *arg;
 		size_t arg_i = 0;
 
-		if (!node->func_call.func_expr) {
-			size_t num_unresolved_args = 0;
-			size_t num_template_args = 0;
+		arg = node->func_call.args;
 
-			arg = node->func_call.args;
+		type_id *param_types;
+		param_types = calloc(node->rule.app.num_args, sizeof(type_id));
 
-			type_id *param_types;
-			param_types = calloc(node->rule.app.num_args, sizeof(type_id));
+		while (arg) {
+			ret_err &= expr_try_infer_types(mod, expr, arg, slot_offset);
 
-			while (arg) {
-				ret_err &= expr_try_infer_types(mod, expr, arg, slot_offset);
+			type_id slot_type;
+			slot_type = expr_get_slot_type(expr, node->rule.app.args[arg_i] + slot_offset);
 
-				type_id slot_type;
-				slot_type = expr_get_slot_type(expr, node->rule.app.args[arg_i] + slot_offset);
+			param_types[arg_i] = slot_type;
 
-				if (slot_type == TYPE_UNSET) {
-					num_unresolved_args += 1;
-				} else if (slot_type == TYPE_TEMPLATE_PARAM) {
-					num_template_args += 1;
-				}
-
-				param_types[arg_i] = slot_type;
-
-				arg_i += 1;
-				arg = arg->next_arg;
-			}
-
-			assert(arg_i == node->rule.app.num_args);
-
-			type_id ret_type;
-			ret_type = expr_get_slot_type(expr, node->rule.out + slot_offset);
-
-			type_id func_type;
-			func_type =
-				type_register_function(mod->vm, &mod->store, NULL, param_types,
-									   node->rule.app.num_args,
-									   ret_type, TYPE_FUNCTION_GENERIC);
-
-			free(param_types);
-
-			expr_bind_type(mod, expr, node->rule.app.func + slot_offset, func_type);
-			ret_err &= expr_try_infer_types(mod, expr, node->func_call.func, slot_offset);
-
-			enum expr_node_flags func_flags = node->func_call.func->flags;
-			if (true || (func_flags & (EXPR_TYPED | EXPR_CONST)) == (EXPR_TYPED | EXPR_CONST)) {
-				struct object func_obj;
-				int err;
-				node->func_call.func->flags |= EXPR_TYPED;
-				err = expr_eval_simple_offset(mod->vm, mod, expr, node->func_call.func,
-											  slot_offset, &func_obj);
-				node->func_call.func->flags = func_flags;
-
-				if (err < 0) {
-					// The object was not found.
-					printf("[func call] Not found.\n");
-					return EXPR_INFER_TYPES_ERROR;
-				} else if (err > 0) {
-					// We do not have enough type information to uniquly
-					// determine the entry.
-					printf("[func call] Not enough type information.\n");
-					if (false) {
-						ret_err &= EXPR_INFER_TYPES_YIELD;
-					}
-				} else if (func_obj.type == TYPE_UNSET) {
-					// The object has not yet been initialized.
-					printf("[func call] Not yet initialized.\n");
-					ret_err &= EXPR_INFER_TYPES_YIELD;
-				} else {
-					struct type *func_obj_type = vm_get_type(mod->vm, func_obj.type);
-
-					if (func_obj_type->base->call_expr) {
-						struct expr_node *func_node;
-						func_node = func_obj_type->base->call_expr(mod, func_obj);
-
-						// Check that func_node is an [ABS] node.
-						if (func_node && func_node->type == EXPR_NODE_FUNC_DECL) {
-							// || func_node->type == EXPR_NODE_FUNC_BUILTIN) {
-
-							struct expr_node *new_func_node;
-							new_func_node = calloc(1, sizeof(struct expr_node));
-							*new_func_node = *func_node;
-							new_func_node->func_decl.use_external_expr = true;
-
-							// We depend on expr_append_expr_slots below to
-							// actually allocate space for the new out-slot.  The
-							// out-value will be one slot before the first slot of
-							// the new expression.
-							new_func_node->rule.out = -1;
-							expr->num_type_slots += 1;
-
-							struct expr *func_expr = &new_func_node->func_decl.expr;
-
-							func_type_id new_slot_offset;
-							new_slot_offset = expr_append_expr_slots(mod, expr, func_expr);
-
-
-							memset(&expr->slots[new_slot_offset + new_func_node->rule.out], 0,
-									sizeof(struct expr_type_slot));
-							expr_bind_type(mod, expr, new_slot_offset + new_func_node->rule.out,
-									expr_get_slot_type(func_expr, func_node->rule.out));
-
-							node->func_call.func_expr = new_func_node;
-							node->func_call.slot_offset = new_slot_offset;
-
-							assert(new_func_node->rule.abs.num_params == node->rule.app.num_args);
-							for (size_t i = 0; i < new_func_node->rule.abs.num_params; i++) {
-								expr_bind_ref_slot(mod, expr,
-										node->rule.app.args[i] + slot_offset,
-										new_func_node->rule.abs.params[i] + new_slot_offset);
-							}
-							expr_bind_ref_slot(mod, expr,
-									node->rule.out + slot_offset,
-									new_func_node->rule.abs.ret + new_slot_offset);
-						}
-					}
-				}
-			}
+			arg_i += 1;
+			arg = arg->next_arg;
 		}
 
-		if (node->func_call.func_expr) {
-			struct expr_node *func_node = node->func_call.func_expr;
-			assert(func_node->type == EXPR_NODE_FUNC_DECL);
-			// || func_node->type == EXPR_NODE_FUNC_BUILTIN);
+		assert(arg_i == node->rule.app.num_args);
 
-			ret_err &= expr_try_infer_types(mod, expr, func_node,
-					node->func_call.slot_offset);
+		type_id ret_type;
+		ret_type = expr_get_slot_type(expr, node->rule.out + slot_offset);
 
-			enum expr_node_flags all_params_flags;
-			all_params_flags = EXPR_TYPED | EXPR_CONST;
-			arg = node->func_call.args;
+		type_id func_type;
+		func_type =
+			type_register_function(mod->vm, &mod->store, NULL, param_types,
+					node->rule.app.num_args,
+					ret_type, TYPE_FUNCTION_GENERIC);
 
-			while (arg) {
-				ret_err &= expr_try_infer_types(mod, expr, arg, slot_offset);
-				all_params_flags &= arg->flags;
-				arg = arg->next_arg;
-			}
+		free(param_types);
 
-			all_params_flags &= node->func_call.func_expr->flags;
+		expr_bind_type(mod, expr, node->rule.app.func + slot_offset, func_type);
 
-			node->flags = all_params_flags;
+
+		ret_err &= expr_try_infer_types(mod, expr, node->func_call.func, slot_offset);
+
+		type_id new_func_type_id;
+		new_func_type_id = expr_get_slot_type(expr, node->rule.app.func + slot_offset);
+
+		if (new_func_type_id == TYPE_UNSET) {
+			ret_err &= EXPR_INFER_TYPES_YIELD;
 		} else {
 			struct type *new_func_type;
 			new_func_type =
-				vm_get_type(mod->vm,
-						 expr_get_slot_type(expr, node->rule.app.func + slot_offset));
+				vm_get_type(mod->vm, new_func_type_id);
 
 			struct type_func *new_func;
 			new_func = new_func_type->data;
 
 			enum expr_node_flags all_params_flags;
 			all_params_flags = EXPR_TYPED | EXPR_CONST;
+
 			arg_i = 0;
 			arg = node->func_call.args;
 
@@ -742,145 +695,139 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			expr_bind_type(mod, expr, node->rule.out + slot_offset,
 						   new_func->ret);
-
 			node->flags = node->func_call.func->flags & all_params_flags;
 		}
+
 	} return ret_err;
 
-	case EXPR_NODE_LOOKUP_FUNC: {
-		struct expr_func_scope *func_scope = node->lookup.func_scope;
-		bool found = false;
-		for (size_t i = 0; i < func_scope->num_entries; i++) {
-			if (func_scope->entry_names[i] == node->lookup.name) {
-				found = true;
-				break;
-			}
-		}
-
-		if (found) {
-			if (expr_get_slot_type(expr, node->rule.out + slot_offset) != TYPE_UNSET) {
-				node->flags |= EXPR_TYPED;
-			}
-			return ret_err;
-		} else {
-			int err;
-			struct object obj;
-			enum expr_node_flags prev_flags;
-
-			struct type *expected_type;
-			expected_type = vm_get_type(mod->vm, 
-					expr_get_slot_type(expr, node->rule.type + slot_offset));
-
-			bool is_template = false;
-
-			if (expected_type->num_template_params > 0) {
-				node->flags |= EXPR_TEMPLATE;
-				is_template = true;
-			}
-
-			prev_flags = node->flags;
-			node->flags |= EXPR_TYPED | EXPR_CONST;
-
-			err = expr_eval_simple_offset(mod->vm, mod, expr, node, slot_offset, &obj);
-
-			// TODO: We should not rely on the return value of
-			// expr_eval. In this case we might only have to call
-			// expr_resolve_scope_lookup?
-			if (err < 0) {
-				// The object was not found.
-				node->flags = prev_flags;
-				return EXPR_INFER_TYPES_ERROR;
-			} else if (err > 0) {
-				// Not enough type information to uniquely find a matching
-				// object.
-				node->flags = prev_flags;
-				return is_template
-					? (ret_err & EXPR_INFER_TYPES_OK)
-					: (ret_err & EXPR_INFER_TYPES_YIELD);
-			}
-
-			if (obj.type == TYPE_UNSET) {
-				// The object has not yet been initialized.
-				node->flags = prev_flags;
-				return ret_err & EXPR_INFER_TYPES_YIELD;
-			}
-
-			expr_bind_type(mod, expr, node->rule.out + slot_offset, obj.type);
-
-			struct type *result_type;
-			result_type = vm_get_type(mod->vm, obj.type);
-
-			if (result_type->num_template_params > 0) {
-				node->flags = prev_flags | EXPR_TEMPLATE;
-				return EXPR_INFER_TYPES_OK;
-			}
-
-
-			return ret_err;
-		}
-	} break;
-
+	case EXPR_NODE_LOOKUP_FUNC:
 	case EXPR_NODE_LOOKUP_GLOBAL:
 	case EXPR_NODE_LOOKUP_LOCAL: {
-		ret_err &= expr_try_infer_types(mod, expr, node->lookup.scope, slot_offset);
+		struct scope *scope = NULL;
+		bool global_lookup;
 
-		int flags = EXPR_TYPED | EXPR_CONST;
+		printf("looking for %.*s... ", ALIT(node->lookup.name));
 
-		if ((node->lookup.scope->flags & flags) == flags) {
+		if (node->type == EXPR_NODE_LOOKUP_FUNC) {
+			printf("func first... ");
+			struct expr_func_scope *func_scope = node->lookup.func_scope;
+			bool found = false;
+			for (size_t i = 0; i < func_scope->num_entries; i++) {
+				if (func_scope->entry_names[i] == node->lookup.name) {
+					found = true;
+					break;
+				}
+			}
+
+			if (found) {
+				printf("found locally.\n");
+				if (expr_get_slot_type(expr, node->rule.out + slot_offset) != TYPE_UNSET) {
+					node->flags |= EXPR_TYPED;
+				}
+				return ret_err;
+			}
+
+			scope = func_scope->outer_scope;
+			global_lookup = true;
+		} else {
+			ret_err &= expr_try_infer_types(mod, expr, node->lookup.scope, slot_offset);
+
+			int flags = EXPR_TYPED | EXPR_CONST;
+			if ((node->lookup.scope->flags & flags) != flags) {
+				printf("scope is not constant and typed.\n");
+				return EXPR_INFER_TYPES_YIELD;
+			}
+
+			struct object out_scope;
 			int err;
-			struct object obj;
-			enum expr_node_flags prev_flags;
 
-			struct type *expected_type;
-			expected_type = vm_get_type(mod->vm, 
-					expr_get_slot_type(expr, node->rule.type + slot_offset));
+			err = expr_eval_simple_offset(mod->vm, mod, expr, node->lookup.scope,
+										  slot_offset, &out_scope);
 
-			bool is_template = false;
-
-			if (expected_type->num_template_params > 0) {
-				node->flags |= EXPR_TEMPLATE;
-				is_template = true;
+			if (err) {
+				printf("could not resolve scope\n");
+				return err;
 			}
 
-			prev_flags = node->flags;
-			node->flags |= EXPR_TYPED | EXPR_CONST;
+			if (node->type == EXPR_NODE_LOOKUP_GLOBAL) {
+				global_lookup = true;
 
-			err = expr_eval_simple_offset(mod->vm, mod, expr, node, slot_offset, &obj);
+				if (out_scope.type != TYPE_SCOPE) {
+					printf("not a scope\n");
+					return -1;
+				}
 
-			if (err < 0) {
-				// The object was not found.
-				node->flags = prev_flags;
-				printf("[lookup] Object %.*s not found.\n", ALIT(node->lookup.name));
-				return EXPR_INFER_TYPES_ERROR;
-			} else if (err > 0) {
-				// Not enough type information to uniquely find a matching
-				// object.
-				node->flags = prev_flags;
-				printf("[lookup] Object %.*s not enough type info.\n", ALIT(node->lookup.name));
-				return is_template
-					? (ret_err & EXPR_INFER_TYPES_OK)
-					: (ret_err & EXPR_INFER_TYPES_YIELD);
+				scope = *(struct scope **)out_scope.data;
+
+			} else {
+				global_lookup = false;
+
+				if (out_scope.type == TYPE_SCOPE) {
+					scope = *(struct scope **)out_scope.data;
+				} else {
+					struct type *target_type = vm_get_type(mod->vm, out_scope.type);
+					scope = target_type->object_scope;
+					if (!scope) {
+						printf("%.*s has no scope.\n", ALIT(target_type->name));
+						return -1;
+					}
+				}
 			}
 
-			if (obj.type == TYPE_UNSET) {
-				// The object has not yet been initialized.
-				printf("[lookup] Object %.*s not yet initialized.\n", ALIT(node->lookup.name));
-				node->flags = prev_flags;
-				return ret_err & EXPR_INFER_TYPES_YIELD;
-			}
-
-			expr_bind_type(mod, expr, node->rule.out + slot_offset, obj.type);
-
-			struct type *result_type;
-			result_type = vm_get_type(mod->vm, obj.type);
-
-			if (result_type->num_template_params > 0) {
-				node->flags = prev_flags | EXPR_TEMPLATE;
-				return EXPR_INFER_TYPES_OK;
-			}
-
+			assert(scope != NULL);
 		}
-	} return ret_err;
+
+		type_id expected_type;
+		expected_type = expr_get_slot_type(expr, node->rule.out);
+
+		bool is_template = true;
+
+		if (vm_get_type(mod->vm, expected_type)->num_template_params > 0) {
+			node->flags |= EXPR_TEMPLATE;
+			is_template = true;
+		}
+
+		printf("checking (%s, %p):\n", (global_lookup ? "global" : "local"), (void *)scope);
+		struct scope_entry result;
+		int err = expr_resolve_scope_lookup(mod->vm, expr, scope, node->lookup.name,
+											expected_type, global_lookup, &result);
+
+		if (err < 0) {
+			// The object was not found.
+			printf("[lookup] Object %.*s not found.\n", ALIT(node->lookup.name));
+			return EXPR_INFER_TYPES_ERROR;
+		} else if (err > 0) {
+			// Not enough type information to uniquely find a matching
+			// object.
+			printf("[lookup] Object %.*s not enough type info.\n", ALIT(node->lookup.name));
+			return is_template
+				? (ret_err & EXPR_INFER_TYPES_OK)
+				: (ret_err & EXPR_INFER_TYPES_YIELD);
+		}
+
+		struct object obj = result.object;
+
+		if (obj.type == TYPE_UNSET) {
+			// The object has not yet been initialized.
+			printf("[lookup] Object %.*s not yet initialized.\n", ALIT(node->lookup.name));
+			return ret_err & EXPR_INFER_TYPES_YIELD;
+		}
+
+		expr_bind_type(mod, expr, node->rule.out + slot_offset, obj.type);
+
+		struct type *result_type;
+		result_type = vm_get_type(mod->vm, obj.type);
+
+		if (result_type->num_template_params > 0) {
+			node->flags |= EXPR_TEMPLATE;
+			return EXPR_INFER_TYPES_OK;
+		}
+
+		// TODO: The expression should only be tagged as const if the function
+		// itself is const.
+		node->flags |= EXPR_TYPED | EXPR_CONST;
+		return ret_err;
+	} break;
 
 	case EXPR_NODE_GLOBAL:
 	case EXPR_NODE_STACK:
@@ -989,58 +936,6 @@ expr_typecheck(struct stg_module *mod, struct expr *expr)
 	case EXPR_TYPECHECK_ERROR:
 		return -1;
 	}
-}
-
-static int
-expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
-						  struct scope *scope,
-						  struct atom *name,
-						  type_id expected_type,
-						  bool global_lookup,
-						  struct scope_entry *result)
-{
-	printf("looking for '%.*s': ", ALIT(name));
-	print_type_repr(vm, vm_get_type(vm, expected_type));
-	printf("\n");
-
-	int iter_err = 0;
-	struct scope_iter iter = {0};
-	size_t num_matching_entries = 0;
-	while (iter_err == 0) {
-		if (global_lookup) {
-			iter_err = scope_iterate_overloads(scope, name, &iter);
-		} else {
-			iter_err = scope_iterate_local_overloads(scope, name, &iter);
-		}
-
-		if (iter_err != 0) {
-			break;
-		}
-
-		printf("  candidate: ");
-		print_type_repr(vm, vm_get_type(vm, iter.entry->object.type));
-
-		type_id out_type;
-		if (unify_types(vm, &expr->mod->store,
-						expected_type,
-						iter.entry->object.type, &out_type)) {
-			printf(" match: ");
-			print_type_repr(vm, vm_get_type(vm, out_type));
-			*result = *iter.entry;
-			num_matching_entries += 1;
-		}
-		printf("\n");
-	}
-
-	if (num_matching_entries == 0) {
-		printf("'%.*s' was not found.\n", ALIT(name));
-		return -1;
-	} else if (num_matching_entries > 1) {
-		printf("%zu matching results for %.*s.\n", num_matching_entries, ALIT(name));
-		return 1;
-	}
-
-	return 0;
 }
 
 static int
@@ -1185,45 +1080,35 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 		struct object ret_obj;
 		struct type *ret_type;
 
-		if (node->func_call.func_expr) {
-			err = expr_eval_internal(vm, expr, stack,
-					node->func_call.func_expr->func_decl.expr.body,
-					node->func_call.slot_offset, &ret_obj);
-			if (err) {
-				return err;
-			}
-			ret_type = vm_get_type(vm, ret_obj.type);
-		} else {
-			struct object func_obj;
+		struct object func_obj;
 
-			err = expr_eval_internal(vm, expr, stack, node->func_call.func, slot_offset, &func_obj);
-			if (err) {
-				return err;
-			}
-
-			struct type *type = vm_get_type(vm, func_obj.type);
-			assert(!type->base->abstract);
-
-			struct type_func *type_func = type->data;
-
-			// TODO: Is this check necessary? We already know the types
-			// are ok after the type inference/check.
-
-			/* if (type_func->num_params != num_args) { */
-			/* 	printf("Wrong number of arguments. Expected %zu, got %zu.\n", */
-			/* 		   type_func->num_params, num_args); */
-			/* 	return -1; */
-			/* } */
-
-			assert(type->base->eval != NULL);
-			type->base->eval(vm, stack, NULL);
-
-			assert(type_func->ret == expr_get_slot_type(expr, node->rule.out + slot_offset));
-			ret_type = vm_get_type(vm, type_func->ret);
-
-			ret_obj.type = type_func->ret;
-			ret_obj.data = stack->sp - ret_type->size;
+		err = expr_eval_internal(vm, expr, stack, node->func_call.func, slot_offset, &func_obj);
+		if (err) {
+			return err;
 		}
+
+		struct type *type = vm_get_type(vm, func_obj.type);
+		assert(!type->base->abstract);
+
+		struct type_func *type_func = type->data;
+
+		// TODO: Is this check necessary? We already know the types
+		// are ok after the type inference/check.
+
+		/* if (type_func->num_params != num_args) { */
+		/* 	printf("Wrong number of arguments. Expected %zu, got %zu.\n", */
+		/* 		   type_func->num_params, num_args); */
+		/* 	return -1; */
+		/* } */
+
+		assert(type->base->eval != NULL);
+		type->base->eval(vm, stack, NULL);
+
+		assert(type_func->ret == expr_get_slot_type(expr, node->rule.out + slot_offset));
+		ret_type = vm_get_type(vm, type_func->ret);
+
+		ret_obj.type = type_func->ret;
+		ret_obj.data = stack->sp - ret_type->size;
 
 		stack->sp = prev_sp;
 		stack->bp = prev_bp;
@@ -1592,12 +1477,6 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, fu
 		_print_indent(depth + 1);
 		printf("func\n");
 		expr_print_internal(vm, expr, node->func_call.func, slot_offset, depth + 2);
-
-		_print_indent(depth + 1);
-		printf("func_expr\n");
-
-		expr_print_internal(vm, expr, node->func_call.func_expr,
-				node->func_call.slot_offset, depth + 2);
 
 		_print_indent(depth + 1);
 		printf("args\n");

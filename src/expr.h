@@ -118,9 +118,6 @@ struct expr_node {
 		struct {
 			struct expr_node *func;
 			struct expr_node *args;
-
-			struct expr_node *func_expr;
-			func_type_id slot_offset;
 		} func_call;
 
 		struct {
