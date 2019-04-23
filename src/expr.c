@@ -331,7 +331,13 @@ expr_bind_ref_slot(struct stg_module *mod, struct expr *expr,
 				   func_type_id slot, func_type_id other)
 {
 	if (SLOT_STATE(expr->slots[slot].state) == SLOT_BOUND_REF) {
-		assert(SLOT_STATE(expr->slots[slot].state) != SLOT_BOUND_REF);
+
+		expr_bind_ref_slot(
+			mod, expr,
+			expr_get_actual_slot(expr, slot),
+			expr_get_actual_slot(expr, other)
+		);
+		return 0;
 	} else {
 		type_id old_type = TYPE_UNSET;
 		if (SLOT_STATE(expr->slots[slot].state) == SLOT_BOUND) {
@@ -361,6 +367,8 @@ expr_append_expr_slots(struct stg_module *mod, struct expr *expr, struct expr *f
 {
 	func_type_id func_slot_begin = expr->num_type_slots;
 	size_t num_new_slots = func_expr->num_type_slots;
+
+	printf("Expand slots: %d + %zu\n", func_slot_begin, num_new_slots);
 
 	expr->num_type_slots += num_new_slots;
 	expr->slots = realloc(expr->slots,
@@ -533,7 +541,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 			param = node->func_decl.params[i].type;
 
 			ret_err &= expr_try_infer_types(mod, func_expr, param, func_slot_offset);
-			printf("[func decl, after param %zu] ret error: %i\n", i, ret_err);
 
 			param_names[i] = node->func_decl.params[i].name;
 			param_types[i] = expr_get_slot_type(func_expr, node->rule.abs.params[i] + func_slot_offset);
@@ -544,13 +551,11 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 		struct expr_node *ret;
 		ret = node->func_decl.ret_type;
 		ret_err &= expr_try_infer_types(mod, func_expr, ret, func_slot_offset);
-		printf("[func decl, after ret] ret error: %i\n", ret_err);
 		flags &= ret->flags;
 
 		struct expr_node *body;
 		body = node->func_decl.expr.body;
 		ret_err &= expr_try_infer_types(mod, func_expr, body, func_slot_offset);
-		printf("[func decl, after body] ret error: %i\n", ret_err);
 		flags &= body->flags;
 
 		type_id ret_type;
@@ -582,7 +587,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			while (arg) {
 				ret_err &= expr_try_infer_types(mod, expr, arg, slot_offset);
-				printf("[func call, after param %zu] ret error: %i\n", arg_i, ret_err);
 
 				type_id slot_type;
 				slot_type = expr_get_slot_type(expr, node->rule.app.args[arg_i] + slot_offset);
@@ -614,7 +618,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			expr_bind_type(mod, expr, node->rule.app.func + slot_offset, func_type);
 			ret_err &= expr_try_infer_types(mod, expr, node->func_call.func, slot_offset);
-			printf("[func call, after func] ret error: %i\n", ret_err);
 
 			enum expr_node_flags func_flags = node->func_call.func->flags;
 			if (true || (func_flags & (EXPR_TYPED | EXPR_CONST)) == (EXPR_TYPED | EXPR_CONST)) {
@@ -698,8 +701,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 			// || func_node->type == EXPR_NODE_FUNC_BUILTIN);
 
 			ret_err &= expr_try_infer_types(mod, expr, func_node,
-					slot_offset + node->func_call.slot_offset);
-			printf("[func call (det), after expr] ret error: %i\n", ret_err);
+					node->func_call.slot_offset);
 
 			enum expr_node_flags all_params_flags;
 			all_params_flags = EXPR_TYPED | EXPR_CONST;
@@ -707,7 +709,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			while (arg) {
 				ret_err &= expr_try_infer_types(mod, expr, arg, slot_offset);
-				printf("[func call (det), after arg %zu] ret error: %i\n", arg_i, ret_err);
 				all_params_flags &= arg->flags;
 				arg = arg->next_arg;
 			}
@@ -733,7 +734,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 				expr_bind_type(mod, expr, node->rule.app.args[arg_i] + slot_offset,
 							   new_func->param_types[arg_i]);
 				ret_err &= expr_try_infer_types(mod, expr, arg, slot_offset);
-				printf("[func call (undet), after arg %zu] ret error: %i\n", arg_i, ret_err);
 				all_params_flags &= arg->flags;
 
 				arg_i += 1;
@@ -745,7 +745,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			node->flags = node->func_call.func->flags & all_params_flags;
 		}
-		printf("func call ret: %i\n", ret_err);
 	} return ret_err;
 
 	case EXPR_NODE_LOOKUP_FUNC: {
@@ -824,7 +823,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 	case EXPR_NODE_LOOKUP_GLOBAL:
 	case EXPR_NODE_LOOKUP_LOCAL: {
 		ret_err &= expr_try_infer_types(mod, expr, node->lookup.scope, slot_offset);
-		printf("[lookup %.*s, after scope] Ret err %i.\n", ALIT(node->lookup.name), ret_err);
 
 		int flags = EXPR_TYPED | EXPR_CONST;
 
@@ -848,7 +846,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 			node->flags |= EXPR_TYPED | EXPR_CONST;
 
 			err = expr_eval_simple_offset(mod->vm, mod, expr, node, slot_offset, &obj);
-			printf("lookup resut %.*s: %i\n", ALIT(node->lookup.name), err);
 
 			if (err < 0) {
 				// The object was not found.
@@ -901,7 +898,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 	case EXPR_NODE_TYPE_EXPR:
 		if (node->type_expr) {
 			ret_err &= expr_try_infer_types(mod, expr, node->type_expr, slot_offset);
-			printf("[type expr, after type expr] ret err: %i\n", ret_err);
 
 			if (expr_get_slot_type(expr, node->type_expr->rule.out + slot_offset) != mod->vm->default_types.type) {
 				printf("Expected 'type', got '");
@@ -928,7 +924,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			node->flags = node->type_expr->flags;
 		}
-		printf("[type expr] ret err: %i\n", ret_err);
 		return ret_err;
 
 	}
@@ -1193,7 +1188,7 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 		if (node->func_call.func_expr) {
 			err = expr_eval_internal(vm, expr, stack,
 					node->func_call.func_expr->func_decl.expr.body,
-					slot_offset + node->func_call.slot_offset, &ret_obj);
+					node->func_call.slot_offset, &ret_obj);
 			if (err) {
 				return err;
 			}
@@ -1290,13 +1285,6 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 		int err;
 		struct scope_entry result;
 
-		type_id expected_type =
-			expr_get_slot_type(expr, node->rule.out + slot_offset);
-
-		printf("eval local/global lookup for %.*s, expect (%u+%i) ",
-			   ALIT(node->lookup.name), slot_offset, node->rule.out);
-		print_type_repr(vm, vm_get_type(vm, expected_type));
-		printf("\n");
 		err = expr_eval_lookup(vm, expr, stack, node,
 							   expr_get_slot_type(expr, node->rule.out + slot_offset),
 							   &result);
@@ -1315,7 +1303,6 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 				out_type = result.object.type;
 			}
 		}
-		printf("expr eval lookup res: %i\n", err);
 	} break;
 
 	case EXPR_NODE_SCOPE: {
@@ -1610,7 +1597,7 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, fu
 		printf("func_expr\n");
 
 		expr_print_internal(vm, expr, node->func_call.func_expr,
-				slot_offset + node->func_call.slot_offset, depth + 2);
+				node->func_call.slot_offset, depth + 2);
 
 		_print_indent(depth + 1);
 		printf("args\n");
