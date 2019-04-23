@@ -425,6 +425,8 @@ expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
 	int iter_err = 0;
 	struct scope_iter iter = {0};
 	size_t num_matching_entries = 0;
+	bool found_uninitialized = false;
+
 	while (iter_err == 0) {
 		if (global_lookup) {
 			iter_err = scope_iterate_overloads(scope, name, &iter);
@@ -439,6 +441,10 @@ expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
 		printf("  candidate: ");
 		print_type_repr(vm, vm_get_type(vm, iter.entry->object.type));
 
+		if (iter.entry->object.type == TYPE_UNSET) {
+			found_uninitialized = true;
+		}
+
 		type_id out_type;
 		if (unify_types(vm, &expr->mod->store,
 						expected_type,
@@ -449,6 +455,11 @@ expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
 			num_matching_entries += 1;
 		}
 		printf("\n");
+	}
+
+	if (found_uninitialized) {
+		printf("There were uninitialized results\n");
+		return 2;
 	}
 
 	if (num_matching_entries == 0) {
@@ -799,6 +810,10 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 		} else if (err > 0) {
 			// Not enough type information to uniquely find a matching
 			// object.
+			if (err == 2) {
+				printf("[lookup] Object %.*s not yet initialized.\n", ALIT(node->lookup.name));
+				return ret_err & EXPR_INFER_TYPES_YIELD;
+			}
 			printf("[lookup] Object %.*s not enough type info.\n", ALIT(node->lookup.name));
 			return is_template
 				? (ret_err & EXPR_INFER_TYPES_OK)

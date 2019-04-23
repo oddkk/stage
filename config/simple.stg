@@ -4,6 +4,10 @@ func := \a a * a;
 asdf := func(2);
 fdsa := func("a");
 
+test(a: int, b: int) = a * b + 2;
+
+f := test(2, 4);
+
 
 
  
