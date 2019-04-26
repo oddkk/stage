@@ -586,6 +586,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 					last_arg = n;
 				} else {
 					last_arg->next_arg = n;
+					last_arg = n;
 				}
 
 				arg = arg->next_sibling;

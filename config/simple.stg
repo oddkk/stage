@@ -1,13 +1,32 @@
 op*(a: str, b: str) -> str = "asdf";
+ 
+# id(a: $T) -> T = a;
+# typeof(a: $T) -> type = T;
 
 func := \a a * a;
 asdf := func(2);
 fdsa := func("a");
 
-test(a: int, b: int) = a * b + 2;
+#g(x: int) = x * x;
 
-f := test(2, 4);
+#test(a: int, b: int, c: int) = a * g(b) + 3 * c;
+#test(a: int, b: int, c: int) = c;
 
+# f := test(2, 4, 8);
+# v := 3 - 2;
+
+
+# Launchpad(midi_device: str) :: object {
+# 	midi := MidiDevice(midi_device);
+# };
+### ^ syntactic sugar for ###
+# Launchpad: type = {
+# 	midi: MidiDevice;
+# };
+# Launchpad(midi_device: str) -> Launchpad =
+# 	Launchpad {
+# 		midi := MidiDevice(midi_device);
+# 	};
 
 
  

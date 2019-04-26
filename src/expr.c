@@ -732,6 +732,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			if (found) {
 				printf("found locally.\n");
+
 				if (expr_get_slot_type(expr, node->rule.out + slot_offset) != TYPE_UNSET) {
 					node->flags |= EXPR_TYPED;
 				}
@@ -1071,19 +1072,6 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 		uint8_t *prev_bp = stack->bp;
 		uint8_t *prev_sp = stack->sp;
 
-		/* size_t num_args = 0; */
-		/* while (arg) { */
-		/* 	struct object arg_obj; */
-
-		/* 	err = expr_eval_internal(vm, expr, stack, arg, slot_offset, &arg_obj); */
-		/* 	if (err) { */
-		/* 		return err; */
-		/* 	} */
-
-		/* 	num_args += 1; */
-		/* 	arg = arg->next_arg; */
-		/* } */
-
 		err = expr_eval_push_args(vm, expr, stack,
 								  node->func_call.args);
 		if (err) {
@@ -1106,15 +1094,6 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 		assert(!type->base->abstract);
 
 		struct type_func *type_func = type->data;
-
-		// TODO: Is this check necessary? We already know the types
-		// are ok after the type inference/check.
-
-		/* if (type_func->num_params != num_args) { */
-		/* 	printf("Wrong number of arguments. Expected %zu, got %zu.\n", */
-		/* 		   type_func->num_params, num_args); */
-		/* 	return -1; */
-		/* } */
 
 		assert(type->base->eval != NULL);
 		type->base->eval(vm, stack, NULL);
@@ -1139,7 +1118,7 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 		size_t offset = 0;
 		bool found = false;
 
-		for (ssize_t i = func_scope->num_entries - 1; i >= 0; i--) {
+		for (size_t i = 0; i < func_scope->num_entries; i++) {
 			type_id tid = expr_get_slot_type(expr, func_scope->entry_types[i] + slot_offset);
 			struct type *type = vm_get_type(vm, tid);
 
