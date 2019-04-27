@@ -330,12 +330,20 @@ int
 expr_bind_ref_slot(struct stg_module *mod, struct expr *expr,
 				   func_type_id slot, func_type_id other)
 {
+	assert(slot != other);
 	if (SLOT_STATE(expr->slots[slot].state) == SLOT_BOUND_REF) {
+		func_type_id actual_slot = expr_get_actual_slot(expr, slot);
+		func_type_id actual_other = expr_get_actual_slot(expr, other);
+
+		if (actual_slot == actual_other) {
+			// The slots already point to the same actual slot.
+			expr->slots[slot].state = SLOT_BOUND_REF;
+			expr->slots[slot].ref = other;
+			return 0;
+		}
 
 		expr_bind_ref_slot(
-			mod, expr,
-			expr_get_actual_slot(expr, slot),
-			expr_get_actual_slot(expr, other)
+			mod, expr, actual_slot, actual_other
 		);
 		return 0;
 	} else {
@@ -425,6 +433,7 @@ expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
 	int iter_err = 0;
 	struct scope_iter iter = {0};
 	size_t num_matching_entries = 0;
+	size_t lowest_template_param_count = SIZE_MAX;
 	bool found_uninitialized = false;
 
 	while (iter_err == 0) {
@@ -445,12 +454,25 @@ expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
 			found_uninitialized = true;
 		}
 
+		struct type *item_type = vm_get_type(vm, iter.entry->object.type);
+
+		if (item_type->num_template_params > lowest_template_param_count) {
+			printf(" too unspecific, skip\n");
+			continue;
+		}
+
 		type_id out_type;
 		if (unify_types(vm, &expr->mod->store,
 						expected_type,
 						iter.entry->object.type, &out_type)) {
 			printf(" match: ");
 			print_type_repr(vm, vm_get_type(vm, out_type));
+
+			if (item_type->num_template_params < lowest_template_param_count) {
+				printf(" better match");
+				num_matching_entries = 0;
+				lowest_template_param_count = item_type->num_template_params;
+			}
 			*result = *iter.entry;
 			num_matching_entries += 1;
 		}
@@ -792,7 +814,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 		type_id expected_type;
 		expected_type = expr_get_slot_type(expr, node->rule.out);
 
-		bool is_template = true;
+		bool is_template = false;
 
 		if (vm_get_type(mod->vm, expected_type)->num_template_params > 0) {
 			node->flags |= EXPR_TEMPLATE;
@@ -829,15 +851,46 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 			return ret_err & EXPR_INFER_TYPES_YIELD;
 		}
 
-		expr_bind_type(mod, expr, node->rule.out + slot_offset, obj.type);
-
 		struct type *result_type;
 		result_type = vm_get_type(mod->vm, obj.type);
 
 		if (result_type->num_template_params > 0) {
-			node->flags |= EXPR_TEMPLATE;
-			return EXPR_INFER_TYPES_OK;
+			if (is_template) {
+				node->flags |= EXPR_TEMPLATE;
+				return ret_err & EXPR_INFER_TYPES_OK;
+			} else {
+				if (result_type->base->specialise) {
+					int err;
+					struct object res = {0};
+					err = result_type->base->specialise(
+							mod, obj, expected_type, &res);
+					printf("res: %zu\n", res.type);
+
+					if (err < 0) {
+						return EXPR_INFER_TYPES_ERROR;
+					} else if (err > 0) {
+						return EXPR_INFER_TYPES_YIELD;
+					}
+
+					scope_insert_overloadable(
+							result.parent, result.name, SCOPE_ANCHOR_ABSOLUTE, res);
+					obj = res;
+
+					printf("$$$$$$$$$$$$$$ Specialised to ");
+					print_type_repr(mod->vm, vm_get_type(mod->vm, obj.type));
+					printf(" $$$$$$$$$$$$$$\n");
+				} else {
+					printf("Can not specialise object of type '");
+					print_type_repr(mod->vm, vm_get_type(mod->vm, obj.type));
+					printf(" to type '");
+					print_type_repr(mod->vm, vm_get_type(mod->vm, expected_type));
+					printf("'.\n");
+					return EXPR_INFER_TYPES_ERROR;
+				}
+			}
 		}
+
+		expr_bind_type(mod, expr, node->rule.out + slot_offset, obj.type);
 
 		// TODO: The expression should only be tagged as const if the function
 		// itself is const.

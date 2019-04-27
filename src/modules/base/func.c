@@ -10,6 +10,8 @@ static void obj_eval_builtin_func(struct vm *vm, struct exec_stack *stack, void 
 // static struct expr_node *type_func_expr_builtin_func(struct stg_module *mod, struct object obj);
 static struct expr_node *type_func_expr_native_func(struct stg_module *mod, struct object obj);
 static struct string type_native_func_repr(struct vm *vm, struct arena *mem, struct type *type);
+static int obj_specialise_native_func(struct stg_module *,
+                                      struct object, type_id, struct object *);
 static void obj_eval_native_func(struct vm *vm, struct exec_stack *stack, void *data);
 static struct string obj_native_func_repr(struct vm *vm, struct arena *mem, struct object *object);
 static struct string obj_builtin_func_repr(struct vm *vm, struct arena *mem, struct object *object);
@@ -28,6 +30,7 @@ struct type_base base_native_func_base = {
 	.obj_repr = obj_native_func_repr,
 	.subtypes_iter = type_func_subtypes_iter,
 	.eval = obj_eval_native_func,
+	.specialise = obj_specialise_native_func,
 };
 
 struct type_base base_builtin_func_base = {
@@ -249,6 +252,86 @@ static void obj_eval_native_func(struct vm *vm, struct exec_stack *stack, void *
 	default:
 		panic("Invalid native func storage.");
 		break;
+	}
+}
+
+static int obj_specialise_native_func(struct stg_module *mod,
+                                      struct object obj, type_id target_type,
+                                      struct object *result)
+{
+	struct obj_native_func_data *func;
+	func = obj.data;
+
+	struct type_func *target;
+	target = (struct type_func *)vm_get_type(mod->vm, target_type)->data;
+
+	if (func->storage == NATIVE_FUNC_STORAGE_NODES) {
+		struct expr_node *decl;
+		decl = func->node.decl_node;
+		assert(decl->type == EXPR_NODE_FUNC_DECL);
+
+		struct expr_node *new_decl = calloc(1, sizeof(struct expr_node));
+		*new_decl = *decl;
+
+		struct expr_type_slot outer_slot = {0};
+		struct expr outer_expr = {0};
+		outer_expr.body = new_decl;
+		outer_expr.num_type_slots = 1;
+
+		// Instead of calling expr_finalize we set the slot manually to avoid
+		// calling calloc.
+		outer_expr.slots = &outer_slot;
+
+		new_decl->rule.out = 0;
+
+		struct expr *spec_expr;
+		spec_expr = &new_decl->func_decl.expr;
+
+		// TODO: Clean up alloced memory
+		spec_expr->slots = calloc(spec_expr->num_type_slots, sizeof(struct expr_type_slot));
+		memcpy(spec_expr->slots, decl->func_decl.expr.slots,
+		       spec_expr->num_type_slots * sizeof(struct expr_type_slot));
+
+		if (target->num_params != decl->func_decl.num_params) {
+			printf("Can not specialise, mismatching number of arguments.\n");
+			return -1;
+		}
+
+		for (size_t i = 0; i < target->num_params; i++) {
+			struct expr_node *param = new_decl->func_decl.params[i].type;
+			expr_bind_type(mod, spec_expr, param->rule.type, target->param_types[i]);
+		}
+
+		expr_bind_type(mod, spec_expr, new_decl->func_decl.ret_type->rule.type, target->ret);
+
+		for (int i = 0; i < 3; i++) {
+			int err;
+			err = expr_typecheck(mod, &outer_expr);
+
+			if (err < 0) {
+				free(spec_expr->slots);
+				free(new_decl);
+				return -1;
+			} else if (err == 0) {
+				struct object r = {0};
+				struct obj_native_func_data data;
+
+				r.type = expr_get_slot_type(&outer_expr, new_decl->rule.out);
+				r.data = (void *)&data;
+
+				data.storage = NATIVE_FUNC_STORAGE_NODES;
+				data.node.decl_node = new_decl;
+
+				*result = register_object(mod->vm, &mod->store, r);
+				return 0;
+			}
+		}
+
+		free(spec_expr->slots);
+		free(new_decl);
+		return 1;
+	} else {
+		return -1;
 	}
 }
 

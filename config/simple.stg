@@ -7,6 +7,7 @@ func := \a a * a;
 asdf := func(2);
 fdsa := func("a");
 
+
 #g(x: int) = x * x;
 
 #test(a: int, b: int, c: int) = a * g(b) + 3 * c;
