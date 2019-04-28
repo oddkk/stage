@@ -31,8 +31,13 @@ expr_type_expr(struct stg_module *mod, struct expr *expr,
 	node->type = EXPR_NODE_TYPE_EXPR;
 	node->type_expr = type_expr;
 
-	node->rule.out =
-		alloc_type_slot(expr);
+	if (node->type_expr) {
+		node->rule.out =
+			node->type_expr->rule.out;
+	} else {
+		node->rule.out =
+			alloc_type_slot(expr);
+	}
 
 	node->rule.type = slot;
 
@@ -544,6 +549,14 @@ expr_bind_obvious_types(struct stg_module *mod, struct expr *expr,
 				break;
 			}
 		}
+		for (size_t i = 0; i < func_scope->num_template_params; i++) {
+			if (func_scope->template_param_names[i] == node->lookup.name) {
+				expr_bind_ref_slot(mod, expr,
+								   node->rule.out, func_scope->template_param_types[i]);
+				found = true;
+				break;
+			}
+		}
 	} break;
 
 	case EXPR_NODE_LOOKUP_GLOBAL:
@@ -761,6 +774,21 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 				return ret_err;
 			}
 
+			for (size_t i = 0; i < func_scope->num_template_params; i++) {
+				if (func_scope->template_param_names[i] == node->lookup.name) {
+					node->flags |= EXPR_TEMPLATE;
+					found = true;
+					break;
+				}
+			}
+
+			if (found) {
+				printf("found locally (template param).\n");
+				return ret_err;
+			}
+
+
+
 			scope = func_scope->outer_scope;
 			global_lookup = true;
 		} else {
@@ -921,7 +949,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 								vm_get_type(mod->vm, expr_get_slot_type(expr,
 																   node->type_expr->rule.out + slot_offset)));
 				printf("'. (slot %u)\n", node->type_expr->rule.out);
-				return ret_err | EXPR_INFER_TYPES_ERROR;
+				return ret_err & EXPR_INFER_TYPES_ERROR;
 			}
 
 			if ((node->type_expr->flags & EXPR_CONST) != 0) {
@@ -939,6 +967,11 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 			}
 
 			node->flags = node->type_expr->flags;
+
+			if ((node->flags & EXPR_TYPED) == EXPR_TEMPLATE) {
+				expr_bind_type(mod, expr, node->rule.type + slot_offset,
+						TYPE_TEMPLATE_PARAM);
+			}
 		}
 		return ret_err;
 
@@ -1183,6 +1216,32 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 				found = true;
 				break;
 			}
+		}
+		for (size_t i = 0; i < func_scope->num_template_params; i++) {
+			printf("check %.*s == %.*s ",
+					ALIT(func_scope->template_param_names[i]),
+					ALIT(node->lookup.name));
+			if (func_scope->template_param_names[i] == node->lookup.name) {
+				printf("found.\n");
+				struct object obj = OBJ_NONE;
+				type_id param_type;
+				param_type = expr_get_slot_type(expr, func_scope->template_param_types[i]);
+
+				if (func_scope->template_param_objects) {
+					obj = func_scope->template_param_objects[i];
+				} else if (param_type == vm->default_types.type) {
+					obj.type = TYPE_TEMPLATE_PARAM; 
+				}
+
+				printf("param type: %zu\n", obj.type);
+
+				struct type *type = vm_get_type(vm, func_scope->template_param_types[i]);
+				stack_push(stack, obj.data, type->size);
+				out_type = obj.type;
+				found = true;
+				break;
+			}
+			printf("\n");
 		}
 
 		if (!found) {
@@ -1504,6 +1563,20 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, fu
 		} else {
 			func_expr = &node->func_decl.expr;
 		}
+
+		_print_indent(depth + 1);
+		printf("template params\n");
+		for (size_t i = 0; i < node->func_decl.scope.num_template_params; i++) {
+			_print_indent(depth + 2);
+			printf("%.*s: ", ALIT(node->func_decl.scope.template_param_names[i]));
+			expr_print_slot(vm, func_expr, slot_offset,
+					node->func_decl.scope.template_param_types[i]);
+			if (node->func_decl.scope.template_param_objects) {
+				print_obj_repr(vm, node->func_decl.scope.template_param_objects[i]);
+			}
+			printf("\n");
+		}
+
 		for (size_t i = 0; i < node->func_decl.num_params; i++) {
 			_print_indent(depth + 1);
 			printf("param %.*s type\n", ALIT(node->func_decl.params[i].name));
@@ -1587,4 +1660,34 @@ expr_free(struct expr_node *node)
 {
 	expr_destroy(node);
 	free(node);
+}
+
+int
+expr_func_scope_add_template_param(
+		struct expr *expr, struct expr_func_scope *scope, struct atom *name)
+{
+	for (size_t i = 0; i < scope->num_entries; i++) {
+		if (scope->entry_names[i] == name) {
+			return -1;
+		}
+	}
+	for (size_t i = 0; i < scope->num_template_params; i++) {
+		if (scope->template_param_names[i] == name) {
+			return -1;
+		}
+	}
+
+	scope->num_template_params += 1;
+	scope->template_param_names =
+		realloc(scope->template_param_names,
+				scope->num_template_params * sizeof(struct atom *));
+	scope->template_param_types =
+		realloc(scope->template_param_types,
+				scope->num_template_params * sizeof(func_type_id));
+
+	scope->template_param_names[scope->num_template_params - 1] = name;
+	scope->template_param_types[scope->num_template_params - 1] = expr->num_type_slots;
+	expr->num_type_slots += 1;
+
+	return 0;
 }

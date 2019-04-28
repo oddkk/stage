@@ -405,7 +405,7 @@ cfg_node_visit_func_proto(struct cfg_ctx *ctx, struct stg_module *mod,
 			ret_node = proto_node->FUNC_PROTO.ret;
 
 			ret = cfg_node_visit_expr(ctx, mod, expr,
-									  scope, NULL, NULL, ret_node);
+									  scope, NULL, func_scope, ret_node);
 
 			struct cfg_node *param_tuple;
 			param_tuple = proto_node->FUNC_PROTO.params;
@@ -413,14 +413,14 @@ cfg_node_visit_func_proto(struct cfg_ctx *ctx, struct stg_module *mod,
 			params =
 				cfg_node_tuple_decl_to_params(ctx, mod, expr,
 											  scope, param_tuple,
-											  NULL, &num_params);
+											  func_scope, &num_params);
 		} break;
 
 		case CFG_NODE_TUPLE_DECL: {
 			params =
 				cfg_node_tuple_decl_to_params(ctx, mod, expr,
 											  scope, proto_node,
-											  NULL, &num_params);
+											  func_scope, &num_params);
 		} break;
 
 		case CFG_NODE_IDENT:
@@ -538,7 +538,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 
 		// Resolve the names and params of the params.
 		cfg_node_visit_func_proto(ctx, mod, func_expr, scope,
-								  lookup_scope, func_scope, proto_node,
+								  NULL, &decl_node->func_decl.scope, proto_node,
 								  &num_params, &params, &ret);
 
 		struct cfg_node *body_node;
@@ -688,6 +688,21 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 			}
 		}
 		break;
+
+	case CFG_NODE_TEMPLATE_VAR: {
+		if (!func_scope) {
+			cfg_error(ctx, node, "Template parameters can only be specified insiede functions.");
+			return NULL;
+		}
+		int err;
+		err = expr_func_scope_add_template_param(expr, func_scope, node->TEMPLATE_VAR.name);
+		if (err == -1) {
+			cfg_error(ctx, node, "A variable named '%.*s' is already declared in this function.",
+					ALIT(node->TEMPLATE_VAR.name));
+			return NULL;
+		}
+		return expr_lookup_func_scope(mod, expr, node->TEMPLATE_VAR.name, func_scope);
+	} break;
 
 	default:
 		panic("Invalid node '%.*s' in expr.",
@@ -852,7 +867,7 @@ job_func_decl(struct cfg_ctx *ctx, struct stg_module *mod, job_func_decl_t *data
 		struct expr *func_expr = &decl_node->func_decl.expr;
 
 		cfg_node_visit_func_proto(ctx, mod, func_expr, data->scope,
-								  NULL, NULL, proto_node,
+								  NULL, &decl_node->func_decl.scope, proto_node,
 								  &num_params, &params, &ret);
 
 		// We need to prealloc decl_node before we visit its body

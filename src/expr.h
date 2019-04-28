@@ -66,6 +66,11 @@ struct expr_func_scope {
 	func_type_id *entry_types;
 	size_t num_entries;
 
+	struct atom  **template_param_names;
+	func_type_id  *template_param_types;
+	struct object *template_param_objects;
+	size_t num_template_params;
+
 	struct scope *outer_scope;
 };
 
@@ -267,5 +272,8 @@ void
 expr_destroy(struct expr_node *node);
 void
 expr_free(struct expr_node *node);
+
+int
+expr_func_scope_add_template_param(struct expr *, struct expr_func_scope *, struct atom *name);
 
 #endif
