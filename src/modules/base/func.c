@@ -270,6 +270,11 @@ static int obj_specialise_native_func(struct stg_module *mod,
 		decl = func->node.decl_node;
 		assert(decl->type == EXPR_NODE_FUNC_DECL);
 
+		if (target->num_params != decl->func_decl.num_params) {
+			printf("Can not specialise, mismatching number of arguments.\n");
+			return -1;
+		}
+
 		struct expr_node *new_decl = calloc(1, sizeof(struct expr_node));
 		*new_decl = *decl;
 
@@ -292,10 +297,8 @@ static int obj_specialise_native_func(struct stg_module *mod,
 		memcpy(spec_expr->slots, decl->func_decl.expr.slots,
 		       spec_expr->num_type_slots * sizeof(struct expr_type_slot));
 
-		if (target->num_params != decl->func_decl.num_params) {
-			printf("Can not specialise, mismatching number of arguments.\n");
-			return -1;
-		}
+		new_decl->func_decl.scope.template_param_objects
+			= calloc(new_decl->func_decl.scope.num_template_params, sizeof(struct object));
 
 		for (size_t i = 0; i < target->num_params; i++) {
 			struct expr_node *param = new_decl->func_decl.params[i].type;
@@ -328,6 +331,7 @@ static int obj_specialise_native_func(struct stg_module *mod,
 		}
 
 		free(spec_expr->slots);
+		free(new_decl->func_decl.scope.template_param_objects);
 		free(new_decl);
 		return 1;
 	} else {

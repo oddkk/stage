@@ -1230,7 +1230,7 @@ discover_config_files(struct cfg_ctx *ctx, struct stg_module *mod,
 	fts_close(ftsp);
 }
 
-#define CFG_DEBUG_JOBS 1
+#define CFG_DEBUG_JOBS 0
 
 static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 {
@@ -1411,8 +1411,11 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 	}
 
 	if (ctx.num_jobs_failed > 0 || ctx.num_errors > 0) {
-		printf("\n" TERM_COLOR_RED("Compilation failed! "
-								   "(%zu jobs failed, %zu errors)") "\n",
+#if CFG_DEBUG_JOBS
+		printf("\n");
+#endif
+		printf(TERM_COLOR_RED("Compilation failed! "
+					"(%zu jobs failed, %zu errors)") "\n",
 			   ctx.num_jobs_failed, ctx.num_errors);
 	}
 

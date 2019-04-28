@@ -1,14 +1,20 @@
+#using channel;
+
 op*(a: str, b: str) -> str = "asdf";
  
 id(a: $T) -> T = a;
-# typeof(a: $T) -> type = T;
+typeof(a: $T) -> type = T;
 
 func := \a a * a;
 asdf := func(2);
 fdsa := func("a");
 
 v := id(2);
-v := id("fas");
+s := id("fas");
+t := typeof(2);
+
+pn := channel.Print("asdf");
+pn <- Node(2);
 
 
 #g(x: int) = x * x;

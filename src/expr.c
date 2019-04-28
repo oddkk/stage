@@ -4,7 +4,8 @@
 #include "utils.h"
 #include "modules/base/mod.h"
 
-#define TYPECHECK_DEBUG 1
+#define TYPECHECK_DEBUG 0
+#define DEBUG_LOOKUPS 0
 
 static func_type_id
 alloc_type_slot(struct expr *expr)
@@ -381,8 +382,6 @@ expr_append_expr_slots(struct stg_module *mod, struct expr *expr, struct expr *f
 	func_type_id func_slot_begin = expr->num_type_slots;
 	size_t num_new_slots = func_expr->num_type_slots;
 
-	printf("Expand slots: %d + %zu\n", func_slot_begin, num_new_slots);
-
 	expr->num_type_slots += num_new_slots;
 	expr->slots = realloc(expr->slots,
 			sizeof(struct expr_type_slot) * expr->num_type_slots);
@@ -431,9 +430,11 @@ expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
 						  bool global_lookup,
 						  struct scope_entry *result)
 {
+#if DEBUG_LOOKUPS
 	printf("looking for '%.*s': ", ALIT(name));
 	print_type_repr(vm, vm_get_type(vm, expected_type));
 	printf("\n");
+#endif
 
 	int iter_err = 0;
 	struct scope_iter iter = {0};
@@ -452,8 +453,10 @@ expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
 			break;
 		}
 
+#if DEBUG_LOOKUPS
 		printf("  candidate: ");
 		print_type_repr(vm, vm_get_type(vm, iter.entry->object.type));
+#endif
 
 		if (iter.entry->object.type == TYPE_UNSET) {
 			found_uninitialized = true;
@@ -462,7 +465,9 @@ expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
 		struct type *item_type = vm_get_type(vm, iter.entry->object.type);
 
 		if (item_type->num_template_params > lowest_template_param_count) {
+#if DEBUG_LOOKUPS
 			printf(" too unspecific, skip\n");
+#endif
 			continue;
 		}
 
@@ -470,30 +475,43 @@ expr_resolve_scope_lookup(struct vm *vm, struct expr *expr,
 		if (unify_types(vm, &expr->mod->store,
 						expected_type,
 						iter.entry->object.type, &out_type)) {
+#if DEBUG_LOOKUPS
 			printf(" match: ");
 			print_type_repr(vm, vm_get_type(vm, out_type));
+#endif
 
 			if (item_type->num_template_params < lowest_template_param_count) {
+#if DEBUG_LOOKUPS
 				printf(" better match");
+#endif
 				num_matching_entries = 0;
 				lowest_template_param_count = item_type->num_template_params;
 			}
 			*result = *iter.entry;
 			num_matching_entries += 1;
 		}
+
+#if DEBUG_LOOKUPS
 		printf("\n");
+#endif
 	}
 
 	if (found_uninitialized) {
+#if DEBUG_LOOKUPS
 		printf("There were uninitialized results\n");
+#endif
 		return 2;
 	}
 
 	if (num_matching_entries == 0) {
+#if DEBUG_LOOKUPS
 		printf("'%.*s' was not found.\n", ALIT(name));
+#endif
 		return -1;
 	} else if (num_matching_entries > 1) {
+#if DEBUG_LOOKUPS
 		printf("%zu matching results for %.*s.\n", num_matching_entries, ALIT(name));
+#endif
 		return 1;
 	}
 
@@ -752,10 +770,14 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 		struct scope *scope = NULL;
 		bool global_lookup;
 
+#if DEBUG_LOOKUPS
 		printf("looking for %.*s... ", ALIT(node->lookup.name));
+#endif
 
 		if (node->type == EXPR_NODE_LOOKUP_FUNC) {
+#if DEBUG_LOOKUPS
 			printf("func first... ");
+#endif
 			struct expr_func_scope *func_scope = node->lookup.func_scope;
 			bool found = false;
 			for (size_t i = 0; i < func_scope->num_entries; i++) {
@@ -766,7 +788,9 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 			}
 
 			if (found) {
+#if DEBUG_LOOKUPS
 				printf("found locally.\n");
+#endif
 
 				if (expr_get_slot_type(expr, node->rule.out + slot_offset) != TYPE_UNSET) {
 					node->flags |= EXPR_TYPED;
@@ -777,17 +801,13 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 			for (size_t i = 0; i < func_scope->num_template_params; i++) {
 				if (func_scope->template_param_names[i] == node->lookup.name) {
 					node->flags |= EXPR_TEMPLATE;
-					found = true;
-					break;
+
+#if DEBUG_LOOKUPS
+					printf("found locally (template param).\n");
+#endif
+					return ret_err;
 				}
 			}
-
-			if (found) {
-				printf("found locally (template param).\n");
-				return ret_err;
-			}
-
-
 
 			scope = func_scope->outer_scope;
 			global_lookup = true;
@@ -796,7 +816,9 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 			int flags = EXPR_TYPED | EXPR_CONST;
 			if ((node->lookup.scope->flags & flags) != flags) {
+#if DEBUG_LOOKUPS
 				printf("scope is not constant and typed.\n");
+#endif
 				return EXPR_INFER_TYPES_YIELD;
 			}
 
@@ -807,7 +829,9 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 										  slot_offset, &out_scope);
 
 			if (err) {
+#if DEBUG_LOOKUPS
 				printf("could not resolve scope\n");
+#endif
 				return err;
 			}
 
@@ -815,7 +839,9 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 				global_lookup = true;
 
 				if (out_scope.type != TYPE_SCOPE) {
+#if DEBUG_LOOKUPS
 					printf("not a scope\n");
+#endif
 					return -1;
 				}
 
@@ -830,7 +856,10 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 					struct type *target_type = vm_get_type(mod->vm, out_scope.type);
 					scope = target_type->object_scope;
 					if (!scope) {
+
+#if DEBUG_LOOKUPS
 						printf("%.*s has no scope.\n", ALIT(target_type->name));
+#endif
 						return -1;
 					}
 				}
@@ -849,23 +878,31 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 			is_template = true;
 		}
 
+#if DEBUG_LOOKUPS
 		printf("checking (%s, %p):\n", (global_lookup ? "global" : "local"), (void *)scope);
+#endif
 		struct scope_entry result;
 		int err = expr_resolve_scope_lookup(mod->vm, expr, scope, node->lookup.name,
 											expected_type, global_lookup, &result);
 
 		if (err < 0) {
 			// The object was not found.
+#if DEBUG_LOOKUPS
 			printf("[lookup] Object %.*s not found.\n", ALIT(node->lookup.name));
+#endif
 			return EXPR_INFER_TYPES_ERROR;
 		} else if (err > 0) {
 			// Not enough type information to uniquely find a matching
 			// object.
 			if (err == 2) {
+#if DEBUG_LOOKUPS
 				printf("[lookup] Object %.*s not yet initialized.\n", ALIT(node->lookup.name));
+#endif
 				return ret_err & EXPR_INFER_TYPES_YIELD;
 			}
+#if DEBUG_LOOKUPS
 			printf("[lookup] Object %.*s not enough type info.\n", ALIT(node->lookup.name));
+#endif
 			return is_template
 				? (ret_err & EXPR_INFER_TYPES_OK)
 				: (ret_err & EXPR_INFER_TYPES_YIELD);
@@ -875,7 +912,9 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 
 		if (obj.type == TYPE_UNSET) {
 			// The object has not yet been initialized.
+#if DEBUG_LOOKUPS
 			printf("[lookup] Object %.*s not yet initialized.\n", ALIT(node->lookup.name));
+#endif
 			return ret_err & EXPR_INFER_TYPES_YIELD;
 		}
 
@@ -892,7 +931,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 					struct object res = {0};
 					err = result_type->base->specialise(
 							mod, obj, expected_type, &res);
-					printf("res: %zu\n", res.type);
 
 					if (err < 0) {
 						return EXPR_INFER_TYPES_ERROR;
@@ -903,10 +941,6 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 					scope_insert_overloadable(
 							result.parent, result.name, SCOPE_ANCHOR_ABSOLUTE, res);
 					obj = res;
-
-					printf("$$$$$$$$$$$$$$ Specialised to ");
-					print_type_repr(mod->vm, vm_get_type(mod->vm, obj.type));
-					printf(" $$$$$$$$$$$$$$\n");
 				} else {
 					printf("Can not specialise object of type '");
 					print_type_repr(mod->vm, vm_get_type(mod->vm, obj.type));
@@ -1064,7 +1098,6 @@ expr_eval_lookup(struct vm *vm, struct expr *expr,
 
 	if (node->type == EXPR_NODE_LOOKUP_GLOBAL) {
 		if (out_scope.type != TYPE_SCOPE) {
-			printf("not a scope\n");
 			return -1;
 		}
 
@@ -1218,11 +1251,7 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 			}
 		}
 		for (size_t i = 0; i < func_scope->num_template_params; i++) {
-			printf("check %.*s == %.*s ",
-					ALIT(func_scope->template_param_names[i]),
-					ALIT(node->lookup.name));
 			if (func_scope->template_param_names[i] == node->lookup.name) {
-				printf("found.\n");
 				struct object obj = OBJ_NONE;
 				type_id param_type;
 				param_type = expr_get_slot_type(expr, func_scope->template_param_types[i]);
@@ -1233,15 +1262,12 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 					obj.type = TYPE_TEMPLATE_PARAM; 
 				}
 
-				printf("param type: %zu\n", obj.type);
-
 				struct type *type = vm_get_type(vm, func_scope->template_param_types[i]);
 				stack_push(stack, obj.data, type->size);
 				out_type = obj.type;
 				found = true;
 				break;
 			}
-			printf("\n");
 		}
 
 		if (!found) {
@@ -1572,6 +1598,7 @@ expr_print_internal(struct vm *vm, struct expr *expr, struct expr_node *node, fu
 			expr_print_slot(vm, func_expr, slot_offset,
 					node->func_decl.scope.template_param_types[i]);
 			if (node->func_decl.scope.template_param_objects) {
+				printf(" = ");
 				print_obj_repr(vm, node->func_decl.scope.template_param_objects[i]);
 			}
 			printf("\n");
