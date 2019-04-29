@@ -13,8 +13,11 @@ v := id(2);
 s := id("fas");
 t := typeof(2);
 
-pn := channel.Print("asdf");
-pn <- Node(2);
+# pn := channel.Print("asdf");
+# po := channel.Node(2);
+# pn <- po;
+
+channel.Print("asfdf") <- channel.Node(2);
 
 
 #g(x: int) = x * x;

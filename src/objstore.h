@@ -28,6 +28,8 @@ struct stg_module;
 typedef struct string (*type_repr)(struct vm *vm, struct arena *mem, struct type *);
 typedef struct string (*obj_repr)(struct vm *vm, struct arena *mem, struct object *);
 typedef type_id (*type_subtypes_iter)(struct vm *vm, struct type *type, size_t *iter);
+typedef bool (*type_params_iter)(struct vm *vm, struct type *type,
+                                 size_t *iter, struct object *out);
 typedef bool (*type_unify)(struct vm *vm, struct objstore *, type_id lhs, type_id rhs, type_id *out);
 typedef int (*type_specialise)(struct stg_module *vm, struct object obj, type_id target,
                                struct object *result);
@@ -50,6 +52,7 @@ struct type_base {
 	type_eval eval;
 	type_call_expr call_expr;
 	type_subtypes_iter subtypes_iter;
+	type_params_iter params_iter;
 	type_specialise specialise;
 	struct type_unifier *unifiers;
 	size_t num_unifiers;

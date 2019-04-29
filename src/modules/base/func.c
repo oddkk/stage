@@ -8,6 +8,7 @@ static bool type_func_unify(struct vm *vm, struct objstore *, type_id lhs, type_
 static struct string type_builtin_func_repr(struct vm *vm, struct arena *mem, struct type *type);
 static void obj_eval_builtin_func(struct vm *vm, struct exec_stack *stack, void *data);
 // static struct expr_node *type_func_expr_builtin_func(struct stg_module *mod, struct object obj);
+static bool type_func_params_iter(struct vm *, struct type *, size_t *iter, struct object *out);
 static struct expr_node *type_func_expr_native_func(struct stg_module *mod, struct object obj);
 static struct string type_native_func_repr(struct vm *vm, struct arena *mem, struct type *type);
 static int obj_specialise_native_func(struct stg_module *,
@@ -29,6 +30,7 @@ struct type_base base_native_func_base = {
 	.call_expr = type_func_expr_native_func,
 	.obj_repr = obj_native_func_repr,
 	.subtypes_iter = type_func_subtypes_iter,
+	.params_iter = type_func_params_iter,
 	.eval = obj_eval_native_func,
 	.specialise = obj_specialise_native_func,
 };
@@ -202,6 +204,25 @@ static void obj_eval_builtin_func(struct vm *vm, struct exec_stack *stack, void 
 // 	func = obj.data;
 // 	return NULL;
 // }
+
+static bool type_func_params_iter(struct vm *vm, struct type *type,
+                                  size_t *iter, struct object *result)
+{
+	struct type_func *func = (struct type_func *)type->data;
+
+	if (*iter < func->num_params) {
+		result->data = &func->param_types[*iter];
+	} else if (*iter == func->num_params) {
+		result->data = &func->ret;
+	} else {
+		return false;
+	}
+
+	result->type = vm->default_types.type;
+	*iter += 1;
+
+	return true;
+}
 
 static struct expr_node *type_func_expr_native_func(struct stg_module *mod, struct object obj)
 {
