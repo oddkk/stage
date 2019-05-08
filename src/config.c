@@ -404,8 +404,10 @@ cfg_node_visit_func_proto(struct cfg_ctx *ctx, struct stg_module *mod,
 			struct cfg_node *ret_node;
 			ret_node = proto_node->FUNC_PROTO.ret;
 
-			ret = cfg_node_visit_expr(ctx, mod, expr,
-									  scope, NULL, func_scope, ret_node);
+			if (ret_node) {
+				ret = cfg_node_visit_expr(ctx, mod, expr,
+										  scope, NULL, func_scope, ret_node);
+			}
 
 			struct cfg_node *param_tuple;
 			param_tuple = proto_node->FUNC_PROTO.params;
@@ -1230,7 +1232,7 @@ discover_config_files(struct cfg_ctx *ctx, struct stg_module *mod,
 	fts_close(ftsp);
 }
 
-#define CFG_DEBUG_JOBS 0
+#define CFG_DEBUG_JOBS 1
 
 static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 {

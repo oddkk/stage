@@ -1,0 +1,253 @@
+use midi;
+use channel;
+use message;
+
+MIDIMessage :: struct {
+	status: uint8;
+	data:   uint8[2];
+};
+
+LaunchpadColor :: struct {
+	r: int;
+	g: int;
+};
+
+LaunchpadButton :: struct {
+	down:  MidiNoteBinaryOutput  = MidiNoteBinaryOutput();
+	color: Input(LaunchpadColor) = Input();
+};
+
+Launchpad :: struct {
+	dev: MidiDevice;
+
+	grid:  LaunchpadButton[8, 8];
+	top:   LaunchpadButton[8];
+	right: LaunchpadButton[8];
+};
+
+Launchpad := (midi: MidiDevice) => Launchpad {
+	dev = midi;
+
+	grid_messages = MessageFilter(
+		(msg: MIDIMessage) {
+			(msg.status)       == 0x90 &&
+			(msg.data1 & 0x88) == 0x00
+		}
+	);
+	grid_messages <- dev.messages;
+
+	grid = [x: 0..8, y: 0..8] LaunchpadButton {
+		down <- ;
+	};
+
+	top_messages = MessageFilter(
+		(msg: MIDIMessage) {
+			(msg.status)       == 0xb0 &&
+			(msg.data1 & 0xf8) == 0x68
+		}
+	);
+	top_messages <- dev.messages;
+
+	top = [i: 0..8] LaunchpadButton {
+	};
+
+	right_messages = MessageFilter(
+		(msg: MIDIMessage) {
+			(msg.status)       == 0x90 &&
+			(msg.data1 & 0x8f) == 0x08
+		}
+	);
+	right_messages <- dev.messages;
+
+	right = [i: 0..8] LaunchpadButton {
+	};
+};
+
+
+
+
+op*(a: str, b: str) -> str "asdf";
+
+fn id(a: $T) -> T = a;
+id := fn(a: T) -> T = a;
+
+\id(a: $T) -> T = a;
+
+id = (a: $T) -> T = a;
+
+id     :: (a: $T) -> T    = a;
+one    :: ()      -> int  = 1;
+typeof :: (a: $T) -> type = T;
+
+
+
+op* := (a: str, b: str) "asdf";
+
+Asdf := (T: type) {
+	foo: T;
+};
+
+Asdf :: {
+	foo: str;
+	bar: int;
+};
+
+a = Asdf {
+	foo := "two";
+	bar := 2;
+};
+ 
+id(a: $T) -> T = a;
+typeof(a: $T) -> type = T;
+
+func := \a a * a;
+asdf := func(2);
+fdsa := func("a");
+
+v := id(2);
+s := id("fas");
+t := typeof(2);
+
+pn := channel.Print("asdf");
+po := channel.Node(2);
+pn <- po;
+
+channel.Print("asfdf") <- channel.Node(2);
+
+
+#g(x: int) = x * x;
+
+#test(a: int, b: int, c: int) = a * g(b) + 3 * c;
+#test(a: int, b: int, c: int) = c;
+
+# f := test(2, 4, 8);
+# v := 3 - 2;
+
+
+# Launchpad(midi_device: str) :: object {
+# 	midi := MidiDevice(midi_device);
+# };
+### ^ syntactic sugar for ###
+# Launchpad: type = {
+# 	midi: MidiDevice;
+# };
+# Launchpad(midi_device: str) -> Launchpad =
+# 	Launchpad {
+# 		midi := MidiDevice(midi_device);
+# 	};
+
+
+ 
+# func2 := \a a;
+# asdf2 := print(func2(3));
+
+#Launchpad :: {
+#	midi: MidiDevice;
+#
+#	grid_buttons := {
+#		down: MidiNoteBinaryOutput;
+#		down <- midi.notes[((y & 0x7) << 4) | (x & 0x7)];
+#
+#		color: Input({r: int, g: int});
+#
+#		color -> \(r, g) ((r & 0x03) | ((g & 0x03) << 4))
+#		      -> midi.notes[((y & 0x7) << 4) | (x & 0x7)];
+#	}[x: 0..8, y: 0..8];
+#}
+#
+#MidiPacket :: uint8[3];
+#
+#MidiDevice :: {
+#	in  := MessageIn(MidiPacket);
+#	out := MessageOut(MidiPacket);
+#}
+#
+#Launchpad :: {
+#	midi: MidiDevice;
+#
+#	grid_buttons := {
+#		down := Channel(bool);
+#
+#		down <- \p p[2] == 0
+#		     <- MessageFilter(
+#				 \p p[0] == 0x90
+#				&& (p[1] & 0x07) == x
+#				&& (p[1] & 0x70) >> 4 == y
+#			 ) <- midi.in;
+#	}[x: 0..8, y: 0..8];
+#}
+#
+#lp: Launchpad;
+#lp.grid_buttons[0, 3].color <- (1, 3);
+#
+#pages := Mux(4, typeof(lp.grid_buttons));
+#pages -> lp.grid_buttons;
+#
+
+
+# asdf(a: $T) = a;
+
+# # Bool :: Enum { true, false }
+# # Foo :: (asdf: Bool, fdsa: (foo: int, bar: str));
+# # Foo :: (Bool, (int, str));
+# # Foo :: (int, (int, str));
+# 
+# # foo : Foo = (Bool.false, (3, "asdf"));
+# 
+# # asdf = foo.fdsa.bar;
+
+# two = 2;
+# four = 2 + 2;
+# some_number := 2 * 3 + 5 - 6 + print(four());
+# 
+# asdf := print(some_number);
+
+# use channel;
+
+# printer := Print("asdf");
+# printer <- Node(\a a * 2) <- Node(3);
+# printer <- Node(3);
+# 
+# printer2 := Print("foobar");
+# printer2 <- Node(56);
+# 
+# 
+# assert square(5) == 25;
+# # assert square(5) == 26;
+# # assert (\a a)(2) == 2;
+# 
+# 
+# lam := \(a: int) a;
+# 
+# assert lam(2) == 2;
+# 
+# # asdf := square(5) * add(3, square(4));
+# 
+# square(x: int) = x * x;
+# # add(x: int, y: int) = x + y;
+# 
+# 
+# 
+# 
+# # double(x: int) -> int = 2 * x;
+# # double(x: (int, Bool)) = 2 * x;
+# 
+# # test = print(square(4) + square(6));
+# 
+# # assert square(2) == 4;
+# # assert some_number == 5;
+# 
+# # fib(n: int) =
+# # 	if n > 1 then
+# # 		fib(n - 1) + fib(n - 2)
+# # 	else
+# # 		1;
+# 
+# # Option(T: type) :: Enum { Some(T), None };
+# 
+# # bind(in: Option($T), fun: ($T) -> Option($U)) =
+# # 	match in {
+# # 		  Some(t) => fun(t),
+# # 		  None    => None
+# # 	};
+
