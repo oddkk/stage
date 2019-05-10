@@ -51,7 +51,10 @@ BUILTIN_IMPURE(Print, print_node_construct, CNL_NODE, (STG_STR, name))
 	mark_channel_notify(cnls, cnl);
 	bind_channel_builtin(mod, cnls, cnl, print_int_node_callback, str);
 
-	return get_channel(cnls, cnl)->callback.inputs[0];
+	struct cnl_node result = {0};
+	result.cnl = get_channel(cnls, cnl)->callback.inputs[0];
+	result.type = vm->default_types.integer;
+	return result;
 }
 
 BUILTIN_PURE(Node, node_type_constructor, STG_TYPE, (STG_TYPE, T))
@@ -77,22 +80,32 @@ BUILTIN_PURE(Node, int_node_construct, CNL_NODE, (STG_INT, val))
 
 	bind_channel_const(mod, cnls, cnl, const_val);
 
-	return cnl;
+	struct cnl_node result = {0};
+	result.cnl = cnl;
+	result.type = vm->default_types.integer;
+	return result;
 }
 
-void
-print_channel_downstream(struct channel_system *cnls);
-
-BUILTIN_IMPURE(op->, node_bind, CNL_NODE, (CNL_NODE, src), (CNL_NODE, drain))
+BUILTIN_IMPURE(op->, node_bind, CNL_CHANNEL, (CNL_NODE, src), (CNL_NODE, drain))
 {
 	struct channel_system *cnls = data;
-	bind_channel(mod, cnls, src, drain);
-	return 0;
+
+	bind_channel(mod, cnls, src.cnl, drain.cnl);
+
+	struct cnl_channel result = {{0}};
+	result.src = src;
+	result.drain = drain;
+	return result;
 }
 
 struct type_base channel_node_base = {
 	.name = STR("node"),
 };
+
+struct type_base channel_channel_base = {
+	.name = STR("channel"),
+};
+
 
 int mod_channel_init(struct stg_module *mod)
 {
@@ -104,6 +117,8 @@ int mod_channel_init(struct stg_module *mod)
 
 	stg_register_builtin_type(mod, &channel_node_base,
 							  STG_TYPE_DATA(CNL_NODE));
+	stg_register_builtin_type(mod, &channel_channel_base,
+							  STG_TYPE_DATA(CNL_CHANNEL));
 	stg_register_builtin_func(mod, print_node_construct, sys);
 	stg_register_builtin_func(mod, int_node_construct, sys);
 	stg_register_builtin_func(mod, node_type_constructor, sys);
