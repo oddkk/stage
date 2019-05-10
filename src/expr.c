@@ -1262,7 +1262,7 @@ expr_eval_internal(struct vm *vm, struct expr *expr,
 					obj.type = TYPE_TEMPLATE_PARAM; 
 				}
 
-				struct type *type = vm_get_type(vm, func_scope->template_param_types[i]);
+				struct type *type = vm_get_type(vm, obj.type);
 				stack_push(stack, obj.data, type->size);
 				out_type = obj.type;
 				found = true;
