@@ -1,5 +1,7 @@
 #include "mod.h"
 
+#include <stdlib.h>
+
 BUILTIN_PURE(array, obj_array_type_constructor, STG_TYPE, (STG_TYPE, type), (STG_INT, length))
 {
 	return type_register_array(vm, &mod->store, type, length);
@@ -78,7 +80,9 @@ type_register_array(struct vm *vm, struct objstore *store,
 	type.name = atom_create(&vm->atom_table, STR("array"));
 	type.base = &base_array_base;
 
-	struct type_array *array = arena_alloc(&vm->memory, sizeof(struct type_array));
+	// TODO: This should not be calloc, but we do not have a better system for
+	// storing the data for types yet.
+	struct type_array *array = calloc(1, sizeof(struct type_array));
 	array->type = subtype_id;
 	array->length = length;
 
