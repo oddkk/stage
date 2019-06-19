@@ -3,6 +3,7 @@
 
 #include "vm.h"
 #include "module.h"
+#include "errors.h"
 
 #define CFG_BIN_OPS								\
 	OP(ADD, "+")								\
@@ -52,9 +53,7 @@ struct cfg_location {
 struct cfg_node {
 	enum cfg_node_type type;
 
-	unsigned int file_id;
-	struct cfg_location from;
-	struct cfg_location to;
+	struct stg_location loc;
 
 	struct cfg_node *next_sibling;
 

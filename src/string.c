@@ -119,12 +119,8 @@ int arena_string_append(struct arena *mem, struct string *str, struct string in)
 	return 0;
 }
 
-void arena_string_append_sprintf(struct arena *mem, struct string *str, char *fmt, ...)
+void arena_string_append_vsprintf(struct arena *mem, struct string *str, char *fmt, va_list ap)
 {
-	va_list ap;
-
-	va_start(ap, fmt);
-
 	struct arena tmp_mem = arena_push(mem);
 
 	struct string result;
@@ -133,7 +129,13 @@ void arena_string_append_sprintf(struct arena *mem, struct string *str, char *fm
 	arena_pop(mem, tmp_mem);
 
 	arena_string_append(mem, str, result);
+}
 
+void arena_string_append_sprintf(struct arena *mem, struct string *str, char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	arena_string_append_vsprintf(mem, str, fmt, ap);
 	va_end(ap);
 }
 

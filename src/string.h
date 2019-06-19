@@ -2,6 +2,7 @@
 #define STAGE_STRING_H
 
 #include "intdef.h"
+#include <stdarg.h>
 
 struct string {
 	char *text;
@@ -29,6 +30,7 @@ int arena_string_append(struct arena *, struct string *, struct string);
 void arena_string_append_sprintf(struct arena *, struct string *, char *fmt, ...)
 // TODO: Make this cross-compiler compliant.
 	__attribute__((__format__ (__printf__, 3, 4)));
+void arena_string_append_vsprintf(struct arena *, struct string *, char *fmt, va_list ap);
 
 int64_t string_to_int64_base2(struct string str);
 int64_t string_to_int64_base10(struct string str);

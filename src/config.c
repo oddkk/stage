@@ -4,6 +4,8 @@
 #include "expr.h"
 #include "objstore.h"
 #include "scope.h"
+#include "errors.h"
+#include "term_color.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -14,28 +16,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fts.h>
-
-#define ENABLE_TERM_COLORS 1
-
-#if ENABLE_TERM_COLORS
-#define TERM_COLOR_ESCAPE_LIT "\x1b"
-#define TERM_COLOR_RED_LIT TERM_COLOR_ESCAPE_LIT "[1;31m"
-#define TERM_COLOR_GREEN_LIT TERM_COLOR_ESCAPE_LIT "[1;32m"
-#define TERM_COLOR_YELLOW_LIT TERM_COLOR_ESCAPE_LIT "[1;33m"
-#define TERM_COLOR_BLUE_LIT TERM_COLOR_ESCAPE_LIT "[1;34m"
-#define TERM_COLOR_CLEAR_LIT TERM_COLOR_ESCAPE_LIT "[0m"
-#else
-#define TERM_COLOR_RED_LIT ""
-#define TERM_COLOR_GREEN_LIT ""
-#define TERM_COLOR_YELLOW_LIT ""
-#define TERM_COLOR_BLUE_LIT ""
-#define TERM_COLOR_CLEAR_LIT ""
-#endif
-
-#define TERM_COLOR_RED(text) TERM_COLOR_RED_LIT text TERM_COLOR_CLEAR_LIT
-#define TERM_COLOR_GREEN(text) TERM_COLOR_GREEN_LIT text TERM_COLOR_CLEAR_LIT
-#define TERM_COLOR_YELLOW(text) TERM_COLOR_YELLOW_LIT text TERM_COLOR_CLEAR_LIT
-#define TERM_COLOR_BLUE(text) TERM_COLOR_BLUE_LIT text TERM_COLOR_CLEAR_LIT
 
 struct string cfg_bin_op_sym[] = {
 #define OP(name, sym) STR(sym),
@@ -146,37 +126,14 @@ struct cfg_ctx {
 	enum cfg_compile_phase current_phase;
 	struct cfg_phase phases[CFG_NUM_PHASES];
 
-	struct string *file_names;
-	size_t num_files;
+	// struct string *file_names;
+	// size_t num_files;
 
-	size_t num_errors;
+	// size_t num_errors;
 	size_t num_jobs_failed;
+
+	struct stg_error_context err;
 };
-
-static void
-cfg_error(struct cfg_ctx *ctx, struct cfg_node *node,
-		  const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-
-	struct string file_name = {0};
-	if (node->file_id < ctx->num_files) {
-		file_name = ctx->file_names[node->file_id];
-	} else {
-		file_name = STR("(unknown)");
-	}
-
-	fprintf(stderr, "%.*s %zu:%zu: ",
-			LIT(file_name),
-			node->from.line, node->from.column);
-	vfprintf(stderr, fmt, ap);
-	fprintf(stderr, "\n");
-	va_end(ap);
-
-	ctx->num_errors += 1;
-}
 
 static void
 append_job(struct cfg_ctx *ctx, enum cfg_compile_phase ph, struct cfg_job *job)
@@ -251,7 +208,10 @@ instantiate_scope_by_access_pattern(struct cfg_ctx *ctx,
 
 		if (scope_local_lookup(parent, node->IDENT, &entry) == 0) {
 			if (entry.anchor != SCOPE_ANCHOR_NONE || !entry.scope) {
-				cfg_error(ctx, node, "'%.*s' already exists, and is not a namespace.");
+				stg_error(&ctx->err, node->loc,
+					"'%.*s' already exists, and is not a namespace.",
+					ALIT(node->IDENT)
+				);
 				return NULL;
 			}
 		}
@@ -693,13 +653,15 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 
 	case CFG_NODE_TEMPLATE_VAR: {
 		if (!func_scope) {
-			cfg_error(ctx, node, "Template parameters can only be specified insiede functions.");
+			stg_error(&ctx->err, node->loc,
+					"Template parameters can only be specified insiede functions.");
 			return NULL;
 		}
 		int err;
 		err = expr_func_scope_add_template_param(expr, func_scope, node->TEMPLATE_VAR.name);
 		if (err == -1) {
-			cfg_error(ctx, node, "A variable named '%.*s' is already declared in this function.",
+			stg_error(&ctx->err, node->loc,
+					"A variable named '%.*s' is already declared in this function.",
 					ALIT(node->TEMPLATE_VAR.name));
 			return NULL;
 		}
@@ -737,7 +699,7 @@ job_use_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
 		}
 	}
 
-	cfg_error(ctx, data->node, "Could not find module '%.*s'.", ALIT(name));
+	stg_error(&ctx->err, data->node->loc, "Could not find module '%.*s'.", ALIT(name));
 	return JOB_ERROR;
 }
 
@@ -1014,7 +976,7 @@ job_assert_stmt(struct cfg_ctx *ctx, struct stg_module *mod, job_assert_stmt_t *
 	int64_t value = *(int64_t *)obj.data;
 
 	if (value == 0) {
-		cfg_error(ctx, data->node, "Assertion failed.");
+		stg_error(&ctx->err, data->node->loc, "Assertion failed.");
 		return JOB_ERROR;
 	} else {
 		return JOB_OK;
@@ -1088,6 +1050,7 @@ int parse_config_file(struct string filename,
 					  struct atom_table *table,
 					  struct arena *memory,
 					  unsigned int file_id,
+					  struct stg_error_context *err,
 					  struct cfg_node **out_node);
 
 static struct job_status
@@ -1097,22 +1060,11 @@ job_parse_file(struct cfg_ctx *ctx, struct stg_module *mod,
 	int err;
 	struct cfg_node *node;
 
-	unsigned int file_id = ctx->num_files;
-	ctx->num_files += 1;
-
-	struct string *new_file_names;
-	new_file_names = realloc(ctx->file_names, ctx->num_files * sizeof(struct string));
-
-	if (!new_file_names) {
-		panic("Could not allocate file name array.");
-		return JOB_ERROR;
-	}
-
-	ctx->file_names = new_file_names;
-	ctx->file_names[file_id] = data->file_name;
+	file_id_t file_id;
+	file_id = stg_err_add_file(&ctx->err, data->file_name);
 
 	err = parse_config_file(data->file_name, mod->atom_table,
-							&ctx->vm->memory, file_id, &node);
+							&ctx->vm->memory, file_id, &ctx->err, &node);
 	if (err) {
 		return JOB_ERROR;
 	}
@@ -1232,7 +1184,7 @@ discover_config_files(struct cfg_ctx *ctx, struct stg_module *mod,
 	fts_close(ftsp);
 }
 
-#define CFG_DEBUG_JOBS 1
+#define CFG_DEBUG_JOBS 0
 
 static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 {
@@ -1377,6 +1329,7 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 
 	ctx.vm = vm;
 	ctx.mem = &vm->memory;
+	ctx.err.string_arena = &vm->memory;
 
 	struct stg_module_info modinfo;
 	memset(&modinfo, 0, sizeof(struct stg_module_info));
@@ -1412,13 +1365,15 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 		}
 	}
 
-	if (ctx.num_jobs_failed > 0 || ctx.num_errors > 0) {
+	print_errors(&ctx.err);
+
+	if (ctx.num_jobs_failed > 0 || ctx.err.num_errors > 0) {
 #if CFG_DEBUG_JOBS
 		printf("\n");
 #endif
 		printf(TERM_COLOR_RED("Compilation failed! "
 					"(%zu jobs failed, %zu errors)") "\n",
-			   ctx.num_jobs_failed, ctx.num_errors);
+			   ctx.num_jobs_failed, ctx.err.num_errors);
 	}
 
 	scope_print(vm, &vm->root_scope);

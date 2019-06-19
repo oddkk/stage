@@ -3,6 +3,7 @@
 
 #include "vm.h"
 #include "module.h"
+#include "errors.h"
 
 enum expr_node_type {
 	EXPR_NODE_FUNC_DECL,     // [ABS]

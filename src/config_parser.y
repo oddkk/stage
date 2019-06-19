@@ -20,6 +20,19 @@
 	/*!max:re2c*/
 
 	struct lex_context;
+
+typedef struct YYLTYPE YYLTYPE;
+struct YYLTYPE
+{
+	int first_line;
+	int first_column;
+	int last_line;
+	int last_column;
+	size_t byte_from;
+	size_t byte_to;
+};
+# define YYLTYPE_IS_DECLARED 1
+# define YYLTYPE_IS_TRIVIAL 1
 }
 
 %param { struct lex_context *ctx }
@@ -35,9 +48,11 @@
 		struct atom_table *atom_table;
 		FILE *fp;
 		char buf[BUFFER_SIZE + YYMAXFILL];
-		size_t head;
+		size_t buffer_begin;
+		size_t buffer_end;
 		struct cfg_node *module;
-		unsigned int file_id;
+		file_id_t file_id;
+		struct stg_error_context *err;
 	};
 
 	bool config_parse_fill(struct lex_context *ctx, size_t need) {
@@ -52,7 +67,10 @@
 		ctx->lim -= free;
 		ctx->cur -= free;
 		ctx->tok -= free;
-		ctx->lim += fread(ctx->lim, 1, free, ctx->fp);
+		size_t bytes_read = fread(ctx->lim, 1, free, ctx->fp);
+		ctx->lim += bytes_read;
+		ctx->buffer_begin = ctx->buffer_end;
+		ctx->buffer_end += bytes_read;
 		if (ctx->lim < ctx->buf + BUFFER_SIZE) {
 			if (feof(ctx->fp)) {
 				ctx->eof = true;
@@ -76,12 +94,15 @@
 		res = arena_alloc_struct(ctx->memory, struct cfg_node);
 		res->type = type;
 
-		res->file_id     = ctx->file_id;
-		res->from.line   = loc.first_line;
-		res->from.column = loc.first_column;
+		res->loc.file_id     = ctx->file_id;
+		res->loc.line_from   = loc.first_line;
+		res->loc.col_from    = loc.first_column;
 
-		res->to.line     = loc.last_line;
-		res->to.column   = loc.last_column;
+		res->loc.line_to     = loc.last_line;
+		res->loc.col_to      = loc.last_column;
+
+		res->loc.byte_from   = loc.byte_from;
+		res->loc.byte_to     = loc.byte_to;
 
 		return res;
 	}
@@ -326,17 +347,21 @@ void _yydebug_print(int state, char sym) {
 #undef YYDEBUG
 #define YYDEBUG _yydebug_print
 
-static void lloc_col(YYLTYPE *lloc, int col) {
+static void lloc_col(struct lex_context *ctx, YYLTYPE *lloc, int col) {
 	lloc->first_line = lloc->last_line;
 	lloc->first_column = lloc->last_column;
 	lloc->last_column += col;
+	lloc->byte_from = ctx->buffer_begin + (ctx->tok - ctx->buf);
+	lloc->byte_to = lloc->byte_from + col;
 }
 
-static void lloc_line(YYLTYPE *lloc) {
+static void lloc_line(struct lex_context *ctx, YYLTYPE *lloc) {
 	lloc->last_line += 1;
 	lloc->first_line = lloc->last_line;
 	lloc->last_column = 1;
 	lloc->first_column = 1;
+	lloc->byte_from = ctx->buffer_begin + (ctx->tok - ctx->buf);
+	lloc->byte_to = lloc->byte_from + 1;
 }
 
 int yylex(YYSTYPE *lval, YYLTYPE *lloc, struct lex_context *ctx) {
@@ -351,68 +376,68 @@ re2c:define:YYLIMIT = "ctx->lim";
 re2c:define:YYFILL = "if (!config_parse_fill(ctx, @@)) return END;";
 re2c:define:YYFILL:naked = 1;
 
-/* "version"     { lloc_col(lloc, CURRENT_LEN); return VERSION; } */
-/* "device_type" { lloc_col(lloc, CURRENT_LEN); return DEVICETYPE; } */
-/* "device"      { lloc_col(lloc, CURRENT_LEN); return DEVICE; } */
-/* "type"        { lloc_col(lloc, CURRENT_LEN); return TYPE; } */
-/* "input"       { lloc_col(lloc, CURRENT_LEN); return INPUT; } */
-/* "output"      { lloc_col(lloc, CURRENT_LEN); return OUTPUT; } */
-/* "attr"        { lloc_col(lloc, CURRENT_LEN); return ATTR; } */
-/* "default"     { lloc_col(lloc, CURRENT_LEN); return DEFAULT; } */
-"Enum"        { lloc_col(lloc, CURRENT_LEN); return ENUM; }
-"namespace"   { lloc_col(lloc, CURRENT_LEN); return NAMESPACE; }
-"use"         { lloc_col(lloc, CURRENT_LEN); return USE; }
-"assert"      { lloc_col(lloc, CURRENT_LEN); return ASSERT; }
-".."          { lloc_col(lloc, CURRENT_LEN); return RANGE; }
-/* "..."         { lloc_col(lloc, CURRENT_LEN); return ELLIPSIS; } */
-"<-"          { lloc_col(lloc, CURRENT_LEN); return BIND_LEFT; }
-"->"          { lloc_col(lloc, CURRENT_LEN); return BIND_RIGHT; }
-"::"          { lloc_col(lloc, CURRENT_LEN); return DECL; }
-"=="          { lloc_col(lloc, CURRENT_LEN); return EQ; }
-"!="          { lloc_col(lloc, CURRENT_LEN); return NEQ; }
-"<="          { lloc_col(lloc, CURRENT_LEN); return LTE; }
-">="          { lloc_col(lloc, CURRENT_LEN); return GTE; }
-"=>"          { lloc_col(lloc, CURRENT_LEN); return LAMBDA; }
+/* "version"     { lloc_col(ctx, lloc, CURRENT_LEN); return VERSION; } */
+/* "device_type" { lloc_col(ctx, lloc, CURRENT_LEN); return DEVICETYPE; } */
+/* "device"      { lloc_col(ctx, lloc, CURRENT_LEN); return DEVICE; } */
+/* "type"        { lloc_col(ctx, lloc, CURRENT_LEN); return TYPE; } */
+/* "input"       { lloc_col(ctx, lloc, CURRENT_LEN); return INPUT; } */
+/* "output"      { lloc_col(ctx, lloc, CURRENT_LEN); return OUTPUT; } */
+/* "attr"        { lloc_col(ctx, lloc, CURRENT_LEN); return ATTR; } */
+/* "default"     { lloc_col(ctx, lloc, CURRENT_LEN); return DEFAULT; } */
+"Enum"        { lloc_col(ctx, lloc, CURRENT_LEN); return ENUM; }
+"namespace"   { lloc_col(ctx, lloc, CURRENT_LEN); return NAMESPACE; }
+"use"         { lloc_col(ctx, lloc, CURRENT_LEN); return USE; }
+"assert"      { lloc_col(ctx, lloc, CURRENT_LEN); return ASSERT; }
+".."          { lloc_col(ctx, lloc, CURRENT_LEN); return RANGE; }
+/* "..."         { lloc_col(ctx, lloc, CURRENT_LEN); return ELLIPSIS; } */
+"<-"          { lloc_col(ctx, lloc, CURRENT_LEN); return BIND_LEFT; }
+"->"          { lloc_col(ctx, lloc, CURRENT_LEN); return BIND_RIGHT; }
+"::"          { lloc_col(ctx, lloc, CURRENT_LEN); return DECL; }
+"=="          { lloc_col(ctx, lloc, CURRENT_LEN); return EQ; }
+"!="          { lloc_col(ctx, lloc, CURRENT_LEN); return NEQ; }
+"<="          { lloc_col(ctx, lloc, CURRENT_LEN); return LTE; }
+">="          { lloc_col(ctx, lloc, CURRENT_LEN); return GTE; }
+"=>"          { lloc_col(ctx, lloc, CURRENT_LEN); return LAMBDA; }
 
-"\x00"        { lloc_col(lloc, CURRENT_LEN); return END; }
-"\r\n" | [\r\n] { lloc_line(lloc); return yylex(lval, lloc, ctx); }
- "#" [^\r\n]*  { lloc_col(lloc, CURRENT_LEN); return yylex(lval, lloc, ctx); }
-[\t\v\b\f ]   { lloc_col(lloc, CURRENT_LEN); return yylex(lval, lloc, ctx); }
+"\x00"        { lloc_col(ctx, lloc, CURRENT_LEN); return END; }
+"\r\n" | [\r\n] { lloc_line(ctx, lloc); return yylex(lval, lloc, ctx); }
+ "#" [^\r\n]*  { lloc_col(ctx, lloc, CURRENT_LEN); return yylex(lval, lloc, ctx); }
+[\t\v\b\f ]   { lloc_col(ctx, lloc, CURRENT_LEN); return yylex(lval, lloc, ctx); }
 
 [a-zA-Z][a-zA-Z0-9_]* | [a-zA-Z_][a-zA-Z0-9_]+ {
-	lloc_col(lloc, CURRENT_LEN);
+	lloc_col(ctx, lloc, CURRENT_LEN);
 	lval->IDENTIFIER = atom_create(ctx->atom_table, CURRENT_TOKEN);
 	return IDENTIFIER;
  }
 '0b' [01]+    {
-	lloc_col(lloc, CURRENT_LEN);
+	lloc_col(ctx, lloc, CURRENT_LEN);
 	lval->NUMLIT = string_to_int64_base2(CURRENT_TOKEN);
 	return NUMLIT;
  }
 [1-9][0-9]* | '0'   {
-	lloc_col(lloc, CURRENT_LEN);
+	lloc_col(ctx, lloc, CURRENT_LEN);
 	lval->NUMLIT = string_to_int64_base10(CURRENT_TOKEN);
 	return NUMLIT;
  }
 '0x' [0-9a-fA-F]+ {
-	lloc_col(lloc, CURRENT_LEN);
+	lloc_col(ctx, lloc, CURRENT_LEN);
 	lval->NUMLIT = string_to_int64_base16(CURRENT_TOKEN);
 	return NUMLIT;
  }
 
 [-+*/:;={}()\[\].,_$@\\] {
-	lloc_col(lloc, CURRENT_LEN);
+	lloc_col(ctx, lloc, CURRENT_LEN);
 	return *ctx->tok;
  }
 
 "op" ([-+*/:;={}()\[\].,_$@\\] | "->" | "<-" | "==" | "!=" | "<=" | ">=") {
-	lloc_col(lloc, CURRENT_LEN);
+	lloc_col(ctx, lloc, CURRENT_LEN);
 	lval->IDENTIFIER = atom_create(ctx->atom_table, CURRENT_TOKEN);
 	return IDENTIFIER;
  }
 
 "\"" [^\"]* "\"" {
-	lloc_col(lloc, CURRENT_LEN);
+	lloc_col(ctx, lloc, CURRENT_LEN);
 
 	// Trim surrounding "".
 	struct string content;
@@ -424,7 +449,7 @@ re2c:define:YYFILL:naked = 1;
  }
 
 * {
-	lloc_col(lloc, CURRENT_LEN);
+	lloc_col(ctx, lloc, CURRENT_LEN);
 	printf("unexpected char '%c' %i\n", *ctx->tok, *ctx->tok);
 	return END;
  }
@@ -433,8 +458,19 @@ re2c:define:YYFILL:naked = 1;
 }
 
 void yyerror(YYLTYPE *lloc, struct lex_context *ctx, const char *error) {
-	printf("Error %i:%i: %s\n",
-		   lloc->first_line, lloc->first_column, error);
+	struct stg_location loc = {0};
+
+	loc.file_id     = ctx->file_id;
+	loc.line_from   = lloc->first_line;
+	loc.col_from    = lloc->first_column;
+
+	loc.line_to     = lloc->last_line;
+	loc.col_to      = lloc->last_column;
+
+	loc.byte_from   = lloc->byte_from;
+	loc.byte_to     = lloc->byte_to;
+
+	stg_error(ctx->err, loc, "%s", error);
 }
 
 void cfg_tree_clean(struct cfg_node **tree);
@@ -443,6 +479,7 @@ int parse_config_file(struct string filename,
 					  struct atom_table *table,
 					  struct arena *memory,
 					  unsigned int file_id,
+					  struct stg_error_context *err_ctx,
 					  struct cfg_node **out_node) {
 	struct lex_context ctx;
 
@@ -455,6 +492,9 @@ int parse_config_file(struct string filename,
 	ctx.atom_table = table;
 	ctx.memory = memory;
 	ctx.file_id = file_id;
+	ctx.buffer_begin = 0;
+	ctx.buffer_end = 0;
+	ctx.err = err_ctx;
 
 	ctx.fp = fopen(filename.text, "rb");
 

@@ -375,35 +375,6 @@ expr_get_actual_slot(struct expr *expr, func_type_id slot)
 	return slot;
 }
 
-// Returns the offset of 
-static func_type_id
-expr_append_expr_slots(struct stg_module *mod, struct expr *expr, struct expr *func_expr)
-{
-	func_type_id func_slot_begin = expr->num_type_slots;
-	size_t num_new_slots = func_expr->num_type_slots;
-
-	expr->num_type_slots += num_new_slots;
-	expr->slots = realloc(expr->slots,
-			sizeof(struct expr_type_slot) * expr->num_type_slots);
-
-	memcpy(&expr->slots[func_slot_begin], func_expr->slots,
-			sizeof(struct expr_type_slot) * num_new_slots);
-	for (size_t i = 0; i < num_new_slots; i++) {
-		struct expr_type_slot *slot = &expr->slots[func_slot_begin + i];
-		switch (SLOT_STATE(slot->state)) {
-			case SLOT_BOUND_REF:
-				slot->ref += func_slot_begin;
-				break;
-
-			default:
-				break;
-		}
-	}
-
-	return func_slot_begin;
-}
-
-
 type_id
 expr_get_slot_type(struct expr *expr, func_type_id slot)
 {
@@ -890,6 +861,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 #if DEBUG_LOOKUPS
 			printf("[lookup] Object %.*s not found.\n", ALIT(node->lookup.name));
 #endif
+			// stg_error();
 			return EXPR_INFER_TYPES_ERROR;
 		} else if (err > 0) {
 			// Not enough type information to uniquely find a matching
