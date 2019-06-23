@@ -1331,6 +1331,9 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 	ctx.mem = &vm->memory;
 	ctx.err.string_arena = &vm->memory;
 
+	assert(!vm->err);
+	vm->err = &ctx.err;
+
 	struct stg_module_info modinfo;
 	memset(&modinfo, 0, sizeof(struct stg_module_info));
 
@@ -1378,5 +1381,6 @@ cfg_compile(struct vm *vm, struct string cfg_dir)
 
 	scope_print(vm, &vm->root_scope);
 
+	vm->err = NULL;
 	return 0;
 }

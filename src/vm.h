@@ -5,6 +5,7 @@
 #include "scope.h"
 #include "atom.h"
 #include "arena.h"
+#include "errors.h"
 
 enum vm_instruction {
 	// Does nothing.
@@ -109,6 +110,8 @@ struct vm {
 
 	struct stg_module **modules;
 	size_t num_modules;
+
+	struct stg_error_context *err;
 
 	struct {
 		type_id type;

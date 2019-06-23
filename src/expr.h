@@ -145,6 +145,8 @@ struct expr_node {
 		int64_t lit_int;
 		struct string lit_str;
 	};
+
+	struct stg_location loc;
 };
 
 enum expr_type_slot_state {

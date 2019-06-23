@@ -861,7 +861,7 @@ expr_try_infer_types(struct stg_module *mod, struct expr *expr,
 #if DEBUG_LOOKUPS
 			printf("[lookup] Object %.*s not found.\n", ALIT(node->lookup.name));
 #endif
-			// stg_error();
+			stg_error(mod->vm->err, node->loc, "Object not found.");
 			return EXPR_INFER_TYPES_ERROR;
 		} else if (err > 0) {
 			// Not enough type information to uniquely find a matching
