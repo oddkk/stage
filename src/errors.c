@@ -13,7 +13,7 @@ stg_err_add_file(struct stg_error_context *err, struct string file_name)
 {
 	assert(err->num_files < UINT32_MAX);
 
-	file_id_t file_id = err->num_files;
+	file_id_t file_id = err->num_files + 1;
 	err->num_files += 1;
 
 	struct string *new_file_names;
@@ -25,7 +25,7 @@ stg_err_add_file(struct stg_error_context *err, struct string file_name)
 	}
 
 	err->file_names = new_file_names;
-	err->file_names[file_id] = file_name;
+	err->file_names[file_id - 1] = file_name;
 
 	return file_id;
 }
@@ -49,15 +49,7 @@ stg_msgv(struct stg_error_context *err, struct stg_location loc,
 	msg.loc = loc;
 
 	msg.msg = arena_string_init(err->string_arena);
-	// arena_string_append_sprintf(err->string_arena, &msg.msg,
-	// 	"%s: %.*s %u:%u ",
-	// 	level_prefix(lvl),
-	// 	LIT(file_name),
-	// 	loc.line_from,
-	// 	loc.col_from
-	// );
 	arena_string_append_vsprintf(err->string_arena, &msg.msg, (char *)fmt, ap);
-	// arena_string_append(err->string_arena, &msg.msg, STR("\n"));
 
 	dlist_append(err->msgs, err->num_msgs, &msg);
 
@@ -97,8 +89,8 @@ print_errors(struct stg_error_context *err)
 		FILE *fp = NULL;
 		bool file_error = false;
 
-		if (msg->loc.file_id < err->num_files) {
-			file_name = err->file_names[msg->loc.file_id];
+		if (msg->loc.file_id - 1 < err->num_files && msg->loc.file_id > 0) {
+			file_name = err->file_names[msg->loc.file_id - 1];
 
 			char file_name_cstr[file_name.length + 1];
 			memcpy(file_name_cstr, file_name.text, file_name.length);

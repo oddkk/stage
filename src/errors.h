@@ -29,6 +29,8 @@ struct stg_error {
 struct stg_error_context {
 	struct arena *string_arena;
 
+	// NOTE: File name ids are offset by one to facilitate having the sentinel
+	// for unknown be 0.
 	struct string *file_names;
 	size_t num_files;
 
