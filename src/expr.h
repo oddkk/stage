@@ -170,6 +170,7 @@ struct expr_type_slot {
 
 struct expr_node *
 expr_func_decl(struct stg_module *, struct expr *,
+			   struct stg_location loc,
 			   struct expr_func_decl_param *params,
 			   size_t num_params,
 			   struct expr_node *ret,
@@ -178,6 +179,7 @@ expr_func_decl(struct stg_module *, struct expr *,
 // Initializes node as a func decl.
 struct expr_node *
 expr_init_func_decl(struct stg_module *, struct expr *expr,
+					struct stg_location loc,
 					struct expr_node *node,
 					struct expr_func_decl_param *params,
 					size_t num_params,
@@ -186,6 +188,7 @@ expr_init_func_decl(struct stg_module *, struct expr *expr,
 
 struct expr_node *
 expr_call(struct stg_module *, struct expr *,
+		  struct stg_location loc,
 		  struct expr_node *func,
 		  struct expr_node *first_arg);
 
@@ -196,26 +199,32 @@ enum expr_lookup_mode {
 
 struct expr_node *
 expr_lookup_func_scope(struct stg_module *, struct expr *,
+					   struct stg_location loc,
 					   struct atom *name,
 					   struct expr_func_scope *scope);
 
 struct expr_node *
 expr_lookup(struct stg_module *, struct expr *,
+			struct stg_location loc,
 			struct atom *name,
 			struct expr_node *scope,
 			enum expr_lookup_mode lookup_mode);
 
 struct expr_node *
-expr_scope(struct stg_module *, struct expr *, struct scope *);
+expr_scope(struct stg_module *, struct expr *,
+		struct stg_location loc, struct scope *);
 
 struct expr_node *
-expr_global(struct stg_module *, struct expr *, struct object);
+expr_global(struct stg_module *, struct expr *,
+		struct stg_location loc, struct object);
 
 struct expr_node *
-expr_lit_int(struct stg_module *, struct expr *, int64_t);
+expr_lit_int(struct stg_module *, struct expr *,
+		struct stg_location loc, int64_t);
 
 struct expr_node *
-expr_lit_str(struct stg_module *, struct expr *, struct string);
+expr_lit_str(struct stg_module *, struct expr *,
+		struct stg_location loc, struct string);
 
 
 

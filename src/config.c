@@ -443,13 +443,13 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 			binop_atom(mod->atom_table,
 					   node->BIN_OP.op);
 		local_scope =
-			expr_scope(mod, expr, scope);
+			expr_scope(mod, expr, node->loc, scope);
 		func_lookup =
-			expr_lookup(mod, expr,
+			expr_lookup(mod, expr, node->loc,
 						op_name, local_scope,
 						EXPR_LOOKUP_GLOBAL);
 
-		func = expr_call(mod, expr,
+		func = expr_call(mod, expr, node->loc,
 						 func_lookup, lhs);
 
 		return func;
@@ -472,13 +472,13 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 			binop_atom(mod->atom_table,
 					   CFG_OP_BIND);
 		local_scope =
-			expr_scope(mod, expr, scope);
+			expr_scope(mod, expr, node->loc, scope);
 		func_lookup =
-			expr_lookup(mod, expr,
+			expr_lookup(mod, expr, node->loc,
 						op_name, local_scope,
 						EXPR_LOOKUP_GLOBAL);
 
-		func = expr_call(mod, expr,
+		func = expr_call(mod, expr, node->loc,
 						 func_lookup, src);
 
 		return func;
@@ -515,7 +515,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 		body = cfg_node_visit_expr(ctx, mod, func_expr, scope,
 								   NULL, &decl_node->func_decl.scope, body_node);
 
-		expr_init_func_decl(mod, expr, decl_node,
+		expr_init_func_decl(mod, expr, node->loc, decl_node,
 							params, num_params, ret, body);
 		expr_finalize(mod, func_expr);
 
@@ -561,7 +561,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 								   node->FUNC_CALL.ident);
 
 		struct expr_node *call;
-		call = expr_call(mod, expr, func, first_arg);
+		call = expr_call(mod, expr, node->loc, func, first_arg);
 
 		return call;
 	} break;
@@ -603,14 +603,14 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 			atom_create(mod->atom_table,
 						STR("tuple"));
 		local_scope =
-			expr_scope(mod, expr, scope);
+			expr_scope(mod, expr, node->loc, scope);
 		func =
-			expr_lookup(mod, expr,
+			expr_lookup(mod, expr, node->loc,
 						tuple_func_name, local_scope,
 						EXPR_LOOKUP_GLOBAL);
 
 		struct expr_node *call;
-		call = expr_call(mod, expr, func, first_arg);
+		call = expr_call(mod, expr, node->loc, func, first_arg);
 
 		return call;
 	} break;
@@ -624,27 +624,27 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 		break;
 
 	case CFG_NODE_NUM_LIT:
-		return expr_lit_int(mod, expr, node->NUM_LIT);
+		return expr_lit_int(mod, expr, node->loc, node->NUM_LIT);
 
 	case CFG_NODE_STR_LIT:
-		return expr_lit_str(mod, expr, node->STR_LIT);
+		return expr_lit_str(mod, expr, node->loc, node->STR_LIT);
 
 	case CFG_NODE_IDENT:
 		if (lookup_scope) {
-			return expr_lookup(mod, expr,
+			return expr_lookup(mod, expr, node->loc,
 							   node->IDENT,
 							   lookup_scope,
 							   EXPR_LOOKUP_LOCAL);
 		} else {
 			struct expr_node *l_scope;
 			if (func_scope) {
-				return expr_lookup_func_scope(mod, expr,
+				return expr_lookup_func_scope(mod, expr, node->loc,
 											  node->IDENT,
 											  func_scope);
 			} else {
-				l_scope = expr_scope(mod, expr, scope);
+				l_scope = expr_scope(mod, expr, node->loc, scope);
 
-				return expr_lookup(mod, expr,
+				return expr_lookup(mod, expr, node->loc,
 								   node->IDENT, l_scope,
 								   EXPR_LOOKUP_GLOBAL);
 			}
@@ -665,7 +665,7 @@ cfg_node_visit_expr(struct cfg_ctx *ctx, struct stg_module *mod,
 					ALIT(node->TEMPLATE_VAR.name));
 			return NULL;
 		}
-		return expr_lookup_func_scope(mod, expr, node->TEMPLATE_VAR.name, func_scope);
+		return expr_lookup_func_scope(mod, expr, node->loc, node->TEMPLATE_VAR.name, func_scope);
 	} break;
 
 	default:
@@ -754,7 +754,7 @@ job_visit_decl_stmt(struct cfg_ctx *ctx, struct stg_module *mod,
 
 		if (params) {
 			data->expr.body =
-				expr_init_func_decl(mod, func_expr, decl_node,
+				expr_init_func_decl(mod, func_expr, node->loc, decl_node,
 									params, num_params, NULL, body);
 
 			expr_finalize(mod, func_expr);
@@ -844,7 +844,7 @@ job_func_decl(struct cfg_ctx *ctx, struct stg_module *mod, job_func_decl_t *data
 								   NULL, &decl_node->func_decl.scope, body_node);
 
 		data->expr.body =
-			expr_init_func_decl(mod, &data->expr, decl_node,
+			expr_init_func_decl(mod, &data->expr, data->node->loc, decl_node,
 								params, num_params, ret, body);
 
 		expr_finalize(mod, func_expr);

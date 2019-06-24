@@ -47,6 +47,7 @@ expr_type_expr(struct stg_module *mod, struct expr *expr,
 
 struct expr_node *
 expr_func_decl(struct stg_module *mod, struct expr *expr,
+			   struct stg_location loc,
 			   struct expr_func_decl_param *params,
 			   size_t num_params,
 			   struct expr_node *ret,
@@ -56,7 +57,7 @@ expr_func_decl(struct stg_module *mod, struct expr *expr,
 
 	node = calloc(1, sizeof(struct expr_node));
 
-	expr_init_func_decl(mod, expr, node, params,
+	expr_init_func_decl(mod, expr, loc, node, params,
 						num_params, ret, body);
 
 	return node;
@@ -64,6 +65,7 @@ expr_func_decl(struct stg_module *mod, struct expr *expr,
 
 struct expr_node *
 expr_init_func_decl(struct stg_module *mod, struct expr *expr,
+				    struct stg_location loc,
 					struct expr_node *node,
 					struct expr_func_decl_param *params,
 					size_t num_params,
@@ -73,6 +75,7 @@ expr_init_func_decl(struct stg_module *mod, struct expr *expr,
 	struct expr *func_expr = &node->func_decl.expr;
 
 	node->type = EXPR_NODE_FUNC_DECL;
+	node->loc = loc;
 	node->func_decl.params = params;
 	node->func_decl.num_params = num_params;
 	node->func_decl.ret_type = ret;
@@ -126,6 +129,7 @@ expr_init_func_decl(struct stg_module *mod, struct expr *expr,
 
 struct expr_node *
 expr_call(struct stg_module *mod, struct expr *expr,
+		  struct stg_location loc,
 		  struct expr_node *func,
 		  struct expr_node *first_arg)
 {
@@ -134,6 +138,7 @@ expr_call(struct stg_module *mod, struct expr *expr,
 	node = calloc(1, sizeof(struct expr_node));
 
 	node->type = EXPR_NODE_FUNC_CALL;
+	node->loc = loc;
 	node->func_call.func = func;
 	node->func_call.args = first_arg;
 
@@ -168,6 +173,7 @@ expr_call(struct stg_module *mod, struct expr *expr,
 
 struct expr_node *
 expr_lookup_func_scope(struct stg_module *mod, struct expr *expr,
+					   struct stg_location loc,
 					   struct atom *name,
 					   struct expr_func_scope *scope)
 {
@@ -176,6 +182,7 @@ expr_lookup_func_scope(struct stg_module *mod, struct expr *expr,
 	node = calloc(1, sizeof(struct expr_node));
 
 	node->type = EXPR_NODE_LOOKUP_FUNC;
+	node->loc = loc;
 
 	node->lookup.name = name;
 	node->lookup.func_scope = scope;
@@ -186,6 +193,7 @@ expr_lookup_func_scope(struct stg_module *mod, struct expr *expr,
 
 struct expr_node *
 expr_lookup(struct stg_module *mod, struct expr *expr,
+			struct stg_location loc,
 			struct atom *name, struct expr_node *scope,
 			enum expr_lookup_mode lookup_mode)
 {
@@ -199,6 +207,8 @@ expr_lookup(struct stg_module *mod, struct expr *expr,
 		node->type = EXPR_NODE_LOOKUP_GLOBAL;
 	}
 
+	node->loc = loc;
+
 	node->lookup.name = name;
 	node->lookup.scope = scope;
 	node->rule.out = alloc_type_slot(expr);
@@ -208,6 +218,7 @@ expr_lookup(struct stg_module *mod, struct expr *expr,
 
 struct expr_node *
 expr_scope(struct stg_module *mod, struct expr *expr,
+		   struct stg_location loc,
 		   struct scope *value)
 {
 	struct expr_node *node;
@@ -215,6 +226,7 @@ expr_scope(struct stg_module *mod, struct expr *expr,
 	node = calloc(1, sizeof(struct expr_node));
 
 	node->type = EXPR_NODE_SCOPE;
+	node->loc = loc;
 	node->scope = value;
 	node->rule.out = alloc_type_slot(expr);
 	node->flags |= EXPR_CONST;
@@ -224,6 +236,7 @@ expr_scope(struct stg_module *mod, struct expr *expr,
 
 struct expr_node *
 expr_global(struct stg_module *mod, struct expr *expr,
+		    struct stg_location loc,
 			struct object value)
 {
 	struct expr_node *node;
@@ -231,6 +244,7 @@ expr_global(struct stg_module *mod, struct expr *expr,
 	node = calloc(1, sizeof(struct expr_node));
 
 	node->type = EXPR_NODE_GLOBAL;
+	node->loc = loc;
 	node->obj = value;
 	node->rule.out = alloc_type_slot(expr);
 	node->flags |= EXPR_CONST;
@@ -240,6 +254,7 @@ expr_global(struct stg_module *mod, struct expr *expr,
 
 struct expr_node *
 expr_lit_int(struct stg_module *mod, struct expr *expr,
+		     struct stg_location loc,
 			 int64_t value)
 {
 	struct expr_node *node;
@@ -247,6 +262,7 @@ expr_lit_int(struct stg_module *mod, struct expr *expr,
 	node = calloc(1, sizeof(struct expr_node));
 
 	node->type = EXPR_NODE_LIT_INT;
+	node->loc = loc;
 	node->lit_int = value;
 	node->rule.out = alloc_type_slot(expr);
 	node->flags |= EXPR_CONST;
@@ -256,6 +272,7 @@ expr_lit_int(struct stg_module *mod, struct expr *expr,
 
 struct expr_node *
 expr_lit_str(struct stg_module *mod, struct expr *expr,
+		     struct stg_location loc,
 			 struct string value)
 {
 	struct expr_node *node;
@@ -263,6 +280,7 @@ expr_lit_str(struct stg_module *mod, struct expr *expr,
 	node = calloc(1, sizeof(struct expr_node));
 
 	node->type = EXPR_NODE_LIT_STR;
+	node->loc = loc;
 	node->lit_str = value;
 	node->rule.out = alloc_type_slot(expr);
 	node->flags |= EXPR_CONST;
