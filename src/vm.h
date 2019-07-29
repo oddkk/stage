@@ -149,6 +149,12 @@ vm_find_type(struct vm *, struct string mod, struct string name);
 type_id
 vm_find_type_id(struct vm *, struct string mod, struct string name);
 
+struct atom *
+vm_atom(struct vm *, struct string name);
+
+// Create an atom from a cstr.
+#define vm_atoms(vm, str) vm_atom(vm, STR(str))
+
 void
 vm_exec(struct vm *vm, struct exec_stack *stack, void *instructions, size_t length);
 

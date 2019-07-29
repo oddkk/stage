@@ -161,7 +161,11 @@ vm_find_type(struct vm *vm, struct string mod, struct string name)
 	return vm_get_type(vm, tid);
 }
 
-
+struct atom *
+vm_atom(struct vm *vm, struct string name)
+{
+	return atom_create(&vm->atom_table, name);
+}
 
 int arena_alloc_stack(struct exec_stack *stack, struct arena *mem, size_t stack_size)
 {
