@@ -104,7 +104,7 @@ while (my $file = readdir($dir)) {
 
 		my $out_file = "$build_dir/$test_name";
 		my $compiler_out = qx{
-clang $color_arg -g -lm -Wall -pedantic -I$src_dir $project_objects $test_dir/$file -o $out_file 2>&1
+clang $color_arg -g -lm -lpthread -lssl -lcrypto -Wall -pedantic -I$src_dir $project_objects $test_dir/$file -o $out_file 2>&1
 };
 		if (!return_code_success($?)) {
 			print colored(['red'], 'COMPILE FAIL') . "\n$compiler_out\n";
