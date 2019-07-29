@@ -1,6 +1,7 @@
 #include "utils.h"
 #include "vm.h"
 #include "config.h"
+#include "ast.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -106,11 +107,99 @@ int main(int argc, char *argv[])
 	vm_register_module(&vm, &mod_base);
 	vm_register_module(&vm, &mod_channel);
 
+	{
+		struct ast_context ctx = {0};
+		ctx.types.type = vm.default_types.type;
+		ctx.atoms.type = vm_atoms(&vm, "Type");
+
+		struct ast_object_def array_type_def = {0};
+
+		struct ast_object_def_param array_type_params[] = {
+			{vm_atoms(&vm, "T"), AST_SLOT_TYPE},
+			{vm_atoms(&vm, "N"),
+				ast_alloc_slot_const_type(&array_type_def.env,
+						vm_atoms(&vm, "int"), vm.default_types.integer)},
+		};
+
+		array_type_def.params = array_type_params;
+		array_type_def.num_params = ARRAY_LENGTH(array_type_params);
+
+
+
+
+
+		struct ast_object_def array_def = {0};
+
+		ast_slot_id array_members_T = ast_alloc_slot_param(
+				&array_def.env, vm_atoms(&vm, "T"), AST_SLOT_TYPE);
+
+		ast_slot_id array_members_N = ast_alloc_slot_param(
+				&array_def.env, vm_atoms(&vm, "N"),
+				ast_alloc_slot_const_type(&array_def.env,
+						vm_atoms(&vm, "int"), vm.default_types.integer));
+
+		ast_slot_id array_members_type = ast_alloc_slot_cons(
+				&ctx, &array_def.env, vm_atoms(&vm, "Array"), &array_type_def);
+
+		ast_slot_cons_add_arg(&array_def.env, array_members_type,
+				vm_atoms(&vm, "T"), array_members_T);
+		ast_slot_cons_add_arg(&array_def.env, array_members_type,
+				vm_atoms(&vm, "N"), array_members_N);
+
+		array_def.ret_type = ast_alloc_slot_cons(
+				&ctx, &array_def.env, vm_atoms(&vm, "Array"), &array_type_def);
+
+		ast_slot_cons_add_arg(&array_def.env, array_def.ret_type,
+				vm_atoms(&vm, "T"), array_members_T);
+		ast_slot_cons_add_arg(&array_def.env, array_def.ret_type,
+				vm_atoms(&vm, "N"), array_members_N);
+
+		struct ast_object_def_param array_params[] = {
+			{vm_atoms(&vm, "members"), array_members_type}
+		};
+
+		array_def.params = array_params;
+		array_def.num_params = ARRAY_LENGTH(array_params);
+
+
+
+
+		struct ast_object_def func_type_def = {0};
+
+		ast_slot_id func_params_T = ast_alloc_slot_param(
+				&func_type_def.env, vm_atoms(&vm, "T"), AST_SLOT_TYPE);
+
+		ast_slot_id func_params_N = ast_alloc_slot_param(
+				&func_type_def.env, vm_atoms(&vm, "N"),
+				ast_alloc_slot_const_type(&func_type_def.env,
+						vm_atoms(&vm, "int"), vm.default_types.integer));
+
+
+		ast_slot_id func_params_type = ast_alloc_slot_cons(
+				&ctx, &func_type_def.env, vm_atoms(&vm, "Array"), &array_type_def);
+
+		ast_slot_cons_add_arg(&func_type_def.env, func_params_type,
+				vm_atoms(&vm, "T"), func_params_T);
+		ast_slot_cons_add_arg(&func_type_def.env, func_params_type,
+				vm_atoms(&vm, "N"), func_params_N);
+
+		struct ast_object_def_param func_type_params[] = {
+			{vm_atoms(&vm, "ret"), AST_SLOT_TYPE},
+			{vm_atoms(&vm, "params"), AST_SLOT_TYPE},
+		};
+
+		func_type_def.params = func_type_params;
+		func_type_def.num_params = ARRAY_LENGTH(func_type_params);
+	}
+
+	/*
 	err = cfg_compile(&vm, STR("./config/"));
 	if (err) {
 		printf("Failed to compile config.\n");
 		return -1;
 	}
+
+	*/
 
 	return 0;
 
