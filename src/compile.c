@@ -1075,7 +1075,7 @@ has_extension(struct string str, struct string ext)
 }
 
 static void
-discover_config_files(struct compile_ctx *ctx, struct stg_module *mod,
+discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
 					  struct string src_dir)
 {
 	/* // TODO: Ensure zero-terminated */
@@ -1148,6 +1148,15 @@ discover_config_files(struct compile_ctx *ctx, struct stg_module *mod,
 	}
 
 	fts_close(ftsp);
+}
+
+static struct job_status
+job_discover_module(struct compile_ctx *ctx, struct stg_module *mod,
+			   job_discover_module_t *data)
+{
+	discover_module_files(ctx, mod, data->module_src_dir);
+
+	return JOB_OK;
 }
 
 #define COMPILE_DEBUG_JOBS 0
@@ -1289,7 +1298,7 @@ static void compile_exec_job(struct compile_ctx *ctx, struct complie_job *job)
 }
 
 int
-stg_compile(struct vm *vm, struct string src_dir)
+stg_compile(struct vm *vm, struct string initial_module_src_dir)
 {
 	struct compile_ctx ctx = {0};
 
@@ -1315,7 +1324,8 @@ stg_compile(struct vm *vm, struct string src_dir)
 
 	scope_use(&mod->root_scope, &vm->modules[0]->root_scope);
 
-	discover_config_files(&ctx, mod, src_dir);
+	DISPATCH_JOB(&ctx, mod, discover_module, COMPILE_PHASE_DISCOVER,
+			.module_src_dir = initial_module_src_dir);
 
 	for (; ctx.current_phase < COMPILE_NUM_PHASES; ctx.current_phase += 1) {
 		struct compile_phase *phase = &ctx.phases[ctx.current_phase];
