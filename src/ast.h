@@ -17,12 +17,11 @@ struct ast_object_arg {
 
 struct ast_object {
 	struct ast_object_def *def;
-	struct ast_object_arg *args;
-	size_t num_args;
+	ast_slot_id *args;
 };
 
-int
-ast_object_add_arg(struct ast_object *, struct atom *name, ast_slot_id);
+ssize_t
+ast_object_lookup_arg(struct ast_object *obj, struct atom *arg_name);
 
 struct ast_name {
 	struct atom *name;
@@ -48,6 +47,7 @@ enum ast_slot_kind {
 	AST_SLOT_CONST_TYPE,
 	AST_SLOT_CONST,
 	AST_SLOT_PARAM,
+	AST_SLOT_TEMPL,
 	AST_SLOT_FREE,
 	AST_SLOT_CONS,
 };
@@ -60,6 +60,7 @@ struct ast_env_slot {
 	union {
 		type_id const_type;
 		struct object const_object;
+		int64_t param_index;
 		struct ast_object cons;
 	};
 };
@@ -84,41 +85,66 @@ struct ast_context {
 	} types;
 };
 
-ast_slot_id
-ast_alloc_slot_wildcard(struct ast_env *, struct atom *name, ast_slot_id type);
+#define AST_BIND_NEW ((ast_slot_id)-2)
+#define AST_BIND_FAILED ((ast_slot_id)-2)
 
 ast_slot_id
-ast_alloc_slot_const(struct ast_env *, struct atom *name, struct object);
+ast_bind_slot_wildcard(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, ast_slot_id type);
 
 ast_slot_id
-ast_alloc_slot_const_type(struct ast_env *, struct atom *name, type_id);
+ast_bind_slot_const(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, struct object);
 
 ast_slot_id
-ast_alloc_slot_param(struct ast_env *, struct atom *name, ast_slot_id type);
+ast_bind_slot_const_type(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, type_id);
 
 ast_slot_id
-ast_alloc_slot_free(struct ast_env *, struct atom *name, ast_slot_id type);
+ast_bind_slot_param(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, int64_t param_index, ast_slot_id type);
 
 ast_slot_id
-ast_alloc_slot_cons(struct ast_context *, struct ast_env *,
-		struct atom *name, struct ast_object_def *);
-
-int
-ast_slot_cons_add_arg(struct ast_env *, ast_slot_id obj,
-		struct atom *arg_name, ast_slot_id arg_value);
+ast_bind_slot_templ(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, ast_slot_id type);
 
 ast_slot_id
-ast_copy_slot(struct ast_context *, struct ast_env *dest,
-		struct ast_env *src, ast_slot_id src_slot);
+ast_bind_slot_free(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, ast_slot_id type);
+
+ast_slot_id
+ast_bind_slot_cons(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, struct ast_object_def *,
+		struct ast_object_arg *args, size_t num_args);
+
+ast_slot_id
+ast_cons_arg_slot(struct ast_env *, ast_slot_id,
+		struct atom *arg_name);
+
+ast_slot_id
+ast_copy_slot(struct ast_context *,
+		struct ast_env *dest, ast_slot_id target,
+		struct ast_env *src,  ast_slot_id src_slot);
 
 ast_slot_id
 ast_env_lookup(struct ast_env *, struct atom *name);
 
 ast_slot_id
-ast_env_lookup_or_alloc_free(struct ast_env *, struct atom *name, ast_slot_id type);
+ast_env_lookup_or_alloc_free(struct ast_context *,
+		struct ast_env *, struct atom *name, ast_slot_id type);
 
 struct ast_env_slot
 ast_env_slot(struct ast_context *, struct ast_env *, ast_slot_id);
+
+void
+ast_env_print(struct vm *vm, struct ast_env *);
 
 struct ast_object_def_param {
 	struct atom *name;

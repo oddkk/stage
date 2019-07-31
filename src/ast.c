@@ -3,19 +3,28 @@
 #include <string.h>
 #include "utils.h"
 
-int
-ast_object_add_arg(struct ast_object *obj, struct atom *name, ast_slot_id value)
+ssize_t
+ast_object_lookup_arg(struct ast_object *obj, struct atom *arg_name)
 {
+	for (size_t i = 0; i < obj->def->num_params; i++) {
+		if (obj->def->params[i].name == arg_name) {
+			return i;
+		}
+	}
+
 	return -1;
 }
 
 ast_slot_id
-ast_alloc_slot(struct ast_env *ctx, struct atom *name, ast_slot_id type, enum ast_slot_kind kind)
+ast_alloc_slot(struct ast_env *ctx,
+		struct atom *name, ast_slot_id type, enum ast_slot_kind kind)
 {
+	ast_slot_id res;
+
 	struct ast_env_slot *new_slots;
 	size_t new_num_slots;
 
-	ast_slot_id res = ctx->num_slots;
+	res = ctx->num_slots;
 
 	new_num_slots = ctx->num_slots + 1;
 	new_slots = realloc(ctx->slots, sizeof(struct ast_env_slot) * new_num_slots);
@@ -32,60 +41,178 @@ ast_alloc_slot(struct ast_env *ctx, struct atom *name, ast_slot_id type, enum as
 
 	ctx->slots[res].name = name;
 	ctx->slots[res].type = type;
+	ctx->slots[res].kind = kind;
 
 	return res;
 }
 
 ast_slot_id
-ast_alloc_slot_wildcard(struct ast_env *ctx, struct atom *name, ast_slot_id type)
+ast_bind_slot_wildcard(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, ast_slot_id type)
 {
- 	ast_slot_id slot;
+	if (target == AST_BIND_NEW) {
+		target = ast_alloc_slot(env, name, type, AST_SLOT_WILDCARD);
+	}
 
- 	slot = ast_alloc_slot(ctx, name, type, AST_SLOT_WILDCARD);
-
- 	return slot;
+	return target;
 }
 
 ast_slot_id
-ast_alloc_slot_const(struct ast_env *ctx, struct atom *name, struct object obj)
+ast_bind_slot_const(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, struct object obj)
 {
- 	ast_slot_id slot;
+	if (target == AST_BIND_NEW) {
+		target = ast_alloc_slot(env, name,
+				ast_bind_slot_const_type(
+					ctx, env, AST_BIND_NEW, NULL, obj.type),
+				AST_SLOT_CONST);
+	} else {
+		struct ast_env_slot target_slot;
 
- 	slot = ast_alloc_slot(ctx, name, obj.type, AST_SLOT_CONST);
- 	ctx->slots[slot].const_object = obj;
+		target_slot = ast_env_slot(ctx, env, target);
+		switch (target_slot.kind) {
+			case AST_SLOT_WILDCARD:
+				// TODO: Union types
+				// TODO: Name?
+				env->slots[target].kind = AST_SLOT_CONST;
 
- 	return slot;
+				ast_bind_slot_const_type(ctx, env,
+						target_slot.type, NULL, obj.type);
+				break;
+
+			default:
+				return AST_BIND_FAILED;
+		}
+	}
+
+	env->slots[target].const_object = obj;
+
+	return target;
 }
 
 ast_slot_id
-ast_alloc_slot_const_type(struct ast_env *ctx, struct atom *name, type_id type)
+ast_bind_slot_const_type(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, type_id type)
 {
- 	ast_slot_id slot;
+	if (target == AST_BIND_NEW) {
+		if (type == ctx->types.type) {
+			target = AST_SLOT_TYPE;
+		} else {
+			target = ast_alloc_slot(env, name, AST_SLOT_TYPE, AST_SLOT_CONST_TYPE);
+		}
+	} else {
+		struct ast_env_slot target_slot;
 
- 	slot = ast_alloc_slot(ctx, name, AST_SLOT_TYPE, AST_SLOT_CONST_TYPE);
- 	ctx->slots[slot].const_type = type;
+		target_slot = ast_env_slot(ctx, env, target);
+		switch (target_slot.kind) {
+			case AST_SLOT_WILDCARD:
+				// TODO: Name?
+				env->slots[target].kind = AST_SLOT_CONST_TYPE;
 
- 	return slot;
+				ast_bind_slot_const_type(ctx, env,
+						target_slot.type, NULL, ctx->types.type);
+				break;
+
+			case AST_SLOT_CONST_TYPE:
+				if (target_slot.const_type != type) {
+					return AST_BIND_FAILED;
+				}
+				break;
+
+			default:
+				return AST_BIND_FAILED;
+		}
+	}
+
+	if (target != AST_SLOT_TYPE) {
+		env->slots[target].const_type = type;
+	}
+
+	return target;
 }
 
 ast_slot_id
-ast_alloc_slot_param(struct ast_env *ctx, struct atom *name, ast_slot_id type)
+ast_bind_slot_param(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, int64_t param_index, ast_slot_id type)
 {
- 	ast_slot_id slot;
+	if (target == AST_BIND_NEW) {
+		target = ast_alloc_slot(env, name, type, AST_SLOT_PARAM);
+	} else {
+		struct ast_env_slot target_slot;
 
- 	slot = ast_alloc_slot(ctx, name, type, AST_SLOT_PARAM);
+		target_slot = ast_env_slot(ctx, env, target);
+		switch (target_slot.kind) {
+			case AST_SLOT_WILDCARD:
+				// TODO: Union types
+				// TODO: Name?
+				env->slots[target].kind = AST_SLOT_PARAM;
+				break;
 
- 	return slot;
+			default:
+				return AST_BIND_FAILED;
+		}
+	}
+
+	env->slots[target].param_index = param_index;
+
+	return target;
 }
 
 ast_slot_id
-ast_alloc_slot_free(struct ast_env *ctx, struct atom *name, ast_slot_id type)
+ast_bind_slot_templ(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, ast_slot_id type)
 {
- 	ast_slot_id slot;
+	if (target == AST_BIND_NEW) {
+		target = ast_alloc_slot(env, name, type, AST_SLOT_TEMPL);
+	} else {
+		struct ast_env_slot target_slot;
 
- 	slot = ast_alloc_slot(ctx, name, type, AST_SLOT_FREE);
+		target_slot = ast_env_slot(ctx, env, target);
+		switch (target_slot.kind) {
+			case AST_SLOT_WILDCARD:
+				// TODO: Union types
+				// TODO: Name?
+				env->slots[target].kind = AST_SLOT_TEMPL;
+				break;
 
- 	return slot;
+			default:
+				return AST_BIND_FAILED;
+		}
+	}
+
+	return target;
+}
+
+
+ast_slot_id
+ast_bind_slot_free(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, ast_slot_id type)
+{
+	if (target == AST_BIND_NEW) {
+		target = ast_alloc_slot(env, name, type, AST_SLOT_FREE);
+	} else {
+		struct ast_env_slot target_slot;
+
+		target_slot = ast_env_slot(ctx, env, target);
+		switch (target_slot.kind) {
+			case AST_SLOT_WILDCARD:
+				// TODO: Union types
+				// TODO: Name?
+				env->slots[target].kind = AST_SLOT_FREE;
+				break;
+
+			default:
+				return AST_BIND_FAILED;
+		}
+	}
+
+	return target;
 }
 
 struct ast_copy_context {
@@ -94,16 +221,28 @@ struct ast_copy_context {
 };
 
 static ast_slot_id
-ast_copy_slot_internal(struct ast_copy_context *ctx, struct ast_env *dest,
-		struct ast_env *src, ast_slot_id src_slot);
+ast_copy_slot_internal(struct ast_copy_context *ctx,
+		struct ast_env *dest, ast_slot_id target,
+		struct ast_env *src,  ast_slot_id src_slot);
 
 ast_slot_id
-ast_alloc_slot_cons(struct ast_context *ctx, struct ast_env *env,
-		struct atom *name, struct ast_object_def *def)
+ast_bind_slot_cons(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, struct ast_object_def *def,
+		struct ast_object_arg *args, size_t num_args)
 {
- 	ast_slot_id slot, ret_type_slot;
+	if (target != AST_BIND_NEW &&
+			target != AST_SLOT_TYPE &&
+			env->slots[target].kind != AST_SLOT_WILDCARD) {
+		return AST_BIND_FAILED;
+	}
+
+	ast_slot_id ret_type_slot = AST_BIND_NEW;
 
 	struct ast_env *src = &def->env;
+
+	// Copy in the return type and parameters and make sure they remain bound
+	// to each other.
 	ast_slot_id slot_map[src->num_slots];
 
 	for (size_t i = 0; i < src->num_slots; i++) {
@@ -114,43 +253,82 @@ ast_alloc_slot_cons(struct ast_context *ctx, struct ast_env *env,
 	cpy_ctx.ctx = ctx;
 	cpy_ctx.slot_map = slot_map;
 
-	ret_type_slot = ast_copy_slot_internal(
-			&cpy_ctx, env, src, def->ret_type);
+	if (target != AST_BIND_NEW &&
+			target != AST_SLOT_TYPE &&
+			env->slots[target].kind == AST_SLOT_WILDCARD) {
+		ret_type_slot = env->slots[target].type;
+	}
 
- 	slot = ast_alloc_slot(env, name,
-			ret_type_slot, AST_SLOT_CONS);
+	ret_type_slot = ast_copy_slot_internal(
+			&cpy_ctx, env, ret_type_slot, src, def->ret_type);
+
+	if (target == AST_BIND_NEW) {
+		target = ast_alloc_slot(env, name,
+				ret_type_slot, AST_SLOT_CONS);
+	} else {
+		// Other kinds should have been filtered out earlier.
+		assert(env->slots[target].kind == AST_SLOT_WILDCARD);
+
+		env->slots[target].kind = AST_SLOT_CONS;
+	}
 
 	struct ast_env_slot *cons_slot;
 
-	cons_slot = &env->slots[slot];
+	cons_slot = &env->slots[target];
 
 	cons_slot->cons.def = def;
-	cons_slot->cons.num_args = def->num_params;
-	cons_slot->cons.args = calloc(cons_slot->cons.num_args,
-			sizeof(struct ast_object_arg));
+	cons_slot->cons.args = calloc(def->num_params,
+			sizeof(ast_slot_id));
 
 	for (size_t i = 0; i < def->num_params; i++) {
-		cons_slot->cons.args[i].name = def->params[i].name;
-		cons_slot->cons.args[i].slot =
-			ast_alloc_slot_wildcard(
-					env, def->params[i].name,
-					ast_copy_slot_internal(&cpy_ctx, env,
-						src, def->params[i].type));
+		ssize_t arg_i = -1;
+		for (size_t j = 0; j < num_args; j++) {
+			if (args[j].name == def->params[i].name) {
+				arg_i = j;
+				break;
+			}
+		}
+
+		if (arg_i >= 0) {
+			cons_slot->cons.args[i] = args[arg_i].slot;
+			// Bind the type of the definition to the provided argument.
+			ast_copy_slot_internal(&cpy_ctx, env,
+					ast_env_slot(ctx, env, cons_slot->cons.args[i]).type,
+					src, def->params[i].type);
+		} else {
+			// TODO: Somehow merge the given arguments with the existing if
+			// this is a not a new target.
+			cons_slot->cons.args[i] =
+				ast_bind_slot_wildcard(
+						ctx, env, AST_BIND_NEW, def->params[i].name,
+						ast_copy_slot_internal(&cpy_ctx, env, AST_BIND_NEW,
+							src, def->params[i].type));
+		}
 	}
 
-	return slot;
+	return target;
 }
 
-int
-ast_slot_cons_add_arg(struct ast_env *env, ast_slot_id obj,
-		struct atom *arg_name, ast_slot_id arg_value)
+ast_slot_id
+ast_cons_arg_slot(struct ast_env *env, ast_slot_id slot,
+		struct atom *arg_name)
 {
-	return -1;
+	assert(slot >= 0 && slot < env->num_slots);
+
+	struct ast_object *obj = &env->slots[slot].cons;
+	ssize_t arg_i = ast_object_lookup_arg(obj, arg_name);
+
+	if (arg_i < 0) {
+		return AST_SLOT_NOT_FOUND;
+	}
+
+	return obj->args[arg_i];
 }
 
 static ast_slot_id
-ast_copy_slot_internal(struct ast_copy_context *ctx, struct ast_env *dest,
-		struct ast_env *src, ast_slot_id src_slot)
+ast_copy_slot_internal(struct ast_copy_context *ctx,
+		struct ast_env *dest, ast_slot_id target,
+		struct ast_env *src,  ast_slot_id src_slot)
 {
 	if (src_slot == AST_SLOT_TYPE) {
 		return AST_SLOT_TYPE;
@@ -164,53 +342,67 @@ ast_copy_slot_internal(struct ast_copy_context *ctx, struct ast_env *dest,
 
 	struct ast_env_slot slot = ast_env_slot(ctx->ctx, src, src_slot);
 
+	ast_slot_id type_target = AST_BIND_NEW;
+	if (target != AST_BIND_NEW) {
+		struct ast_env_slot target_slot = ast_env_slot(ctx->ctx, dest, target);
+
+		type_target = target_slot.type;
+	}
+
 	ast_slot_id result = AST_SLOT_NOT_FOUND;
 
 	switch (slot.kind) {
 		case AST_SLOT_WILDCARD:
-			result = ast_alloc_slot_wildcard(dest, slot.name,
-					ast_copy_slot_internal(ctx, dest, src, slot.type));
+			result = ast_bind_slot_wildcard(
+					ctx->ctx, dest, target, slot.name,
+					ast_copy_slot_internal(ctx, dest, type_target, src, slot.type));
 			break;
 
 		case AST_SLOT_CONST_TYPE:
-			result = ast_alloc_slot_const_type(
-					dest, slot.name, slot.const_type);
+			result = ast_bind_slot_const_type(
+					ctx->ctx, dest, target, slot.name, slot.const_type);
 			break;
 
 		case AST_SLOT_CONST:
-			result = ast_alloc_slot_const(
-					dest, slot.name, slot.const_object);
+			result = ast_bind_slot_const(
+					ctx->ctx, dest, target, slot.name, slot.const_object);
 			break;
 
 		case AST_SLOT_PARAM:
-			result = ast_alloc_slot_param(
-					dest, slot.name,
-					ast_copy_slot_internal(ctx, dest, src, slot.type));
+			result = ast_bind_slot_param(
+					ctx->ctx, dest, target, slot.name, slot.param_index,
+					ast_copy_slot_internal(
+						ctx, dest, type_target, src, slot.type));
 			break;
 
+		case AST_SLOT_TEMPL:
+			result = ast_bind_slot_templ(
+					ctx->ctx, dest, target, slot.name,
+					ast_copy_slot_internal(
+						ctx, dest, type_target, src, slot.type));
+			break;
+
+
 		case AST_SLOT_FREE:
-			result = ast_alloc_slot_free(
-					dest, slot.name,
-					ast_copy_slot_internal(ctx, dest, src, slot.type));
+			result = ast_bind_slot_free(
+					ctx->ctx, dest, target, slot.name,
+					ast_copy_slot_internal(ctx, dest, type_target, src, slot.type));
 			break;
 
 		case AST_SLOT_CONS: {
-			struct ast_env_slot *new_slot;
+			size_t num_args = slot.cons.def->num_params;
+			struct ast_object_arg args[num_args];
 
-			result = ast_alloc_slot_cons(
-					ctx->ctx, dest, slot.name, slot.cons.def);
-
-			new_slot = &dest->slots[result];
-
-			for (size_t i = 0; i < slot.cons.num_args; i++) {
-				ast_slot_id new_arg_slot;
-
-				new_arg_slot = ast_copy_slot_internal(ctx, dest,
-						src, slot.cons.args[i].slot);
-
-				ast_object_add_arg(&new_slot->cons,
-						slot.cons.args[i].name, new_arg_slot);
+			for (size_t i = 0; i < num_args; i++) {
+				args[i].name = slot.cons.def->params[i].name;
+				args[i].slot = ast_copy_slot_internal(ctx,
+						dest, AST_BIND_NEW,
+						src, slot.cons.args[i]);
 			}
+
+			result = ast_bind_slot_cons(
+					ctx->ctx, dest, target, slot.name,
+					slot.cons.def, args, num_args);
 		} break;
 	}
 	assert(result != AST_SLOT_NOT_FOUND);
@@ -221,8 +413,9 @@ ast_copy_slot_internal(struct ast_copy_context *ctx, struct ast_env *dest,
 }
 
 ast_slot_id
-ast_copy_slot(struct ast_context *ctx, struct ast_env *dest,
-		struct ast_env *src, ast_slot_id src_slot)
+ast_copy_slot(struct ast_context *ctx,
+		struct ast_env *dest, ast_slot_id target,
+		struct ast_env *src,  ast_slot_id src_slot)
 {
 	ast_slot_id slot_map[src->num_slots];
 
@@ -235,7 +428,7 @@ ast_copy_slot(struct ast_context *ctx, struct ast_env *dest,
 	cpy_ctx.slot_map = slot_map;
 
 	return ast_copy_slot_internal(
-			&cpy_ctx, dest, src, src_slot);
+			&cpy_ctx, dest, target, src, src_slot);
 }
 
 ast_slot_id
@@ -251,13 +444,14 @@ ast_env_lookup(struct ast_env *env, struct atom *name)
 }
 
 ast_slot_id
-ast_env_lookup_or_alloc_free(struct ast_env *env, struct atom *name, ast_slot_id type)
+ast_env_lookup_or_alloc_free(struct ast_context *ctx,
+		struct ast_env *env, struct atom *name, ast_slot_id type)
 {
 	ast_slot_id slot;
 
 	slot = ast_env_lookup(env, name);
 	if (slot == AST_SLOT_NOT_FOUND) {
-		slot = ast_alloc_slot_free(env, name, type);
+		slot = ast_bind_slot_free(ctx, env, AST_BIND_NEW, name, type);
 	}
 
 	return slot;
