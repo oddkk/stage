@@ -1,6 +1,6 @@
 #include "utils.h"
 #include "vm.h"
-#include "config.h"
+#include "compile.h"
 #include "ast.h"
 
 #include <stdio.h>

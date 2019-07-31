@@ -2,8 +2,8 @@
 
 CC=clang
 
-bison ./src/config_parser.y -t --report=all -o ./src/config_parser.y.re2c || exit
-re2c ./src/config_parser.y.re2c -o ./src/config_parser.y.c || exit
+bison ./src/parser.y -t --report=all -o ./src/parser.y.re2c || exit
+re2c ./src/parser.y.re2c -o ./src/parser.y.c || exit
 
 SRC=$(find ./src/ -name *.c)
 

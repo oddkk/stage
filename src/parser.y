@@ -5,7 +5,7 @@
 
 %code requires
 {
-	#include "config.h"
+	#include "syntax_tree.h"
 	#include "string.h"
 	#include "arena.h"
 	#include "utils.h"
@@ -117,7 +117,7 @@ struct YYLTYPE
 		return result;										\
 	}
 
-#include "config_nodes.h"
+#include "syntax_tree_node_defs.h"
 #undef CFG_NODE
 
 #define MKNODE(type, ...) _mknode##type(ctx, yylloc, (type##_t){__VA_ARGS__})

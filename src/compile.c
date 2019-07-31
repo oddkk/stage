@@ -1,4 +1,5 @@
-#include "config.h"
+#include "compile.h"
+#include "syntax_tree.h"
 #include "utils.h"
 #include "dlist.h"
 #include "expr.h"
@@ -46,20 +47,14 @@ struct atom *binop_atom(struct atom_table *atom_table,
 	return atom_create(atom_table, name);
 }
 
-struct string cfg_node_names[] = {
-#define CFG_NODE(name, data) STR(#name),
-#include "config_nodes.h"
-#undef CFG_NODE
-};
-
 struct string cfg_job_names[] = {
 #define CFG_JOB(name, data) STR(#name),
-#include "config_jobs.h"
+#include "compile_job_defs.h"
 #undef CFG_JOB
 };
 
 #define CFG_JOB(name, data) typedef data job_##name##_t;
-#include "config_jobs.h"
+#include "compile_job_defs.h"
 #undef CFG_JOB
 
 enum job_status_code {
@@ -83,7 +78,7 @@ struct cfg_job {
 
 #define CFG_JOB(name, data) job_##name##_t name;
 	union {
-#include "config_jobs.h"
+#include "compile_job_defs.h"
 	};
 #undef CFG_JOB
 };
@@ -1212,7 +1207,7 @@ static void cfg_exec_job(struct cfg_ctx *ctx, struct cfg_job *job)
 
 	switch (job->type) {
 #define CFG_JOB(name, data) case CFG_JOB_##name: res = job_##name(ctx, job->mod, &job->name); break;
-#include "config_jobs.h"
+#include "compile_job_defs.h"
 #undef CFG_JOB
 
 	case CFG_JOBS_LEN:

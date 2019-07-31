@@ -1,8 +1,8 @@
-#ifndef STAGE_CONFIG_H
-#define STAGE_CONFIG_H
+#ifndef STAGE_SYNTAX_TREE_H
+#define STAGE_SYNTAX_TREE_H
 
-#include "vm.h"
-#include "module.h"
+#include "atom.h"
+#include "string.h"
 #include "errors.h"
 
 #define CFG_BIN_OPS								\
@@ -36,18 +36,13 @@ struct atom *binop_atom(struct atom_table *, enum cfg_bin_op);
 
 enum cfg_node_type {
 #define CFG_NODE(name, data) CFG_NODE_##name,
-#include "config_nodes.h"
+#include "syntax_tree_node_defs.h"
 #undef CFG_NODE
 	CFG_NODES_LEN
 };
 
-struct cfg_location {
-	size_t line;
-	size_t column;
-};
-
 #define CFG_NODE(name, data) typedef data name##_t;
-#include "config_nodes.h"
+#include "syntax_tree_node_defs.h"
 #undef CFG_NODE
 
 struct cfg_node {
@@ -59,25 +54,12 @@ struct cfg_node {
 
 #define CFG_NODE(name, data) name##_t name;
 	union {
-#include "config_nodes.h"
+#include "syntax_tree_node_defs.h"
 	};
 #undef CFG_NODE
 };
 
 extern struct string cfg_node_names[CFG_NODES_LEN];
-
-enum cfg_job_type {
-#define CFG_JOB(name, data) CFG_JOB_##name,
-	#include "config_jobs.h"
-#undef CFG_JOB
-	CFG_JOBS_LEN
-};
-
-extern struct string cfg_job_names[CFG_JOBS_LEN];
-
-void cfg_tree_print(struct cfg_node *node);
-
-int cfg_compile(struct vm *vm, struct string cfg_dir);
 
 #define CFG_NODE_VISIT(node)							\
 	switch ((node)->type) {								\
@@ -213,5 +195,7 @@ int cfg_compile(struct vm *vm, struct string cfg_dir);
 		break;											\
 														\
 	}													\
+
+void cfg_tree_print(struct cfg_node *node);
 
 #endif

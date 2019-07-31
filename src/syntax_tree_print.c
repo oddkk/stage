@@ -1,4 +1,4 @@
-#include "config.h"
+#include "syntax_tree.h"
 #include "utils.h"
 #include <stdio.h>
 
