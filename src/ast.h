@@ -4,7 +4,7 @@
 #include "errors.h"
 #include "objstore.h"
 
-typedef int64_t ast_slot_id;
+typedef int32_t ast_slot_id;
 #define AST_SLOT_NOT_FOUND ((ast_slot_id)-2)
 #define AST_SLOT_TYPE ((ast_slot_id)-1)
 
@@ -74,7 +74,7 @@ struct ast_env {
 };
 
 struct ast_context {
-	int _dc;
+	struct stg_error_context *err;
 
 	struct {
 		struct atom *type;
@@ -186,6 +186,8 @@ struct ast_node {
 
 	union {
 		struct {
+			struct ast_env env;
+
 			struct ast_node *body;
 
 			struct ast_func_param *params;

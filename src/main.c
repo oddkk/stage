@@ -109,6 +109,7 @@ int main(int argc, char *argv[])
 
 	{
 		struct ast_context ctx = {0};
+		ctx.err = NULL;
 		ctx.types.type = vm.default_types.type;
 		ctx.atoms.type = vm_atoms(&vm, "Type");
 

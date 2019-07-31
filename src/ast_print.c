@@ -28,7 +28,7 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 			case AST_SLOT_CONS:       kind_name = "CONS";       break;
 		}
 
-		printf("|%3zu|%-10.*s|%5li|%-10s|", i, ALIT(slot->name), slot->type, kind_name);
+		printf("|%3zu|%-10.*s|%5i|%-10s|", i, ALIT(slot->name), slot->type, kind_name);
 
 		switch (slot->kind) {
 			case AST_SLOT_WILDCARD:
@@ -57,7 +57,7 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 				for (size_t j = 0; j < slot->cons.def->num_params; j++) {
 					if (j != 0)
 						printf(", ");
-					printf("%.*s=%li",
+					printf("%.*s=%i",
 							ALIT(slot->cons.def->params[j].name),
 							slot->cons.args[j]);
 				}
