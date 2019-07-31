@@ -208,7 +208,7 @@ int main(int argc, char *argv[])
 
 	return 0;
 
-	err = cfg_compile(&vm, STR("./config/"));
+	err = stg_compile(&vm, STR("./config/"));
 	if (err) {
 		printf("Failed to compile config.\n");
 		return -1;

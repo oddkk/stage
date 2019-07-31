@@ -1,19 +1,19 @@
-CFG_JOB(parse_file, struct {
+COMPILE_JOB(parse_file, struct {
 	struct string file_name;
 	struct scope *mod_scope;
 })
 
-CFG_JOB(visit_stmt_list, struct {
+COMPILE_JOB(visit_stmt_list, struct {
 	struct scope *scope;
 	struct st_node *first_stmt;
 })
 
-CFG_JOB(use_stmt, struct {
+COMPILE_JOB(use_stmt, struct {
 	struct scope *scope;
 	struct st_node *node;
 })
 
-CFG_JOB(visit_decl_stmt, struct {
+COMPILE_JOB(visit_decl_stmt, struct {
 	struct scope *scope;
 	struct st_node *stmt;
 
@@ -22,7 +22,7 @@ CFG_JOB(visit_decl_stmt, struct {
 	struct expr expr;
 })
 
-CFG_JOB(func_decl, struct {
+COMPILE_JOB(func_decl, struct {
 	struct scope *scope;
 	struct st_node *node;
 
@@ -31,7 +31,7 @@ CFG_JOB(func_decl, struct {
 	struct expr expr;
 })
 
-CFG_JOB(assign_stmt, struct {
+COMPILE_JOB(assign_stmt, struct {
 	struct scope *scope;
 	struct st_node *node;
 
@@ -40,7 +40,7 @@ CFG_JOB(assign_stmt, struct {
 	struct expr expr;
 })
 
-CFG_JOB(assert_stmt, struct {
+COMPILE_JOB(assert_stmt, struct {
 	struct scope *scope;
 	struct st_node *node;
 
@@ -48,7 +48,7 @@ CFG_JOB(assert_stmt, struct {
 	struct expr expr;
 })
 
-CFG_JOB(expr_stmt, struct {
+COMPILE_JOB(expr_stmt, struct {
 	struct scope *scope;
 	struct st_node *node;
 
@@ -56,6 +56,6 @@ CFG_JOB(expr_stmt, struct {
 	struct expr expr;
 })
 
-CFG_JOB(typecheck_expr, struct {
+COMPILE_JOB(typecheck_expr, struct {
 	struct expr *expr;
 })

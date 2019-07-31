@@ -5,15 +5,15 @@
 #include "module.h"
 #include "errors.h"
 
-enum cfg_job_type {
-#define CFG_JOB(name, data) CFG_JOB_##name,
+enum complie_job_type {
+#define COMPILE_JOB(name, data) COMPILE_JOB_##name,
 	#include "compile_job_defs.h"
-#undef CFG_JOB
-	CFG_JOBS_LEN
+#undef COMPILE_JOB
+	COMPILE_JOBS_LEN
 };
 
-extern struct string cfg_job_names[CFG_JOBS_LEN];
+extern struct string complie_job_names[COMPILE_JOBS_LEN];
 
-int cfg_compile(struct vm *vm, struct string cfg_dir);
+int stg_compile(struct vm *vm, struct string src_dir);
 
 #endif
