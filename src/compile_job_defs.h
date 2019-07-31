@@ -5,17 +5,17 @@ CFG_JOB(parse_file, struct {
 
 CFG_JOB(visit_stmt_list, struct {
 	struct scope *scope;
-	struct cfg_node *first_stmt;
+	struct st_node *first_stmt;
 })
 
 CFG_JOB(use_stmt, struct {
 	struct scope *scope;
-	struct cfg_node *node;
+	struct st_node *node;
 })
 
 CFG_JOB(visit_decl_stmt, struct {
 	struct scope *scope;
-	struct cfg_node *stmt;
+	struct st_node *stmt;
 
 	int scope_entry_id;
 	bool initialized;
@@ -24,7 +24,7 @@ CFG_JOB(visit_decl_stmt, struct {
 
 CFG_JOB(func_decl, struct {
 	struct scope *scope;
-	struct cfg_node *node;
+	struct st_node *node;
 
 	int scope_entry_id;
 	bool initialized;
@@ -33,7 +33,7 @@ CFG_JOB(func_decl, struct {
 
 CFG_JOB(assign_stmt, struct {
 	struct scope *scope;
-	struct cfg_node *node;
+	struct st_node *node;
 
 	int scope_entry_id;
 	bool initialized;
@@ -42,7 +42,7 @@ CFG_JOB(assign_stmt, struct {
 
 CFG_JOB(assert_stmt, struct {
 	struct scope *scope;
-	struct cfg_node *node;
+	struct st_node *node;
 
 	bool initialized;
 	struct expr expr;
@@ -50,7 +50,7 @@ CFG_JOB(assert_stmt, struct {
 
 CFG_JOB(expr_stmt, struct {
 	struct scope *scope;
-	struct cfg_node *node;
+	struct st_node *node;
 
 	bool initialized;
 	struct expr expr;

@@ -50,7 +50,7 @@ struct YYLTYPE
 		char buf[BUFFER_SIZE + YYMAXFILL];
 		size_t buffer_begin;
 		size_t buffer_end;
-		struct cfg_node *module;
+		struct st_node *module;
 		file_id_t file_id;
 		struct stg_error_context *err;
 	};
@@ -88,10 +88,10 @@ struct YYLTYPE
 	int yylex(YYSTYPE *, YYLTYPE *, struct lex_context *);
 	void yyerror(YYLTYPE *loc, struct lex_context *, const char *);
 
-	struct cfg_node *_alloc_node(struct lex_context *ctx, enum cfg_node_type type, YYLTYPE loc) {
-		struct cfg_node *res;
+	struct st_node *_alloc_node(struct lex_context *ctx, enum st_node_type type, YYLTYPE loc) {
+		struct st_node *res;
 
-		res = arena_alloc_struct(ctx->memory, struct cfg_node);
+		res = arena_alloc_struct(ctx->memory, struct st_node);
 		res->type = type;
 
 		res->loc.file_id     = ctx->file_id;
@@ -107,18 +107,18 @@ struct YYLTYPE
 		return res;
 	}
 
-#define CFG_NODE(name, data) \
-	struct cfg_node *_mknode##name(struct lex_context *ctx,	\
+#define ST_NODE(name, data) \
+	struct st_node *_mknode##name(struct lex_context *ctx,	\
 								   YYLTYPE loc,				\
 								   name##_t value) {		\
-		struct cfg_node *result;							\
-		result = _alloc_node(ctx, CFG_NODE_##name, loc);	\
+		struct st_node *result;							\
+		result = _alloc_node(ctx, ST_NODE_##name, loc);	\
 		result->name = value;								\
 		return result;										\
 	}
 
 #include "syntax_tree_node_defs.h"
-#undef CFG_NODE
+#undef ST_NODE
 
 #define MKNODE(type, ...) _mknode##type(ctx, yylloc, (type##_t){__VA_ARGS__})
 }
@@ -129,7 +129,7 @@ struct YYLTYPE
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>"
 
-%type <struct cfg_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit assert_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit assert_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt
 
 
 %type <struct atom *> IDENTIFIER
@@ -231,7 +231,7 @@ use_stmt:		"use" use_expr             { $$ = MKNODE(USE_STMT, .ident=$2); }
 
 use_expr:		use_expr1                  { $$ = $1; }
 		|		use_expr1 '.' '*'
-					{ $$ = MKNODE(ACCESS, .lhs=$1, .rhs=alloc_node(ctx, CFG_NODE_USE_ALL)); }
+					{ $$ = MKNODE(ACCESS, .lhs=$1, .rhs=alloc_node(ctx, ST_NODE_USE_ALL)); }
 		;
 
 use_expr1:		use_expr1 '.' ident        { $$ = MKNODE(ACCESS, .lhs=$1, .rhs=$3); }
@@ -265,32 +265,32 @@ expr1:			l_expr                  { $$ = $1; }
 		/*|		func_proto              { $$ = $1; } */
 		|		'$' IDENTIFIER          { $$ = MKNODE(TEMPLATE_VAR, .name=$2); }
 
-		|		expr1 '+'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_ADD); }
-		|		expr1 '-'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_SUB); }
-		|		expr1 '*'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_MUL); }
-		|		expr1 '/'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_DIV); }
-		|		expr1 "==" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_EQ);  }
-		|		expr1 "!=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_NEQ); }
-		|		expr1 "<=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_LTE); }
-		|		expr1 ">=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_GTE); }
-		|		expr1 '<'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_LT);  }
-		|		expr1 '>'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_GT);  }
+		|		expr1 '+'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_ADD); }
+		|		expr1 '-'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_SUB); }
+		|		expr1 '*'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_MUL); }
+		|		expr1 '/'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_DIV); }
+		|		expr1 "==" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_EQ);  }
+		|		expr1 "!=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_NEQ); }
+		|		expr1 "<=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LTE); }
+		|		expr1 ">=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_GTE); }
+		|		expr1 '<'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LT);  }
+		|		expr1 '>'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_GT);  }
 		|		expr1 "->" expr1        { $$ = MKNODE(BIND, .src=$1, .drain=$3);  }
 		|		expr1 "<-" expr1        { $$ = MKNODE(BIND, .drain=$1, .src=$3);  }
 		|		'(' expr ')'            { $$ = $2;  }
 		;
 
 subscript_expr:	expr                    { $$ = $1;  }
-		|		".."                    { $$ = MKNODE(BIN_OP, .lhs=NULL, .rhs=NULL, .op=CFG_OP_RANGE); }
-		|		expr ".."               { $$ = MKNODE(BIN_OP, .lhs=$1,   .rhs=NULL, .op=CFG_OP_RANGE); }
-		|		".." expr               { $$ = MKNODE(BIN_OP, .lhs=NULL, .rhs=$2,   .op=CFG_OP_RANGE); }
-		|		expr ".." expr          { $$ = MKNODE(BIN_OP, .lhs=$1,   .rhs=$3,   .op=CFG_OP_RANGE); }
+		|		".."                    { $$ = MKNODE(BIN_OP, .lhs=NULL, .rhs=NULL, .op=ST_OP_RANGE); }
+		|		expr ".."               { $$ = MKNODE(BIN_OP, .lhs=$1,   .rhs=NULL, .op=ST_OP_RANGE); }
+		|		".." expr               { $$ = MKNODE(BIN_OP, .lhs=NULL, .rhs=$2,   .op=ST_OP_RANGE); }
+		|		expr ".." expr          { $$ = MKNODE(BIN_OP, .lhs=$1,   .rhs=$3,   .op=ST_OP_RANGE); }
 		;
 
 l_expr:			ident                   { $$ = $1; }
 		|		l_expr '.' ident        { $$ = MKNODE(ACCESS, .lhs=$1, .rhs=$3); }
 		|		l_expr '[' subscript_expr ']'
-		{ $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=CFG_OP_SUBSCRIPT); }
+		{ $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_SUBSCRIPT); }
 		;
 
 func_call:		expr1 '(' func_args ')' { $$ = MKNODE(FUNC_CALL, .ident=$1, .params=$3); }
@@ -325,15 +325,15 @@ array_lit_item:	expr                           { $$ = $1; }
 */
 
 ident:			IDENTIFIER
-					{ $$ = alloc_node(ctx, CFG_NODE_IDENT); $$->IDENT = $1; }
+					{ $$ = alloc_node(ctx, ST_NODE_IDENT); $$->IDENT = $1; }
 		;
 
 numlit:			NUMLIT
-					{ $$ = alloc_node(ctx, CFG_NODE_NUM_LIT); $$->NUM_LIT = $1; }
+					{ $$ = alloc_node(ctx, ST_NODE_NUM_LIT); $$->NUM_LIT = $1; }
 		;
 
 strlit:			STRINGLIT
-					{ $$ = alloc_node(ctx, CFG_NODE_STR_LIT); $$->STR_LIT = $1; }
+					{ $$ = alloc_node(ctx, ST_NODE_STR_LIT); $$->STR_LIT = $1; }
 		;
 
 %%
@@ -473,14 +473,12 @@ void yyerror(YYLTYPE *lloc, struct lex_context *ctx, const char *error) {
 	stg_error(ctx->err, loc, "%s", error);
 }
 
-void cfg_tree_clean(struct cfg_node **tree);
-
 int parse_config_file(struct string filename,
 					  struct atom_table *table,
 					  struct arena *memory,
 					  unsigned int file_id,
 					  struct stg_error_context *err_ctx,
-					  struct cfg_node **out_node) {
+					  struct st_node **out_node) {
 	struct lex_context ctx;
 
 	memset(&ctx, 0, sizeof(struct lex_context));
@@ -514,8 +512,8 @@ int parse_config_file(struct string filename,
 		return err;
 	}
 
-	cfg_tree_clean(&ctx.module);
-	// cfg_tree_print(ctx.module);
+	st_clean(&ctx.module);
+	//st_print(ctx.module);
 
 	*out_node = ctx.module;
 
