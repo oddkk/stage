@@ -431,6 +431,38 @@ ast_union_slot(struct ast_context *ctx,
 			&cpy_ctx, dest, target, src, src_slot);
 }
 
+void
+ast_substitute(struct ast_context *ctx, struct ast_env *env,
+		ast_slot_id target, ast_slot_id new_slot)
+{
+	for (ast_slot_id i = 0; i < env->num_slots; i++) {
+		struct ast_env_slot *slot;
+		slot = &env->slots[i];
+
+		if (slot->type == target) {
+			slot->type = new_slot;
+		}
+
+		switch (slot->kind) {
+			case AST_SLOT_CONS:
+				for (size_t arg_i = 0; arg_i < slot->cons.def->num_params; arg_i++) {
+					if (slot->cons.args[arg_i] == target) {
+						slot->cons.args[arg_i] = new_slot;
+					}
+				}
+				break;
+
+			case AST_SLOT_WILDCARD:
+			case AST_SLOT_CONST_TYPE:
+			case AST_SLOT_CONST:
+			case AST_SLOT_PARAM:
+			case AST_SLOT_TEMPL:
+			case AST_SLOT_FREE:
+				break;
+		}
+	}
+}
+
 ast_slot_id
 ast_env_lookup(struct ast_env *env, struct atom *name)
 {
@@ -540,5 +572,29 @@ ast_init_node_slot(
 	node->type = ast_env_slot(ctx, env, slot).type;
 
 	return node;
+}
+
+void
+ast_node_substitute_slot(struct ast_node *node,
+		ast_slot_id target, ast_slot_id new_slot)
+{
+	switch (node->kind) {
+		case AST_NODE_FUNC:
+			// FUNC nodes start their own environment.
+			break;
+
+		case AST_NODE_CALL:
+			ast_node_substitute_slot(node->call.func, target, new_slot);
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				ast_node_substitute_slot(node->call.args[i].value, target, new_slot);
+			}
+			break;
+
+		case AST_NODE_SLOT:
+			if (node->slot == target) {
+				node->slot = new_slot;
+			}
+			break;
+	}
 }
 

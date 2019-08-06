@@ -133,6 +133,10 @@ ast_union_slot(struct ast_context *,
 		struct ast_env *dest, ast_slot_id target,
 		struct ast_env *src,  ast_slot_id src_slot);
 
+void
+ast_substitute(struct ast_context *, struct ast_env *,
+		ast_slot_id target, ast_slot_id new_slot);
+
 ast_slot_id
 ast_env_lookup(struct ast_env *, struct atom *name);
 
@@ -224,5 +228,9 @@ ast_init_node_slot(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *, struct stg_location,
 		ast_slot_id slot);
+
+void
+ast_node_substitute_slot(struct ast_node *,
+		ast_slot_id target, ast_slot_id new_slot);
 
 #endif
