@@ -477,7 +477,8 @@ ast_env_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot)
 }
 
 struct ast_node *
-ast_init_node_func(struct ast_node *node, struct stg_location loc,
+ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, struct stg_location loc,
 		struct ast_func_param *params, size_t num_params,
 		struct ast_node *return_type, struct ast_node *body)
 {
@@ -489,7 +490,7 @@ ast_init_node_func(struct ast_node *node, struct stg_location loc,
 	);
 
 	memset(node, 0, sizeof(struct ast_node));
-	node->type = AST_NODE_FUNC;
+	node->kind = AST_NODE_FUNC;
 	node->loc = loc;
 
 	node->func.body = body;
@@ -502,7 +503,9 @@ ast_init_node_func(struct ast_node *node, struct stg_location loc,
 }
 
 struct ast_node *
-ast_init_node_call(struct ast_node *node, struct stg_location loc,
+ast_init_node_call(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, struct stg_location loc,
 		struct ast_func_arg *args, size_t num_args)
 {
 	assert(
@@ -511,7 +514,7 @@ ast_init_node_call(struct ast_node *node, struct stg_location loc,
 	);
 
 	memset(node, 0, sizeof(struct ast_node));
-	node->type = AST_NODE_CALL;
+	node->kind = AST_NODE_CALL;
 	node->loc = loc;
 
 	node->call.args = calloc(sizeof(struct ast_func_arg), num_args);
@@ -522,16 +525,19 @@ ast_init_node_call(struct ast_node *node, struct stg_location loc,
 }
 
 struct ast_node *
-ast_init_node_slot(struct ast_node *node, struct stg_location loc,
+ast_init_node_slot(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, struct stg_location loc,
 		ast_slot_id slot)
 {
 	assert(node);
 
 	memset(node, 0, sizeof(struct ast_node));
-	node->type = AST_NODE_CALL;
+	node->kind = AST_NODE_SLOT;
 	node->loc = loc;
 
 	node->slot = slot;
+	node->type = ast_env_slot(ctx, env, slot).type;
 
 	return node;
 }

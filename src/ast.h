@@ -160,7 +160,7 @@ struct ast_object_def {
 };
 
 
-enum ast_node_type {
+enum ast_node_kind {
 	AST_NODE_FUNC,
 	AST_NODE_CALL,
 	AST_NODE_SLOT,
@@ -179,10 +179,10 @@ struct ast_func_param {
 };
 
 struct ast_node {
-	enum ast_node_type type;
+	enum ast_node_kind kind;
 	struct stg_location loc;
 
-	ast_slot_id out_type;
+	ast_slot_id type;
 
 	union {
 		struct {
@@ -208,16 +208,21 @@ struct ast_node {
 };
 
 struct ast_node *
-ast_init_node_func(struct ast_node *, struct stg_location,
+ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *, struct stg_location,
 		struct ast_func_param *params, size_t num_params,
 		struct ast_node *return_type, struct ast_node *body);
 
 struct ast_node *
-ast_init_node_call(struct ast_node *, struct stg_location,
+ast_init_node_call(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *, struct stg_location,
 		struct ast_func_arg *args, size_t num_args);
 
 struct ast_node *
-ast_init_node_slot(struct ast_node *, struct stg_location,
+ast_init_node_slot(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *, struct stg_location,
 		ast_slot_id slot);
 
 #endif
