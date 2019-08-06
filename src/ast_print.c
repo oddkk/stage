@@ -69,3 +69,72 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 	}
 }
 
+static void
+print_indent(int depth)
+{
+	for (int i = 0; i < depth; ++i) {
+		printf("  ");
+	}
+}
+
+static void
+print_slot(struct ast_env *env, ast_slot_id slot)
+{
+	printf("%i", slot);
+}
+
+void
+ast_print_internal(struct ast_env *env, struct ast_node *node, unsigned int depth)
+{
+	switch (node->kind) {
+		case AST_NODE_FUNC:
+			print_indent(depth);
+			printf("func\n");
+
+			for (size_t i = 0; i < node->func.num_params; i++) {
+				print_indent(depth + 1);
+				printf("param %li '%.*s' type\n", i, ALIT(node->func.params[i].name));
+				ast_print_internal(&node->func.env, node->func.params[i].type, depth + 2);
+			}
+
+			print_indent(depth + 1);
+			printf("return type\n");
+			ast_print_internal(&node->func.env, node->func.return_type, depth + 2);
+
+			print_indent(depth + 1);
+			printf("body\n");
+			ast_print_internal(&node->func.env, node->func.body, depth + 2);
+			break;
+
+		case AST_NODE_CALL:
+			print_indent(depth);
+			printf("call\n");
+
+			print_indent(depth + 1);
+			printf("func\n");
+			ast_print_internal(env, node->call.func, depth + 2);
+
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				print_indent(depth + 1);
+				printf("arg %li '%.*s' value\n", i, ALIT(node->call.args[i].name));
+				ast_print_internal(env, node->call.args[i].value, depth + 2);
+			}
+
+			break;
+
+		case AST_NODE_SLOT:
+			print_indent(depth);
+			printf("slot ");
+			print_slot(env, node->slot);
+			printf(": ");
+			print_slot(env, node->type);
+			printf("\n");
+			break;
+	}
+}
+
+void
+ast_print(struct ast_env *env, struct ast_node *node)
+{
+	ast_print_internal(env, node, 0);
+}

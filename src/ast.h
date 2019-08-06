@@ -233,4 +233,7 @@ void
 ast_node_substitute_slot(struct ast_node *,
 		ast_slot_id target, ast_slot_id new_slot);
 
+void
+ast_print(struct ast_env *, struct ast_node *);
+
 #endif
