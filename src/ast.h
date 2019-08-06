@@ -129,7 +129,7 @@ ast_cons_arg_slot(struct ast_env *, ast_slot_id,
 		struct atom *arg_name);
 
 ast_slot_id
-ast_copy_slot(struct ast_context *,
+ast_union_slot(struct ast_context *,
 		struct ast_env *dest, ast_slot_id target,
 		struct ast_env *src,  ast_slot_id src_slot);
 

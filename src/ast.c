@@ -215,13 +215,13 @@ ast_bind_slot_free(struct ast_context *ctx,
 	return target;
 }
 
-struct ast_copy_context {
+struct ast_union_context {
 	struct ast_context *ctx;
 	ast_slot_id *slot_map;
 };
 
 static ast_slot_id
-ast_copy_slot_internal(struct ast_copy_context *ctx,
+ast_union_slot_internal(struct ast_union_context *ctx,
 		struct ast_env *dest, ast_slot_id target,
 		struct ast_env *src,  ast_slot_id src_slot);
 
@@ -249,7 +249,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 		slot_map[i] = AST_SLOT_NOT_FOUND;
 	}
 
-	struct ast_copy_context cpy_ctx = {0};
+	struct ast_union_context cpy_ctx = {0};
 	cpy_ctx.ctx = ctx;
 	cpy_ctx.slot_map = slot_map;
 
@@ -259,7 +259,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 		ret_type_slot = env->slots[target].type;
 	}
 
-	ret_type_slot = ast_copy_slot_internal(
+	ret_type_slot = ast_union_slot_internal(
 			&cpy_ctx, env, ret_type_slot, src, def->ret_type);
 
 	if (target == AST_BIND_NEW) {
@@ -292,7 +292,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 		if (arg_i >= 0) {
 			cons_slot->cons.args[i] = args[arg_i].slot;
 			// Bind the type of the definition to the provided argument.
-			ast_copy_slot_internal(&cpy_ctx, env,
+			ast_union_slot_internal(&cpy_ctx, env,
 					ast_env_slot(ctx, env, cons_slot->cons.args[i]).type,
 					src, def->params[i].type);
 		} else {
@@ -301,7 +301,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 			cons_slot->cons.args[i] =
 				ast_bind_slot_wildcard(
 						ctx, env, AST_BIND_NEW, def->params[i].name,
-						ast_copy_slot_internal(&cpy_ctx, env, AST_BIND_NEW,
+						ast_union_slot_internal(&cpy_ctx, env, AST_BIND_NEW,
 							src, def->params[i].type));
 		}
 	}
@@ -326,7 +326,7 @@ ast_cons_arg_slot(struct ast_env *env, ast_slot_id slot,
 }
 
 static ast_slot_id
-ast_copy_slot_internal(struct ast_copy_context *ctx,
+ast_union_slot_internal(struct ast_union_context *ctx,
 		struct ast_env *dest, ast_slot_id target,
 		struct ast_env *src,  ast_slot_id src_slot)
 {
@@ -355,7 +355,7 @@ ast_copy_slot_internal(struct ast_copy_context *ctx,
 		case AST_SLOT_WILDCARD:
 			result = ast_bind_slot_wildcard(
 					ctx->ctx, dest, target, slot.name,
-					ast_copy_slot_internal(ctx, dest, type_target, src, slot.type));
+					ast_union_slot_internal(ctx, dest, type_target, src, slot.type));
 			break;
 
 		case AST_SLOT_CONST_TYPE:
@@ -371,14 +371,14 @@ ast_copy_slot_internal(struct ast_copy_context *ctx,
 		case AST_SLOT_PARAM:
 			result = ast_bind_slot_param(
 					ctx->ctx, dest, target, slot.name, slot.param_index,
-					ast_copy_slot_internal(
+					ast_union_slot_internal(
 						ctx, dest, type_target, src, slot.type));
 			break;
 
 		case AST_SLOT_TEMPL:
 			result = ast_bind_slot_templ(
 					ctx->ctx, dest, target, slot.name,
-					ast_copy_slot_internal(
+					ast_union_slot_internal(
 						ctx, dest, type_target, src, slot.type));
 			break;
 
@@ -386,7 +386,7 @@ ast_copy_slot_internal(struct ast_copy_context *ctx,
 		case AST_SLOT_FREE:
 			result = ast_bind_slot_free(
 					ctx->ctx, dest, target, slot.name,
-					ast_copy_slot_internal(ctx, dest, type_target, src, slot.type));
+					ast_union_slot_internal(ctx, dest, type_target, src, slot.type));
 			break;
 
 		case AST_SLOT_CONS: {
@@ -395,7 +395,7 @@ ast_copy_slot_internal(struct ast_copy_context *ctx,
 
 			for (size_t i = 0; i < num_args; i++) {
 				args[i].name = slot.cons.def->params[i].name;
-				args[i].slot = ast_copy_slot_internal(ctx,
+				args[i].slot = ast_union_slot_internal(ctx,
 						dest, AST_BIND_NEW,
 						src, slot.cons.args[i]);
 			}
@@ -413,7 +413,7 @@ ast_copy_slot_internal(struct ast_copy_context *ctx,
 }
 
 ast_slot_id
-ast_copy_slot(struct ast_context *ctx,
+ast_union_slot(struct ast_context *ctx,
 		struct ast_env *dest, ast_slot_id target,
 		struct ast_env *src,  ast_slot_id src_slot)
 {
@@ -423,11 +423,11 @@ ast_copy_slot(struct ast_context *ctx,
 		slot_map[i] = AST_SLOT_NOT_FOUND;
 	}
 
-	struct ast_copy_context cpy_ctx = {0};
+	struct ast_union_context cpy_ctx = {0};
 	cpy_ctx.ctx = ctx;
 	cpy_ctx.slot_map = slot_map;
 
-	return ast_copy_slot_internal(
+	return ast_union_slot_internal(
 			&cpy_ctx, dest, target, src, src_slot);
 }
 
