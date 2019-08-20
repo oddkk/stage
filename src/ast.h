@@ -20,6 +20,13 @@ struct ast_object {
 	ast_slot_id *args;
 };
 
+struct ast_array {
+	ast_slot_id member_type;
+	ast_slot_id member_count;
+	ast_slot_id *members;
+	size_t num_members;
+};
+
 ssize_t
 ast_object_lookup_arg(struct ast_object *obj, struct atom *arg_name);
 
@@ -43,6 +50,8 @@ ast_scope_insert(struct ast_scope *,
 		struct atom *name, ast_slot_id);
 
 enum ast_slot_kind {
+	AST_SLOT_ERROR,
+
 	AST_SLOT_WILDCARD,
 	AST_SLOT_CONST_TYPE,
 	AST_SLOT_CONST,
@@ -50,7 +59,13 @@ enum ast_slot_kind {
 	AST_SLOT_TEMPL,
 	AST_SLOT_FREE,
 	AST_SLOT_CONS,
+	AST_SLOT_CONS_ARRAY,
+
+	AST_SLOT_SUBST,
 };
+
+const char *
+ast_slot_name(enum ast_slot_kind kind);
 
 struct ast_env_slot {
 	struct atom *name;
@@ -62,6 +77,9 @@ struct ast_env_slot {
 		struct object const_object;
 		int64_t param_index;
 		struct ast_object cons;
+		struct ast_array cons_array;
+
+		ast_slot_id subst;
 	};
 };
 
@@ -71,22 +89,44 @@ struct ast_env {
 
 	struct ast_env_slot *slots;
 	size_t num_slots;
+
+	struct objstore *store;
 };
+
+struct vm;
 
 struct ast_context {
 	struct stg_error_context *err;
 
 	struct {
 		struct atom *type;
+
+		struct atom *func_cons_arg_ret;
+		struct atom *func_cons_arg_params;
+
+		struct atom *array_cons_arg_type;
+		struct atom *array_cons_arg_count;
 	} atoms;
 
 	struct {
 		type_id type;
+		type_id integer;
 	} types;
+
+	struct {
+		struct ast_object_def *func;
+		struct ast_object_def *array;
+	} cons;
+
+	// TODO: Get rid of dependency on vm?
+	struct vm *vm;
 };
 
+struct ast_context
+ast_init_context(struct stg_error_context *, struct atom_table *, struct vm *, type_id type, type_id integer);
+
 #define AST_BIND_NEW ((ast_slot_id)-2)
-#define AST_BIND_FAILED ((ast_slot_id)-2)
+#define AST_BIND_FAILED ((ast_slot_id)-3)
 
 ast_slot_id
 ast_bind_slot_wildcard(struct ast_context *,
@@ -129,13 +169,18 @@ ast_cons_arg_slot(struct ast_env *, ast_slot_id,
 		struct atom *arg_name);
 
 ast_slot_id
+ast_bind_slot_cons_array(struct ast_context *,
+		struct ast_env *, ast_slot_id target, struct atom *name,
+		ast_slot_id *members, size_t num_members, ast_slot_id member_type);
+
+ast_slot_id
 ast_union_slot(struct ast_context *,
 		struct ast_env *dest, ast_slot_id target,
 		struct ast_env *src,  ast_slot_id src_slot);
 
 void
 ast_substitute(struct ast_context *, struct ast_env *,
-		ast_slot_id target, ast_slot_id new_slot);
+		ast_slot_id new_slot, ast_slot_id target);
 
 ast_slot_id
 ast_env_lookup(struct ast_env *, struct atom *name);
@@ -186,6 +231,7 @@ struct ast_node {
 	enum ast_node_kind kind;
 	struct stg_location loc;
 
+	// TODO: Remove this in favour of ast_node_type proc.
 	ast_slot_id type;
 
 	union {
@@ -211,6 +257,11 @@ struct ast_node {
 	};
 };
 
+ast_slot_id
+ast_node_type(struct ast_context *, struct ast_env *, struct ast_node *);
+
+#define AST_NODE_NEW ((struct ast_node *)1)
+
 struct ast_node *
 ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *, struct stg_location,
@@ -221,6 +272,7 @@ struct ast_node *
 ast_init_node_call(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *, struct stg_location,
+		struct ast_node *func,
 		struct ast_func_arg *args, size_t num_args);
 
 struct ast_node *

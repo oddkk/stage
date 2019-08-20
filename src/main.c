@@ -86,6 +86,10 @@ static bool check_clock_support()
 extern struct stg_module_info mod_base;
 extern struct stg_module_info mod_channel;
 
+struct object
+obj_register_integer(struct vm *, struct objstore *,
+		int64_t value);
+
 int main(int argc, char *argv[])
 {
 	int err;
@@ -108,15 +112,15 @@ int main(int argc, char *argv[])
 	vm_register_module(&vm, &mod_channel);
 
 	{
-		struct ast_context ctx = {0};
-		ctx.err = NULL;
-		ctx.types.type = vm.default_types.type;
-		ctx.atoms.type = vm_atoms(&vm, "Type");
-
+		struct ast_context ctx;
+		ctx = ast_init_context(NULL, &vm.atom_table, &vm,
+				vm.default_types.type,
+				vm.default_types.integer);
 
 
 
 		struct ast_object_def array_type_def = {0};
+		array_type_def.env.store = &vm.modules[0]->store;
 
 		struct ast_object_def_param array_type_params[] = {
 			{vm_atoms(&vm, "T"), AST_SLOT_TYPE},
@@ -130,10 +134,11 @@ int main(int argc, char *argv[])
 
 		array_type_def.ret_type = AST_SLOT_TYPE;
 
+		ctx.cons.array = &array_type_def;
 
 
 
-
+		/*
 		struct ast_object_def array_def = {0};
 
 		ast_slot_id array_members_T = ast_bind_slot_templ(
@@ -168,11 +173,13 @@ int main(int argc, char *argv[])
 
 		array_def.params = array_params;
 		array_def.num_params = ARRAY_LENGTH(array_params);
+		*/
 
 
 
 
 		struct ast_object_def func_type_def = {0};
+		func_type_def.env.store = &vm.modules[0]->store;
 
 		ast_slot_id func_params_T = ast_bind_slot_templ(
 				&ctx, &func_type_def.env, AST_BIND_NEW, vm_atoms(&vm, "T"), AST_SLOT_TYPE);
@@ -202,8 +209,100 @@ int main(int argc, char *argv[])
 
 		func_type_def.ret_type = AST_SLOT_TYPE;
 
+		ctx.cons.func = &func_type_def;
 
-		ast_env_print(&vm, &func_type_def.env);
+
+		struct ast_env test_env = {0};
+		test_env.store = &vm.modules[0]->store;
+
+		struct ast_node *expr;
+
+		struct ast_func_param test_param_nodes[] = {
+			{
+				.name  = vm_atoms(&vm, "a"),
+				.type = ast_init_node_slot(&ctx, &test_env,
+						AST_NODE_NEW, STG_NO_LOC,
+						ast_bind_slot_const_type(&ctx, &test_env,
+							AST_BIND_NEW, NULL,
+							vm_find_type_id(&vm, STR("base"), STR("int")))),
+			},
+			{
+				.name  = vm_atoms(&vm, "b"),
+				.type = ast_init_node_slot(&ctx, &test_env,
+						AST_NODE_NEW, STG_NO_LOC,
+						ast_bind_slot_const_type(&ctx, &test_env,
+							AST_BIND_NEW, NULL,
+							vm_find_type_id(&vm, STR("base"), STR("int")))),
+			}
+		};
+
+		struct ast_func_arg test_nodes[] = {
+			{
+				.name  = vm_atoms(&vm, "a"),
+				.value = ast_init_node_slot(&ctx, &test_env,
+						AST_NODE_NEW, STG_NO_LOC,
+						ast_bind_slot_const(&ctx, &test_env,
+							AST_BIND_NEW, NULL,
+							obj_register_integer(&vm, &vm.modules[0]->store, 4))),
+			},
+			{
+				.name  = vm_atoms(&vm, "b"),
+				.value = ast_init_node_slot(&ctx, &test_env,
+						AST_NODE_NEW, STG_NO_LOC,
+						ast_bind_slot_const(&ctx, &test_env,
+							AST_BIND_NEW, NULL,
+							obj_register_integer(&vm, &vm.modules[0]->store, 2))),
+			}
+		};
+
+		struct ast_func_arg func_test_nodes[] = {
+			{
+				.name  = vm_atoms(&vm, "lhs"),
+				.value = ast_init_node_slot(&ctx, &test_env,
+						AST_NODE_NEW, STG_NO_LOC,
+						ast_env_lookup_or_alloc_free(&ctx, &test_env,
+							vm_atoms(&vm, "a"),
+							ast_bind_slot_wildcard(&ctx, &test_env, AST_BIND_NEW,
+								NULL, AST_SLOT_TYPE))),
+			},
+			{
+				.name  = vm_atoms(&vm, "rhs"),
+				.value = ast_init_node_slot(&ctx, &test_env,
+						AST_NODE_NEW, STG_NO_LOC,
+						ast_env_lookup_or_alloc_free(&ctx, &test_env,
+							vm_atoms(&vm, "b"),
+							ast_bind_slot_wildcard(&ctx, &test_env, AST_BIND_NEW,
+								NULL, AST_SLOT_TYPE))),
+			}
+		};
+
+		expr = ast_init_node_call(&ctx, &test_env,
+				AST_NODE_NEW, STG_NO_LOC,
+				ast_init_node_func(&ctx, &test_env, AST_NODE_NEW, STG_NO_LOC,
+					test_param_nodes, ARRAY_LENGTH(test_param_nodes), NULL,
+					ast_init_node_call(&ctx, &test_env,
+						AST_NODE_NEW, STG_NO_LOC,
+						ast_init_node_slot(&ctx, &test_env, AST_NODE_NEW, STG_NO_LOC,
+							ast_env_lookup_or_alloc_free(&ctx, &test_env,
+								vm_atoms(&vm, "op+"),
+								ast_bind_slot_wildcard(&ctx, &test_env, AST_BIND_NEW,
+									NULL, AST_SLOT_TYPE))),
+						func_test_nodes, ARRAY_LENGTH(func_test_nodes))),
+				test_nodes, ARRAY_LENGTH(test_nodes));
+
+		/*
+		expr = ast_init_node_call(&ctx, &test_env,
+				AST_NODE_NEW, STG_NO_LOC,
+				ast_init_node_slot(&ctx, &test_env, AST_NODE_NEW, STG_NO_LOC,
+					ast_env_lookup_or_alloc_free(&ctx, &test_env,
+						vm_atoms(&vm, "op+"),
+						ast_bind_slot_wildcard(&ctx, &test_env, AST_BIND_NEW,
+							NULL, AST_SLOT_TYPE))),
+					test_nodes, ARRAY_LENGTH(test_nodes)); */
+
+		ast_env_print(&vm, &test_env);
+		printf("\n");
+		ast_print(&test_env, expr);
 	}
 
 	return 0;

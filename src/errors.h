@@ -6,7 +6,7 @@
 #include <stdarg.h>
 
 typedef unsigned int file_id_t;
-#define STG_FILE_UNKOWN ((file_id_t)UINT32_MAX)
+#define STG_FILE_UNKNOWN ((file_id_t)UINT32_MAX)
 
 struct stg_location {
 	size_t byte_from, byte_to;
@@ -14,6 +14,8 @@ struct stg_location {
 	unsigned int line_to, col_to;
 	file_id_t file_id;
 };
+
+#define STG_NO_LOC ((struct stg_location){.file_id=STG_FILE_UNKNOWN})
 
 enum stg_error_level {
 	STG_ERROR,

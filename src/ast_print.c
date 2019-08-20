@@ -16,21 +16,16 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 
 		slot = &env->slots[i];
 
-		char *kind_name;
+		const char *kind_name;
 
-		switch (slot->kind) {
-			case AST_SLOT_WILDCARD:   kind_name = "WILDCARD";   break;
-			case AST_SLOT_CONST_TYPE: kind_name = "CONST_TYPE"; break;
-			case AST_SLOT_CONST:      kind_name = "CONST";      break;
-			case AST_SLOT_PARAM:      kind_name = "PARAM";      break;
-			case AST_SLOT_TEMPL:      kind_name = "TEMPL";      break;
-			case AST_SLOT_FREE:       kind_name = "FREE";       break;
-			case AST_SLOT_CONS:       kind_name = "CONS";       break;
-		}
+		kind_name = ast_slot_name(slot->kind);
 
 		printf("|%3zu|%-10.*s|%5i|%-10s|", i, ALIT(slot->name), slot->type, kind_name);
 
 		switch (slot->kind) {
+			case AST_SLOT_ERROR:
+				break;
+
 			case AST_SLOT_WILDCARD:
 				break;
 
@@ -62,6 +57,20 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 							slot->cons.args[j]);
 				}
 				printf(")");
+				break;
+
+			case AST_SLOT_CONS_ARRAY:
+				printf("[");
+				for (size_t j = 0; j < slot->cons_array.num_members; j++) {
+					if (j != 0)
+						printf(", ");
+					printf("%i", slot->cons_array.members[j]);
+				}
+				printf("]");
+				break;
+
+			case AST_SLOT_SUBST:
+				printf("%i", slot->subst);
 				break;
 		}
 
@@ -111,7 +120,7 @@ ast_print_internal(struct ast_env *env, struct ast_node *node, unsigned int dept
 			printf("call\n");
 
 			print_indent(depth + 1);
-			printf("func\n");
+			printf("target\n");
 			ast_print_internal(env, node->call.func, depth + 2);
 
 			for (size_t i = 0; i < node->call.num_args; i++) {
