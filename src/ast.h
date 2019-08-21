@@ -213,6 +213,8 @@ enum ast_node_kind {
 	AST_NODE_FUNC,
 	AST_NODE_CALL,
 	AST_NODE_SLOT,
+
+	AST_NODE_FUNC_UNINIT,
 };
 
 struct ast_node;
@@ -225,14 +227,12 @@ struct ast_func_arg {
 struct ast_func_param {
 	struct atom *name;
 	struct ast_node *type;
+	ast_slot_id slot;
 };
 
 struct ast_node {
 	enum ast_node_kind kind;
 	struct stg_location loc;
-
-	// TODO: Remove this in favour of ast_node_type proc.
-	ast_slot_id type;
 
 	union {
 		struct {
@@ -244,6 +244,10 @@ struct ast_node {
 			size_t num_params;
 
 			struct ast_node *return_type;
+			ast_slot_id return_type_slot;
+
+			ast_slot_id type;
+			ast_slot_id outer_type;
 		} func;
 
 		struct {
@@ -262,10 +266,18 @@ ast_node_type(struct ast_context *, struct ast_env *, struct ast_node *);
 
 #define AST_NODE_NEW ((struct ast_node *)1)
 
+// func nodes have to be initialized in two steps, init and finalize, because
+// the function's params, return type, and body depends on its env. Init
+// initializes the env, and finalize binds the params, return type, and body to
+// the function.
 struct ast_node *
 ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *, struct stg_location,
-		struct ast_func_param *params, size_t num_params,
+		struct atom **param_names, size_t num_params);
+
+struct ast_node *
+ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *, struct ast_node **params, size_t num_params,
 		struct ast_node *return_type, struct ast_node *body);
 
 struct ast_node *
@@ -286,6 +298,6 @@ ast_node_substitute_slot(struct ast_node *,
 		ast_slot_id target, ast_slot_id new_slot);
 
 void
-ast_print(struct ast_env *, struct ast_node *);
+ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
 
 #endif

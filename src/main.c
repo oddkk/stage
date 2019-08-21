@@ -217,25 +217,6 @@ int main(int argc, char *argv[])
 
 		struct ast_node *expr;
 
-		struct ast_func_param test_param_nodes[] = {
-			{
-				.name  = vm_atoms(&vm, "a"),
-				.type = ast_init_node_slot(&ctx, &test_env,
-						AST_NODE_NEW, STG_NO_LOC,
-						ast_bind_slot_const_type(&ctx, &test_env,
-							AST_BIND_NEW, NULL,
-							vm_find_type_id(&vm, STR("base"), STR("int")))),
-			},
-			{
-				.name  = vm_atoms(&vm, "b"),
-				.type = ast_init_node_slot(&ctx, &test_env,
-						AST_NODE_NEW, STG_NO_LOC,
-						ast_bind_slot_const_type(&ctx, &test_env,
-							AST_BIND_NEW, NULL,
-							vm_find_type_id(&vm, STR("base"), STR("int")))),
-			}
-		};
-
 		struct ast_func_arg test_nodes[] = {
 			{
 				.name  = vm_atoms(&vm, "a"),
@@ -255,54 +236,67 @@ int main(int argc, char *argv[])
 			}
 		};
 
+		struct atom *inner_func_arg_names[] = {
+			vm_atoms(&vm, "a"),
+			vm_atoms(&vm, "b"),
+		};
+
+		struct ast_node *inner_func =
+			ast_init_node_func(&ctx, &test_env, AST_NODE_NEW, STG_NO_LOC,
+					inner_func_arg_names, ARRAY_LENGTH(inner_func_arg_names));
+
+		struct ast_node *inner_func_arg_types[] = {
+				ast_init_node_slot(&ctx, &inner_func->func.env,
+						AST_NODE_NEW, STG_NO_LOC,
+						ast_bind_slot_const_type(&ctx, &inner_func->func.env,
+							AST_BIND_NEW, NULL,
+							vm_find_type_id(&vm, STR("base"), STR("int")))),
+				ast_init_node_slot(&ctx, &inner_func->func.env,
+						AST_NODE_NEW, STG_NO_LOC,
+						ast_bind_slot_const_type(&ctx, &inner_func->func.env,
+							AST_BIND_NEW, NULL,
+							vm_find_type_id(&vm, STR("base"), STR("int")))),
+		};
+
 		struct ast_func_arg func_test_nodes[] = {
 			{
 				.name  = vm_atoms(&vm, "lhs"),
-				.value = ast_init_node_slot(&ctx, &test_env,
+				.value = ast_init_node_slot(&ctx, &inner_func->func.env,
 						AST_NODE_NEW, STG_NO_LOC,
-						ast_env_lookup_or_alloc_free(&ctx, &test_env,
+						ast_env_lookup_or_alloc_free(&ctx, &inner_func->func.env,
 							vm_atoms(&vm, "a"),
-							ast_bind_slot_wildcard(&ctx, &test_env, AST_BIND_NEW,
+							ast_bind_slot_wildcard(&ctx, &inner_func->func.env, AST_BIND_NEW,
 								NULL, AST_SLOT_TYPE))),
 			},
 			{
 				.name  = vm_atoms(&vm, "rhs"),
-				.value = ast_init_node_slot(&ctx, &test_env,
+				.value = ast_init_node_slot(&ctx, &inner_func->func.env,
 						AST_NODE_NEW, STG_NO_LOC,
-						ast_env_lookup_or_alloc_free(&ctx, &test_env,
+						ast_env_lookup_or_alloc_free(&ctx, &inner_func->func.env,
 							vm_atoms(&vm, "b"),
-							ast_bind_slot_wildcard(&ctx, &test_env, AST_BIND_NEW,
+							ast_bind_slot_wildcard(&ctx, &inner_func->func.env, AST_BIND_NEW,
 								NULL, AST_SLOT_TYPE))),
 			}
 		};
 
 		expr = ast_init_node_call(&ctx, &test_env,
 				AST_NODE_NEW, STG_NO_LOC,
-				ast_init_node_func(&ctx, &test_env, AST_NODE_NEW, STG_NO_LOC,
-					test_param_nodes, ARRAY_LENGTH(test_param_nodes), NULL,
-					ast_init_node_call(&ctx, &test_env,
-						AST_NODE_NEW, STG_NO_LOC,
-						ast_init_node_slot(&ctx, &test_env, AST_NODE_NEW, STG_NO_LOC,
-							ast_env_lookup_or_alloc_free(&ctx, &test_env,
+				ast_finalize_node_func(&ctx, &test_env, inner_func,
+					inner_func_arg_types, ARRAY_LENGTH(inner_func_arg_types), NULL,
+					ast_init_node_call(&ctx, &inner_func->func.env, AST_NODE_NEW, STG_NO_LOC,
+						ast_init_node_slot(&ctx, &inner_func->func.env, AST_NODE_NEW, STG_NO_LOC,
+							ast_env_lookup_or_alloc_free(&ctx, &inner_func->func.env,
 								vm_atoms(&vm, "op+"),
-								ast_bind_slot_wildcard(&ctx, &test_env, AST_BIND_NEW,
+								ast_bind_slot_wildcard(&ctx, &inner_func->func.env, AST_BIND_NEW,
 									NULL, AST_SLOT_TYPE))),
 						func_test_nodes, ARRAY_LENGTH(func_test_nodes))),
 				test_nodes, ARRAY_LENGTH(test_nodes));
 
-		/*
-		expr = ast_init_node_call(&ctx, &test_env,
-				AST_NODE_NEW, STG_NO_LOC,
-				ast_init_node_slot(&ctx, &test_env, AST_NODE_NEW, STG_NO_LOC,
-					ast_env_lookup_or_alloc_free(&ctx, &test_env,
-						vm_atoms(&vm, "op+"),
-						ast_bind_slot_wildcard(&ctx, &test_env, AST_BIND_NEW,
-							NULL, AST_SLOT_TYPE))),
-					test_nodes, ARRAY_LENGTH(test_nodes)); */
-
 		ast_env_print(&vm, &test_env);
 		printf("\n");
-		ast_print(&test_env, expr);
+		ast_env_print(&vm, &inner_func->func.env);
+		printf("\n");
+		ast_print(&ctx, &test_env, expr);
 	}
 
 	return 0;

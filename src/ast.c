@@ -145,6 +145,30 @@ ast_bind_slot_const(struct ast_context *ctx,
 						target_slot.type, NULL, obj.type);
 				break;
 
+			case AST_SLOT_CONST: {
+				if (target_slot.const_object.type != obj.type) {
+					printf("Warning: Attempted to bind CONST with type '");
+					print_type_repr(ctx->vm, vm_get_type(ctx->vm, obj.type));
+					printf("' over CONST with type '");
+					print_type_repr(ctx->vm, vm_get_type(ctx->vm, target_slot.const_object.type));
+					printf("'. (bind %i)\n", target);
+					return AST_BIND_FAILED;
+				}
+
+				struct type *type = vm_get_type(ctx->vm, target_slot.const_object.type);
+
+				// TODO: Use user defined comparator.
+				if (memcmp(target_slot.const_object.data, obj.data, type->size) != 0) {
+					printf("Warning: Attempted to bind CONST '");
+					print_obj_repr(ctx->vm, obj);
+					printf("' over CONST '");
+					print_obj_repr(ctx->vm, target_slot.const_object);
+					printf("'. (bind %i)\n", target);
+					return AST_BIND_FAILED;
+				}
+
+			} break;
+
 			default:
 				printf("Warning: Attempted to bind CONST over %s. (bind %i)\n",
 						ast_slot_name(target_slot.kind), target);
@@ -399,6 +423,21 @@ ast_bind_slot_cons(struct ast_context *ctx,
 		}
 	}
 
+	/*
+	{
+		struct ast_env_slot *slot = &env->slots[target];
+		printf("bind %i=Cons(", target);
+		for (size_t j = 0; j < slot->cons.def->num_params; j++) {
+			if (j != 0)
+				printf(", ");
+			printf("%.*s=%i",
+					ALIT(slot->cons.def->params[j].name),
+					slot->cons.args[j]);
+		}
+		printf(")\n");
+	}
+	*/
+
 	return target;
 }
 
@@ -454,14 +493,15 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 		env->slots[target].cons_array.num_members = num_members;
 		env->slots[target].cons_array.members =
 			calloc(num_members, sizeof(ast_slot_id));
+		for (size_t i = 0; i < num_members; i++) {
+			env->slots[target].cons_array.members[i] = AST_BIND_NEW;
+		}
 	}
 
 	for (size_t i = 0; i < num_members; i++) {
 		env->slots[target].cons_array.members[i] = ast_union_slot(ctx,
 				env, env->slots[target].cons_array.members[i],
 				env, members[i]);
-		ast_substitute(ctx, env,
-				env->slots[target].cons_array.members[i], members[i]);
 	}
 
 	struct ast_object_arg ret_array_args[] = {
@@ -473,6 +513,21 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 			ctx, env, env->slots[target].type, NULL,
 			ctx->cons.array, ret_array_args,
 			ARRAY_LENGTH(ret_array_args));
+
+	/*
+	{
+		struct ast_env_slot *slot = &env->slots[target];
+		printf("bind %i=[", target);
+		for (size_t j = 0; j < slot->cons_array.num_members; j++) {
+			if (j != 0)
+				printf(", ");
+			printf("%i", slot->cons_array.members[j]);
+		}
+		printf("] type-slot=%i count-slot=%i\n",
+				slot->cons_array.member_type,
+				slot->cons_array.member_count);
+	}
+	*/
 
 	return target;
 }
@@ -499,19 +554,31 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 		struct ast_env *dest, ast_slot_id target,
 		struct ast_env *src,  ast_slot_id src_slot)
 {
+	// printf("bind (%p)%i -> (%p)%i\n", (void *)src, src_slot, (void *)dest, target);
+
 	if (src_slot == AST_SLOT_TYPE) {
+		// printf(" -> -1 (type)\n");
 		return AST_SLOT_TYPE;
 	} else if (src_slot == AST_BIND_FAILED) {
+		// printf(" -> fail\n");
 		return AST_BIND_FAILED;
 	}
 
 	if (dest == src && target == src_slot) {
+		// printf(" -> %i\n", target);
 		return target;
 	}
 
 	assert(src_slot >= 0 && src_slot < src->num_slots);
 
 	if (ctx->slot_map[src_slot] != AST_SLOT_NOT_FOUND) {
+		struct ast_env_slot mapped_slot;
+		mapped_slot = ast_env_slot(ctx->ctx, dest, ctx->slot_map[src_slot]);
+		while (mapped_slot.kind == AST_SLOT_SUBST) {
+			ctx->slot_map[src_slot] = mapped_slot.subst;
+			mapped_slot = ast_env_slot(ctx->ctx, dest, ctx->slot_map[src_slot]);
+		}
+		// printf(" -> %i (map)\n", target);
 		return ctx->slot_map[src_slot];
 	}
 
@@ -528,6 +595,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 
 	switch (slot.kind) {
 		case AST_SLOT_ERROR:
+			// printf(" -> fail\n");
 			return AST_BIND_FAILED;
 
 		case AST_SLOT_WILDCARD:
@@ -571,11 +639,30 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			size_t num_args = slot.cons.def->num_params;
 			struct ast_object_arg args[num_args];
 
+			if (target != AST_BIND_NEW) {
+				struct ast_env_slot target_slot;
+				target_slot = ast_env_slot(ctx->ctx, dest, target);
+
+				if (target_slot.kind == AST_SLOT_CONS) {
+					for (size_t i = 0; i < num_args; i++) {
+						args[i].slot = target_slot.cons.args[i];
+					}
+				}
+			} else {
+				for (size_t i = 0; i < num_args; i++) {
+					args[i].slot = AST_BIND_NEW;
+				}
+			}
+
 			for (size_t i = 0; i < num_args; i++) {
 				args[i].name = slot.cons.def->params[i].name;
-				args[i].slot = ast_union_slot_internal(ctx,
-						dest, AST_BIND_NEW,
-						src, slot.cons.args[i]);
+				if (src == dest) {
+					args[i].slot = slot.cons.args[i];
+				} else {
+					args[i].slot = ast_union_slot_internal(ctx,
+							dest, args[i].slot,
+							src, slot.cons.args[i]);
+				}
 			}
 
 			result = ast_bind_slot_cons(
@@ -587,34 +674,72 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			size_t num_members = slot.cons_array.num_members;
 			ast_slot_id members[num_members];
 
-			for (size_t i = 0; i < num_members; i++) {
-				members[i] = ast_union_slot_internal(ctx,
-						dest, AST_BIND_NEW,
-						src, slot.cons_array.members[i]);
+			if (target != AST_BIND_NEW) {
+				struct ast_env_slot target_slot;
+				target_slot = ast_env_slot(ctx->ctx, dest, target);
+
+				if (target_slot.kind == AST_SLOT_CONS_ARRAY) {
+					for (size_t i = 0; i < num_members; i++) {
+						members[i] = target_slot.cons_array.members[i];
+					}
+				}
+			} else {
+				for (size_t i = 0; i < num_members; i++) {
+					members[i] = AST_BIND_NEW;
+				}
 			}
 
-			ast_slot_id member_type_slot = ast_union_slot_internal(
-					ctx, dest, AST_BIND_NEW,
-					src, slot.cons_array.member_type);
+
+			for (size_t i = 0; i < num_members; i++) {
+				members[i] = AST_BIND_NEW;
+
+				if (src == dest) {
+					members[i] = slot.cons_array.members[i];
+				} else {
+					members[i] = ast_union_slot_internal(ctx,
+							dest, members[i],
+							src, slot.cons_array.members[i]);
+				}
+			}
+
+			ast_slot_id member_type_slot;
+
+			if (src == dest) {
+				member_type_slot = slot.cons_array.member_type;
+			} else {
+				member_type_slot = ast_union_slot_internal(
+						ctx, dest, AST_BIND_NEW,
+						src, slot.cons_array.member_type);
+			}
 
 			result = ast_bind_slot_cons_array(
 					ctx->ctx, dest, target, slot.name,
 					members, num_members, member_type_slot);
-
-			/* TODO: Probably remove.
-			ast_union_slot_internal(
-					ctx, dest, dest->slots[result].cons_array.member_count,
-					src, slot.cons_array.member_count);
-			*/
 		} break;
 
 		case AST_SLOT_SUBST:
-			panic("SUBST-node referenced in union.\n");
+			// result = ast_union_slot_internal(
+			// 		ctx, dest, target,
+			// 		src, slot.subst);
+			if (src != dest) {
+				printf("src:\n");
+				ast_env_print(ctx->ctx->vm, src);
+				printf("dest:\n");
+			}
+			ast_env_print(ctx->ctx->vm, dest);
+			printf("failed bind (%p)%i -> (%p)%i\n", (void *)src, src_slot, (void *)dest, target);
+			panic("SUBST-slot in union (%i -> %i).", src_slot, slot.subst);
 			break;
 	}
 	assert(result != AST_SLOT_NOT_FOUND);
 
+	// printf(" -> %i\n", result);
+
 	ctx->slot_map[src_slot] = result;
+
+	if (src == dest) {
+		ast_substitute(ctx->ctx, dest, result, src_slot);
+	}
 
 	return result;
 }
@@ -650,22 +775,32 @@ void
 ast_substitute(struct ast_context *ctx, struct ast_env *env,
 		ast_slot_id new_slot, ast_slot_id target)
 {
-	assert(new_slot < env->num_slots);
+	if (target < 0) {
+		return;
+	}
+
+	assert(new_slot < (int)env->num_slots);
 	assert(target < env->num_slots);
 
 	if (new_slot == target) {
 		return;
 	}
 
+	assert(env->slots[target].kind != AST_SLOT_SUBST);
+
+	memset(&env->slots[target], 0, sizeof(struct ast_env_slot));
 	env->slots[target].kind = AST_SLOT_SUBST;
 	env->slots[target].subst = new_slot;
 	env->slots[target].type = AST_BIND_FAILED;
+
+	// printf("subst %i -> %i\n", target, new_slot);
 
 	for (ast_slot_id i = 0; i < env->num_slots; i++) {
 		struct ast_env_slot *slot;
 		slot = &env->slots[i];
 
 		if (slot->type == target) {
+			// printf("  (type on %i) %i -> %i\n", i, slot->type, new_slot);
 			slot->type = new_slot;
 		}
 
@@ -673,19 +808,39 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 			case AST_SLOT_CONS:
 				for (size_t arg_i = 0; arg_i < slot->cons.def->num_params; arg_i++) {
 					if (slot->cons.args[arg_i] == target) {
+						// printf("  (cons arg on %i) %i -> %i\n", i, slot->cons.args[arg_i], new_slot);
 						slot->cons.args[arg_i] = new_slot;
 					}
 				}
 				break;
 
 			case AST_SLOT_CONS_ARRAY:
+				if (slot->cons_array.member_type == target) {
+					//printf("  (cons_array member_type on %i) %i -> %i\n",
+					//		i, slot->cons_array.member_type, new_slot);
+					slot->cons_array.member_type = new_slot;
+				}
+				if (slot->cons_array.member_count == target) {
+					//printf("  (cons_array member_type on %i) %i -> %i\n",
+					//		i, slot->cons_array.member_count, new_slot);
+					slot->cons_array.member_count = new_slot;
+				}
 				for (size_t member_i = 0; member_i < slot->cons_array.num_members; member_i++) {
 					if (slot->cons_array.members[member_i] == target) {
+					//printf("  (cons_array member %zu on %i) %i -> %i\n", member_i,
+					//		i, slot->cons_array.members[member_i], new_slot);
 						slot->cons_array.members[member_i] = new_slot;
 					}
 				}
 				break;
 
+			case AST_SLOT_SUBST:
+				if (slot->subst == target) {
+					//printf("  (subst on %i) %i -> %i\n",
+					//		i, slot->subst, new_slot);
+					slot->subst = new_slot;
+				}
+				break;
 
 			case AST_SLOT_ERROR:
 			case AST_SLOT_WILDCARD:
@@ -694,7 +849,6 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 			case AST_SLOT_PARAM:
 			case AST_SLOT_TEMPL:
 			case AST_SLOT_FREE:
-			case AST_SLOT_SUBST:
 				break;
 		}
 	}
@@ -748,78 +902,118 @@ ast_env_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot)
 	}
 }
 
+static inline ast_slot_id
+ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot)
+{
+	while (*slot >= 0 && env->slots[*slot].kind == AST_SLOT_SUBST) {
+		assert(*slot < env->num_slots);
+		*slot = env->slots[*slot].subst;
+	}
+
+	return *slot;
+}
+
 struct ast_node *
 ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node, struct stg_location loc,
-		struct ast_func_param *params, size_t num_params,
-		struct ast_node *return_type, struct ast_node *body)
+		struct atom **param_names, size_t num_params)
 {
 	if (node == AST_NODE_NEW) {
 		node = calloc(sizeof(struct ast_node), 1);
 	}
 
-	assert(
-		node &&
-		(params || num_params == 0) &&
-		// return_type &&
-		body
-	);
-
 	memset(node, 0, sizeof(struct ast_node));
-	node->kind = AST_NODE_FUNC;
+	node->kind = AST_NODE_FUNC_UNINIT;
 	node->loc = loc;
+	node->func.env.store = env->store;
 
-	node->func.body = body;
 	node->func.params = calloc(sizeof(struct ast_func_param), num_params);
-	memcpy(node->func.params, params, sizeof(struct ast_func_param) * num_params);
+	// memcpy(node->func.params, params, sizeof(struct ast_func_param) * num_params);
 	node->func.num_params = num_params;
-	node->func.return_type = return_type;
 
-	if (node->func.return_type) {
-		ast_union_slot(ctx,
-				env, node->func.body->type,
-				env, node->func.return_type->type);
-		ast_substitute(ctx, env,
-				node->func.body->type,
-				node->func.return_type->type);
-	} else {
-		node->func.return_type = calloc(sizeof(struct ast_node), 1);
-		ast_init_node_slot(ctx, env,
-				node->func.return_type,
-				node->func.body->loc,
-				node->func.body->type);
+	ast_slot_id param_types[num_params];
 
-	}
-
-	ast_slot_id param_type_ids[num_params];
+	struct ast_env *inner_env = &node->func.env;
 
 	for (size_t i = 0; i < num_params; i++) {
-		// Declare the type of the param type should be a type.
-		ast_bind_slot_const_type(
-				ctx, env, params[i].type->type, NULL,
-				ctx->types.type);
-
-		param_type_ids[i] = ast_bind_slot_wildcard(
-				ctx, env, AST_BIND_NEW, NULL,
-				params[i].type->type);
-
-		ast_bind_slot_param(
-				ctx, env, AST_BIND_NEW,
-				params[i].name, i, param_type_ids[i]);
+		node->func.params[i].slot = ast_bind_slot_param(
+				ctx, inner_env, AST_BIND_NEW,
+				param_names[i], i,
+				ast_bind_slot_wildcard(
+					ctx, inner_env, AST_BIND_NEW, NULL, AST_SLOT_TYPE));
+		param_types[i] = ast_env_slot(
+				ctx, inner_env, node->func.params[i].slot).type;
 	}
+
+	node->func.return_type_slot = ast_bind_slot_wildcard(
+					ctx, inner_env, AST_BIND_NEW, NULL, AST_SLOT_TYPE);
 
 	struct ast_object_arg cons_args[] = {
 		{ctx->atoms.func_cons_arg_ret,
-			node->func.return_type->type},
+			node->func.return_type_slot},
 		{ctx->atoms.func_cons_arg_params,
 			ast_bind_slot_cons_array(
-					ctx, env, AST_BIND_NEW, NULL,
-					param_type_ids, num_params,
+					ctx, inner_env, AST_BIND_NEW, NULL,
+					param_types, num_params,
 					ctx->types.type)},
 	};
 
-	node->type = ast_bind_slot_cons(ctx, env, AST_BIND_NEW,
+	node->func.type = ast_bind_slot_cons(ctx, inner_env, AST_BIND_NEW,
 			NULL, ctx->cons.func, cons_args, ARRAY_LENGTH(cons_args));
+
+	node->func.outer_type = ast_union_slot(ctx,
+			env, AST_BIND_NEW,
+			inner_env, node->func.type);
+
+	return node;
+}
+
+struct ast_node *
+ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node,
+		struct ast_node **param_types, size_t num_params,
+		struct ast_node *return_type, struct ast_node *body)
+{
+	assert(node != NULL && node != AST_NODE_NEW && node->kind == AST_NODE_FUNC_UNINIT);
+
+	assert(
+		node &&
+		(param_types || num_params == 0) &&
+		node->func.num_params == num_params &&
+		body
+	);
+
+	node->kind = AST_NODE_FUNC;
+	node->func.body = body;
+	node->func.return_type = return_type;
+
+	struct ast_env *inner_env = &node->func.env;
+
+	if (node->func.return_type) {
+		ast_union_slot(ctx,
+				inner_env, ast_node_type(ctx, inner_env, node->func.body),
+				inner_env, ast_node_type(ctx, inner_env, node->func.return_type));
+	} else {
+		node->func.return_type = ast_init_node_slot(ctx, inner_env,
+				calloc(sizeof(struct ast_node), 1),
+				node->func.body->loc,
+				ast_node_type(ctx, inner_env, node->func.body));
+
+	}
+	ast_union_slot(ctx,
+			inner_env, ast_node_type(ctx, inner_env, node->func.return_type),
+			inner_env, ast_node_resolve_slot(inner_env, &node->func.return_type_slot));
+
+	for (size_t i = 0; i < num_params; i++) {
+		node->func.params[i].type = param_types[i];
+		ast_union_slot(ctx,
+				inner_env, ast_env_slot(ctx, inner_env, node->func.params[i].slot).type,
+				inner_env, ast_node_type(ctx, inner_env, node->func.params[i].type));
+	}
+
+	node->func.outer_type = ast_union_slot(ctx,
+			env, node->func.outer_type,
+			inner_env, node->func.type);
 
 	return node;
 }
@@ -849,6 +1043,27 @@ ast_init_node_call(
 	memcpy(node->call.args, args, sizeof(struct ast_func_arg) * num_args);
 	node->call.num_args = num_args;
 
+	ast_slot_id arg_type_ids[num_args];
+
+	for (size_t i = 0; i < num_args; i++) {
+		arg_type_ids[i] = ast_node_type(ctx, env, args[i].value);
+	}
+
+	struct ast_object_arg cons_args[] = {
+		{ctx->atoms.func_cons_arg_ret,
+			ast_bind_slot_wildcard(
+					ctx, env, AST_BIND_NEW, NULL,
+					AST_SLOT_TYPE)},
+		{ctx->atoms.func_cons_arg_params,
+			ast_bind_slot_cons_array(
+					ctx, env, AST_BIND_NEW, NULL,
+					arg_type_ids, num_args,
+					ctx->types.type)},
+	};
+
+	ast_bind_slot_cons(ctx, env, ast_node_type(ctx, env, node->call.func),
+			NULL, ctx->cons.func, cons_args, ARRAY_LENGTH(cons_args));
+
 	return node;
 }
 
@@ -869,11 +1084,48 @@ ast_init_node_slot(
 	node->loc = loc;
 
 	node->slot = slot;
-	node->type = ast_env_slot(ctx, env, slot).type;
 
 	return node;
 }
 
+ast_slot_id
+ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_FUNC_UNINIT:
+		case AST_NODE_FUNC:
+			return ast_node_resolve_slot(env, &node->func.type);
+
+		case AST_NODE_CALL: {
+			ast_slot_id func_type;
+			struct ast_env_slot func_type_slot;
+
+			func_type = ast_node_type(ctx, env, node->call.func);
+			func_type_slot = ast_env_slot(ctx, env, func_type);
+
+			if (func_type_slot.kind != AST_SLOT_CONS) {
+				printf("Warning: Expected the call target to be CONS, got %s.\n",
+						ast_slot_name(func_type_slot.kind));
+				return AST_BIND_FAILED;
+			}
+
+			if (func_type_slot.cons.def != ctx->cons.func) {
+				printf("Warning: Expected the call target to be a function (%p), got %p.\n",
+						(void *)ctx->cons.func, (void *)func_type_slot.cons.def);
+				return AST_BIND_FAILED;
+			}
+		} break;
+
+		case AST_NODE_SLOT:
+			return ast_env_slot(ctx, env,
+					ast_node_resolve_slot(env, &node->slot)).type;
+	}
+
+	panic("Invalid ast node.");
+	return AST_BIND_FAILED;
+}
+
+/*
 void
 ast_node_substitute_slot(struct ast_node *node,
 		ast_slot_id target, ast_slot_id new_slot)
@@ -897,4 +1149,4 @@ ast_node_substitute_slot(struct ast_node *node,
 			break;
 	}
 }
-
+*/
