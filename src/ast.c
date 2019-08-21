@@ -349,6 +349,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 		switch (old_slot.kind) {
 			case AST_SLOT_TEMPL:
 			case AST_SLOT_WILDCARD:
+				env->slots[target].kind = AST_SLOT_CONS;
 				env->slots[target].cons.args = NULL;
 				env->slots[target].cons.def = NULL;
 				type_slot = old_slot.type;
@@ -457,6 +458,7 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 		switch (old_slot.kind) {
 			case AST_SLOT_TEMPL:
 			case AST_SLOT_WILDCARD:
+				env->slots[target].kind = AST_SLOT_CONS_ARRAY;
 				env->slots[target].cons_array.member_count = AST_BIND_NEW;
 				env->slots[target].cons_array.member_type = AST_BIND_NEW;
 				env->slots[target].cons_array.members = NULL;
@@ -1046,7 +1048,7 @@ ast_init_node_call(
 	ast_slot_id arg_type_ids[num_args];
 
 	for (size_t i = 0; i < num_args; i++) {
-		arg_type_ids[i] = ast_node_type(ctx, env, args[i].value);
+		arg_type_ids[i] = ast_node_type(ctx, env, node->call.args[i].value);
 	}
 
 	struct ast_object_arg cons_args[] = {
@@ -1094,7 +1096,7 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 	switch (node->kind) {
 		case AST_NODE_FUNC_UNINIT:
 		case AST_NODE_FUNC:
-			return ast_node_resolve_slot(env, &node->func.type);
+			return ast_node_resolve_slot(env, &node->func.outer_type);
 
 		case AST_NODE_CALL: {
 			ast_slot_id func_type;
@@ -1114,6 +1116,16 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 						(void *)ctx->cons.func, (void *)func_type_slot.cons.def);
 				return AST_BIND_FAILED;
 			}
+
+			ssize_t ret_type_i = ast_object_lookup_arg(
+					&func_type_slot.cons,
+					ctx->atoms.func_cons_arg_ret);
+
+			if (ret_type_i < 0) {
+				return AST_BIND_FAILED;
+			}
+
+			return func_type_slot.cons.args[ret_type_i];
 		} break;
 
 		case AST_NODE_SLOT:
