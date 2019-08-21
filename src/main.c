@@ -292,8 +292,9 @@ int main(int argc, char *argv[])
 						func_test_nodes, ARRAY_LENGTH(func_test_nodes))),
 				test_nodes, ARRAY_LENGTH(test_nodes));
 
+		printf("outer:\n");
 		ast_env_print(&vm, &test_env);
-		printf("\n");
+		printf("inner:\n");
 		ast_env_print(&vm, &inner_func->func.env);
 		printf("\n");
 		ast_print(&ctx, &test_env, expr);
