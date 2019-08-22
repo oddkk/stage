@@ -94,7 +94,7 @@ ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
 	if (node->func.return_type) {
 		ast_union_slot(ctx,
 				inner_env, ast_node_type(ctx, inner_env, node->func.body),
-				inner_env, ast_node_type(ctx, inner_env, node->func.return_type));
+				inner_env, ast_node_value(ctx, inner_env, node->func.return_type));
 	} else {
 		node->func.return_type = ast_init_node_slot(ctx, inner_env,
 				calloc(sizeof(struct ast_node), 1),
@@ -102,8 +102,9 @@ ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
 				ast_node_type(ctx, inner_env, node->func.body));
 
 	}
+
 	ast_union_slot(ctx,
-			inner_env, ast_node_type(ctx, inner_env, node->func.return_type),
+			inner_env, ast_node_value(ctx, inner_env, node->func.return_type),
 			inner_env, ast_node_resolve_slot(inner_env, &node->func.return_type_slot));
 
 	for (size_t i = 0; i < num_params; i++) {
@@ -231,6 +232,22 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 		case AST_NODE_SLOT:
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->slot)).type;
+	}
+
+	panic("Invalid ast node.");
+	return AST_BIND_FAILED;
+}
+
+ast_slot_id
+ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_SLOT:
+			return ast_node_resolve_slot(env, &node->slot);
+
+		default:
+			panic("TODO: eval");
+			break;
 	}
 
 	panic("Invalid ast node.");

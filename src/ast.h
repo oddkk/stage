@@ -264,6 +264,9 @@ struct ast_node {
 ast_slot_id
 ast_node_type(struct ast_context *, struct ast_env *, struct ast_node *);
 
+ast_slot_id
+ast_node_value(struct ast_context *, struct ast_env *, struct ast_node *);
+
 #define AST_NODE_NEW ((struct ast_node *)1)
 
 // func nodes have to be initialized in two steps, init and finalize, because
