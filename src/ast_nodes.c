@@ -57,7 +57,7 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 			ast_bind_slot_cons_array(
 					ctx, inner_env, AST_BIND_NEW, NULL,
 					param_types, num_params,
-					ctx->types.type)},
+					AST_SLOT_TYPE)},
 	};
 
 	node->func.type = ast_bind_slot_cons(ctx, inner_env, AST_BIND_NEW,
@@ -161,7 +161,7 @@ ast_init_node_call(
 			ast_bind_slot_cons_array(
 					ctx, env, AST_BIND_NEW, NULL,
 					arg_type_ids, num_args,
-					ctx->types.type)},
+					AST_SLOT_TYPE)},
 	};
 
 	ast_bind_slot_cons(ctx, env, ast_node_type(ctx, env, node->call.func),
