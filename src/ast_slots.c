@@ -194,8 +194,8 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 				// TODO: Name?
 				env->slots[target].kind = AST_SLOT_CONST_TYPE;
 
-				ast_bind_slot_const_type(ctx, env,
-						target_slot.type, NULL, ctx->types.type);
+				env->slots[target].type = ast_bind_slot_const_type(ctx, env,
+						env->slots[target].type, NULL, ctx->types.type);
 				break;
 
 			case AST_SLOT_CONST_TYPE:
