@@ -181,6 +181,9 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 		} else {
 			target = ast_alloc_slot(env, name, AST_SLOT_TYPE, AST_SLOT_CONST_TYPE);
 		}
+	} else if (target >= 0 && type == ctx->types.type) {
+		ast_substitute(ctx, env, target, AST_SLOT_TYPE);
+		target = AST_SLOT_TYPE;
 	} else {
 		struct ast_env_slot target_slot;
 
