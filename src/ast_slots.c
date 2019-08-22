@@ -6,6 +6,7 @@
 
 #define AST_DEBUG_BINDS 0
 #define AST_DEBUG_UNION 0
+#define AST_DEBUG_SUBST 0
 
 const char *
 ast_slot_name(enum ast_slot_kind kind) {
@@ -217,7 +218,7 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 	}
 
 #if AST_DEBUG_BINDS
-	printf("bind %i=const_type\n", target);
+	printf("bind %i=const_type(%lu)\n", target, type);
 #endif
 
 	return target;
@@ -810,14 +811,18 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 	env->slots[target].subst = new_slot;
 	env->slots[target].type = AST_BIND_FAILED;
 
-	// printf("subst %i -> %i\n", target, new_slot);
+#if AST_DEBUG_SUBST
+	printf("subst %i -> %i\n", target, new_slot);
+#endif
 
 	for (ast_slot_id i = 0; i < env->num_slots; i++) {
 		struct ast_env_slot *slot;
 		slot = &env->slots[i];
 
 		if (slot->type == target) {
-			// printf("  (type on %i) %i -> %i\n", i, slot->type, new_slot);
+#if AST_DEBUG_SUBST
+			printf("  (type on %i) %i -> %i\n", i, slot->type, new_slot);
+#endif
 			slot->type = new_slot;
 		}
 
@@ -825,7 +830,9 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 			case AST_SLOT_CONS:
 				for (size_t arg_i = 0; arg_i < slot->cons.def->num_params; arg_i++) {
 					if (slot->cons.args[arg_i] == target) {
-						// printf("  (cons arg on %i) %i -> %i\n", i, slot->cons.args[arg_i], new_slot);
+#if AST_DEBUG_SUBST
+						printf("  (cons arg on %i) %i -> %i\n", i, slot->cons.args[arg_i], new_slot);
+#endif
 						slot->cons.args[arg_i] = new_slot;
 					}
 				}
@@ -833,19 +840,25 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 
 			case AST_SLOT_CONS_ARRAY:
 				if (slot->cons_array.member_type == target) {
-					//printf("  (cons_array member_type on %i) %i -> %i\n",
-					//		i, slot->cons_array.member_type, new_slot);
+#if AST_DEBUG_SUBST
+					printf("  (cons_array member_type on %i) %i -> %i\n",
+							i, slot->cons_array.member_type, new_slot);
+#endif
 					slot->cons_array.member_type = new_slot;
 				}
 				if (slot->cons_array.member_count == target) {
-					//printf("  (cons_array member_type on %i) %i -> %i\n",
-					//		i, slot->cons_array.member_count, new_slot);
+#if AST_DEBUG_SUBST
+					printf("  (cons_array member_type on %i) %i -> %i\n",
+							i, slot->cons_array.member_count, new_slot);
+#endif
 					slot->cons_array.member_count = new_slot;
 				}
 				for (size_t member_i = 0; member_i < slot->cons_array.num_members; member_i++) {
 					if (slot->cons_array.members[member_i] == target) {
-					//printf("  (cons_array member %zu on %i) %i -> %i\n", member_i,
-					//		i, slot->cons_array.members[member_i], new_slot);
+#if AST_DEBUG_SUBST
+					printf("  (cons_array member %zu on %i) %i -> %i\n", member_i,
+							i, slot->cons_array.members[member_i], new_slot);
+#endif
 						slot->cons_array.members[member_i] = new_slot;
 					}
 				}
@@ -853,8 +866,10 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 
 			case AST_SLOT_SUBST:
 				if (slot->subst == target) {
-					//printf("  (subst on %i) %i -> %i\n",
-					//		i, slot->subst, new_slot);
+#if AST_DEBUG_SUBST
+					printf("  (subst on %i) %i -> %i\n",
+							i, slot->subst, new_slot);
+#endif
 					slot->subst = new_slot;
 				}
 				break;
