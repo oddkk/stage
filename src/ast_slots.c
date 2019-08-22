@@ -831,13 +831,17 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 
 		switch (slot->kind) {
 			case AST_SLOT_CONS:
-				for (size_t arg_i = 0; arg_i < slot->cons.def->num_params; arg_i++) {
-					if (slot->cons.args[arg_i] == target) {
+				if (slot->cons.def) {
+					for (size_t arg_i = 0; arg_i < slot->cons.def->num_params; arg_i++) {
+						if (slot->cons.args[arg_i] == target) {
 #if AST_DEBUG_SUBST
-						printf("  (cons arg on %i) %i -> %i\n", i, slot->cons.args[arg_i], new_slot);
+							printf("  (cons arg on %i) %i -> %i\n", i, slot->cons.args[arg_i], new_slot);
 #endif
-						slot->cons.args[arg_i] = new_slot;
+							slot->cons.args[arg_i] = new_slot;
+						}
 					}
+				} else {
+					printf("Warning: Slot %i (CONS) missing def.\n", i);
 				}
 				break;
 

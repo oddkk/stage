@@ -208,6 +208,13 @@ struct ast_object_def {
 	ast_slot_id  ret_type;
 };
 
+struct ast_object_def *
+ast_object_def_register(struct objstore *);
+
+void
+ast_object_def_finalize(struct ast_object_def *,
+		struct ast_object_def_param *params, size_t num_params,
+		ast_slot_id ret_type);
 
 enum ast_node_kind {
 	AST_NODE_FUNC,
