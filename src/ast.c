@@ -105,3 +105,127 @@ ast_object_def_finalize(struct ast_object_def *obj,
 
 	obj->ret_type = ret_type;
 }
+
+static int
+ast_namespace_insert(struct ast_module_namespace *ns,
+		struct ast_module_name value)
+{
+	int new_id = (int)ns->num_names;
+
+	size_t new_num_names = ns->num_names + 1;
+	struct ast_module_name *new_names;
+
+	new_names = realloc(ns->names,
+			new_num_names * sizeof(struct ast_module_name));
+
+	if (!new_names) {
+		return -1;
+	}
+
+	ns->names = new_names;
+	ns->num_names = new_num_names;
+
+	ns->names[new_id] = value;
+
+	return new_id;
+}
+
+int
+ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_module_namespace *ns,
+		struct atom *name, struct ast_node *expr)
+{
+	struct ast_module_name value = {0};
+
+	value.kind = AST_MODULE_NAME_DECL;
+	value.name = name;
+	value.decl.expr = expr;
+
+	value.decl.value = ast_bind_slot_wildcard(
+			ctx, &mod->env, AST_BIND_NEW, NULL,
+			ast_node_type(ctx, &mod->env, expr));
+
+	int err;
+	err = ast_namespace_insert(ns, value);
+	return err >= 0 ? 0 : -1;
+}
+
+struct ast_module_namespace *
+ast_namespace_add_ns(struct ast_module_namespace *ns,
+		struct atom *name)
+{
+	struct ast_module_name value = {0};
+
+	value.kind = AST_MODULE_NAME_NAMESPACE;
+	value.ns = calloc(1, sizeof(struct ast_module_namespace));
+
+	int err;
+	err = ast_namespace_insert(ns, value);
+
+	if (err < 0) {
+		return NULL;
+	}
+
+	return value.ns;
+}
+
+static struct type_base namespace_type_base = {
+	.name = STR("namespace"),
+	// TODO: Make repr functions.
+	// TODO: Make unpack function.
+};
+
+static ast_slot_id
+ast_namespace_finalize(struct ast_context *ctx,
+		struct ast_module *mod, struct ast_module_namespace *ns)
+{
+	ns->def.env.store = mod->env.store;
+
+	ns->def.num_params = ns->num_names;
+	ns->def.params = calloc(ns->def.num_params,
+			sizeof(struct ast_object_def_param));
+
+	struct type ns_type_def = {0};
+
+	ns_type_def.name = ns->name;
+	ns_type_def.base = &namespace_type_base;
+	// TODO: Do we have to store anything on the namespace?
+	ns_type_def.size = 0;
+	ns_type_def.data = &ns->def;
+
+	type_id ns_type;
+	ns_type = register_type(mod->env.store, ns_type_def);
+
+	ns->def.ret_type = ast_bind_slot_const_type(
+			ctx, &ns->def.env, AST_BIND_NEW, NULL,
+			ns_type);
+
+	// TODO: Ensure all types are resolved.
+
+	for (size_t i = 0; i < ns->def.num_params; i++) {
+		ns->def.params[i].name = ns->names[i].name;
+		ns->def.params[i].type =
+			ast_union_slot(ctx,
+					&ns->def.env, AST_BIND_NEW,
+					&mod->env, ast_env_slot(ctx, &mod->env, ns->names[i].decl.value).type);
+	}
+
+	struct ast_object_arg ns_args[ns->def.num_params];
+
+	for (size_t i = 0; i < ns->def.num_params; i++) {
+		ns_args[i].name = ns->names[i].name;
+
+		// TODO: Ensure the value is evaluated.
+		ns_args[i].slot = ns->names[i].decl.value;
+	}
+
+	return ast_bind_slot_cons(
+			ctx, &mod->env, AST_BIND_NEW, NULL,
+			&ns->def, ns_args, ns->def.num_params);
+}
+
+ast_slot_id
+ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
+{
+	return ast_namespace_finalize(ctx, mod, &mod->root);
+}

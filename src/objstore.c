@@ -242,7 +242,11 @@ void print_type_repr(struct vm *vm, struct type *type)
 	/* struct type *type = &vm->store.types[obj.type]; */
 	struct string res;
 
-	res = type->base->repr(vm, &mem, type);
+	if (type->base->repr) {
+		res = type->base->repr(vm, &mem, type);
+	} else {
+		res = default_type_repr(vm, &mem, type);
+	}
 	printf("%.*s", LIT(res));
 
 	arena_pop(&vm->memory, mem);
@@ -254,7 +258,11 @@ void print_obj_repr(struct vm *vm, struct object obj)
 	struct type *type = vm_get_type(vm, obj.type);
 	struct string res;
 
-	res = type->base->obj_repr(vm, &mem, &obj);
+	if (type->base->obj_repr) {
+		res = type->base->obj_repr(vm, &mem, &obj);
+	} else {
+		res = default_obj_repr(vm, &mem, &obj);
+	}
 	printf("%.*s", LIT(res));
 
 	arena_pop(&vm->memory, mem);

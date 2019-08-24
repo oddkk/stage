@@ -117,25 +117,25 @@ int main(int argc, char *argv[])
 				vm.default_types.type,
 				vm.default_types.integer);
 
-		struct ast_env test_env = {0};
-		test_env.store = &vm.modules[0]->store;
+		struct ast_module test_mod = {{0}};
+		test_mod.env.store = &vm.modules[0]->store;
 
 		struct ast_node *expr;
 
 		struct ast_func_arg test_nodes[] = {
 			{
 				.name  = vm_atoms(&vm, "a"),
-				.value = ast_init_node_slot(&ctx, &test_env,
+				.value = ast_init_node_slot(&ctx, &test_mod.env,
 						AST_NODE_NEW, STG_NO_LOC,
-						ast_bind_slot_const(&ctx, &test_env,
+						ast_bind_slot_const(&ctx, &test_mod.env,
 							AST_BIND_NEW, NULL,
 							obj_register_integer(&vm, &vm.modules[0]->store, 4))),
 			},
 			{
 				.name  = vm_atoms(&vm, "b"),
-				.value = ast_init_node_slot(&ctx, &test_env,
+				.value = ast_init_node_slot(&ctx, &test_mod.env,
 						AST_NODE_NEW, STG_NO_LOC,
-						ast_bind_slot_const(&ctx, &test_env,
+						ast_bind_slot_const(&ctx, &test_mod.env,
 							AST_BIND_NEW, NULL,
 							obj_register_integer(&vm, &vm.modules[0]->store, 2))),
 			}
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
 		};
 
 		struct ast_node *inner_func =
-			ast_init_node_func(&ctx, &test_env, AST_NODE_NEW, STG_NO_LOC,
+			ast_init_node_func(&ctx, &test_mod.env, AST_NODE_NEW, STG_NO_LOC,
 					inner_func_arg_names, ARRAY_LENGTH(inner_func_arg_names));
 
 		struct ast_node *inner_func_arg_types[] = {
@@ -184,9 +184,9 @@ int main(int argc, char *argv[])
 			}
 		};
 
-		expr = ast_init_node_call(&ctx, &test_env,
+		expr = ast_init_node_call(&ctx, &test_mod.env,
 				AST_NODE_NEW, STG_NO_LOC,
-				ast_finalize_node_func(&ctx, &test_env, inner_func,
+				ast_finalize_node_func(&ctx, &test_mod.env, inner_func,
 					inner_func_arg_types, ARRAY_LENGTH(inner_func_arg_types), NULL,
 					ast_init_node_call(&ctx, &inner_func->func.env, AST_NODE_NEW, STG_NO_LOC,
 						ast_init_node_slot(&ctx, &inner_func->func.env, AST_NODE_NEW, STG_NO_LOC,
@@ -197,12 +197,17 @@ int main(int argc, char *argv[])
 						func_test_nodes, ARRAY_LENGTH(func_test_nodes))),
 				test_nodes, ARRAY_LENGTH(test_nodes));
 
+		ast_namespace_add_decl(&ctx, &test_mod, &test_mod.root,
+				vm_atoms(&vm, "testDecl"), expr);
+
+		ast_module_finalize(&ctx, &test_mod);
+
 		printf("outer:\n");
-		ast_env_print(&vm, &test_env);
+		ast_env_print(&vm, &test_mod.env);
 		printf("inner:\n");
 		ast_env_print(&vm, &inner_func->func.env);
 		printf("\n");
-		ast_print(&ctx, &test_env, expr);
+		ast_print(&ctx, &test_mod.env, expr);
 	}
 
 	return 0;
@@ -212,6 +217,8 @@ int main(int argc, char *argv[])
 		printf("Failed to compile config.\n");
 		return -1;
 	}
+
+	return 0;
 
 	vm_start(&vm);
 

@@ -310,4 +310,50 @@ ast_node_substitute_slot(struct ast_node *,
 void
 ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
 
+enum ast_module_name_kind {
+	AST_MODULE_NAME_DECL,
+	AST_MODULE_NAME_NAMESPACE,
+};
+
+struct ast_module_namespace;
+
+struct ast_module_name {
+	enum ast_module_name_kind kind;
+	struct atom *name;
+	union {
+		struct {
+			struct ast_node *expr;
+			ast_slot_id value;
+		} decl;
+		struct ast_module_namespace *ns;
+	};
+};
+
+struct ast_module_namespace {
+	struct atom *name;
+
+	struct ast_module_name *names;
+	size_t num_names;
+
+	struct ast_object_def def;
+};
+
+struct ast_module {
+	struct ast_env env;
+
+	struct ast_module_namespace root;
+};
+
+int
+ast_namespace_add_decl(struct ast_context *, struct ast_module *,
+		struct ast_module_namespace *,
+		struct atom *name, struct ast_node *expr);
+
+struct ast_module_namespace *
+ast_namespace_add_ns(struct ast_module_namespace *,
+		struct atom *name);
+
+ast_slot_id
+ast_module_finalize(struct ast_context *, struct ast_module *);
+
 #endif

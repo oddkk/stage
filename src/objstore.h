@@ -74,12 +74,12 @@ type_base_register_unifier(struct type_base *type1,
 struct type {
 	struct atom *name;
 	struct type_base *base;
-	struct scope *object_scope;
+	struct scope *object_scope; // TODO: Remove
 	void *data;
 
 	size_t size;
 
-	int num_template_params;
+	int num_template_params; // TODO: Remove
 };
 
 struct object {
