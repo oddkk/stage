@@ -8,6 +8,9 @@
 #define AST_DEBUG_UNION 0
 #define AST_DEBUG_SUBST 0
 
+// If 1, slot 0 will be set to error to debug uninitialized slots.
+#define AST_DEBUG_OFFSET_SLOTS 0
+
 const char *
 ast_slot_name(enum ast_slot_kind kind) {
 	switch (kind) {
@@ -60,6 +63,13 @@ ast_alloc_slot(struct ast_env *ctx,
 	struct ast_env_slot *new_slots;
 	size_t new_num_slots;
 
+#if AST_DEBUG_OFFSET_SLOTS
+	bool is_new_env = ctx->num_slots == 0;
+	if (is_new_env) {
+		ctx->num_slots = 1;
+	}
+#endif
+
 	res = ctx->num_slots;
 
 	new_num_slots = ctx->num_slots + 1;
@@ -72,6 +82,13 @@ ast_alloc_slot(struct ast_env *ctx,
 
 	ctx->num_slots = new_num_slots;
 	ctx->slots = new_slots;
+
+#if AST_DEBUG_OFFSET_SLOTS
+	if (is_new_env) {
+		memset(&ctx->slots[0], 0, sizeof(struct ast_env_slot));
+		ctx->slots[0].kind = AST_SLOT_ERROR;
+	}
+#endif
 
 	memset(&ctx->slots[res], 0, sizeof(struct ast_env_slot));
 
