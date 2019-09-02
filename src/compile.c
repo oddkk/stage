@@ -229,12 +229,6 @@ static void dispatch_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 					 .node = node);
 		break;
 
-	case ST_NODE_FUNC_STMT:
-		DISPATCH_JOB(ctx, mod, func_decl, COMPILE_PHASE_DISCOVER,
-					 .scope = parent_scope,
-					 .node = node);
-		break;
-
 	case ST_NODE_ASSIGN_STMT:
 		DISPATCH_JOB(ctx, mod, assign_stmt, COMPILE_PHASE_DISCOVER,
 					 .scope = parent_scope,
@@ -761,84 +755,6 @@ job_visit_decl_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 
 	entry = &data->scope->entries[data->scope_entry_id];
 	entry->object = new_obj;
-
-	return JOB_OK;
-}
-
-
-static struct job_status
-job_func_decl(struct compile_ctx *ctx, struct stg_module *mod, job_func_decl_t *data)
-{
-	assert(data->node->type == ST_NODE_FUNC_STMT);
-	assert(data->node->FUNC_STMT.ident->type == ST_NODE_IDENT);
-
-	if (!data->initialized) {
-		data->initialized = true;
-
-		struct atom *name;
-
-		name = data->node->FUNC_STMT.ident->IDENT;
-		data->scope_entry_id =
-			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
-									  OBJ_UNSET);
-
-		data->expr.outer_scope = data->scope;
-
-		struct st_node *proto_node = data->node->FUNC_STMT.proto;
-		struct st_node *body_node = data->node->FUNC_STMT.body;
-
-		size_t num_params = 0;
-		struct expr_func_decl_param *params = NULL;
-		struct expr_node *ret = NULL;
-
-		struct expr_node *decl_node;
-		decl_node = calloc(1, sizeof(struct expr_node));
-
-		struct expr *func_expr = &decl_node->func_decl.expr;
-
-		st_node_visit_func_proto(ctx, mod, func_expr, data->scope,
-								  NULL, &decl_node->func_decl.scope, proto_node,
-								  &num_params, &params, &ret);
-
-		// We need to prealloc decl_node before we visit its body
-		// because we need a reference to its inner scope
-		// (func_scope). Note that the scope is not yet initialized,
-		// but this should be fine.
-
-		struct expr_node *body;
-		body = st_node_visit_expr(ctx, mod, func_expr, data->scope,
-								   NULL, &decl_node->func_decl.scope, body_node);
-
-		data->expr.body =
-			expr_init_func_decl(mod, &data->expr, data->node->loc, decl_node,
-								params, num_params, ret, body);
-
-		expr_finalize(mod, func_expr);
-
-		struct complie_job *func_job;
-		func_job = DISPATCH_JOB(ctx, mod, typecheck_expr, COMPILE_PHASE_RESOLVE,
-								.expr = &data->expr);
-
-		return JOB_YIELD_FOR(func_job);
-	}
-
-	struct expr *expr;
-	expr = calloc(1, sizeof(struct expr));
-	*expr = data->expr;
-
-	struct object func_obj;
-
-	expr_eval_simple(mod->vm, mod, expr, expr->body, &func_obj);
-
-	// NOTE: The object has to be registered right after the eval,
-	// otherwise the object might get overwritten on the arena.
-	struct object new_func_obj =
-		register_object(mod->vm, &mod->store, func_obj);
-
-	struct scope_entry *entry;
-
-	entry = &data->scope->entries[data->scope_entry_id];
-	entry->object = new_func_obj;
 
 	return JOB_OK;
 }

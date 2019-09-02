@@ -44,12 +44,6 @@ ST_NODE(ASSERT_STMT, struct {
 	struct st_node *expr;
 })
 
-ST_NODE(FUNC_STMT, struct {
-	struct st_node *ident;
-	struct st_node *proto;
-	struct st_node *body;
-})
-
 ST_NODE(FUNC_PROTO, struct {
 	struct st_node *params;
 	struct st_node *ret;

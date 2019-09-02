@@ -26,15 +26,6 @@ COMPILE_JOB(visit_decl_stmt, struct {
 	struct expr expr;
 })
 
-COMPILE_JOB(func_decl, struct {
-	struct scope *scope;
-	struct st_node *node;
-
-	int scope_entry_id;
-	bool initialized;
-	struct expr expr;
-})
-
 COMPILE_JOB(assign_stmt, struct {
 	struct scope *scope;
 	struct st_node *node;

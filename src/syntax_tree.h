@@ -108,12 +108,6 @@ extern struct string st_node_names[ST_NODES_LEN];
 		TREE_VISIT_NODE((node), ASSERT_STMT, expr);		\
 		break;											\
 														\
-	case ST_NODE_FUNC_STMT:							\
-		TREE_VISIT_NODE((node), FUNC_STMT, ident);		\
-		TREE_VISIT_NODE((node), FUNC_STMT, proto);		\
-		TREE_VISIT_NODE((node), FUNC_STMT, body);		\
-		break;											\
-														\
 	case ST_NODE_FUNC_PROTO:							\
 		TREE_VISIT_NODE((node), FUNC_PROTO, params);	\
 		TREE_VISIT_NODE((node), FUNC_PROTO, ret);		\
