@@ -293,6 +293,9 @@ ast_bind_slot_templ(struct ast_context *ctx,
 		switch (target_slot.kind) {
 			case AST_SLOT_WILDCARD:
 				env->slots[target].kind = AST_SLOT_TEMPL;
+				ast_union_slot(ctx,
+						env, env->slots[target].type,
+						env, type);
 				break;
 
 			case AST_SLOT_ERROR:
