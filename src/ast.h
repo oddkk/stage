@@ -176,9 +176,8 @@ ast_bind_slot_cons_array(struct ast_context *,
 		ast_slot_id *members, size_t num_members, ast_slot_id member_type);
 
 ast_slot_id
-ast_union_slot(struct ast_context *,
-		struct ast_env *dest, ast_slot_id target,
-		struct ast_env *src,  ast_slot_id src_slot);
+ast_union_slot(struct ast_context *, struct ast_env *,
+		ast_slot_id target, ast_slot_id src_slot);
 
 ast_slot_id
 ast_copy_slot(struct ast_context *,

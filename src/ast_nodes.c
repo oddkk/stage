@@ -63,7 +63,7 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 	node->func.type = ast_bind_slot_cons(ctx, inner_env, AST_BIND_NEW,
 			NULL, ctx->cons.func, cons_args, ARRAY_LENGTH(cons_args));
 
-	node->func.outer_type = ast_union_slot(ctx,
+	node->func.outer_type = ast_copy_slot(ctx,
 			env, AST_BIND_NEW,
 			inner_env, node->func.type);
 
@@ -92,9 +92,9 @@ ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
 	struct ast_env *inner_env = &node->func.env;
 
 	if (node->func.return_type) {
-		ast_union_slot(ctx,
-				inner_env, ast_node_type(ctx, inner_env, node->func.body),
-				inner_env, ast_node_value(ctx, inner_env, node->func.return_type));
+		ast_union_slot(ctx, inner_env,
+				ast_node_type(ctx, inner_env, node->func.body),
+				ast_node_value(ctx, inner_env, node->func.return_type));
 	} else {
 		node->func.return_type = ast_init_node_slot(ctx, inner_env,
 				calloc(sizeof(struct ast_node), 1),
@@ -103,18 +103,18 @@ ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
 
 	}
 
-	ast_union_slot(ctx,
-			inner_env, ast_node_value(ctx, inner_env, node->func.return_type),
-			inner_env, ast_node_resolve_slot(inner_env, &node->func.return_type_slot));
+	ast_union_slot(ctx, inner_env,
+			ast_node_value(ctx, inner_env, node->func.return_type),
+			ast_node_resolve_slot(inner_env, &node->func.return_type_slot));
 
 	for (size_t i = 0; i < num_params; i++) {
 		node->func.params[i].type = param_types[i];
-		ast_union_slot(ctx,
-				inner_env, ast_env_slot(ctx, inner_env, node->func.params[i].slot).type,
-				inner_env, ast_node_type(ctx, inner_env, node->func.params[i].type));
+		ast_union_slot(ctx, inner_env,
+				ast_env_slot(ctx, inner_env, node->func.params[i].slot).type,
+				ast_node_type(ctx, inner_env, node->func.params[i].type));
 	}
 
-	node->func.outer_type = ast_union_slot(ctx,
+	node->func.outer_type = ast_copy_slot(ctx,
 			env, node->func.outer_type,
 			inner_env, node->func.type);
 

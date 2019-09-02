@@ -208,7 +208,7 @@ ast_namespace_finalize(struct ast_context *ctx,
 	for (size_t i = 0; i < ns->def.num_params; i++) {
 		ns->def.params[i].name = ns->names[i].name;
 		ns->def.params[i].type =
-			ast_union_slot(ctx,
+			ast_copy_slot(ctx,
 					&ns->def.env, AST_BIND_NEW,
 					&mod->env, ast_env_slot(ctx, &mod->env,
 						ast_node_resolve_slot(&ns->def.env, &ns->names[i].decl.value)).type);

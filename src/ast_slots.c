@@ -293,9 +293,7 @@ ast_bind_slot_templ(struct ast_context *ctx,
 		switch (target_slot.kind) {
 			case AST_SLOT_WILDCARD:
 				env->slots[target].kind = AST_SLOT_TEMPL;
-				ast_union_slot(ctx,
-						env, env->slots[target].type,
-						env, type);
+				ast_union_slot(ctx, env, env->slots[target].type, type);
 				break;
 
 			case AST_SLOT_ERROR:
@@ -436,9 +434,9 @@ ast_bind_slot_cons(struct ast_context *ctx,
 	}
 
 	for (size_t i = 0; i < def->num_params; i++) {
-		env->slots[target].cons.args[i] = ast_union_slot(ctx,
-				env, env->slots[target].cons.args[i],
-				env, args[i].slot);
+		env->slots[target].cons.args[i] =
+			ast_union_slot(ctx, env,
+					env->slots[target].cons.args[i], args[i].slot);
 	}
 
 
@@ -517,9 +515,9 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 				NULL, ast_register_integer(ctx, env, num_members));
 
 	env->slots[target].cons_array.member_type =
-		ast_union_slot(ctx,
-				env, env->slots[target].cons_array.member_type,
-				env, member_type_slot);
+		ast_union_slot(ctx, env,
+				env->slots[target].cons_array.member_type,
+				member_type_slot);
 
 	if (!env->slots[target].cons_array.members) {
 		env->slots[target].cons_array.num_members = num_members;
@@ -531,9 +529,10 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 	}
 
 	for (size_t i = 0; i < num_members; i++) {
-		env->slots[target].cons_array.members[i] = ast_union_slot(ctx,
-				env, env->slots[target].cons_array.members[i],
-				env, members[i]);
+		env->slots[target].cons_array.members[i] =
+			ast_union_slot(ctx, env,
+				env->slots[target].cons_array.members[i],
+				members[i]);
 	}
 
 	struct ast_object_arg ret_array_args[] = {
@@ -778,21 +777,18 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 }
 
 ast_slot_id
-ast_union_slot(struct ast_context *ctx,
-		struct ast_env *dest, ast_slot_id target,
-		struct ast_env *src,  ast_slot_id src_slot)
+ast_union_slot(struct ast_context *ctx, struct ast_env *env,
+		ast_slot_id target, ast_slot_id src_slot)
 {
-	if (dest == src) {
-		if (target == src_slot) {
-			return target;
-		} else if (target == AST_BIND_NEW) {
-			return src_slot;
-		}
+	if (target == src_slot) {
+		return target;
+	} else if (target == AST_BIND_NEW) {
+		return src_slot;
 	}
 
-	ast_slot_id slot_map[src->num_slots];
+	ast_slot_id slot_map[env->num_slots];
 
-	for (size_t i = 0; i < src->num_slots; i++) {
+	for (size_t i = 0; i < env->num_slots; i++) {
 		slot_map[i] = AST_SLOT_NOT_FOUND;
 	}
 
@@ -802,7 +798,7 @@ ast_union_slot(struct ast_context *ctx,
 	cpy_ctx.copy_mode = false;
 
 	return ast_union_slot_internal(
-			&cpy_ctx, dest, target, src, src_slot);
+			&cpy_ctx, env, target, env, src_slot);
 }
 
 ast_slot_id
