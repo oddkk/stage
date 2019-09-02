@@ -103,10 +103,16 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 		case AST_NODE_FUNC_UNINIT:
 			print_indent(depth);
 			if (node->kind == AST_NODE_FUNC_UNINIT) {
-				printf("func (uninit)\n");
+				printf("func (uninit)");
 			} else {
-				printf("func\n");
+				printf("func");
 			}
+
+			printf(" %i (outer %i)\n", node->func.type, node->func.outer_type);
+
+			printf("=========== Func Env ============\n");
+			ast_env_print(ctx->vm, &node->func.env);
+			printf("=================================\n");
 
 			for (size_t i = 0; i < node->func.num_params; i++) {
 				print_indent(depth + 1);
@@ -154,4 +160,34 @@ void
 ast_print(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
 {
 	ast_print_internal(ctx, env, node, 0);
+}
+
+static void
+ast_print_namespace(struct ast_context *ctx, struct ast_env *env,
+		struct ast_namespace *ns, int indent)
+{
+	for (size_t i = 0; i < ns->num_names; i++) {
+		struct ast_module_name *name = &ns->names[i];
+
+		print_indent(indent);
+		printf("%.*s: ", ALIT(name->name));
+
+		switch (name->kind) {
+			case AST_MODULE_NAME_DECL:
+				printf("decl %i\n", name->decl.value);
+				ast_print_internal(ctx, env, name->decl.expr, indent + 1);
+				break;
+
+			case AST_MODULE_NAME_NAMESPACE:
+				printf("ns\n");
+				ast_print_namespace(ctx, env, name->ns, indent+1);
+				break;
+		}
+	}
+}
+
+void
+ast_print_module(struct ast_context *ctx, struct ast_module *mod)
+{
+	ast_print_namespace(ctx, &mod->env, &mod->root, 0);
 }

@@ -107,7 +107,7 @@ ast_object_def_finalize(struct ast_object_def *obj,
 }
 
 static int
-ast_namespace_insert(struct ast_module_namespace *ns,
+ast_namespace_insert(struct ast_namespace *ns,
 		struct ast_module_name value)
 {
 	int new_id = (int)ns->num_names;
@@ -132,7 +132,7 @@ ast_namespace_insert(struct ast_module_namespace *ns,
 
 int
 ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_module_namespace *ns,
+		struct ast_namespace *ns,
 		struct atom *name, struct ast_node *expr)
 {
 	struct ast_module_name value = {0};
@@ -150,14 +150,17 @@ ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
 	return err >= 0 ? 0 : -1;
 }
 
-struct ast_module_namespace *
-ast_namespace_add_ns(struct ast_module_namespace *ns,
+struct ast_namespace *
+ast_namespace_add_ns(struct ast_namespace *ns,
 		struct atom *name)
 {
 	struct ast_module_name value = {0};
 
 	value.kind = AST_MODULE_NAME_NAMESPACE;
-	value.ns = calloc(1, sizeof(struct ast_module_namespace));
+	value.name = name;
+	value.ns = calloc(1, sizeof(struct ast_namespace));
+	value.ns->name = name;
+	value.ns->parent = ns;
 
 	int err;
 	err = ast_namespace_insert(ns, value);
@@ -177,7 +180,7 @@ static struct type_base namespace_type_base = {
 
 static ast_slot_id
 ast_namespace_finalize(struct ast_context *ctx,
-		struct ast_module *mod, struct ast_module_namespace *ns)
+		struct ast_module *mod, struct ast_namespace *ns)
 {
 	ns->def.env.store = mod->env.store;
 
@@ -207,7 +210,8 @@ ast_namespace_finalize(struct ast_context *ctx,
 		ns->def.params[i].type =
 			ast_union_slot(ctx,
 					&ns->def.env, AST_BIND_NEW,
-					&mod->env, ast_env_slot(ctx, &mod->env, ns->names[i].decl.value).type);
+					&mod->env, ast_env_slot(ctx, &mod->env,
+						ast_node_resolve_slot(&ns->def.env, &ns->names[i].decl.value)).type);
 	}
 
 	struct ast_object_arg ns_args[ns->def.num_params];

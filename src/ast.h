@@ -30,18 +30,20 @@ struct ast_array {
 ssize_t
 ast_object_lookup_arg(struct ast_object *obj, struct atom *arg_name);
 
-struct ast_name {
+struct ast_scope_name {
 	struct atom *name;
 	ast_slot_id slot;
 };
 
 struct ast_env;
+struct ast_namespace;
 
 struct ast_scope {
-	struct ast_env *ctx;
+	struct ast_env *env;
+	struct ast_namespace *ns;
 	struct ast_scope *parent;
 
-	struct ast_name *names;
+	struct ast_scope_name *names;
 	size_t num_names;
 };
 
@@ -269,6 +271,9 @@ struct ast_node {
 };
 
 ast_slot_id
+ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot);
+
+ast_slot_id
 ast_node_type(struct ast_context *, struct ast_env *, struct ast_node *);
 
 ast_slot_id
@@ -282,25 +287,25 @@ ast_node_value(struct ast_context *, struct ast_env *, struct ast_node *);
 // the function.
 struct ast_node *
 ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *, struct stg_location,
+		struct ast_node *target, struct stg_location,
 		struct atom **param_names, size_t num_params);
 
 struct ast_node *
 ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *, struct ast_node **params, size_t num_params,
+		struct ast_node *target, struct ast_node **params, size_t num_params,
 		struct ast_node *return_type, struct ast_node *body);
 
 struct ast_node *
 ast_init_node_call(
 		struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *, struct stg_location,
+		struct ast_node *target, struct stg_location,
 		struct ast_node *func,
 		struct ast_func_arg *args, size_t num_args);
 
 struct ast_node *
 ast_init_node_slot(
 		struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *, struct stg_location,
+		struct ast_node *target, struct stg_location,
 		ast_slot_id slot);
 
 void
@@ -315,7 +320,7 @@ enum ast_module_name_kind {
 	AST_MODULE_NAME_NAMESPACE,
 };
 
-struct ast_module_namespace;
+struct ast_namespace;
 
 struct ast_module_name {
 	enum ast_module_name_kind kind;
@@ -325,12 +330,13 @@ struct ast_module_name {
 			struct ast_node *expr;
 			ast_slot_id value;
 		} decl;
-		struct ast_module_namespace *ns;
+		struct ast_namespace *ns;
 	};
 };
 
-struct ast_module_namespace {
+struct ast_namespace {
 	struct atom *name;
+	struct ast_namespace *parent;
 
 	struct ast_module_name *names;
 	size_t num_names;
@@ -341,19 +347,22 @@ struct ast_module_namespace {
 struct ast_module {
 	struct ast_env env;
 
-	struct ast_module_namespace root;
+	struct ast_namespace root;
 };
 
 int
 ast_namespace_add_decl(struct ast_context *, struct ast_module *,
-		struct ast_module_namespace *,
+		struct ast_namespace *,
 		struct atom *name, struct ast_node *expr);
 
-struct ast_module_namespace *
-ast_namespace_add_ns(struct ast_module_namespace *,
+struct ast_namespace *
+ast_namespace_add_ns(struct ast_namespace *,
 		struct atom *name);
 
 ast_slot_id
 ast_module_finalize(struct ast_context *, struct ast_module *);
+
+void
+ast_print_module(struct ast_context *, struct ast_module *);
 
 #endif

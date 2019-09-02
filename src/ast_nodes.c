@@ -4,7 +4,7 @@
 #include "utils.h"
 #include "modules/base/mod.h"
 
-static inline ast_slot_id
+ast_slot_id
 ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot)
 {
 	while (*slot >= 0 && env->slots[*slot].kind == AST_SLOT_SUBST) {
