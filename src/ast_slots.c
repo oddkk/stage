@@ -760,6 +760,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 		} break;
 
 		case AST_SLOT_SUBST:
+#if 0
 			if (src != dest) {
 				printf("src:\n");
 				ast_env_print(ctx->ctx->vm, src);
@@ -767,7 +768,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			}
 			ast_env_print(ctx->ctx->vm, dest);
 			printf("failed bind (%p)%i -> (%p)%i\n", (void *)src, src_slot, (void *)dest, target);
-			panic("SUBST-slot in union (%i -> %i).", src_slot, slot.subst);
+			panic("SUBST-slot in union (%i(%i) -> %i).", src_slot, slot.subst, target);
+#endif
+			return ast_union_slot_internal(ctx, src, slot.subst, dest, target);
 			break;
 	}
 	assert(result != AST_SLOT_NOT_FOUND);
@@ -855,7 +858,9 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 					for (size_t arg_i = 0; arg_i < slot->cons.def->num_params; arg_i++) {
 						if (slot->cons.args[arg_i] == target) {
 #if AST_DEBUG_SUBST
-							printf("  (cons arg on %i) %i -> %i\n", i, slot->cons.args[arg_i], new_slot);
+							printf("  (cons arg %zu '%.*s' on %i) %i -> %i\n",
+									arg_i, ALIT(slot->cons.def->params[arg_i].name), i,
+									slot->cons.args[arg_i], new_slot);
 #endif
 							slot->cons.args[arg_i] = new_slot;
 						}
