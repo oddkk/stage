@@ -428,25 +428,23 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 				AST_NODE_NEW, node->loc,
 				params_decl.names, params_decl.num_members);
 
-		struct ast_env *inner_env = &func->func.env;
-
 		struct ast_node *params[params_decl.num_members];
 		struct ast_node *ret_type = NULL, *body = NULL;
 
 		for (size_t i = 0; i < params_decl.num_members; i++) {
-			params[i] = st_node_visit_expr(ctx, mod, inner_env, scope,
+			params[i] = st_node_visit_expr(ctx, mod, env, scope,
 					params_decl.types[i]);
 		}
 
 		if (ret_type_decl) {
-			ret_type = st_node_visit_expr(ctx, mod, inner_env, scope,
+			ret_type = st_node_visit_expr(ctx, mod, env, scope,
 					ret_type_decl);
 		} else {
 			ret_type = ast_init_node_slot(
-					ctx->ast_ctx, inner_env,
+					ctx->ast_ctx, env,
 					AST_NODE_NEW, node->loc,
 					ast_bind_slot_wildcard(
-						ctx->ast_ctx, inner_env, AST_BIND_NEW, NULL,
+						ctx->ast_ctx, env, AST_BIND_NEW, NULL,
 						AST_SLOT_TYPE));
 		}
 
@@ -454,18 +452,18 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 		func_scope.num_names = params_decl.num_members;
 		struct ast_scope_name tmp_scope_names[func_scope.num_names];
 		func_scope.names = tmp_scope_names;
-		func_scope.env = inner_env;
+		func_scope.env = env;
 
 		for (size_t i = 0; i < func_scope.num_names; i++) {
 			func_scope.names[i].name = params_decl.names[i];
 			func_scope.names[i].slot =
-				ast_node_resolve_slot(inner_env, &func->func.params[i].slot);
+				ast_node_resolve_slot(env, &func->func.params[i].slot);
 		}
 
 		struct st_node *body_decl;
 		body_decl = node->LAMBDA.body;
 
-		body = st_node_visit_expr(ctx, mod, inner_env, &func_scope,
+		body = st_node_visit_expr(ctx, mod, env, &func_scope,
 				body_decl);
 
 		ast_finalize_node_func(ctx->ast_ctx, env, func,

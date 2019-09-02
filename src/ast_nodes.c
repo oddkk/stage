@@ -27,7 +27,6 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 	memset(node, 0, sizeof(struct ast_node));
 	node->kind = AST_NODE_FUNC_UNINIT;
 	node->loc = loc;
-	node->func.env.store = env->store;
 
 	node->func.params = calloc(sizeof(struct ast_func_param), num_params);
 	// memcpy(node->func.params, params, sizeof(struct ast_func_param) * num_params);
@@ -35,37 +34,31 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 
 	ast_slot_id param_types[num_params];
 
-	struct ast_env *inner_env = &node->func.env;
-
 	for (size_t i = 0; i < num_params; i++) {
 		node->func.params[i].slot = ast_bind_slot_param(
-				ctx, inner_env, AST_BIND_NEW,
+				ctx, env, AST_BIND_NEW,
 				param_names[i], i,
 				ast_bind_slot_wildcard(
-					ctx, inner_env, AST_BIND_NEW, NULL, AST_SLOT_TYPE));
+					ctx, env, AST_BIND_NEW, NULL, AST_SLOT_TYPE));
 		param_types[i] = ast_env_slot(
-				ctx, inner_env, node->func.params[i].slot).type;
+				ctx, env, node->func.params[i].slot).type;
 	}
 
 	node->func.return_type_slot = ast_bind_slot_wildcard(
-					ctx, inner_env, AST_BIND_NEW, NULL, AST_SLOT_TYPE);
+					ctx, env, AST_BIND_NEW, NULL, AST_SLOT_TYPE);
 
 	struct ast_object_arg cons_args[] = {
 		{ctx->atoms.func_cons_arg_ret,
 			node->func.return_type_slot},
 		{ctx->atoms.func_cons_arg_params,
 			ast_bind_slot_cons_array(
-					ctx, inner_env, AST_BIND_NEW, NULL,
+					ctx, env, AST_BIND_NEW, NULL,
 					param_types, num_params,
 					AST_SLOT_TYPE)},
 	};
 
-	node->func.type = ast_bind_slot_cons(ctx, inner_env, AST_BIND_NEW,
+	node->func.type = ast_bind_slot_cons(ctx, env, AST_BIND_NEW,
 			NULL, ctx->cons.func, cons_args, ARRAY_LENGTH(cons_args));
-
-	node->func.outer_type = ast_copy_slot(ctx,
-			env, AST_BIND_NEW,
-			inner_env, node->func.type);
 
 	return node;
 }
@@ -89,34 +82,28 @@ ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
 	node->func.body = body;
 	node->func.return_type = return_type;
 
-	struct ast_env *inner_env = &node->func.env;
-
 	if (node->func.return_type) {
-		ast_union_slot(ctx, inner_env,
-				ast_node_type(ctx, inner_env, node->func.body),
-				ast_node_value(ctx, inner_env, node->func.return_type));
+		ast_union_slot(ctx, env,
+				ast_node_type(ctx, env, node->func.body),
+				ast_node_value(ctx, env, node->func.return_type));
 	} else {
-		node->func.return_type = ast_init_node_slot(ctx, inner_env,
+		node->func.return_type = ast_init_node_slot(ctx, env,
 				calloc(sizeof(struct ast_node), 1),
 				node->func.body->loc,
-				ast_node_type(ctx, inner_env, node->func.body));
+				ast_node_type(ctx, env, node->func.body));
 
 	}
 
-	ast_union_slot(ctx, inner_env,
-			ast_node_value(ctx, inner_env, node->func.return_type),
-			ast_node_resolve_slot(inner_env, &node->func.return_type_slot));
+	ast_union_slot(ctx, env,
+			ast_node_value(ctx, env, node->func.return_type),
+			ast_node_resolve_slot(env, &node->func.return_type_slot));
 
 	for (size_t i = 0; i < num_params; i++) {
 		node->func.params[i].type = param_types[i];
-		ast_union_slot(ctx, inner_env,
-				ast_env_slot(ctx, inner_env, node->func.params[i].slot).type,
-				ast_node_type(ctx, inner_env, node->func.params[i].type));
+		ast_union_slot(ctx, env,
+				ast_env_slot(ctx, env, node->func.params[i].slot).type,
+				ast_node_type(ctx, env, node->func.params[i].type));
 	}
-
-	node->func.outer_type = ast_copy_slot(ctx,
-			env, node->func.outer_type,
-			inner_env, node->func.type);
 
 	return node;
 }
@@ -197,7 +184,7 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 	switch (node->kind) {
 		case AST_NODE_FUNC_UNINIT:
 		case AST_NODE_FUNC:
-			return ast_node_resolve_slot(env, &node->func.outer_type);
+			return ast_node_resolve_slot(env, &node->func.type);
 
 		case AST_NODE_CALL: {
 			ast_slot_id func_type;

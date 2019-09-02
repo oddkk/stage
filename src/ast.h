@@ -249,8 +249,6 @@ struct ast_node {
 
 	union {
 		struct {
-			struct ast_env env;
-
 			struct ast_node *body;
 
 			struct ast_func_param *params;
@@ -260,7 +258,6 @@ struct ast_node {
 			ast_slot_id return_type_slot;
 
 			ast_slot_id type;
-			ast_slot_id outer_type;
 		} func;
 
 		struct {

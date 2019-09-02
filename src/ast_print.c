@@ -108,25 +108,21 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 				printf("func");
 			}
 
-			printf(" %i (outer %i)\n", node->func.type, node->func.outer_type);
-
-			printf("=========== Func Env ============\n");
-			ast_env_print(ctx->vm, &node->func.env);
-			printf("=================================\n");
+			printf(" %i\n", node->func.type);
 
 			for (size_t i = 0; i < node->func.num_params; i++) {
 				print_indent(depth + 1);
 				printf("param %li '%.*s' type\n", i, ALIT(node->func.params[i].name));
-				ast_print_internal(ctx, &node->func.env, node->func.params[i].type, depth + 2);
+				ast_print_internal(ctx, env, node->func.params[i].type, depth + 2);
 			}
 
 			print_indent(depth + 1);
 			printf("return type\n");
-			ast_print_internal(ctx, &node->func.env, node->func.return_type, depth + 2);
+			ast_print_internal(ctx, env, node->func.return_type, depth + 2);
 
 			print_indent(depth + 1);
 			printf("body\n");
-			ast_print_internal(ctx, &node->func.env, node->func.body, depth + 2);
+			ast_print_internal(ctx, env, node->func.body, depth + 2);
 			break;
 
 		case AST_NODE_CALL:
