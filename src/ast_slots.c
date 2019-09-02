@@ -353,6 +353,8 @@ ast_bind_slot_free(struct ast_context *ctx,
 struct ast_union_context {
 	struct ast_context *ctx;
 	ast_slot_id *slot_map;
+
+	bool copy_mode;
 };
 
 static ast_slot_id
@@ -600,7 +602,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 		return AST_BIND_FAILED;
 	}
 
-	if (dest == src && target == src_slot) {
+	if (dest == src && target == src_slot && !ctx->copy_mode) {
 #if AST_DEBUG_UNION
 		printf(" -> %i\n", target);
 #endif
@@ -625,7 +627,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 	struct ast_env_slot slot = ast_env_slot(ctx->ctx, src, src_slot);
 
 	ast_slot_id type_target = AST_BIND_NEW;
-	if (target != AST_BIND_NEW) {
+	if (target != AST_BIND_NEW && !ctx->copy_mode) {
 		struct ast_env_slot target_slot = ast_env_slot(ctx->ctx, dest, target);
 
 		type_target = target_slot.type;
@@ -698,13 +700,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 
 			for (size_t i = 0; i < num_args; i++) {
 				args[i].name = slot.cons.def->params[i].name;
-				if (src == dest) {
-					args[i].slot = slot.cons.args[i];
-				} else {
-					args[i].slot = ast_union_slot_internal(ctx,
-							dest, args[i].slot,
-							src, slot.cons.args[i]);
-				}
+				args[i].slot = ast_union_slot_internal(ctx,
+						dest, args[i].slot,
+						src, slot.cons.args[i]);
 			}
 
 			result = ast_bind_slot_cons(
@@ -715,6 +713,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 		case AST_SLOT_CONS_ARRAY: {
 			size_t num_members = slot.cons_array.num_members;
 			ast_slot_id members[num_members];
+			ast_slot_id member_type_slot = AST_BIND_NEW;
 
 			if (target != AST_BIND_NEW) {
 				struct ast_env_slot target_slot;
@@ -724,6 +723,8 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 					for (size_t i = 0; i < num_members; i++) {
 						members[i] = target_slot.cons_array.members[i];
 					}
+
+					member_type_slot = target_slot.cons_array.member_type;
 				}
 			} else {
 				for (size_t i = 0; i < num_members; i++) {
@@ -731,28 +732,16 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 				}
 			}
 
-
 			for (size_t i = 0; i < num_members; i++) {
-				members[i] = AST_BIND_NEW;
-
-				if (src == dest) {
-					members[i] = slot.cons_array.members[i];
-				} else {
-					members[i] = ast_union_slot_internal(ctx,
-							dest, members[i],
-							src, slot.cons_array.members[i]);
-				}
+				members[i] = ast_union_slot_internal(ctx,
+						dest, members[i],
+						src, slot.cons_array.members[i]);
 			}
 
-			ast_slot_id member_type_slot;
 
-			if (src == dest) {
-				member_type_slot = slot.cons_array.member_type;
-			} else {
-				member_type_slot = ast_union_slot_internal(
-						ctx, dest, AST_BIND_NEW,
-						src, slot.cons_array.member_type);
-			}
+			member_type_slot = ast_union_slot_internal(
+					ctx, dest, member_type_slot,
+					src, slot.cons_array.member_type);
 
 			result = ast_bind_slot_cons_array(
 					ctx->ctx, dest, target, slot.name,
@@ -781,7 +770,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 
 	ctx->slot_map[src_slot] = result;
 
-	if (src == dest) {
+	if (src == dest && !ctx->copy_mode) {
 		ast_substitute(ctx->ctx, dest, result, src_slot);
 	}
 
@@ -810,6 +799,27 @@ ast_union_slot(struct ast_context *ctx,
 	struct ast_union_context cpy_ctx = {0};
 	cpy_ctx.ctx = ctx;
 	cpy_ctx.slot_map = slot_map;
+	cpy_ctx.copy_mode = false;
+
+	return ast_union_slot_internal(
+			&cpy_ctx, dest, target, src, src_slot);
+}
+
+ast_slot_id
+ast_copy_slot(struct ast_context *ctx,
+		struct ast_env *dest, ast_slot_id target,
+		struct ast_env *src,  ast_slot_id src_slot)
+{
+	ast_slot_id slot_map[src->num_slots];
+
+	for (size_t i = 0; i < src->num_slots; i++) {
+		slot_map[i] = AST_SLOT_NOT_FOUND;
+	}
+
+	struct ast_union_context cpy_ctx = {0};
+	cpy_ctx.ctx = ctx;
+	cpy_ctx.slot_map = slot_map;
+	cpy_ctx.copy_mode = true;
 
 	return ast_union_slot_internal(
 			&cpy_ctx, dest, target, src, src_slot);
