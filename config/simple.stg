@@ -1,15 +1,14 @@
 id := (a: $T) -> T => a;
 typeof := (a: $T) -> type => T;
 
+asdf := 2 * 4;
+
 foo := (a: int) => id(a) * id(a);
-
 func := (a: int) -> int => 2 * foo(a);
-
 asdf := func(5);
 
 t := typeof(4);
 
 # foo(2) <- bar(3);
-
-assert 2 != 3;
+# assert 2 != 3;
 

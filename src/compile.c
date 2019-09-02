@@ -2,9 +2,8 @@
 #include "syntax_tree.h"
 #include "utils.h"
 #include "dlist.h"
-#include "expr.h"
+#include "ast.h"
 #include "objstore.h"
-#include "scope.h"
 #include "errors.h"
 #include "term_color.h"
 
@@ -84,6 +83,8 @@ struct compile_ctx {
 	struct vm *vm;
 	struct arena *mem;
 
+	struct ast_context *ast_ctx;
+
 	size_t next_job_id;
 	// A measure of how many times jobs have yielded.
 	size_t time;
@@ -150,6 +151,7 @@ dispatch_job(struct compile_ctx *ctx, enum compile_phase_name phase, struct comp
 					 .name = (job_##name##_t){__VA_ARGS__}		\
 				 })
 
+/*
 static struct scope *
 instantiate_scope_by_access_pattern(struct compile_ctx *ctx,
 									struct stg_module *mod,
@@ -195,9 +197,10 @@ instantiate_scope_by_access_pattern(struct compile_ctx *ctx,
 
 	return NULL;
 }
+*/
 
 static void dispatch_stmt(struct compile_ctx *ctx, struct stg_module *mod,
-						  struct scope *parent_scope, struct st_node *stmt)
+						  struct ast_namespace *ns, struct st_node *stmt)
 {
 	assert(stmt->type == ST_NODE_STMT);
 
@@ -211,45 +214,35 @@ static void dispatch_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 
 	switch (node->type) {
 
+		/*
 	case ST_NODE_DECL_STMT:
 		DISPATCH_JOB(ctx, mod, visit_decl_stmt, COMPILE_PHASE_DISCOVER,
-					 .scope = parent_scope,
+					 .scope = scope,
 					 .stmt = node);
 		break;
+		*/
 
 	case ST_NODE_USE_STMT:
+		/*
 		DISPATCH_JOB(ctx, mod, use_stmt, COMPILE_PHASE_DISCOVER,
-					 .scope = parent_scope,
+					 .ns = ns,
 					 .node = node);
+		*/
 		break;
 
 	case ST_NODE_ASSERT_STMT:
+		/*
 		DISPATCH_JOB(ctx, mod, assert_stmt, COMPILE_PHASE_DISCOVER,
-					 .scope = parent_scope,
+					 .ns = ns,
 					 .node = node);
+		*/
 		break;
 
 	case ST_NODE_ASSIGN_STMT:
 		DISPATCH_JOB(ctx, mod, assign_stmt, COMPILE_PHASE_DISCOVER,
-					 .scope = parent_scope,
+					 .ns = ns,
 					 .node = node);
 		break;
-
-	case ST_NODE_BIND:
-		DISPATCH_JOB(ctx, mod, expr_stmt, COMPILE_PHASE_DISCOVER,
-					 .scope = parent_scope,
-					 .node = node);
-		break;
-
-	case ST_NODE_NAMESPACE: {
-		struct scope *ns_scope;
-		ns_scope = instantiate_scope_by_access_pattern(ctx, mod, parent_scope,
-													   node->NAMESPACE.name);
-
-		DISPATCH_JOB(ctx, mod, visit_stmt_list, COMPILE_PHASE_DISCOVER,
-					 .scope = ns_scope,
-					 .first_stmt = node->NAMESPACE.body);
-	} break;
 
 	default:
 		panic("Invalid node '%.*s' as statement.",
@@ -258,124 +251,91 @@ static void dispatch_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 	}
 }
 
-static struct expr_node *
-st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
-					struct expr *expr, struct scope *scope,
-					struct expr_node *lookup_scope,
-					struct expr_func_scope *func_scope,
-					struct st_node *node);
+struct st_tuple_members {
+	struct atom **names;
+	struct st_node **types;
+	size_t num_members;
+};
 
-static struct expr_func_decl_param *
-st_node_tuple_decl_to_params(struct compile_ctx *ctx, struct stg_module *mod,
-							  struct expr *expr, struct scope *scope,
-							  struct st_node *param_tuple,
-							  struct expr_func_scope *func_scope,
-							  size_t *out_num_params)
+static void
+st_node_unpack_tuple_nodes(struct st_node *tuple_node,
+		struct st_tuple_members *out_members)
 {
-	assert(param_tuple->type == ST_NODE_TUPLE_DECL);
+	assert(tuple_node->type == ST_NODE_TUPLE_DECL);
 
-	size_t num_params = 0;
-	struct st_node *param;
-	param = param_tuple->TUPLE_DECL.items;
+	struct st_tuple_members members = {0};
 
-	while (param) {
-		num_params += 1;
-		param = param->next_sibling;
+	for (struct st_node *param = tuple_node->TUPLE_DECL.items;
+			param; param = param->next_sibling) {
+		members.num_members += 1;
 	}
 
-	struct expr_func_decl_param *params;
-	params = calloc(num_params, sizeof(struct expr_func_decl_param));
+	members.names = calloc(members.num_members, sizeof(struct atom *));
+	members.types = calloc(members.num_members, sizeof(struct st_node *));
 
 	size_t i = 0;
-	param = param_tuple->TUPLE_DECL.items;
 
-	while (param) {
-		params[i].name = param->TUPLE_DECL_ITEM.name;
-		params[i].type =
-			st_node_visit_expr(ctx, mod, expr, scope, NULL, func_scope,
-								param->TUPLE_DECL_ITEM.type);
+	for (struct st_node *param = tuple_node->TUPLE_DECL.items;
+			param; param = param->next_sibling) {
+		members.names[i] = param->TUPLE_DECL_ITEM.name;
+		members.types[i] = param->TUPLE_DECL_ITEM.type;
 
 		i += 1;
-		param = param->next_sibling;
 	}
 
-	*out_num_params = num_params;
-	return params;
+	*out_members = members;
 }
 
-
-static int
-st_node_visit_func_proto(struct compile_ctx *ctx, struct stg_module *mod,
-						  struct expr *expr, struct scope *scope,
-						  struct expr_node *lookup_scope,
-						  struct expr_func_scope *func_scope,
-						  struct st_node *proto_node,
-						  size_t *out_num_params,
-						  struct expr_func_decl_param **out_params,
-						  struct expr_node **out_ret)
+static void
+st_node_unpack_func_proto(struct st_node *proto_node,
+		struct st_tuple_members *out_params,
+		struct st_node **out_ret_type)
 {
-	size_t num_params = 0;
-	struct expr_func_decl_param *params = NULL;
-	struct expr_node *ret = NULL;
-
 	if (proto_node) {
 		switch (proto_node->type) {
-		case ST_NODE_FUNC_PROTO: {
-			struct st_node *ret_node;
-			ret_node = proto_node->FUNC_PROTO.ret;
+			case ST_NODE_FUNC_PROTO:
+				st_node_unpack_tuple_nodes(
+						proto_node->FUNC_PROTO.params, out_params);
+				*out_ret_type = proto_node->FUNC_PROTO.ret;
+				break;
 
-			if (ret_node) {
-				ret = st_node_visit_expr(ctx, mod, expr,
-										  scope, NULL, func_scope, ret_node);
-			}
+			case ST_NODE_TUPLE_DECL:
+				st_node_unpack_tuple_nodes(
+						proto_node->FUNC_PROTO.params, out_params);
+				*out_ret_type = NULL;
+				break;
 
-			struct st_node *param_tuple;
-			param_tuple = proto_node->FUNC_PROTO.params;
+			case ST_NODE_IDENT:
+				out_params->num_members = 1;
+				out_params->names = calloc(1, sizeof(struct atom *));
+				out_params->types = calloc(1, sizeof(struct st_node*));
+				out_params->names[0] = proto_node->IDENT;
+				out_params->types[0] = NULL;
+				*out_ret_type = NULL;
+				break;
 
-			params =
-				st_node_tuple_decl_to_params(ctx, mod, expr,
-											  scope, param_tuple,
-											  func_scope, &num_params);
-		} break;
-
-		case ST_NODE_TUPLE_DECL: {
-			params =
-				st_node_tuple_decl_to_params(ctx, mod, expr,
-											  scope, proto_node,
-											  func_scope, &num_params);
-		} break;
-
-		case ST_NODE_IDENT:
-			num_params = 1;
-			params = calloc(1, sizeof(struct expr_func_decl_param));
-			params[0].name = proto_node->IDENT;
-			params[0].type = NULL;
-			break;
-
-		default:
-			panic("Invalid node '%.*s' as function prototype.",
-				  LIT(st_node_names[proto_node->type]));
-			break;
+			default:
+				panic("Invalid node '%.*s' as function prototype.",
+						LIT(st_node_names[proto_node->type]));
+				break;
 		}
+	} else {
+		out_params->names = NULL;
+		out_params->types = NULL;
+		out_params->num_members = 0;
+		*out_ret_type = NULL;
 	}
-
-	*out_num_params = num_params;
-	*out_params = params;
-	*out_ret = ret;
-
-	return 0;
 }
 
-static struct expr_node *
+static struct ast_node *
 st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
-					struct expr *expr, struct scope *scope,
-					struct expr_node *lookup_scope,
-					struct expr_func_scope *func_scope,
+					struct ast_env *env, struct ast_scope *scope,
 					struct st_node *node)
 {
 	switch (node->type) {
 
 	case ST_NODE_ACCESS: {
+		/*
 		struct expr_node *lhs, *rhs;
 
 		lhs = st_node_visit_expr(ctx, mod, expr, scope, lookup_scope,
@@ -384,149 +344,182 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 								  func_scope, node->ACCESS.rhs);
 
 		return rhs;
+		*/
 	} break;
 
 	case ST_NODE_BIN_OP: {
-		struct expr_node
-			*lhs, *rhs, *func,
-			*func_lookup, *local_scope;
-
-		lhs = st_node_visit_expr(ctx, mod, expr, scope, NULL,
-								  func_scope, node->BIN_OP.lhs);
-		rhs = st_node_visit_expr(ctx, mod, expr, scope, NULL,
-								  func_scope, node->BIN_OP.rhs);
-
-		lhs->next_arg = rhs;
+		struct ast_func_arg func_args[] = {
+			{vm_atoms(mod->vm, "lhs"),
+				st_node_visit_expr(ctx, mod, env, scope,
+						node->BIN_OP.lhs)},
+			{vm_atoms(mod->vm, "rhs"),
+				st_node_visit_expr(ctx, mod, env, scope,
+						node->BIN_OP.rhs)},
+		};
 
 		struct atom *op_name;
 		op_name =
 			binop_atom(mod->atom_table,
 					   node->BIN_OP.op);
-		local_scope =
-			expr_scope(mod, expr, node->loc, scope);
-		func_lookup =
-			expr_lookup(mod, expr, node->loc,
-						op_name, local_scope,
-						EXPR_LOOKUP_GLOBAL);
 
-		func = expr_call(mod, expr, node->loc,
-						 func_lookup, lhs);
+		struct ast_node *func;
 
-		return func;
-	} break;
+		// TODO: Lookup.
+
+		func = ast_init_node_slot(ctx->ast_ctx, env,
+				AST_NODE_NEW, node->loc,
+				ast_env_lookup_or_alloc_free(ctx->ast_ctx, env, op_name,
+					ast_bind_slot_wildcard(ctx->ast_ctx, env, AST_BIND_NEW, NULL,
+						AST_SLOT_TYPE)));
+
+		struct ast_node *call;
+		call = ast_init_node_call(ctx->ast_ctx, env,
+				AST_NODE_NEW, node->loc, func,
+				func_args, ARRAY_LENGTH(func_args));
+
+		return call;
+	 }
 
 	case ST_NODE_BIND: {
-		struct expr_node
-			*src, *drain, *func,
-			*func_lookup, *local_scope;
+		struct ast_func_arg func_args[] = {
+			{vm_atoms(mod->vm, "src"),
+				st_node_visit_expr(ctx, mod, env, scope,
+						node->BIN_OP.lhs)},
+			{vm_atoms(mod->vm, "drain"),
+				st_node_visit_expr(ctx, mod, env, scope,
+						node->BIN_OP.rhs)},
+		};
 
-		src = st_node_visit_expr(ctx, mod, expr, scope, NULL,
-								  func_scope, node->BIND.src);
-		drain = st_node_visit_expr(ctx, mod, expr, scope, NULL,
-									func_scope, node->BIND.drain);
+		struct ast_node *func;
 
-		src->next_arg = drain;
+		// TODO: Lookup.
 
 		struct atom *op_name;
-		op_name =
-			binop_atom(mod->atom_table,
-					   ST_OP_BIND);
-		local_scope =
-			expr_scope(mod, expr, node->loc, scope);
-		func_lookup =
-			expr_lookup(mod, expr, node->loc,
-						op_name, local_scope,
-						EXPR_LOOKUP_GLOBAL);
+		op_name = vm_atoms(mod->vm, "op->");
 
-		func = expr_call(mod, expr, node->loc,
-						 func_lookup, src);
+		func = ast_init_node_slot(ctx->ast_ctx, env,
+				AST_NODE_NEW, node->loc,
+				ast_env_lookup_or_alloc_free(ctx->ast_ctx, env, op_name,
+					ast_bind_slot_wildcard(ctx->ast_ctx, env, AST_BIND_NEW, NULL,
+						AST_SLOT_TYPE)));
 
-		return func;
+		struct ast_node *call;
+		call = ast_init_node_call(ctx->ast_ctx, env,
+				AST_NODE_NEW, node->loc, func,
+				func_args, ARRAY_LENGTH(func_args));
+
+
+		return call;
 	} break;
 
 	case ST_NODE_LAMBDA: {
 		struct st_node *proto_node;
 		proto_node = node->LAMBDA.proto;
 
-		size_t num_params = 0;
-		struct expr_func_decl_param *params = NULL;
-		struct expr_node *ret = NULL;
+		struct st_tuple_members params_decl;
+		struct st_node *ret_type_decl;
 
-		struct expr_node *decl_node;
-		decl_node = calloc(1, sizeof(struct expr_node));
+		st_node_unpack_func_proto(proto_node,
+				&params_decl, &ret_type_decl);
 
-		struct expr *func_expr = &decl_node->func_decl.expr;
+		struct ast_node *func;
 
+		func = ast_init_node_func(ctx->ast_ctx, env,
+				AST_NODE_NEW, node->loc,
+				params_decl.names, params_decl.num_members);
 
-		// Resolve the names and params of the params.
-		st_node_visit_func_proto(ctx, mod, func_expr, scope,
-								  NULL, &decl_node->func_decl.scope, proto_node,
-								  &num_params, &params, &ret);
+		struct ast_env *inner_env = &func->func.env;
 
-		struct st_node *body_node;
-		body_node = node->LAMBDA.body;
+		struct ast_node *params[params_decl.num_members];
+		struct ast_node *ret_type = NULL, *body = NULL;
 
-		// We need to prealloc decl_node before we visit its body
-		// because we need a reference to its inner scope
-		// (func_scope). Note that the scope is not yet initialized,
-		// but this should be fine.
+		for (size_t i = 0; i < params_decl.num_members; i++) {
+			params[i] = st_node_visit_expr(ctx, mod, inner_env, scope,
+					params_decl.types[i]);
+		}
 
-		struct expr_node *body;
-		body = st_node_visit_expr(ctx, mod, func_expr, scope,
-								   NULL, &decl_node->func_decl.scope, body_node);
+		if (ret_type_decl) {
+			ret_type = st_node_visit_expr(ctx, mod, inner_env, scope,
+					ret_type_decl);
+		} else {
+			ret_type = ast_init_node_slot(
+					ctx->ast_ctx, inner_env,
+					AST_NODE_NEW, node->loc,
+					ast_bind_slot_wildcard(
+						ctx->ast_ctx, inner_env, AST_BIND_NEW, NULL,
+						AST_SLOT_TYPE));
+		}
 
-		expr_init_func_decl(mod, expr, node->loc, decl_node,
-							params, num_params, ret, body);
-		expr_finalize(mod, func_expr);
+		struct ast_scope func_scope = {0};
+		func_scope.num_names = params_decl.num_members;
+		struct ast_scope_name tmp_scope_names[func_scope.num_names];
+		func_scope.names = tmp_scope_names;
+		func_scope.env = inner_env;
 
-		return decl_node;
+		for (size_t i = 0; i < func_scope.num_names; i++) {
+			func_scope.names[i].name = params_decl.names[i];
+			func_scope.names[i].slot =
+				ast_node_resolve_slot(inner_env, &func->func.params[i].slot);
+		}
+
+		struct st_node *body_decl;
+		body_decl = node->LAMBDA.body;
+
+		body = st_node_visit_expr(ctx, mod, inner_env, &func_scope,
+				body_decl);
+
+		ast_finalize_node_func(ctx->ast_ctx, env, func,
+				params, params_decl.num_members,
+				ret_type, body);
+
+		free(params_decl.names);
+		free(params_decl.types);
+
+		return func;
 	} break;
 
 	case ST_NODE_FUNC_CALL: {
-		struct expr_node *first_arg = NULL, *last_arg = NULL;
 
-		struct st_node *args_tuple;
-		args_tuple = node->FUNC_CALL.params;
-		if (args_tuple) {
-			assert(args_tuple->type == ST_NODE_TUPLE_LIT);
-			assert(!args_tuple->TUPLE_LIT.named);
+		struct ast_node *func;
 
-			struct st_node *arg;
-			arg = args_tuple->TUPLE_LIT.items;
+		func = st_node_visit_expr(ctx, mod, env, scope,
+				node->FUNC_CALL.ident);
 
+		size_t num_args = 0;
 
-			while (arg) {
-				struct expr_node *n;
+		assert(node->FUNC_CALL.params);
+		assert(node->FUNC_CALL.params->type == ST_NODE_TUPLE_LIT);
 
-				n = st_node_visit_expr(ctx, mod, expr,
-										scope, NULL, func_scope,
-										arg->TUPLE_LIT_ITEM.value);
+		struct st_node *args = node->FUNC_CALL.params->TUPLE_LIT.items;
 
-				if (!first_arg) {
-					assert(!last_arg);
-					first_arg = n;
-					last_arg = n;
-				} else {
-					last_arg->next_arg = n;
-					last_arg = n;
-				}
+		for (struct st_node *arg = args;
+				arg != NULL;
+				arg = arg->next_sibling) {
+			num_args += 1;
+		}
 
+		struct ast_func_arg func_args[num_args];
+
+		{
+			struct st_node *arg = args;
+			for (size_t i = 0; i < num_args; i++) {
+				assert(arg != NULL);
+				assert(arg->type == ST_NODE_TUPLE_LIT_ITEM);
+				func_args[i].name = arg->TUPLE_LIT_ITEM.name;
+				func_args[i].value =
+					st_node_visit_expr(ctx, mod, env, scope,
+							arg->TUPLE_LIT_ITEM.value);
 				arg = arg->next_sibling;
 			}
 		}
 
-		struct expr_node *func;
-		func = st_node_visit_expr(ctx, mod, expr,
-								   scope, NULL, func_scope,
-								   node->FUNC_CALL.ident);
-
-		struct expr_node *call;
-		call = expr_call(mod, expr, node->loc, func, first_arg);
-
-		return call;
+		return ast_init_node_call(
+				ctx->ast_ctx, env, AST_NODE_NEW, node->loc,
+				func, func_args, num_args);
 	} break;
 
 	case ST_NODE_TUPLE_DECL: {
+		/*
 		struct expr_node *first_arg = NULL, *last_arg = NULL;
 
 		struct st_node *args_tuple;
@@ -573,60 +566,47 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 		call = expr_call(mod, expr, node->loc, func, first_arg);
 
 		return call;
+		*/
 	} break;
 
 	case ST_NODE_TUPLE_LIT:
-		panic("TODO: Tuple lit");
 		break;
 
 	case ST_NODE_ARRAY_LIT:
-		panic("TODO: Array lit");
 		break;
 
-	case ST_NODE_NUM_LIT:
-		return expr_lit_int(mod, expr, node->loc, node->NUM_LIT);
+	case ST_NODE_NUM_LIT: {
+		struct object obj;
+
+		obj.data = &node->NUM_LIT;
+		obj.type = ctx->ast_ctx->types.integer;
+
+		return ast_init_node_slot(
+				ctx->ast_ctx, env, AST_NODE_NEW, node->loc,
+				ast_bind_slot_const(
+					ctx->ast_ctx, env, AST_BIND_NEW, NULL,
+					register_object(ctx->vm, env->store, obj)));
+	} break;
 
 	case ST_NODE_STR_LIT:
-		return expr_lit_str(mod, expr, node->loc, node->STR_LIT);
-
-	case ST_NODE_IDENT:
-		if (lookup_scope) {
-			return expr_lookup(mod, expr, node->loc,
-							   node->IDENT,
-							   lookup_scope,
-							   EXPR_LOOKUP_LOCAL);
-		} else {
-			struct expr_node *l_scope;
-			if (func_scope) {
-				return expr_lookup_func_scope(mod, expr, node->loc,
-											  node->IDENT,
-											  func_scope);
-			} else {
-				l_scope = expr_scope(mod, expr, node->loc, scope);
-
-				return expr_lookup(mod, expr, node->loc,
-								   node->IDENT, l_scope,
-								   EXPR_LOOKUP_GLOBAL);
-			}
-		}
+		// return expr_lit_str(mod, expr, node->loc, node->STR_LIT);
 		break;
 
-	case ST_NODE_TEMPLATE_VAR: {
-		if (!func_scope) {
-			stg_error(&ctx->err, node->loc,
-					"Template parameters can only be specified insiede functions.");
-			return NULL;
-		}
-		int err;
-		err = expr_func_scope_add_template_param(expr, func_scope, node->TEMPLATE_VAR.name);
-		if (err == -1) {
-			stg_error(&ctx->err, node->loc,
-					"A variable named '%.*s' is already declared in this function.",
-					ALIT(node->TEMPLATE_VAR.name));
-			return NULL;
-		}
-		return expr_lookup_func_scope(mod, expr, node->loc, node->TEMPLATE_VAR.name, func_scope);
-	} break;
+	case ST_NODE_IDENT:
+		return ast_init_node_slot(ctx->ast_ctx, env,
+				AST_NODE_NEW, node->loc,
+				ast_env_lookup_or_alloc_free(ctx->ast_ctx, env, node->IDENT,
+					ast_bind_slot_wildcard(ctx->ast_ctx, env, AST_BIND_NEW, NULL,
+						AST_SLOT_TYPE)));
+
+	case ST_NODE_TEMPLATE_VAR:
+		return ast_init_node_slot(
+				ctx->ast_ctx, env, AST_NODE_NEW, node->loc,
+				ast_bind_slot_templ(ctx->ast_ctx, env, AST_BIND_NEW,
+					node->TEMPLATE_VAR.name,
+					ast_bind_slot_wildcard(
+						ctx->ast_ctx, env, AST_BIND_NEW,
+						NULL, AST_SLOT_TYPE)));
 
 	default:
 		panic("Invalid node '%.*s' in expr.",
@@ -644,6 +624,7 @@ static struct job_status
 job_use_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 			 job_use_stmt_t *data)
 {
+	/*
 	struct st_node *node = data->node;
 	assert(node->type == ST_NODE_USE_STMT);
 	assert(node->USE_STMT.ident->type == ST_NODE_IDENT);
@@ -660,6 +641,7 @@ job_use_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 	}
 
 	stg_error(&ctx->err, data->node->loc, "Could not find module '%.*s'.", ALIT(name));
+	*/
 	return JOB_ERROR;
 }
 
@@ -667,6 +649,7 @@ static struct job_status
 job_visit_decl_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 					job_visit_decl_stmt_t *data)
 {
+	/*
 	struct st_node *node = data->stmt;
 	assert(node->type == ST_NODE_DECL_STMT);
 	assert(node->DECL_STMT.decl != NULL);
@@ -756,6 +739,7 @@ job_visit_decl_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 	entry = &data->scope->entries[data->scope_entry_id];
 	entry->object = new_obj;
 
+	*/
 	return JOB_OK;
 }
 
@@ -771,30 +755,33 @@ job_assign_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assign_stmt
 		struct atom *name;
 
 		name = data->node->ASSIGN_STMT.ident->IDENT;
-		data->scope_entry_id =
-			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
-									  OBJ_UNSET);
 
-		data->expr.outer_scope = data->scope;
+		struct st_node *body_node;
+		body_node = data->node->ASSIGN_STMT.body;
+
+		struct ast_scope expr_scope = {0};
+
+		expr_scope.ns = data->ns;
+
+		struct ast_node *expr;
+		expr = st_node_visit_expr(ctx, mod, &mod->mod.env, &expr_scope, body_node);
 
 		if (data->node->ASSIGN_STMT.type) {
 			panic("TODO: assign stmt type.");
 		}
 
-		struct st_node *body_node;
-		body_node = data->node->ASSIGN_STMT.body;
+		ast_namespace_add_decl(
+				ctx->ast_ctx, &mod->mod,
+				data->ns, name, expr);
 
-		data->expr.body =
-			st_node_visit_expr(ctx, mod, &data->expr, data->scope,
-								NULL, NULL, body_node);
 
-		struct complie_job *job;
-		job = DISPATCH_JOB(ctx, mod, typecheck_expr, COMPILE_PHASE_RESOLVE,
-						   .expr = &data->expr);
+		// TODO: Should the expression be typechecked here or during finalize?
 
-		return JOB_YIELD_FOR(job);
+		return JOB_OK;
 	}
 
+	// TODO: Eval
+	/*
 	struct object obj;
 	int err;
 
@@ -812,6 +799,7 @@ job_assign_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assign_stmt
 
 	entry = &data->scope->entries[data->scope_entry_id];
 	entry->object = new_obj;
+	*/
 
 	return JOB_OK;
 }
@@ -819,6 +807,7 @@ job_assign_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assign_stmt
 static struct job_status
 job_assert_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assert_stmt_t *data)
 {
+	/*
 	assert(data->node->type == ST_NODE_ASSERT_STMT);
 
 	if (!data->initialized) {
@@ -863,57 +852,15 @@ job_assert_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assert_stmt
 	} else {
 		return JOB_OK;
 	}
+	*/
+
+	return JOB_ERROR;
 }
-
-static struct job_status
-job_expr_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_expr_stmt_t *data)
-{
-	struct st_node *expr_node = NULL;
-
-	switch (data->node->type) {
-	case ST_NODE_BIND:
-		expr_node = data->node;
-		break;
-
-	default:
-		panic("Invalid node '%.*s' as expr stmt.",
-			  LIT(st_node_names[data->node->type]));
-		break;
-	}
-
-	assert(expr_node);
-
-	if (!data->initialized) {
-		data->initialized = true;
-
-		data->expr.outer_scope = data->scope;
-
-		data->expr.body =
-			st_node_visit_expr(ctx, mod, &data->expr, data->scope,
-								NULL, NULL, expr_node);
-
-		struct complie_job *job;
-		job = DISPATCH_JOB(ctx, mod, typecheck_expr, COMPILE_PHASE_RESOLVE,
-						   .expr = &data->expr);
-
-		return JOB_YIELD_FOR(job);
-	}
-
-	struct object obj;
-	int err;
-
-	err = expr_eval_simple(ctx->vm, mod, &data->expr, data->expr.body, &obj);
-	if (err) {
-		return JOB_ERROR;
-	}
-
-	return JOB_OK;
-}
-
 
 static struct job_status
 job_typecheck_expr(struct compile_ctx *ctx, struct stg_module *mod, job_typecheck_expr_t *data)
 {
+	/*
 	int err;
 
 	data->expr->mod = mod;
@@ -926,6 +873,9 @@ job_typecheck_expr(struct compile_ctx *ctx, struct stg_module *mod, job_typechec
 	}
 
 	return JOB_OK;
+	*/
+
+	return JOB_ERROR;
 }
 
 int parse_config_file(struct string filename,
@@ -955,7 +905,7 @@ job_parse_file(struct compile_ctx *ctx, struct stg_module *mod,
 	assert(node->type == ST_NODE_MODULE);
 
 	DISPATCH_JOB(ctx, mod, visit_stmt_list, COMPILE_PHASE_DISCOVER,
-				 .scope = data->mod_scope,
+				 .ns = data->ns,
 				 .first_stmt = node->MODULE.body);
 
 	return JOB_OK;
@@ -969,7 +919,7 @@ job_visit_stmt_list(struct compile_ctx *ctx, struct stg_module *mod,
 	while (stmt) {
 		assert(stmt->type == ST_NODE_STMT);
 
-		dispatch_stmt(ctx, mod, data->scope, stmt);
+		dispatch_stmt(ctx, mod, data->ns, stmt);
 		stmt = stmt->next_sibling;
 	}
 
@@ -1000,7 +950,7 @@ discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
 	FTS *ftsp;
 	ftsp = fts_open(paths, FTS_PHYSICAL, NULL);
 
-	struct scope *scope = &mod->root_scope;
+	struct ast_namespace *dir_ns = &mod->mod.root;
 
 	FTSENT *f;
 	while ((f = fts_read(ftsp)) != NULL) {
@@ -1017,40 +967,39 @@ discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
 				// Remove the ".stg" suffix
 				name.length = f->fts_namelen - 4;
 
-				struct atom *atom = atom_create(mod->atom_table, name);
 				struct string file_name = {0};
-				struct scope *mod_scope;
-
 				string_duplicate(&ctx->vm->memory, &file_name, path);
 
-				mod_scope = scope_push(scope);
-				scope_insert(scope, atom, SCOPE_ANCHOR_NONE,
-							 OBJ_NONE, mod_scope);
+				struct atom *atom = vm_atom(ctx->vm, name);
+				struct ast_namespace *file_ns;
+
+				if (atom == vm_atoms(ctx->vm, "mod")) {
+					file_ns = dir_ns;
+				} else {
+					file_ns = ast_namespace_add_ns(dir_ns, atom);
+				}
 
 				DISPATCH_JOB(ctx, mod, parse_file, COMPILE_PHASE_DISCOVER,
-							 .mod_scope = mod_scope,
+							 .ns = file_ns,
 							 .file_name = file_name);
 			}
 		} break;
 
 		case FTS_D:
 			if (f->fts_namelen) {
-				scope = scope_push(scope);
-
 				struct string name;
 				name.text = f->fts_name;
 				name.length = f->fts_namelen;
 
-				struct atom *atom = atom_create(mod->atom_table, name);
+				struct atom *atom = vm_atom(ctx->vm, name);
 
-				scope_insert(scope->parent, atom, SCOPE_ANCHOR_NONE,
-							 OBJ_NONE, scope);
+				dir_ns = ast_namespace_add_ns(dir_ns, atom);
 			}
 			break;
 
 		case FTS_DP:
 			if (f->fts_namelen) {
-				scope = scope->parent;
+				dir_ns = dir_ns->parent;
 			}
 			break;
 
@@ -1214,13 +1163,14 @@ static void compile_exec_job(struct compile_ctx *ctx, struct complie_job *job)
 }
 
 int
-stg_compile(struct vm *vm, struct string initial_module_src_dir)
+stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_module_src_dir)
 {
 	struct compile_ctx ctx = {0};
 
 	ctx.vm = vm;
 	ctx.mem = &vm->memory;
 	ctx.err.string_arena = &vm->memory;
+	ctx.ast_ctx = ast_ctx;
 
 	assert(!vm->err);
 	vm->err = &ctx.err;
@@ -1271,7 +1221,12 @@ stg_compile(struct vm *vm, struct string initial_module_src_dir)
 			   ctx.num_jobs_failed, ctx.err.num_errors);
 	}
 
-	scope_print(vm, &vm->root_scope);
+	// scope_print(vm, &vm->root_scope);
+	printf("\n");
+	ast_print_module(ctx.ast_ctx, &mod->mod);
+
+	printf("\n");
+	ast_env_print(vm, &mod->mod.env);
 
 	vm->err = NULL;
 	return 0;

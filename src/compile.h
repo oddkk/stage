@@ -2,6 +2,7 @@
 #define STAGE_CONFIG_H
 
 #include "vm.h"
+#include "ast.h"
 #include "module.h"
 #include "errors.h"
 
@@ -14,6 +15,6 @@ enum complie_job_type {
 
 extern struct string complie_job_names[COMPILE_JOBS_LEN];
 
-int stg_compile(struct vm *vm, struct string src_dir);
+int stg_compile(struct vm *vm, struct ast_context *, struct string src_dir);
 
 #endif

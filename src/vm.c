@@ -86,6 +86,9 @@ vm_register_module(struct vm *vm, struct stg_module_info *info)
 	scope_insert(&vm->root_scope, atom_create(&vm->atom_table, info->name),
 				 SCOPE_ANCHOR_NONE, OBJ_NONE, &mod->root_scope);
 
+
+	mod->mod.env.store = &mod->store;
+
 	return mod;
 }
 

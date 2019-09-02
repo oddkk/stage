@@ -2,6 +2,7 @@
 #define STAGE_MODULE_H
 
 #include "vm.h"
+#include "ast.h"
 #include "atom.h"
 #include "scope.h"
 #include "objstore.h"
@@ -29,6 +30,8 @@ struct stg_module {
 	struct scope root_scope;
 	struct atom_table *atom_table;
 	struct vm *vm;
+
+	struct ast_module mod;
 
 	void *data;
 };

@@ -111,11 +111,13 @@ int main(int argc, char *argv[])
 	vm_register_module(&vm, &mod_base);
 	vm_register_module(&vm, &mod_channel);
 
+	struct ast_context ctx;
+	ctx = ast_init_context(NULL, &vm.atom_table, &vm,
+			vm.default_types.type,
+			vm.default_types.integer);
+
+	/*
 	{
-		struct ast_context ctx;
-		ctx = ast_init_context(NULL, &vm.atom_table, &vm,
-				vm.default_types.type,
-				vm.default_types.integer);
 
 		struct ast_module test_mod = {{0}};
 		test_mod.env.store = &vm.modules[0]->store;
@@ -200,6 +202,18 @@ int main(int argc, char *argv[])
 		ast_namespace_add_decl(&ctx, &test_mod, &test_mod.root,
 				vm_atoms(&vm, "testDecl"), expr);
 
+		ast_namespace_add_decl(&ctx, &test_mod, &test_mod.root,
+				vm_atoms(&vm, "int"),
+				ast_init_node_slot(&ctx, &test_mod.env, AST_NODE_NEW, STG_NO_LOC,
+					ast_bind_slot_const_type(&ctx, &test_mod.env, AST_BIND_NEW, NULL,
+						vm.default_types.integer)));
+
+		ast_namespace_add_decl(&ctx, &test_mod, &test_mod.root,
+				vm_atoms(&vm, "op+"),
+				ast_init_node_slot(&ctx, &test_mod.env, AST_NODE_NEW, STG_NO_LOC,
+					ast_bind_slot_const_type(&ctx, &test_mod.env, AST_BIND_NEW, NULL,
+						vm.default_types.integer)));
+
 		ast_module_finalize(&ctx, &test_mod);
 
 		printf("outer:\n");
@@ -211,8 +225,9 @@ int main(int argc, char *argv[])
 	}
 
 	return 0;
+	*/
 
-	err = stg_compile(&vm, STR("./config/"));
+	err = stg_compile(&vm, &ctx, STR("./config/"));
 	if (err) {
 		printf("Failed to compile config.\n");
 		return -1;
