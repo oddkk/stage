@@ -44,21 +44,28 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 				ctx, env, node->func.params[i].slot).type;
 	}
 
-	node->func.return_type_slot = ast_bind_slot_wildcard(
-					ctx, env, AST_BIND_NEW, NULL, AST_SLOT_TYPE);
-
-	struct ast_object_arg cons_args[] = {
-		{ctx->atoms.func_cons_arg_ret,
-			node->func.return_type_slot},
-		{ctx->atoms.func_cons_arg_params,
-			ast_bind_slot_cons_array(
-					ctx, env, AST_BIND_NEW, NULL,
-					param_types, num_params,
-					AST_SLOT_TYPE)},
-	};
-
 	node->func.type = ast_bind_slot_cons(ctx, env, AST_BIND_NEW,
-			NULL, ctx->cons.func, cons_args, ARRAY_LENGTH(cons_args));
+			NULL, ctx->cons.func);
+
+	node->func.return_type_slot =
+		ast_unpack_arg_named(ctx, env,
+			node->func.type,
+			ctx->atoms.func_cons_arg_ret);
+
+	node->func.return_type_slot =
+		ast_bind_slot_wildcard(ctx, env,
+				node->func.return_type_slot,
+				NULL, AST_SLOT_TYPE);
+
+	ast_slot_id param_types_slot =
+		ast_unpack_arg_named(ctx, env,
+			node->func.type,
+			ctx->atoms.func_cons_arg_params);
+
+	param_types_slot = ast_bind_slot_cons_array(
+			ctx, env, param_types_slot, NULL,
+			param_types, num_params,
+			AST_SLOT_TYPE);
 
 	return node;
 }
@@ -139,20 +146,22 @@ ast_init_node_call(
 		arg_type_ids[i] = ast_node_type(ctx, env, node->call.args[i].value);
 	}
 
-	struct ast_object_arg cons_args[] = {
-		{ctx->atoms.func_cons_arg_ret,
-			ast_bind_slot_wildcard(
-					ctx, env, AST_BIND_NEW, NULL,
-					AST_SLOT_TYPE)},
-		{ctx->atoms.func_cons_arg_params,
-			ast_bind_slot_cons_array(
-					ctx, env, AST_BIND_NEW, NULL,
-					arg_type_ids, num_args,
-					AST_SLOT_TYPE)},
-	};
+	ast_slot_id func_type = ast_node_type(ctx, env, node->call.func);
+	func_type = ast_bind_slot_cons(ctx, env, func_type, NULL, ctx->cons.func);
 
-	ast_bind_slot_cons(ctx, env, ast_node_type(ctx, env, node->call.func),
-			NULL, ctx->cons.func, cons_args, ARRAY_LENGTH(cons_args));
+	ast_slot_id ret_type = ast_unpack_arg_named(ctx, env,
+				func_type, ctx->atoms.func_cons_arg_ret);
+
+	ret_type = ast_bind_slot_wildcard(ctx, env,
+			ret_type, NULL, AST_SLOT_TYPE);
+
+	ast_slot_id param_types = ast_unpack_arg_named(ctx, env,
+				func_type, ctx->atoms.func_cons_arg_params);
+
+	param_types = ast_bind_slot_cons_array(
+			ctx, env, param_types, NULL,
+			arg_type_ids, num_args,
+			AST_SLOT_TYPE);
 
 	return node;
 }
@@ -205,15 +214,8 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 				return AST_BIND_FAILED;
 			}
 
-			ssize_t ret_type_i = ast_object_lookup_arg(
-					&func_type_slot.cons,
-					ctx->atoms.func_cons_arg_ret);
-
-			if (ret_type_i < 0) {
-				return AST_BIND_FAILED;
-			}
-
-			return func_type_slot.cons.args[ret_type_i];
+			return ast_unpack_arg_named(ctx, env,
+					func_type, ctx->atoms.func_cons_arg_ret);
 		} break;
 
 		case AST_NODE_SLOT:

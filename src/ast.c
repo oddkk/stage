@@ -47,24 +47,25 @@ ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, s
 		struct ast_object_def *func_type_def =
 			ast_object_def_register(&vm->modules[0]->store);
 
-		ast_slot_id func_params_T = ast_bind_slot_templ(
-				&ctx, &func_type_def->env, AST_BIND_NEW,
-				ctx.atoms.array_cons_arg_type, AST_SLOT_TYPE);
-
-		ast_slot_id func_params_N = ast_bind_slot_templ(
-				&ctx, &func_type_def->env, AST_BIND_NEW, ctx.atoms.array_cons_arg_count,
-				ast_bind_slot_const_type(&ctx, &func_type_def->env, AST_BIND_NEW,
-						NULL, integer));
-
-		struct ast_object_arg func_params_args[] = {
-			{ctx.atoms.array_cons_arg_type,  func_params_T},
-			{ctx.atoms.array_cons_arg_count, func_params_N},
-		};
-
 		ast_slot_id func_params_type = ast_bind_slot_cons(
 				&ctx, &func_type_def->env, AST_BIND_NEW,
-				NULL, ctx.cons.array,
-				func_params_args, ARRAY_LENGTH(func_params_args));
+				NULL, ctx.cons.array);
+
+		ast_slot_id func_params_T =
+			ast_unpack_arg_named(&ctx, &func_type_def->env,
+					func_params_type, ctx.atoms.array_cons_arg_type);
+		func_params_T = ast_bind_slot_templ(
+				&ctx, &func_type_def->env, func_params_T,
+				ctx.atoms.array_cons_arg_type, AST_SLOT_TYPE);
+
+		ast_slot_id func_params_N =
+			ast_unpack_arg_named(&ctx, &func_type_def->env,
+					func_params_type, ctx.atoms.array_cons_arg_count);
+		func_params_N = ast_bind_slot_templ(
+				&ctx, &func_type_def->env, func_params_N, ctx.atoms.array_cons_arg_count,
+				ast_bind_slot_const_type(&ctx, &func_type_def->env,
+					ast_env_slot(&ctx, &func_type_def->env, func_params_N).type,
+						NULL, integer));
 
 		struct ast_object_def_param func_type_params[] = {
 			{ctx.atoms.func_cons_arg_ret,    AST_SLOT_TYPE},
@@ -214,18 +215,24 @@ ast_namespace_finalize(struct ast_context *ctx,
 						ast_node_resolve_slot(&ns->def.env, &ns->names[i].decl.value)).type);
 	}
 
-	struct ast_object_arg ns_args[ns->def.num_params];
+	ast_slot_id result;
+
+	result = ast_bind_slot_cons(
+			ctx, &mod->env, AST_BIND_NEW, NULL,
+			&ns->def);
 
 	for (size_t i = 0; i < ns->def.num_params; i++) {
-		ns_args[i].name = ns->names[i].name;
+		ast_slot_id arg;
+
+		arg = ast_unpack_arg_named(ctx, &mod->env,
+				result, ns->names[i].name);
 
 		// TODO: Ensure the value is evaluated.
-		ns_args[i].slot = ns->names[i].decl.value;
+		// TODO: Avoid having to alloc duplicate slots and join them.
+		ast_union_slot(ctx, &mod->env, ns->names[i].decl.value, arg);
 	}
 
-	return ast_bind_slot_cons(
-			ctx, &mod->env, AST_BIND_NEW, NULL,
-			&ns->def, ns_args, ns->def.num_params);
+	return result;
 }
 
 ast_slot_id

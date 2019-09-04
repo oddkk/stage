@@ -5,8 +5,13 @@
 #include "objstore.h"
 
 typedef int32_t ast_slot_id;
-#define AST_SLOT_NOT_FOUND ((ast_slot_id)-2)
 #define AST_SLOT_TYPE ((ast_slot_id)-1)
+#define AST_SLOT_DC ((ast_slot_id)-2)
+#define AST_SLOT_NOT_FOUND ((ast_slot_id)-3)
+
+#define AST_BIND_NEW ((ast_slot_id)-4)
+#define AST_BIND_FAILED ((ast_slot_id)-5)
+
 
 struct ast_object_def;
 
@@ -17,13 +22,15 @@ struct ast_object_arg {
 
 struct ast_object {
 	struct ast_object_def *def;
-	ast_slot_id *args;
+	struct ast_object_arg *args;
+	size_t num_present_args;
 };
 
 struct ast_array {
 	ast_slot_id member_type;
 	ast_slot_id member_count;
 	ast_slot_id *members;
+	size_t num_present_members;
 	size_t num_members;
 };
 
@@ -127,9 +134,6 @@ struct ast_context {
 struct ast_context
 ast_init_context(struct stg_error_context *, struct atom_table *, struct vm *, type_id type, type_id integer);
 
-#define AST_BIND_NEW ((ast_slot_id)-2)
-#define AST_BIND_FAILED ((ast_slot_id)-3)
-
 ast_slot_id
 ast_bind_slot_wildcard(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
@@ -163,17 +167,16 @@ ast_bind_slot_free(struct ast_context *,
 ast_slot_id
 ast_bind_slot_cons(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, struct ast_object_def *,
-		struct ast_object_arg *args, size_t num_args);
-
-ast_slot_id
-ast_cons_arg_slot(struct ast_env *, ast_slot_id,
-		struct atom *arg_name);
+		struct atom *name, struct ast_object_def *);
 
 ast_slot_id
 ast_bind_slot_cons_array(struct ast_context *,
 		struct ast_env *, ast_slot_id target, struct atom *name,
 		ast_slot_id *members, size_t num_members, ast_slot_id member_type);
+
+ast_slot_id
+ast_unpack_arg_named(struct ast_context *,
+		struct ast_env *, ast_slot_id obj, struct atom *name);
 
 ast_slot_id
 ast_union_slot(struct ast_context *, struct ast_env *,

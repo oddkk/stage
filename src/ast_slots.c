@@ -45,8 +45,8 @@ ast_register_integer(struct ast_context *ctx, struct ast_env *env, int64_t value
 ssize_t
 ast_object_lookup_arg(struct ast_object *obj, struct atom *arg_name)
 {
-	for (size_t i = 0; i < obj->def->num_params; i++) {
-		if (obj->def->params[i].name == arg_name) {
+	for (size_t i = 0; i < obj->num_present_args; i++) {
+		if (obj->args[i].name == arg_name) {
 			return i;
 		}
 	}
@@ -363,8 +363,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 ast_slot_id
 ast_bind_slot_cons(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
-		struct atom *name, struct ast_object_def *def,
-		struct ast_object_arg *args, size_t num_args)
+		struct atom *name, struct ast_object_def *def)
 {
 
 	ast_slot_id type_slot = AST_BIND_NEW;
@@ -379,15 +378,26 @@ ast_bind_slot_cons(struct ast_context *ctx,
 			case AST_SLOT_WILDCARD:
 				env->slots[target].kind = AST_SLOT_CONS;
 				env->slots[target].cons.args = NULL;
+				env->slots[target].cons.num_present_args = 0;
 				env->slots[target].cons.def = NULL;
 				type_slot = old_slot.type;
 				break;
 
 			case AST_SLOT_CONS:
-				if (old_slot.cons.def != def) {
+				if (def && old_slot.cons.def != def) {
 					printf("Warning: Attempted to bind CONS of %p over %p. (bind %i)\n",
 							(void *)def, (void *)old_slot.cons.def, target);
 					return AST_BIND_FAILED;
+				} else if (def == old_slot.cons.def) {
+					return target;
+				/*
+				} else if (def && env->slots[target].cons.num_present_args > def->num_params) {
+					printf("Warning: Attempted to bind CONS with %zu parameters to "
+							"CONS with %zu arguments. (bind %i)\n",
+							def->num_params, env->slots[target].cons.num_present_args,
+							target);
+					return AST_BIND_FAILED;
+				*/
 				}
 				type_slot = old_slot.type;
 				break;
@@ -399,24 +409,24 @@ ast_bind_slot_cons(struct ast_context *ctx,
 		}
 	}
 
-	if (num_args != def->num_params) {
-		printf("Warning: Expected %zu parameters, got %zu (bind %i).\n",
-				def->num_params, num_args, target);
-		return AST_BIND_FAILED;
-	}
-
 	ast_slot_id slot_map[def->env.num_slots];
-
-	for (size_t i = 0; i < def->env.num_slots; i++) {
-		slot_map[i] = AST_SLOT_NOT_FOUND;
-	}
-
 	struct ast_union_context cpy_ctx = {0};
-	cpy_ctx.ctx = ctx;
-	cpy_ctx.slot_map = slot_map;
 
-	type_slot = ast_union_slot_internal(
-			&cpy_ctx, env, type_slot, &def->env, def->ret_type);
+	if (def) {
+		for (size_t i = 0; i < def->env.num_slots; i++) {
+			slot_map[i] = AST_SLOT_NOT_FOUND;
+		}
+
+		cpy_ctx.ctx = ctx;
+		cpy_ctx.slot_map = slot_map;
+		cpy_ctx.copy_mode = true;
+
+		type_slot = ast_union_slot_internal(
+				&cpy_ctx, env, type_slot, &def->env, def->ret_type);
+	} else {
+		type_slot = ast_bind_slot_wildcard(
+				ctx, env, type_slot, NULL, AST_SLOT_TYPE);
+	}
 
 	if (target == AST_BIND_NEW) {
 		target = ast_alloc_slot(env, name, type_slot, AST_SLOT_CONS);
@@ -425,43 +435,117 @@ ast_bind_slot_cons(struct ast_context *ctx,
 	}
 
 	env->slots[target].cons.def = def;
-	if (!env->slots[target].cons.args) {
-		env->slots[target].cons.args =
-			calloc(def->num_params, sizeof(ast_slot_id));
-		for (size_t i = 0; i < def->num_params; i++) {
-			env->slots[target].cons.args[i] = AST_BIND_NEW;
+
+#define AST_OBJ_DUPLICATE_CHECK 1
+
+	if (def) {
+		bool valid_params = true;
+
+		// Check that all arguments are valid for the given def.
+		for (size_t arg_i = 0; arg_i < env->slots[target].cons.num_present_args; arg_i++) {
+			bool found = false;
+			struct atom *arg_name = env->slots[target].cons.args[arg_i].name;
+			for (size_t param_i = 0; param_i < def->num_params; param_i++) {
+				if (def->params[param_i].name == arg_name) {
+#if AST_OBJ_DUPLICATE_CHECK
+					if (found) {
+						panic("Duplicate argument '%.*s' to object %p. (bind %i)",
+								ALIT(arg_name), def, target);
+					}
+					found = true;
+#else
+					found = true;
+					break;
+#endif
+				}
+			}
+
+			if (!found) {
+				printf("Object of type %p got invalid argument '%.*s'. (bind %i)\n",
+						(void *)def, ALIT(arg_name), target);
+				valid_params = false;
+			}
 		}
-	}
 
-	for (size_t i = 0; i < def->num_params; i++) {
-		env->slots[target].cons.args[i] =
-			ast_union_slot(ctx, env,
-					env->slots[target].cons.args[i], args[i].slot);
-	}
-
-
-	for (size_t i = 0; i < def->num_params; i++) {
-		ast_slot_id arg_res = ast_union_slot_internal(
-				&cpy_ctx, env,
-				ast_env_slot(ctx, env,
-					env->slots[target].cons.args[i]).type,
-				&def->env, def->params[i].type);
-
-		if (env->slots[target].cons.args[i] >= 0) {
-			env->slots[env->slots[target].cons.args[i]].type = arg_res;
+		if (!valid_params) {
+			printf("Expected ");
+			for (size_t param_i = 0; param_i < def->num_params; param_i++) {
+				if (param_i != 0 && param_i == def->num_params-1) {
+					printf(" and ");
+				} else if (param_i != 0) {
+					printf(", ");
+				}
+				printf("%.*s", ALIT(def->params[param_i].name));
+			}
+			printf("\n");
+			return AST_BIND_FAILED;
 		}
+
+		// Bind the missing arguments.
+		assert(env->slots[target].cons.num_present_args <= def->num_params);
+		struct ast_object_arg *tmp_args =
+			realloc(env->slots[target].cons.args,
+					def->num_params * sizeof(struct ast_object_arg));
+
+		if (!tmp_args) {
+			panic("Failed to realloc object args.");
+			return AST_BIND_FAILED;
+		}
+
+		size_t num_filled_args = env->slots[target].cons.num_present_args;
+
+		env->slots[target].cons.args = tmp_args;
+
+		for (size_t param_i = 0; param_i < def->num_params; param_i++) {
+			struct atom *param_name = def->params[param_i].name;
+
+			bool found = false;
+			size_t arg;
+			for (size_t arg_i = 0; arg_i < num_filled_args; arg_i++) {
+				if (env->slots[target].cons.args[arg_i].name == param_name) {
+					found = true;
+					arg = arg_i;
+					break;
+				}
+			}
+
+			ast_slot_id arg_type_slot = AST_BIND_NEW;
+
+			if (found) {
+				arg_type_slot = ast_env_slot(ctx, env,
+						env->slots[target].cons.args[arg].slot).type;
+			} else {
+				arg = env->slots[target].cons.num_present_args;
+				env->slots[target].cons.num_present_args += 1;
+				assert(env->slots[target].cons.num_present_args <= def->num_params);
+
+				env->slots[target].cons.args[arg].name = param_name;
+				env->slots[target].cons.args[arg].slot = AST_BIND_NEW;
+			}
+
+			arg_type_slot =
+				ast_union_slot_internal(&cpy_ctx,
+						env, arg_type_slot,
+						&def->env, def->params[param_i].type);
+
+			env->slots[target].cons.args[arg].slot =
+				ast_bind_slot_wildcard(ctx, env,
+					env->slots[target].cons.args[arg].slot, NULL, arg_type_slot);
+		}
+
+		assert(env->slots[target].cons.num_present_args == def->num_params);
 	}
 
 #if AST_DEBUG_BINDS
 	{
 		struct ast_env_slot *slot = &env->slots[target];
 		printf("bind %i=Cons(", target);
-		for (size_t j = 0; j < slot->cons.def->num_params; j++) {
+		for (size_t j = 0; j < slot->cons.num_present_args; j++) {
 			if (j != 0)
 				printf(", ");
 			printf("%.*s=%i",
-					ALIT(slot->cons.def->params[j].name),
-					slot->cons.args[j]);
+					ALIT(slot->cons.args[j].name),
+					slot->cons.args[j].slot);
 		}
 		printf(")\n");
 	}
@@ -510,6 +594,26 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 		env->slots[target].kind = AST_SLOT_CONS_ARRAY;
 	}
 
+	env->slots[target].type = ast_bind_slot_cons(
+			ctx, env, env->slots[target].type, NULL,
+			ctx->cons.array);
+
+	ast_slot_id old_member_count = env->slots[target].cons_array.member_count;
+	env->slots[target].cons_array.member_count =
+		ast_unpack_arg_named(ctx, env,
+				env->slots[target].type,
+				ctx->atoms.array_cons_arg_count);
+	assert(old_member_count == AST_BIND_NEW ||
+			old_member_count == env->slots[target].cons_array.member_count);
+
+	ast_slot_id old_member_type = env->slots[target].cons_array.member_type;
+	env->slots[target].cons_array.member_type =
+		ast_unpack_arg_named(ctx, env,
+				env->slots[target].type,
+				ctx->atoms.array_cons_arg_type);
+	assert(old_member_type == AST_BIND_NEW || old_member_type == AST_SLOT_TYPE ||
+			old_member_type == env->slots[target].cons_array.member_type);
+
 	env->slots[target].cons_array.member_count =
 		ast_bind_slot_const(ctx, env, env->slots[target].cons_array.member_count,
 				NULL, ast_register_integer(ctx, env, num_members));
@@ -535,16 +639,6 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 				members[i]);
 	}
 
-	struct ast_object_arg ret_array_args[] = {
-		{ctx->atoms.array_cons_arg_type,  env->slots[target].cons_array.member_type},
-		{ctx->atoms.array_cons_arg_count, env->slots[target].cons_array.member_count},
-	};
-
-	env->slots[target].type = ast_bind_slot_cons(
-			ctx, env, env->slots[target].type, NULL,
-			ctx->cons.array, ret_array_args,
-			ARRAY_LENGTH(ret_array_args));
-
 #if AST_DEBUG_BINDS
 	{
 		struct ast_env_slot *slot = &env->slots[target];
@@ -563,22 +657,46 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 	return target;
 }
 
-
 ast_slot_id
-ast_cons_arg_slot(struct ast_env *env, ast_slot_id slot,
-		struct atom *arg_name)
+ast_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
+		ast_slot_id obj, struct atom *arg_name)
 {
-	assert(slot >= 0 && slot < env->num_slots);
+	struct ast_env_slot slot = ast_env_slot(ctx, env, obj);
 
-	struct ast_object *obj = &env->slots[slot].cons;
-	ssize_t arg_i = ast_object_lookup_arg(obj, arg_name);
-
-	if (arg_i < 0) {
-		return AST_SLOT_NOT_FOUND;
+	if (slot.kind != AST_SLOT_CONS) {
+		return AST_BIND_FAILED;
 	}
 
-	return obj->args[arg_i];
+	// Check that the object does not have an indirection.
+	assert(env->slots[obj].kind == AST_SLOT_CONS);
+
+	for (size_t i = 0; i < slot.cons.num_present_args; i++) {
+		if (slot.cons.args[i].name == arg_name) {
+			return slot.cons.args[i].slot;
+		}
+	}
+
+	if (slot.cons.def) {
+		// If the argument would be present in the object definition, it should
+		// already have been found on the object.
+		return AST_BIND_FAILED;
+	} else {
+		struct ast_object_arg *tmp_args;
+		size_t tmp_num_args = slot.cons.num_present_args + 1;
+		tmp_args = realloc(slot.cons.args, tmp_num_args * sizeof(struct ast_object_arg));
+
+		tmp_args[tmp_num_args - 1].name = arg_name;
+		tmp_args[tmp_num_args - 1].slot = ast_bind_slot_wildcard(
+				ctx, env, AST_BIND_NEW, NULL, ast_bind_slot_wildcard(
+					ctx, env, AST_BIND_NEW, NULL, AST_SLOT_TYPE));
+
+		env->slots[obj].cons.num_present_args = tmp_num_args;
+		env->slots[obj].cons.args = tmp_args;
+
+		return tmp_args[tmp_num_args - 1].slot;
+	}
 }
+
 
 static ast_slot_id
 ast_union_slot_internal(struct ast_union_context *ctx,
@@ -678,36 +796,22 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 					ast_union_slot_internal(ctx, dest, type_target, src, slot.type));
 			break;
 
-		case AST_SLOT_CONS: {
-			size_t num_args = slot.cons.def->num_params;
-			struct ast_object_arg args[num_args];
-
-			if (target != AST_BIND_NEW) {
-				struct ast_env_slot target_slot;
-				target_slot = ast_env_slot(ctx->ctx, dest, target);
-
-				if (target_slot.kind == AST_SLOT_CONS) {
-					for (size_t i = 0; i < num_args; i++) {
-						args[i].slot = target_slot.cons.args[i];
-					}
-				}
-			} else {
-				for (size_t i = 0; i < num_args; i++) {
-					args[i].slot = AST_BIND_NEW;
-				}
-			}
-
-			for (size_t i = 0; i < num_args; i++) {
-				args[i].name = slot.cons.def->params[i].name;
-				args[i].slot = ast_union_slot_internal(ctx,
-						dest, args[i].slot,
-						src, slot.cons.args[i]);
-			}
-
+		case AST_SLOT_CONS:
 			result = ast_bind_slot_cons(
 					ctx->ctx, dest, target, slot.name,
-					slot.cons.def, args, num_args);
-		} break;
+					slot.cons.def);
+
+			for (size_t i = 0; i < slot.cons.num_present_args; i++) {
+				ast_slot_id arg_slot = ast_unpack_arg_named(
+						ctx->ctx, dest, result, slot.cons.args[i].name);
+
+				ast_union_slot_internal(ctx,
+						dest, arg_slot,
+						src, slot.cons.args[i].slot);
+			}
+
+			// TODO: Union type?
+			break;
 
 		case AST_SLOT_CONS_ARRAY: {
 			size_t num_members = slot.cons_array.num_members;
@@ -860,19 +964,15 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 
 		switch (slot->kind) {
 			case AST_SLOT_CONS:
-				if (slot->cons.def) {
-					for (size_t arg_i = 0; arg_i < slot->cons.def->num_params; arg_i++) {
-						if (slot->cons.args[arg_i] == target) {
+				for (size_t arg_i = 0; arg_i < slot->cons.num_present_args; arg_i++) {
+					if (slot->cons.args[arg_i].slot == target) {
 #if AST_DEBUG_SUBST
-							printf("  (cons arg %zu '%.*s' on %i) %i -> %i\n",
-									arg_i, ALIT(slot->cons.def->params[arg_i].name), i,
-									slot->cons.args[arg_i], new_slot);
+						printf("  (cons arg %zu '%.*s' on %i) %i -> %i\n",
+								arg_i, ALIT(slot->cons.args[arg_i].name), i,
+								slot->cons.args[arg_i].slot, new_slot);
 #endif
-							slot->cons.args[arg_i] = new_slot;
-						}
+						slot->cons.args[arg_i].slot = new_slot;
 					}
-				} else {
-					printf("Warning: Slot %i (CONS) missing def.\n", i);
 				}
 				break;
 

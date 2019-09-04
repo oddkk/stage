@@ -49,12 +49,12 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 
 			case AST_SLOT_CONS:
 				printf("Cons(");
-				for (size_t j = 0; j < slot->cons.def->num_params; j++) {
+				for (size_t j = 0; j < slot->cons.num_present_args; j++) {
 					if (j != 0)
 						printf(", ");
 					printf("%.*s=%i",
-							ALIT(slot->cons.def->params[j].name),
-							slot->cons.args[j]);
+							ALIT(slot->cons.args[j].name),
+							slot->cons.args[j].slot);
 				}
 				printf(")");
 				break;
