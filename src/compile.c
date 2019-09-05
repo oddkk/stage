@@ -199,7 +199,7 @@ instantiate_scope_by_access_pattern(struct compile_ctx *ctx,
 }
 */
 
-static void dispatch_stmt(struct compile_ctx *ctx, struct stg_module *mod,
+static void visit_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 						  struct ast_namespace *ns, struct st_node *stmt)
 {
 	assert(stmt->type == ST_NODE_STMT);
@@ -214,20 +214,7 @@ static void dispatch_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 
 	switch (node->type) {
 
-		/*
-	case ST_NODE_DECL_STMT:
-		DISPATCH_JOB(ctx, mod, visit_decl_stmt, COMPILE_PHASE_DISCOVER,
-					 .scope = scope,
-					 .stmt = node);
-		break;
-		*/
-
 	case ST_NODE_USE_STMT:
-		/*
-		DISPATCH_JOB(ctx, mod, use_stmt, COMPILE_PHASE_DISCOVER,
-					 .ns = ns,
-					 .node = node);
-		*/
 		break;
 
 	case ST_NODE_ASSIGN_STMT:
@@ -241,129 +228,6 @@ static void dispatch_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 				LIT(st_node_names[node->type]));
 		break;
 	}
-}
-
-static struct job_status
-job_use_stmt(struct compile_ctx *ctx, struct stg_module *mod,
-			 job_use_stmt_t *data)
-{
-	/*
-	struct st_node *node = data->node;
-	assert(node->type == ST_NODE_USE_STMT);
-	assert(node->USE_STMT.ident->type == ST_NODE_IDENT);
-
-	struct atom *name = node->USE_STMT.ident->IDENT;
-	for (size_t i = 0; i < mod->vm->num_modules; i++) {
-		struct atom *modname =
-			atom_create(mod->atom_table,
-						mod->vm->modules[i]->info.name);
-		if (modname == name) {
-			scope_use(&mod->root_scope, &mod->vm->modules[i]->root_scope);
-			return JOB_OK;
-		}
-	}
-
-	stg_error(&ctx->err, data->node->loc, "Could not find module '%.*s'.", ALIT(name));
-	*/
-	return JOB_ERROR;
-}
-
-static struct job_status
-job_visit_decl_stmt(struct compile_ctx *ctx, struct stg_module *mod,
-					job_visit_decl_stmt_t *data)
-{
-	/*
-	struct st_node *node = data->stmt;
-	assert(node->type == ST_NODE_DECL_STMT);
-	assert(node->DECL_STMT.decl != NULL);
-
-	if (!data->initialized) {
-		data->initialized = true;
-
-		struct atom *name;
-
-		assert(node->DECL_STMT.name->type == ST_NODE_IDENT);
-		name = node->DECL_STMT.name->IDENT;
-		data->scope_entry_id =
-			scope_insert_overloadable(data->scope, name, SCOPE_ANCHOR_ABSOLUTE,
-									  OBJ_UNSET);
-
-		size_t num_params = 0;
-		struct expr_func_decl_param *params = NULL;
-
-		struct expr_node *decl_node = NULL;
-		struct expr_func_scope *func_scope = NULL;
-		struct expr *func_expr = &data->expr;
-
-		if (node->DECL_STMT.args) {
-			decl_node = calloc(1, sizeof(struct expr_node));
-			func_scope = &decl_node->func_decl.scope;
-			func_expr = &decl_node->func_decl.expr;
-			params =
-				st_node_tuple_decl_to_params(ctx, mod, func_expr,
-											  data->scope, node->DECL_STMT.args,
-											  func_scope, &num_params);
-
-		}
-
-		// We need to prealloc decl_node before we visit its body
-		// because we need a reference to its inner scope
-		// (func_scope). Note that the scope is not yet initialized,
-		// but this should be fine.
-
-		struct st_node *body_node;
-		body_node = node->DECL_STMT.decl;
-
-		struct expr_node *body;
-		body = st_node_visit_expr(ctx, mod, func_expr, data->scope,
-								   NULL, func_scope, body_node);
-
-		if (params) {
-			data->expr.body =
-				expr_init_func_decl(mod, func_expr, node->loc, decl_node,
-									params, num_params, NULL, body);
-
-			expr_finalize(mod, func_expr);
-			expr_bind_type(mod, func_expr,
-						   data->expr.body->rule.abs.ret,
-						   ctx->vm->default_types.type);
-
-			expr_finalize(mod, &data->expr);
-		} else {
-			data->expr.body = body;
-			expr_finalize(mod, func_expr);
-			expr_bind_type(mod, func_expr,
-						   data->expr.body->rule.out,
-						   ctx->vm->default_types.type);
-		}
-
-		struct complie_job *decl_job;
-		decl_job = DISPATCH_JOB(ctx, mod, typecheck_expr, COMPILE_PHASE_RESOLVE,
-								.expr = &data->expr);
-
-		return JOB_YIELD_FOR(decl_job);
-	}
-
-	struct expr *expr;
-	expr = calloc(1, sizeof(struct expr));
-	*expr = data->expr;
-
-	struct object obj;
-
-	expr_eval_simple(mod->vm, mod, expr, expr->body, &obj);
-
-	// NOTE: The object has to be registered right after the eval,
-	// otherwise the object might get overwritten on the arena.
-	struct object new_obj =
-		register_object(mod->vm, &mod->store, obj);
-
-	struct scope_entry *entry;
-
-	entry = &data->scope->entries[data->scope_entry_id];
-	entry->object = new_obj;
-
-	*/
-	return JOB_OK;
 }
 
 static struct job_status
@@ -423,27 +287,6 @@ job_assign_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assign_stmt
 	return JOB_OK;
 }
 
-static struct job_status
-job_typecheck_expr(struct compile_ctx *ctx, struct stg_module *mod, job_typecheck_expr_t *data)
-{
-	/*
-	int err;
-
-	data->expr->mod = mod;
-	err = expr_typecheck(mod, data->expr);
-
-	if (err < 0) {
-		return JOB_ERROR;
-	} else if (err > 0) {
-		return JOB_YIELD;
-	}
-
-	return JOB_OK;
-	*/
-
-	return JOB_ERROR;
-}
-
 int parse_config_file(struct string filename,
 					  struct atom_table *table,
 					  struct arena *memory,
@@ -470,22 +313,11 @@ job_parse_file(struct compile_ctx *ctx, struct stg_module *mod,
 	assert(node);
 	assert(node->type == ST_NODE_MODULE);
 
-	DISPATCH_JOB(ctx, mod, visit_stmt_list, COMPILE_PHASE_DISCOVER,
-				 .ns = data->ns,
-				 .first_stmt = node->MODULE.body);
-
-	return JOB_OK;
-}
-
-static struct job_status
-job_visit_stmt_list(struct compile_ctx *ctx, struct stg_module *mod,
-					job_visit_stmt_list_t *data)
-{
-	struct st_node *stmt = data->first_stmt;
+	struct st_node *stmt = node->MODULE.body;
 	while (stmt) {
 		assert(stmt->type == ST_NODE_STMT);
 
-		dispatch_stmt(ctx, mod, data->ns, stmt);
+		visit_stmt(ctx, mod, data->ns, stmt);
 		stmt = stmt->next_sibling;
 	}
 

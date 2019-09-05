@@ -7,25 +7,6 @@ COMPILE_JOB(parse_file, struct {
 	struct ast_namespace *ns;
 })
 
-COMPILE_JOB(visit_stmt_list, struct {
-	struct ast_namespace *ns;
-	struct st_node *first_stmt;
-})
-
-COMPILE_JOB(use_stmt, struct {
-	struct ast_namespace *ns;
-	struct st_node *node;
-})
-
-COMPILE_JOB(visit_decl_stmt, struct {
-	struct ast_namespace *ns;
-	struct st_node *stmt;
-
-	int scope_entry_id;
-	bool initialized;
-	struct ast_env env;
-})
-
 COMPILE_JOB(assign_stmt, struct {
 	struct ast_namespace *ns;
 	struct st_node *node;
@@ -33,10 +14,5 @@ COMPILE_JOB(assign_stmt, struct {
 	int scope_entry_id;
 	bool initialized;
 	struct ast_env env;
-	struct ast_node *expr;
-})
-
-COMPILE_JOB(typecheck_expr, struct {
-	struct ast_env *env;
 	struct ast_node *expr;
 })
