@@ -152,13 +152,8 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 
 		struct ast_node *func;
 
-		// TODO: Lookup.
-
-		func = ast_init_node_slot(ctx, env,
-				AST_NODE_NEW, node->loc,
-				ast_env_lookup_or_alloc_free(ctx, env, op_name,
-					ast_bind_slot_wildcard(ctx, env, AST_BIND_NEW, NULL,
-						AST_SLOT_TYPE)));
+		func = ast_init_node_lookup(ctx, env,
+				AST_NODE_NEW, node->loc, op_name, AST_BIND_NEW);
 
 		struct ast_node *call;
 		call = ast_init_node_call(ctx, env,
@@ -185,11 +180,8 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		struct atom *op_name;
 		op_name = vm_atoms(mod->vm, "op->");
 
-		func = ast_init_node_slot(ctx, env,
-				AST_NODE_NEW, node->loc,
-				ast_env_lookup_or_alloc_free(ctx, env, op_name,
-					ast_bind_slot_wildcard(ctx, env, AST_BIND_NEW, NULL,
-						AST_SLOT_TYPE)));
+		func = ast_init_node_lookup(ctx, env,
+				AST_NODE_NEW, node->loc, op_name, AST_BIND_NEW);
 
 		struct ast_node *call;
 		call = ast_init_node_call(ctx, env,
@@ -362,11 +354,8 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		break;
 
 	case ST_NODE_IDENT:
-		return ast_init_node_slot(ctx, env,
-				AST_NODE_NEW, node->loc,
-				ast_env_lookup_or_alloc_free(ctx, env, node->IDENT,
-					ast_bind_slot_wildcard(ctx, env, AST_BIND_NEW, NULL,
-						AST_SLOT_TYPE)));
+		return ast_init_node_lookup(ctx, env,
+				AST_NODE_NEW, node->loc, node->IDENT, AST_BIND_NEW);
 
 	case ST_NODE_TEMPLATE_VAR:
 		return ast_init_node_slot(

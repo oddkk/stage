@@ -46,10 +46,14 @@ struct ast_env;
 struct ast_namespace;
 
 struct ast_scope {
-	struct ast_env *env;
-	struct ast_namespace *ns;
+	// Used for multiple scopes within a single expression.
 	struct ast_scope *parent;
+	// Used for resolving closures from parent functions.
+	struct ast_scope *parent_func;
+	// Used for looking up objects from outside the expression.
+	struct ast_scope *parent_ns;
 
+	ast_slot_id object;
 	struct ast_scope_name *names;
 	size_t num_names;
 };
@@ -93,9 +97,6 @@ struct ast_env_slot {
 };
 
 struct ast_env {
-	struct ast_scope *parent_scope;
-	struct ast_scope *scope;
-
 	struct ast_env_slot *slots;
 	size_t num_slots;
 
@@ -229,6 +230,7 @@ enum ast_node_kind {
 	AST_NODE_FUNC,
 	AST_NODE_CALL,
 	AST_NODE_SLOT,
+	AST_NODE_LOOKUP,
 
 	AST_NODE_FUNC_UNINIT,
 };
@@ -271,6 +273,11 @@ struct ast_node {
 		} call;
 
 		ast_slot_id slot;
+
+		struct {
+			struct atom *name;
+			ast_slot_id slot;
+		} lookup;
 	};
 };
 
@@ -311,6 +318,12 @@ ast_init_node_slot(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location,
 		ast_slot_id slot);
+
+struct ast_node *
+ast_init_node_lookup(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location,
+		struct atom *name, ast_slot_id slot);
 
 void
 ast_node_substitute_slot(struct ast_node *,

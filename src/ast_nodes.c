@@ -187,6 +187,29 @@ ast_init_node_slot(
 	return node;
 }
 
+struct ast_node *
+ast_init_node_lookup(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, struct stg_location loc,
+		struct atom *name, ast_slot_id slot)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(node);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_LOOKUP;
+	node->loc = loc;
+
+	node->lookup.name = name;
+	node->lookup.slot = ast_bind_slot_wildcard(
+			ctx, env, slot, NULL, AST_BIND_NEW);
+
+	return node;
+}
+
 ast_slot_id
 ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
 {
@@ -221,6 +244,10 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 		case AST_NODE_SLOT:
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->slot)).type;
+
+		case AST_NODE_LOOKUP:
+			return ast_env_slot(ctx, env,
+					ast_node_resolve_slot(env, &node->lookup.slot)).type;
 	}
 
 	panic("Invalid ast node.");
@@ -234,11 +261,69 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 		case AST_NODE_SLOT:
 			return ast_node_resolve_slot(env, &node->slot);
 
-		default:
+		case AST_NODE_LOOKUP:
+			return ast_node_resolve_slot(env, &node->lookup.slot);
+
+		case AST_NODE_FUNC:
+		case AST_NODE_CALL:
 			panic("TODO: eval");
+			break;
+
+		case AST_NODE_FUNC_UNINIT:
+			panic("Attempted to resolve value of uninitialized func.");
 			break;
 	}
 
 	panic("Invalid ast node.");
 	return AST_BIND_FAILED;
+}
+
+void
+ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+		struct ast_scope *scope, struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_FUNC_UNINIT:
+			panic("Encountered uninitialized func node while resolving names.");
+			break;
+
+		case AST_NODE_FUNC:
+			{
+				struct ast_scope func_scope = {0};
+
+				func_scope.parent = NULL;
+				func_scope.parent_func = scope;
+				func_scope.parent_ns = scope->parent_ns;
+
+				func_scope.object = AST_SLOT_NOT_FOUND;
+				func_scope.num_names = node->func.num_params;
+				func_scope.names = calloc(
+						func_scope.num_names, sizeof(struct ast_scope_name));
+
+				for (size_t i = 0; i < func_scope.num_names; i++) {
+					func_scope.names[i].name = node->func.params[i].name;
+					func_scope.names[i].slot = node->func.params[i].slot;
+				}
+
+				for (size_t i = 0; i < func_scope.num_names; i++) {
+					ast_node_resolve_names(ctx, env, scope, node->func.params[i].type);
+				}
+
+				ast_node_resolve_names(ctx, env, scope, node->func.return_type);
+			}
+			break;
+
+		case AST_NODE_CALL:
+			ast_node_resolve_names(ctx, env, scope, node->call.func);
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				ast_node_resolve_names(ctx, env, scope, node->call.args[i].value);
+			}
+			break;
+
+		case AST_NODE_SLOT:
+			break;
+
+		case AST_NODE_LOOKUP:
+			break;
+	}
 }

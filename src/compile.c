@@ -93,10 +93,6 @@ struct compile_ctx {
 	enum compile_phase_name current_phase;
 	struct compile_phase phases[COMPILE_NUM_PHASES];
 
-	// struct string *file_names;
-	// size_t num_files;
-
-	// size_t num_errors;
 	size_t num_jobs_failed;
 
 	struct stg_error_context err;
@@ -150,54 +146,6 @@ dispatch_job(struct compile_ctx *ctx, enum compile_phase_name phase, struct comp
 					 .mod = _mod,								\
 					 .name = (job_##name##_t){__VA_ARGS__}		\
 				 })
-
-/*
-static struct scope *
-instantiate_scope_by_access_pattern(struct compile_ctx *ctx,
-									struct stg_module *mod,
-									struct scope *parent,
-									struct st_node *node)
-{
-	switch (node->type) {
-	case ST_NODE_ACCESS: {
-		struct scope *scope;
-
-		scope = instantiate_scope_by_access_pattern(ctx, mod,parent, node->ACCESS.lhs);
-		if (!scope) {
-			return NULL;
-		}
-
-		return instantiate_scope_by_access_pattern(ctx, mod,scope, node->ACCESS.rhs);
-	} break;
-
-	case ST_NODE_IDENT: {
-		struct scope *scope;
-		struct scope_entry entry;
-
-		if (scope_local_lookup(parent, node->IDENT, &entry) == 0) {
-			if (entry.anchor != SCOPE_ANCHOR_NONE || !entry.scope) {
-				stg_error(&ctx->err, node->loc,
-					"'%.*s' already exists, and is not a namespace.",
-					ALIT(node->IDENT)
-				);
-				return NULL;
-			}
-		}
-
-		scope = scope_push(parent);
-		scope_insert(parent, node->IDENT, SCOPE_ANCHOR_NONE,
-					 OBJ_NONE, scope);
-		return scope;
-	} break;
-
-	default:
-		panic("Invalid node in access pattern.");
-		break;
-	}
-
-	return NULL;
-}
-*/
 
 static void visit_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 						  struct ast_namespace *ns, struct st_node *stmt)

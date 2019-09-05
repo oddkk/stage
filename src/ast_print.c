@@ -149,6 +149,15 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			print_slot(env, ast_node_type(ctx, env, node));
 			printf("\n");
 			break;
+
+		case AST_NODE_LOOKUP:
+			print_indent(depth);
+			printf("lookup '%.*s' ", ALIT(node->lookup.name));
+			print_slot(env, node->lookup.slot);
+			printf(": ");
+			print_slot(env, ast_node_type(ctx, env, node));
+			printf("\n");
+			break;
 	}
 }
 

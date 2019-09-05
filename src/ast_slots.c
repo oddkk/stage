@@ -105,7 +105,13 @@ ast_bind_slot_wildcard(struct ast_context *ctx,
 		struct atom *name, ast_slot_id type)
 {
 	if (target == AST_BIND_NEW) {
+		if (type == AST_BIND_NEW) {
+			type = ast_bind_slot_wildcard(ctx, env, AST_BIND_NEW,
+					NULL, AST_SLOT_TYPE);
+		}
 		target = ast_alloc_slot(env, name, type, AST_SLOT_WILDCARD);
+	} else {
+		ast_union_slot(ctx, env, ast_env_slot(ctx, env, target).type, type);
 	}
 
 #if AST_DEBUG_BINDS
@@ -696,7 +702,6 @@ ast_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 		return tmp_args[tmp_num_args - 1].slot;
 	}
 }
-
 
 static ast_slot_id
 ast_union_slot_internal(struct ast_union_context *ctx,
