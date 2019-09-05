@@ -193,4 +193,13 @@ extern struct string st_node_names[ST_NODES_LEN];
 void st_print(struct st_node *node);
 void st_clean(struct st_node **tree);
 
+struct ast_node;
+struct ast_env;
+struct ast_context;
+struct stg_module;
+
+struct ast_node *
+st_node_visit_expr(struct ast_context *, struct stg_module *,
+					struct ast_env *, struct st_node *);
+
 #endif
