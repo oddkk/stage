@@ -217,74 +217,30 @@ static void visit_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 	case ST_NODE_USE_STMT:
 		break;
 
-	case ST_NODE_ASSIGN_STMT:
-		DISPATCH_JOB(ctx, mod, assign_stmt, COMPILE_PHASE_DISCOVER,
-					 .ns = ns,
-					 .node = node);
-		break;
+	case ST_NODE_ASSIGN_STMT: {
+		struct atom *name;
+
+		name = node->ASSIGN_STMT.ident->IDENT;
+
+		struct st_node *body_node;
+		body_node = node->ASSIGN_STMT.body;
+
+		struct ast_node *expr;
+		expr = st_node_visit_expr(ctx->ast_ctx, mod, &mod->mod.env, body_node);
+
+		if (node->ASSIGN_STMT.type) {
+			panic("TODO: assign stmt type.");
+		}
+
+		ast_namespace_add_decl(
+				ctx->ast_ctx, &mod->mod, ns, name, expr);
+	} break;
 
 	default:
 		panic("Invalid node '%.*s' as statement.",
 				LIT(st_node_names[node->type]));
 		break;
 	}
-}
-
-static struct job_status
-job_assign_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assign_stmt_t *data)
-{
-	assert(data->node->type == ST_NODE_ASSIGN_STMT);
-	assert(data->node->ASSIGN_STMT.ident->type == ST_NODE_IDENT);
-
-	if (!data->initialized) {
-		data->initialized = true;
-
-		struct atom *name;
-
-		name = data->node->ASSIGN_STMT.ident->IDENT;
-
-		struct st_node *body_node;
-		body_node = data->node->ASSIGN_STMT.body;
-
-		struct ast_node *expr;
-		expr = st_node_visit_expr(ctx->ast_ctx, mod, &mod->mod.env, body_node);
-
-		if (data->node->ASSIGN_STMT.type) {
-			panic("TODO: assign stmt type.");
-		}
-
-		ast_namespace_add_decl(
-				ctx->ast_ctx, &mod->mod,
-				data->ns, name, expr);
-
-
-		// TODO: Should the expression be typechecked here or during finalize?
-
-		return JOB_OK;
-	}
-
-	// TODO: Eval
-	/*
-	struct object obj;
-	int err;
-
-	err = expr_eval_simple(ctx->vm, mod, &data->expr, data->expr.body, &obj);
-	if (err) {
-		return JOB_ERROR;
-	}
-
-	// NOTE: The object has to be registered right after the eval,
-	// otherwise the object might get overwritten on the arena.
-	struct object new_obj =
-		register_object(mod->vm, &mod->store, obj);
-
-	struct scope_entry *entry;
-
-	entry = &data->scope->entries[data->scope_entry_id];
-	entry->object = new_obj;
-	*/
-
-	return JOB_OK;
 }
 
 int parse_config_file(struct string filename,
