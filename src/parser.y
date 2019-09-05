@@ -125,11 +125,11 @@ struct YYLTYPE
 
 %token END 0
 %token IDENTIFIER NUMLIT STRINGLIT
-%token NAMESPACE "namespace" ENUM "Enum" USE "use" ASSERT "assert"
+%token NAMESPACE "namespace" ENUM "Enum" USE "use"
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>"
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit assert_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt
 
 
 %type <struct atom *> IDENTIFIER
@@ -171,7 +171,6 @@ stmt:			stmt1					{ $$ = MKNODE(STMT, .stmt=$1); }
 
 stmt1:			';'                     { $$ = NULL; }
 		|		use_stmt    ';'         { $$ = $1; }
-		|		assert_stmt ';'         { $$ = $1; }
 		|		assign_stmt ';'         { $$ = $1; }
 		|		expr        ';'         { $$ = $1; }
 		|		error       ';'         { $$ = NULL; }
@@ -236,9 +235,6 @@ use_expr:		use_expr1                  { $$ = $1; }
 
 use_expr1:		use_expr1 '.' ident        { $$ = MKNODE(ACCESS, .lhs=$1, .rhs=$3); }
 		|		ident                      { $$ = $1; }
-		;
-
-assert_stmt:	"assert" expr              { $$ = MKNODE(ASSERT_STMT, .expr=$2); }
 		;
 
 /*
@@ -387,7 +383,6 @@ re2c:define:YYFILL:naked = 1;
 "Enum"        { lloc_col(ctx, lloc, CURRENT_LEN); return ENUM; }
 "namespace"   { lloc_col(ctx, lloc, CURRENT_LEN); return NAMESPACE; }
 "use"         { lloc_col(ctx, lloc, CURRENT_LEN); return USE; }
-"assert"      { lloc_col(ctx, lloc, CURRENT_LEN); return ASSERT; }
 ".."          { lloc_col(ctx, lloc, CURRENT_LEN); return RANGE; }
 /* "..."         { lloc_col(ctx, lloc, CURRENT_LEN); return ELLIPSIS; } */
 "<-"          { lloc_col(ctx, lloc, CURRENT_LEN); return BIND_LEFT; }

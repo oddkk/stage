@@ -230,14 +230,6 @@ static void dispatch_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 		*/
 		break;
 
-	case ST_NODE_ASSERT_STMT:
-		/*
-		DISPATCH_JOB(ctx, mod, assert_stmt, COMPILE_PHASE_DISCOVER,
-					 .ns = ns,
-					 .node = node);
-		*/
-		break;
-
 	case ST_NODE_ASSIGN_STMT:
 		DISPATCH_JOB(ctx, mod, assign_stmt, COMPILE_PHASE_DISCOVER,
 					 .ns = ns,
@@ -429,59 +421,6 @@ job_assign_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assign_stmt
 	*/
 
 	return JOB_OK;
-}
-
-static struct job_status
-job_assert_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assert_stmt_t *data)
-{
-	/*
-	assert(data->node->type == ST_NODE_ASSERT_STMT);
-
-	if (!data->initialized) {
-		data->initialized = true;
-
-		data->expr.outer_scope = data->scope;
-
-		struct st_node *body_node;
-		body_node = data->node->ASSERT_STMT.expr;
-
-		data->expr.body =
-			st_node_visit_expr(ctx, mod, &data->expr,
-								NULL, NULL, body_node);
-
-		expr_finalize(mod, &data->expr);
-		expr_bind_type(mod, &data->expr,
-					   data->expr.body->rule.out,
-					   ctx->vm->default_types.boolean);
-
-		struct complie_job *job;
-		job = DISPATCH_JOB(ctx, mod, typecheck_expr, COMPILE_PHASE_RESOLVE,
-						   .expr = &data->expr);
-
-		return JOB_YIELD_FOR(job);
-	}
-
-	struct object obj;
-	int err;
-
-	err = expr_eval_simple(ctx->vm, mod, &data->expr, data->expr.body, &obj);
-	if (err) {
-		return JOB_ERROR;
-	}
-
-	assert(obj.type == ctx->vm->default_types.boolean);
-
-	int64_t value = *(int64_t *)obj.data;
-
-	if (value == 0) {
-		stg_error(&ctx->err, data->node->loc, "Assertion failed.");
-		return JOB_ERROR;
-	} else {
-		return JOB_OK;
-	}
-	*/
-
-	return JOB_ERROR;
 }
 
 static struct job_status

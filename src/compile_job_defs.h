@@ -36,15 +36,6 @@ COMPILE_JOB(assign_stmt, struct {
 	struct ast_node *expr;
 })
 
-COMPILE_JOB(assert_stmt, struct {
-	struct ast_namespace *ns;
-	struct st_node *node;
-
-	bool initialized;
-	struct ast_env env;
-	struct ast_node *expr;
-})
-
 COMPILE_JOB(typecheck_expr, struct {
 	struct ast_env *env;
 	struct ast_node *expr;
