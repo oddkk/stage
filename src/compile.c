@@ -329,8 +329,7 @@ st_node_unpack_func_proto(struct st_node *proto_node,
 
 static struct ast_node *
 st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
-					struct ast_env *env, struct ast_scope *scope,
-					struct st_node *node)
+					struct ast_env *env, struct st_node *node)
 {
 	switch (node->type) {
 
@@ -350,10 +349,10 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 	case ST_NODE_BIN_OP: {
 		struct ast_func_arg func_args[] = {
 			{vm_atoms(mod->vm, "lhs"),
-				st_node_visit_expr(ctx, mod, env, scope,
+				st_node_visit_expr(ctx, mod, env,
 						node->BIN_OP.lhs)},
 			{vm_atoms(mod->vm, "rhs"),
-				st_node_visit_expr(ctx, mod, env, scope,
+				st_node_visit_expr(ctx, mod, env,
 						node->BIN_OP.rhs)},
 		};
 
@@ -383,10 +382,10 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 	case ST_NODE_BIND: {
 		struct ast_func_arg func_args[] = {
 			{vm_atoms(mod->vm, "src"),
-				st_node_visit_expr(ctx, mod, env, scope,
+				st_node_visit_expr(ctx, mod, env,
 						node->BIN_OP.lhs)},
 			{vm_atoms(mod->vm, "drain"),
-				st_node_visit_expr(ctx, mod, env, scope,
+				st_node_visit_expr(ctx, mod, env,
 						node->BIN_OP.rhs)},
 		};
 
@@ -432,13 +431,11 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 		struct ast_node *ret_type = NULL, *body = NULL;
 
 		for (size_t i = 0; i < params_decl.num_members; i++) {
-			params[i] = st_node_visit_expr(ctx, mod, env, scope,
-					params_decl.types[i]);
+			params[i] = st_node_visit_expr(ctx, mod, env, params_decl.types[i]);
 		}
 
 		if (ret_type_decl) {
-			ret_type = st_node_visit_expr(ctx, mod, env, scope,
-					ret_type_decl);
+			ret_type = st_node_visit_expr(ctx, mod, env, ret_type_decl);
 		} else {
 			ret_type = ast_init_node_slot(
 					ctx->ast_ctx, env,
@@ -448,23 +445,10 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 						AST_SLOT_TYPE));
 		}
 
-		struct ast_scope func_scope = {0};
-		func_scope.num_names = params_decl.num_members;
-		struct ast_scope_name tmp_scope_names[func_scope.num_names];
-		func_scope.names = tmp_scope_names;
-		func_scope.env = env;
-
-		for (size_t i = 0; i < func_scope.num_names; i++) {
-			func_scope.names[i].name = params_decl.names[i];
-			func_scope.names[i].slot =
-				ast_node_resolve_slot(env, &func->func.params[i].slot);
-		}
-
 		struct st_node *body_decl;
 		body_decl = node->LAMBDA.body;
 
-		body = st_node_visit_expr(ctx, mod, env, &func_scope,
-				body_decl);
+		body = st_node_visit_expr(ctx, mod, env, body_decl);
 
 		ast_finalize_node_func(ctx->ast_ctx, env, func,
 				params, params_decl.num_members,
@@ -480,8 +464,7 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 
 		struct ast_node *func;
 
-		func = st_node_visit_expr(ctx, mod, env, scope,
-				node->FUNC_CALL.ident);
+		func = st_node_visit_expr(ctx, mod, env, node->FUNC_CALL.ident);
 
 		size_t num_args = 0;
 
@@ -505,8 +488,7 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 				assert(arg->type == ST_NODE_TUPLE_LIT_ITEM);
 				func_args[i].name = arg->TUPLE_LIT_ITEM.name;
 				func_args[i].value =
-					st_node_visit_expr(ctx, mod, env, scope,
-							arg->TUPLE_LIT_ITEM.value);
+					st_node_visit_expr(ctx, mod, env, arg->TUPLE_LIT_ITEM.value);
 				arg = arg->next_sibling;
 			}
 		}
@@ -534,7 +516,7 @@ st_node_visit_expr(struct compile_ctx *ctx, struct stg_module *mod,
 			struct expr_node *n;
 
 			n = st_node_visit_expr(ctx, mod, expr,
-									scope, NULL, func_scope,
+									NULL, func_scope,
 									arg->TUPLE_DECL_ITEM.type);
 
 			if (!first_arg) {
@@ -757,12 +739,8 @@ job_assign_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assign_stmt
 		struct st_node *body_node;
 		body_node = data->node->ASSIGN_STMT.body;
 
-		struct ast_scope expr_scope = {0};
-
-		expr_scope.ns = data->ns;
-
 		struct ast_node *expr;
-		expr = st_node_visit_expr(ctx, mod, &mod->mod.env, &expr_scope, body_node);
+		expr = st_node_visit_expr(ctx, mod, &mod->mod.env, body_node);
 
 		if (data->node->ASSIGN_STMT.type) {
 			panic("TODO: assign stmt type.");
@@ -817,7 +795,7 @@ job_assert_stmt(struct compile_ctx *ctx, struct stg_module *mod, job_assert_stmt
 		body_node = data->node->ASSERT_STMT.expr;
 
 		data->expr.body =
-			st_node_visit_expr(ctx, mod, &data->expr, data->scope,
+			st_node_visit_expr(ctx, mod, &data->expr,
 								NULL, NULL, body_node);
 
 		expr_finalize(mod, &data->expr);
