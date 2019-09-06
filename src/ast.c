@@ -261,6 +261,7 @@ ast_module_add_dependency(struct ast_context *ctx,
 	mod->dependencies = tmp_deps;
 	mod->num_dependencies = tmp_num_deps;
 
+	memset(&mod->dependencies[dep_id], 0, sizeof(struct ast_module_dependency));
 	mod->dependencies[dep_id].name = name;
 	mod->dependencies[dep_id].slot =
 		ast_bind_slot_cons(ctx, &mod->env, AST_BIND_NEW, name, NULL);
