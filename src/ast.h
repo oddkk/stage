@@ -361,10 +361,20 @@ struct ast_namespace {
 	struct ast_object_def def;
 };
 
+struct ast_module_dependency {
+	struct atom *name;
+	ast_slot_id slot;
+
+	struct ast_module *mod;
+};
+
 struct ast_module {
 	struct ast_env env;
 
 	struct ast_namespace root;
+
+	struct ast_module_dependency *dependencies;
+	size_t num_dependencies;
 };
 
 int
@@ -375,6 +385,10 @@ ast_namespace_add_decl(struct ast_context *, struct ast_module *,
 struct ast_namespace *
 ast_namespace_add_ns(struct ast_namespace *,
 		struct atom *name);
+
+ast_slot_id
+ast_module_add_dependency(struct ast_context *,
+		struct ast_module *, struct atom *name);
 
 ast_slot_id
 ast_module_finalize(struct ast_context *, struct ast_module *);

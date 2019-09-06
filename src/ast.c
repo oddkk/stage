@@ -236,6 +236,39 @@ ast_namespace_finalize(struct ast_context *ctx,
 }
 
 ast_slot_id
+ast_module_add_dependency(struct ast_context *ctx,
+		struct ast_module *mod, struct atom *name)
+{
+	for (size_t i = 0; i < mod->num_dependencies; i++) {
+		if (name == mod->dependencies[i].name) {
+			return mod->dependencies[i].slot;
+		}
+	}
+
+	size_t dep_id = mod->num_dependencies;
+
+	size_t tmp_num_deps;
+	struct ast_module_dependency *tmp_deps;
+	tmp_num_deps = mod->num_dependencies + 1;
+	tmp_deps = realloc(mod->dependencies,
+			sizeof(struct ast_module_dependency) * tmp_num_deps);
+	if (!tmp_deps) {
+		mod->num_dependencies -= 1;
+		panic("Failed to allocate space for module dependencies.");
+		return AST_BIND_FAILED;
+	}
+
+	mod->dependencies = tmp_deps;
+	mod->num_dependencies = tmp_num_deps;
+
+	mod->dependencies[dep_id].name = name;
+	mod->dependencies[dep_id].slot =
+		ast_bind_slot_cons(ctx, &mod->env, AST_BIND_NEW, name, NULL);
+
+	return mod->dependencies[dep_id].slot;
+}
+
+ast_slot_id
 ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 {
 	return ast_namespace_finalize(ctx, mod, &mod->root);
