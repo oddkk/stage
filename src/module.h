@@ -16,6 +16,8 @@ struct stg_module_info {
 		unsigned int minor;
 	} version;
 
+	void *data;
+
 	int  (*init)(struct stg_module *);
 	void (*free)(struct stg_module *);
 

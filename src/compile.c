@@ -23,6 +23,13 @@ struct string complie_job_names[] = {
 #undef COMPILE_JOB
 };
 
+enum job_load_module_state {
+	JOB_LOAD_MODULE_DISCOVER = 0,
+	JOB_LOAD_MODULE_PARSE,
+	JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES,
+	JOB_LOAD_MODULE_DONE,
+};
+
 #define COMPILE_JOB(name, data) typedef data job_##name##_t;
 #include "compile_job_defs.h"
 #undef COMPILE_JOB
@@ -43,8 +50,6 @@ struct complie_job {
 
 	struct complie_job *next_job;
 	struct complie_job *first_dependant_node;
-
-	struct stg_module *mod;
 
 #define COMPILE_JOB(name, data) job_##name##_t name;
 	union {
@@ -82,6 +87,8 @@ struct compile_phase {
 struct compile_ctx {
 	struct vm *vm;
 	struct arena *mem;
+
+	struct objstore store;
 
 	struct ast_context *ast_ctx;
 
@@ -139,16 +146,15 @@ dispatch_job(struct compile_ctx *ctx, enum compile_phase_name phase, struct comp
 	return new_job;
 }
 
-#define DISPATCH_JOB(ctx, _mod, name, phase, ...)				\
+#define DISPATCH_JOB(ctx, name, phase, ...)				\
 	dispatch_job((ctx), (phase),								\
 				 (struct complie_job){								\
 					 .type=COMPILE_JOB_##name,						\
-					 .mod = _mod,								\
 					 .name = (job_##name##_t){__VA_ARGS__}		\
 				 })
 
-static void visit_stmt(struct compile_ctx *ctx, struct stg_module *mod,
-						  struct ast_namespace *ns, struct st_node *stmt)
+static void visit_stmt(struct compile_ctx *ctx, struct ast_module *mod,
+		struct ast_namespace *ns, struct st_node *stmt)
 {
 	assert(stmt->type == ST_NODE_STMT);
 
@@ -174,14 +180,14 @@ static void visit_stmt(struct compile_ctx *ctx, struct stg_module *mod,
 		body_node = node->ASSIGN_STMT.body;
 
 		struct ast_node *expr;
-		expr = st_node_visit_expr(ctx->ast_ctx, mod, &mod->mod.env, body_node);
+		expr = st_node_visit_expr(ctx->ast_ctx, &mod->env, body_node);
 
 		if (node->ASSIGN_STMT.type) {
 			panic("TODO: assign stmt type.");
 		}
 
 		ast_namespace_add_decl(
-				ctx->ast_ctx, &mod->mod, ns, name, expr);
+				ctx->ast_ctx, mod, ns, name, expr);
 	} break;
 
 	default:
@@ -199,8 +205,7 @@ int parse_config_file(struct string filename,
 					  struct st_node **out_node);
 
 static struct job_status
-job_parse_file(struct compile_ctx *ctx, struct stg_module *mod,
-			   job_parse_file_t *data)
+job_parse_file(struct compile_ctx *ctx, job_parse_file_t *data)
 {
 	int err;
 	struct st_node *node;
@@ -208,7 +213,7 @@ job_parse_file(struct compile_ctx *ctx, struct stg_module *mod,
 	file_id_t file_id;
 	file_id = stg_err_add_file(&ctx->err, data->file_name);
 
-	err = parse_config_file(data->file_name, mod->atom_table,
+	err = parse_config_file(data->file_name, &ctx->vm->atom_table,
 							&ctx->vm->memory, file_id, &ctx->err, &node);
 	if (err) {
 		return JOB_ERROR;
@@ -221,8 +226,12 @@ job_parse_file(struct compile_ctx *ctx, struct stg_module *mod,
 	while (stmt) {
 		assert(stmt->type == ST_NODE_STMT);
 
-		visit_stmt(ctx, mod, data->ns, stmt);
+		visit_stmt(ctx, data->mod, data->ns, stmt);
 		stmt = stmt->next_sibling;
+	}
+
+	if (data->num_unparsed_files) {
+		*data->num_unparsed_files -= 1;
 	}
 
 	return JOB_OK;
@@ -243,16 +252,19 @@ has_extension(struct string str, struct string ext)
 }
 
 static void
-discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
-					  struct string src_dir)
+discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
+					  struct string src_dir, int *num_unparsed_files)
 {
-	/* // TODO: Ensure zero-terminated */
-	char *paths[] = {src_dir.text, NULL};
+	char zero_terminated_src_dir[src_dir.length + 1];
+	memcpy(zero_terminated_src_dir, src_dir.text, src_dir.length);
+	zero_terminated_src_dir[src_dir.length] = 0;
+
+	char *paths[] = {zero_terminated_src_dir, NULL};
 
 	FTS *ftsp;
 	ftsp = fts_open(paths, FTS_PHYSICAL, NULL);
 
-	struct ast_namespace *dir_ns = &mod->mod.root;
+	struct ast_namespace *dir_ns = &mod->root;
 
 	FTSENT *f;
 	while ((f = fts_read(ftsp)) != NULL) {
@@ -281,9 +293,15 @@ discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
 					file_ns = ast_namespace_add_ns(dir_ns, atom);
 				}
 
-				DISPATCH_JOB(ctx, mod, parse_file, COMPILE_PHASE_DISCOVER,
-							 .ns = file_ns,
-							 .file_name = file_name);
+				if (num_unparsed_files) {
+					*num_unparsed_files += 1;
+				}
+
+				DISPATCH_JOB(ctx, parse_file, COMPILE_PHASE_DISCOVER,
+						.mod = mod,
+						.ns = file_ns,
+						.file_name = file_name,
+						.num_unparsed_files = num_unparsed_files);
 			}
 		} break;
 
@@ -317,13 +335,107 @@ discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
 	fts_close(ftsp);
 }
 
-static struct job_status
-job_discover_module(struct compile_ctx *ctx, struct stg_module *mod,
-			   job_discover_module_t *data)
-{
-	discover_module_files(ctx, mod, data->module_src_dir);
+static int
+native_module_init(struct stg_module *mod) {
+	mod->mod = *(struct ast_module *)mod->info.data;
+	return 0;
+}
 
-	return JOB_OK;
+static void
+native_module_free(struct stg_module *mod) {
+}
+
+static struct job_status
+job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
+{
+	switch (data->state) {
+		case JOB_LOAD_MODULE_DISCOVER:
+			memset(&data->mod, 0, sizeof(struct ast_module));
+			data->mod.env.store = &ctx->store;
+
+			if (data->module_name) {
+				struct stg_module *lookup_mod;
+
+				lookup_mod = vm_get_module(ctx->vm, data->module_name->name);
+
+				if (lookup_mod) {
+					if (data->out_module) {
+						*data->out_module = &lookup_mod->mod;
+					}
+
+					return JOB_OK;
+				}
+			}
+
+			if (data->module_name == vm_atoms(ctx->vm, "base")) {
+				printf("TODO: Resolve basic\n");
+				return JOB_ERROR;
+			}
+
+			if (data->module_src_dir.length == 0) {
+				panic("TODO: Implement looking up module location.");
+			}
+
+			ast_module_add_dependency(ctx->ast_ctx, &data->mod,
+					vm_atoms(ctx->vm, "base"));
+
+			discover_module_files(ctx, &data->mod,
+					data->module_src_dir,
+					&data->num_unparsed_files);
+
+			data->state = JOB_LOAD_MODULE_PARSE;
+			// fallthrough
+
+		case JOB_LOAD_MODULE_PARSE:
+			if (data->num_unparsed_files > 0) {
+				return JOB_YIELD;
+			}
+
+			assert(data->num_unparsed_files == 0);
+
+			for (size_t i = 0; i < data->mod.num_dependencies; i++) {
+				DISPATCH_JOB(ctx, load_module, COMPILE_PHASE_DISCOVER,
+						.module_name = data->mod.dependencies[i].name,
+						.out_module  = &data->mod.dependencies[i].mod);
+			}
+
+			data->state = JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES;
+			// fallthrough
+
+		case JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES:
+			for (size_t i = 0; i < data->mod.num_dependencies; i++) {
+				if (data->mod.dependencies[i].mod == NULL) {
+					return JOB_YIELD;
+				}
+			}
+
+			data->state = JOB_LOAD_MODULE_DONE;
+			// fallthrough
+
+		case JOB_LOAD_MODULE_DONE:
+			{
+				struct stg_module_info modinfo = {
+					.name = data->module_src_dir,
+					.version = {0, 1},
+					.data = &data->mod,
+
+					.init  = native_module_init,
+					.free  = native_module_free,
+				};
+				struct stg_module *stg_mod;
+
+				stg_mod = vm_register_module(ctx->vm, &modinfo);
+
+				if (data->out_module) {
+					*data->out_module = &stg_mod->mod;
+				}
+			}
+
+			return JOB_OK;
+	}
+
+	panic("Load module reached an invalid state.");
+	return JOB_ERROR;
 }
 
 #define COMPILE_DEBUG_JOBS 0
@@ -353,7 +465,7 @@ static void compile_exec_job(struct compile_ctx *ctx, struct complie_job *job)
 	struct job_status res;
 
 	switch (job->type) {
-#define COMPILE_JOB(name, data) case COMPILE_JOB_##name: res = job_##name(ctx, job->mod, &job->name); break;
+#define COMPILE_JOB(name, data) case COMPILE_JOB_##name: res = job_##name(ctx, &job->name); break;
 #include "compile_job_defs.h"
 #undef COMPILE_JOB
 
@@ -477,22 +589,8 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_mo
 	assert(!vm->err);
 	vm->err = &ctx.err;
 
-	struct stg_module_info modinfo;
-	memset(&modinfo, 0, sizeof(struct stg_module_info));
-
-	// TODO: Have an actual name.
-	modinfo.name = STR("native");
-	modinfo.version.major = 1;
-	modinfo.version.minor = 0;
-
-	struct stg_module *mod;
-	// TODO: We should somehow initialize through the init method
-	// instead of outside of register.
-	mod = vm_register_module(vm, &modinfo);
-
-	scope_use(&mod->root_scope, &vm->modules[0]->root_scope);
-
-	DISPATCH_JOB(&ctx, mod, discover_module, COMPILE_PHASE_DISCOVER,
+	DISPATCH_JOB(&ctx, load_module, COMPILE_PHASE_DISCOVER,
+			.module_name = vm_atoms(vm, "main"),
 			.module_src_dir = initial_module_src_dir);
 
 	for (; ctx.current_phase < COMPILE_NUM_PHASES; ctx.current_phase += 1) {
@@ -524,11 +622,13 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_mo
 	}
 
 	// scope_print(vm, &vm->root_scope);
+	/*
 	printf("\n");
 	ast_print_module(ctx.ast_ctx, &mod->mod);
 
 	printf("\n");
 	ast_env_print(vm, &mod->mod.env);
+	*/
 
 	vm->err = NULL;
 	return 0;
