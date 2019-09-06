@@ -415,7 +415,13 @@ ast_bind_slot_cons(struct ast_context *ctx,
 		}
 	}
 
-	ast_slot_id slot_map[def->env.num_slots];
+	size_t num_map_slots = 0;
+
+	if (def) {
+		num_map_slots = def->env.num_slots;
+	}
+
+	ast_slot_id slot_map[num_map_slots];
 	struct ast_union_context cpy_ctx = {0};
 
 	if (def) {
