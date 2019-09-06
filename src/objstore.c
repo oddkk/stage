@@ -128,7 +128,7 @@ register_object(struct vm *vm, struct objstore *store, struct object obj) {
 
 	if (store->data_pages == NULL ||
 		store->last_page_num_used + type->size >= store->page_size) {
-		size_t new_size = (store->num_data_pages + 1) * sizeof(uint8_t);
+		size_t new_size = (store->num_data_pages + 1) * sizeof(uint8_t *);
 		uint8_t **new_pages = realloc(store->data_pages, new_size);
 
 		if (!new_pages) {
