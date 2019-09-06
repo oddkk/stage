@@ -278,6 +278,95 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 	return AST_BIND_FAILED;
 }
 
+static void
+ast_bind_lookup_node(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, ast_slot_id slot)
+{
+	assert(node->kind == AST_NODE_LOOKUP);
+	node->kind = AST_NODE_SLOT;
+	node->slot = ast_union_slot(ctx, env, slot, node->lookup.slot);
+}
+
+static ast_slot_id
+ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *env,
+		struct ast_scope *scope, struct ast_node *node)
+{
+	for (size_t i = 0; i < scope->num_names; i++) {
+		if (scope->names[i].name == node->lookup.name) {
+			return scope->names[i].slot;
+		}
+	}
+
+	if (scope->object != AST_SLOT_NOT_FOUND) {
+		assert(ast_env_slot(ctx, env, scope->object).cons.def != NULL);
+
+		ast_slot_id slot =
+			ast_unpack_arg_named(ctx, env,
+					scope->object, node->lookup.name);
+
+		if (slot != AST_BIND_FAILED) {
+			return slot;
+		}
+	}
+
+	return AST_BIND_FAILED;
+}
+
+static void
+ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
+		struct ast_scope *root_scope, struct ast_node *node)
+{
+	assert(node->kind == AST_NODE_LOOKUP);
+
+	for (struct ast_scope *scope = root_scope;
+			scope != NULL;
+			scope = scope->parent) {
+		ast_slot_id slot =
+			ast_try_resolve_node_lookup_in_scope(
+				ctx, env, scope, node);
+
+		if (slot != AST_BIND_FAILED) {
+			ast_bind_lookup_node(ctx, env, node, slot);
+			return;
+		}
+	}
+
+	for (struct ast_scope *scope = root_scope->parent_func;
+			scope != NULL;
+			scope = scope->parent_func) {
+		ast_slot_id slot =
+			ast_try_resolve_node_lookup_in_scope(
+				ctx, env, scope, node);
+
+		if (slot != AST_BIND_FAILED) {
+			printf("TODO: wildcards. Found '%.*s' as slot %i.\n",
+					ALIT(node->lookup.name), slot);
+			// ast_bind_lookup_node(ctx, env, node, slot);
+			return;
+		}
+	}
+
+	for (struct ast_scope *scope = root_scope->parent_ns;
+			scope != NULL;
+			scope = scope->parent_ns) {
+		ast_slot_id slot =
+			ast_try_resolve_node_lookup_in_scope(
+				ctx, env, scope, node);
+
+		if (slot != AST_BIND_FAILED) {
+			struct ast_env_slot found = ast_env_slot(ctx, env, slot);
+			if (found.kind == AST_SLOT_CONST ||
+					found.kind == AST_SLOT_CONST_TYPE) {
+				ast_bind_lookup_node(ctx, env, node, slot);
+				return;
+			}
+			printf("Lookup for '%.*s' discarded slot %i because it "
+					"is not a CONST or CONST_TYPE slot.\n",
+					ALIT(node->lookup.name), slot);
+		}
+	}
+}
+
 void
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		struct ast_scope *scope, struct ast_node *node)
@@ -324,6 +413,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_NODE_LOOKUP:
+			ast_resolve_node_lookup(ctx, env, scope, node);
 			break;
 	}
 }
