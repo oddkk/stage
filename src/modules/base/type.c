@@ -69,9 +69,7 @@ void base_register_type(struct stg_module *mod)
 	struct object new_obj;
 	new_obj = register_object(mod->vm, &mod->store, obj);
 
-	scope_insert(&mod->root_scope, t.name,
-				 SCOPE_ANCHOR_ABSOLUTE,
-				 new_obj, NULL);
+	// TODO: Register object in ast.
 
 	mod->vm->default_types.type = tid;
 }

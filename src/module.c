@@ -8,6 +8,10 @@ stg_register_builtin_func_obj(struct stg_module *mod,
 		struct stg_builtin_func func,
 		void *data)
 {
+	// TODO: Implement
+	return OBJ_NONE;
+
+	/*
 	struct atom **param_names;
 	type_id *param_types;
 
@@ -35,6 +39,7 @@ stg_register_builtin_func_obj(struct stg_module *mod,
 									data);
 
 	return obj;
+	*/
 }
 
 void
@@ -48,10 +53,9 @@ stg_register_builtin_func(struct stg_module *mod,
 
 	struct atom *func_name;
 	func_name = atom_create(mod->atom_table, func.name);
-	int err;
-	err = scope_insert_overloadable(&mod->root_scope, func_name,
-									SCOPE_ANCHOR_ABSOLUTE,
-									obj);
+	int err = -1;
+
+	// TODO: Insert object into ast.
 
 	if (err < 0) {
 		panic("Failed to insert %.*s.%.*s.\n",
@@ -86,11 +90,9 @@ stg_register_builtin_type(struct stg_module *mod,
 	struct object new_obj;
 	new_obj = register_object(mod->vm, &mod->store, obj);
 
-	int err;
+	int err = -1;
 
-	err = scope_insert(&mod->root_scope, t.name,
-					   SCOPE_ANCHOR_ABSOLUTE,
-					   new_obj, NULL);
+	// TODO: Insert object into ast.
 
 	if (err < 0) {
 		panic("Failed to insert %.*s.%.*s.\n",

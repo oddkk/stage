@@ -4,7 +4,6 @@
 #include "vm.h"
 #include "ast.h"
 #include "atom.h"
-#include "scope.h"
 #include "objstore.h"
 
 struct stg_module;
@@ -29,7 +28,6 @@ struct stg_module {
 	struct stg_module_info info;
 
 	struct objstore store;
-	struct scope root_scope;
 	struct atom_table *atom_table;
 	struct vm *vm;
 

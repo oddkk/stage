@@ -2,7 +2,6 @@
 #define STAGE_VM_H
 
 #include "objstore.h"
-#include "scope.h"
 #include "atom.h"
 #include "arena.h"
 #include "errors.h"
@@ -104,7 +103,6 @@ struct stg_module_info;
 
 struct vm {
 	/* struct objstore store; */
-	struct scope root_scope;
 	struct arena memory;
 	struct atom_table atom_table;
 

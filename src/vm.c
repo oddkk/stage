@@ -1,6 +1,5 @@
 #include "vm.h"
 #include "utils.h"
-#include "expr.h"
 #include "module.h"
 #include "dlist.h"
 #include "modules/base/mod.h"
@@ -21,10 +20,6 @@ int vm_init(struct vm *vm)
 	vm->atom_table.string_arena = &vm->memory;
 	atom_table_rehash(&vm->atom_table, 64);
 
-	vm->root_scope.parent = 0;
-	vm->root_scope.lookup.page_arena = &vm->memory;
-	vm->root_scope.lookup.string_arena = &vm->memory;
-
 	return 0;
 }
 
@@ -42,7 +37,6 @@ void vm_destroy(struct vm *vm)
 
 	free(vm->modules);
 	free(vm->memory.data);
-	// TODO: Free scopes
 	// TODO: Free atom table
 }
 
@@ -68,9 +62,6 @@ vm_register_module(struct vm *vm, struct stg_module_info *info)
 	// TODO: Should each module have its own arena, and use that for
 	// its root scope?
 	mod->vm = vm;
-	mod->root_scope.parent = &vm->root_scope;
-	mod->root_scope.lookup.page_arena = &vm->memory;
-	mod->root_scope.lookup.string_arena = &vm->memory;
 	mod->atom_table = &vm->atom_table;
 
 	mod->info = *info;
@@ -82,10 +73,6 @@ vm_register_module(struct vm *vm, struct stg_module_info *info)
 	if (mod->info.init) {
 		mod->info.init(mod);
 	}
-
-	scope_insert(&vm->root_scope, atom_create(&vm->atom_table, info->name),
-				 SCOPE_ANCHOR_NONE, OBJ_NONE, &mod->root_scope);
-
 
 	mod->mod.env.store = &mod->store;
 
@@ -131,27 +118,17 @@ vm_find_type_id(struct vm *vm, struct string mod_name, struct string name)
 
 	assert(mod != NULL);
 
+	/*
 	struct string tail = name;
 	struct string part;
 
-	struct scope_entry entry;
-	entry.scope = &mod->root_scope;
-
+	// TODO: Looup type name.
 	while (string_split(tail, &part, &tail, '.')) {
-		int err;
-		struct atom *part_atom;
-		part_atom =
-			atom_create(mod->atom_table, part);
-
-		assert(entry.scope != NULL);
-
-		err = scope_local_lookup(entry.scope, part_atom, &entry);
-		assert(!err);
 	}
+	*/
 
-	assert(entry.object.type == vm->default_types.type);
-	type_id result;
-	result = type_obj_get(vm, entry.object);
+	type_id result = TYPE_UNSET;
+	//result = type_obj_get(vm, entry.object);
 
 	return result;
 }

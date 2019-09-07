@@ -1,8 +1,8 @@
 #include "mod.h"
-#include "../../expr.h"
 #include <stdlib.h>
 #include <string.h>
 
+/*
 static struct string type_func_repr(struct vm *vm, struct arena *mem, struct type *type);
 static bool type_func_unify(struct vm *vm, struct objstore *, type_id lhs, type_id rhs, type_id *out);
 static struct string type_builtin_func_repr(struct vm *vm, struct arena *mem, struct type *type);
@@ -470,10 +470,12 @@ obj_register_builtin_func(struct vm *vm, struct objstore *store,
 
 	return register_object(vm, store, result);
 }
+*/
 
 void
 base_register_func(struct stg_module *mod)
 {
+	/*
 	type_base_register_unifier(&base_generic_func_base,
 							   &base_generic_func_base,
 							   type_func_unify);
@@ -491,4 +493,5 @@ base_register_func(struct stg_module *mod)
 	type_base_register_unifier(&base_generic_func_base,
 							   &base_builtin_func_base,
 							   type_func_unify);
+	*/
 }

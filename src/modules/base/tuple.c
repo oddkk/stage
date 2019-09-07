@@ -1,5 +1,6 @@
 #include "mod.h"
 
+/*
 static struct string type_tuple_repr(struct vm *vm, struct arena *mem, struct type *type)
 {
 	struct type_tuple *tuple = type->data;
@@ -228,7 +229,7 @@ type_id type_register_unnamed_tuple(struct vm *vm, struct objstore *store,
 	return register_type(store, type);
 }
 
-
+*/
 
 void
 base_register_tuple(struct stg_module *mod)
