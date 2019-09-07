@@ -25,21 +25,6 @@ type_unset_unify(struct vm *vm, struct objstore *store,
 	return true;
 }
 
-static bool
-type_template_param_unify(struct vm *vm, struct objstore *store,
-				 type_id lhs, type_id rhs,
-				 type_id *out_type)
-{
-	if (lhs != TYPE_TEMPLATE_PARAM || rhs == TYPE_UNSET) {
-		*out_type = lhs;
-	} else {
-		*out_type = rhs;
-	}
-
-	return true;
-}
-
-
 int mod_base_init(struct stg_module *mod)
 {
 	assert(mod->id == 0);
@@ -71,36 +56,6 @@ int mod_base_init(struct stg_module *mod)
 		type_id none_id = register_type(&mod->store, none);
 		assert(none_id == TYPE_NONE);
 	}
-
-	{
-		struct type_base *base = calloc(1, sizeof(struct type_base));
-		type_base_init(base, STR("scope"));
-
-		struct type scope = {0};
-		scope.name = atom_create(mod->atom_table, STR("scope"));
-		scope.base = base;
-		scope.size = sizeof(struct scope *);
-
-		type_id scope_id = register_type(&mod->store, scope);
-		assert(scope_id == TYPE_SCOPE);
-	}
-
-	{
-		struct type_base *base = calloc(1, sizeof(struct type_base));
-		type_base_init(base, STR("template_param"));
-
-		type_base_register_unifier(base, NULL, type_template_param_unify);
-
-		struct type template_param = {0};
-		template_param.name = atom_create(mod->atom_table, STR("template_param"));
-		template_param.base = base;
-		template_param.size = 0;
-		template_param.num_template_params = 1;
-
-		type_id template_param_id = register_type(&mod->store, template_param);
-		assert(template_param_id == TYPE_TEMPLATE_PARAM);
-	}
-
 
 	base_register_type(mod);
 	base_register_func(mod);

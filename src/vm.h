@@ -90,8 +90,6 @@ enum vm_instruction {
 
 #define TYPE_UNSET ((type_id)0)
 #define TYPE_NONE ((type_id)1)
-#define TYPE_SCOPE ((type_id)2)
-#define TYPE_TEMPLATE_PARAM ((type_id)3)
 
 #define TYPE_VALID(tid) ((tid) > TYPE_NONE)
 
