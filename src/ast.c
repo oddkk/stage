@@ -212,7 +212,7 @@ ast_namespace_finalize(struct ast_context *ctx,
 			ast_copy_slot(ctx,
 					&ns->def.env, AST_BIND_NEW,
 					&mod->env, ast_env_slot(ctx, &mod->env,
-						ast_node_resolve_slot(&ns->def.env, &ns->names[i].decl.value)).type);
+						ast_node_resolve_slot(&mod->env, &ns->names[i].decl.value)).type);
 	}
 
 	ast_slot_id result;

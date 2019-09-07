@@ -7,6 +7,7 @@
 ast_slot_id
 ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot)
 {
+	assert(*slot < env->num_slots);
 	while (*slot >= 0 && env->slots[*slot].kind == AST_SLOT_SUBST) {
 		assert(*slot < env->num_slots);
 		*slot = env->slots[*slot].subst;
