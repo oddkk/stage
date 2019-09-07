@@ -152,8 +152,8 @@ ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
 }
 
 struct ast_namespace *
-ast_namespace_add_ns(struct ast_namespace *ns,
-		struct atom *name)
+ast_namespace_add_ns(struct ast_context *ctx, struct ast_env *env,
+		struct ast_namespace *ns, struct atom *name)
 {
 	struct ast_module_name value = {0};
 
@@ -162,6 +162,8 @@ ast_namespace_add_ns(struct ast_namespace *ns,
 	value.ns = calloc(1, sizeof(struct ast_namespace));
 	value.ns->name = name;
 	value.ns->parent = ns;
+	value.ns->instance = ast_bind_slot_cons(ctx, env,
+			AST_BIND_NEW, NULL, NULL);
 
 	int err;
 	err = ast_namespace_insert(ns, value);
@@ -183,6 +185,13 @@ static ast_slot_id
 ast_namespace_finalize(struct ast_context *ctx,
 		struct ast_module *mod, struct ast_namespace *ns)
 {
+	for (size_t i = 0; i < ns->num_names; i++) {
+		if (ns->names[i].kind == AST_MODULE_NAME_NAMESPACE) {
+			ast_namespace_finalize(ctx, mod,
+					ns->names[i].ns);
+		}
+	}
+
 	ns->def.env.store = mod->env.store;
 
 	ns->def.num_params = ns->num_names;
@@ -215,24 +224,26 @@ ast_namespace_finalize(struct ast_context *ctx,
 						ast_node_resolve_slot(&mod->env, &ns->names[i].decl.value)).type);
 	}
 
-	ast_slot_id result;
+	ast_slot_id instance;
 
-	result = ast_bind_slot_cons(
-			ctx, &mod->env, AST_BIND_NEW, NULL,
+	instance = ast_bind_slot_cons(
+			ctx, &mod->env, ns->instance, NULL,
 			&ns->def);
 
 	for (size_t i = 0; i < ns->def.num_params; i++) {
 		ast_slot_id arg;
 
 		arg = ast_unpack_arg_named(ctx, &mod->env,
-				result, ns->names[i].name);
+				instance, ns->names[i].name);
 
 		// TODO: Ensure the value is evaluated.
 		// TODO: Avoid having to alloc duplicate slots and join them.
 		ast_union_slot(ctx, &mod->env, ns->names[i].decl.value, arg);
 	}
 
-	return result;
+	ns->instance = instance;
+
+	return instance;
 }
 
 ast_slot_id

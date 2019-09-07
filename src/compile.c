@@ -27,6 +27,8 @@ enum job_load_module_state {
 	JOB_LOAD_MODULE_DISCOVER = 0,
 	JOB_LOAD_MODULE_PARSE,
 	JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES,
+	JOB_LOAD_MODULE_RESOLVE_LOOKUPS,
+	JOB_LOAD_MODULE_WAIT_FOR_TYPECHECK,
 	JOB_LOAD_MODULE_DONE,
 };
 
@@ -290,7 +292,8 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 				if (atom == vm_atoms(ctx->vm, "mod")) {
 					file_ns = dir_ns;
 				} else {
-					file_ns = ast_namespace_add_ns(dir_ns, atom);
+					file_ns = ast_namespace_add_ns(
+							ctx->ast_ctx, &mod->env, dir_ns, atom);
 				}
 
 				if (num_unparsed_files) {
@@ -313,7 +316,8 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 
 				struct atom *atom = vm_atom(ctx->vm, name);
 
-				dir_ns = ast_namespace_add_ns(dir_ns, atom);
+				dir_ns = ast_namespace_add_ns(
+						ctx->ast_ctx, &mod->env, dir_ns, atom);
 			}
 			break;
 
@@ -352,6 +356,8 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 		case JOB_LOAD_MODULE_DISCOVER:
 			memset(&data->mod, 0, sizeof(struct ast_module));
 			data->mod.env.store = &ctx->store;
+			data->mod.root.instance = ast_bind_slot_cons(ctx->ast_ctx, &data->mod.env,
+					AST_BIND_NEW, NULL, NULL);
 
 			if (data->module_name) {
 				struct stg_module *lookup_mod;
@@ -365,11 +371,6 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 					return JOB_OK;
 				}
-			}
-
-			if (data->module_name == vm_atoms(ctx->vm, "base")) {
-				printf("TODO: Resolve basic\n");
-				return JOB_ERROR;
 			}
 
 			if (data->module_src_dir.length == 0) {
@@ -409,13 +410,24 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				}
 			}
 
+			data->state = JOB_LOAD_MODULE_RESOLVE_LOOKUPS;
+			// fallthrough
+
+		case JOB_LOAD_MODULE_RESOLVE_LOOKUPS:
+			ast_module_resolve_names(ctx->ast_ctx, &data->mod);
+
+			data->state = JOB_LOAD_MODULE_WAIT_FOR_TYPECHECK;
+			// fallthrough
+
+		case JOB_LOAD_MODULE_WAIT_FOR_TYPECHECK:
 			data->state = JOB_LOAD_MODULE_DONE;
 			// fallthrough
 
 		case JOB_LOAD_MODULE_DONE:
+			ast_module_finalize(ctx->ast_ctx, &data->mod);
 			{
 				struct stg_module_info modinfo = {
-					.name = data->module_src_dir,
+					.name = data->module_name->name,
 					.version = {0, 1},
 					.data = &data->mod,
 
@@ -425,6 +437,14 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				struct stg_module *stg_mod;
 
 				stg_mod = vm_register_module(ctx->vm, &modinfo);
+
+#if 0
+				printf("\n");
+				ast_print_module(ctx->ast_ctx, &data->mod);
+
+				printf("\n");
+				ast_env_print(ctx->vm, &data->mod.env);
+#endif
 
 				if (data->out_module) {
 					*data->out_module = &stg_mod->mod;
@@ -586,6 +606,9 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_mo
 	ctx.err.string_arena = &vm->memory;
 	ctx.ast_ctx = ast_ctx;
 
+	assert(!ctx.ast_ctx->err);
+	ctx.ast_ctx->err = &ctx.err;
+
 	assert(!vm->err);
 	vm->err = &ctx.err;
 
@@ -622,5 +645,6 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_mo
 	}
 
 	vm->err = NULL;
+	ctx.ast_ctx->err = NULL;
 	return 0;
 }

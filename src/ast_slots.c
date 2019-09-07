@@ -395,7 +395,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 				break;
 
 			case AST_SLOT_CONS:
-				if (def && old_slot.cons.def != def) {
+				if (def && old_slot.cons.def && old_slot.cons.def != def) {
 					printf("Warning: Attempted to bind CONS of %p over %p. (bind %i)\n",
 							(void *)def, (void *)old_slot.cons.def, target);
 					return AST_BIND_FAILED;
@@ -448,7 +448,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 	if (target == AST_BIND_NEW) {
 		target = ast_alloc_slot(env, name, type_slot, AST_SLOT_CONS);
 	} else {
-		assert(env->slots[target].type == type_slot);
+		env->slots[target].type = type_slot;
 	}
 
 	env->slots[target].cons.def = def;
@@ -556,7 +556,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 #if AST_DEBUG_BINDS
 	{
 		struct ast_env_slot *slot = &env->slots[target];
-		printf("bind %i=Cons(", target);
+		printf("bind %i=Cons[%p](", target, (void *)def);
 		for (size_t j = 0; j < slot->cons.num_present_args; j++) {
 			if (j != 0)
 				printf(", ");
@@ -760,6 +760,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 	struct ast_env_slot slot = ast_env_slot(ctx->ctx, src, src_slot);
 
 	ast_slot_id type_target = AST_BIND_NEW;
+
 	if (target != AST_BIND_NEW && !ctx->copy_mode) {
 		struct ast_env_slot target_slot = ast_env_slot(ctx->ctx, dest, target);
 
@@ -896,6 +897,8 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 #endif
 
 	ctx->slot_map[src_slot] = result;
+
+	ast_substitute(ctx->ctx, dest, result, target);
 
 	if (src == dest && !ctx->copy_mode) {
 		ast_substitute(ctx->ctx, dest, result, src_slot);

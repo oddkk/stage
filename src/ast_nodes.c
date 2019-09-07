@@ -310,10 +310,24 @@ ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *en
 		}
 	}
 
+	if (scope->ns) {
+		for (size_t i = 0; i < scope->ns->num_names; i++) {
+			if (scope->ns->names[i].name == node->lookup.name) {
+				switch (scope->ns->names[i].kind) {
+					case AST_MODULE_NAME_DECL:
+						return scope->ns->names[i].decl.value;
+
+					case AST_MODULE_NAME_NAMESPACE:
+						return scope->ns->names[i].ns->instance;
+				}
+			}
+		}
+	}
+
 	return AST_BIND_FAILED;
 }
 
-static void
+static bool
 ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
 		struct ast_scope *root_scope, struct ast_node *node)
 {
@@ -328,7 +342,7 @@ ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
 
 		if (slot != AST_BIND_FAILED) {
 			ast_bind_lookup_node(ctx, env, node, slot);
-			return;
+			return true;
 		}
 	}
 
@@ -343,7 +357,7 @@ ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
 			printf("TODO: wildcards. Found '%.*s' as slot %i.\n",
 					ALIT(node->lookup.name), slot);
 			// ast_bind_lookup_node(ctx, env, node, slot);
-			return;
+			return true;
 		}
 	}
 
@@ -355,17 +369,23 @@ ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
 				ctx, env, scope, node);
 
 		if (slot != AST_BIND_FAILED) {
+			ast_bind_lookup_node(ctx, env, node, slot);
+			return true;
+
+			/*
 			struct ast_env_slot found = ast_env_slot(ctx, env, slot);
 			if (found.kind == AST_SLOT_CONST ||
 					found.kind == AST_SLOT_CONST_TYPE) {
-				ast_bind_lookup_node(ctx, env, node, slot);
 				return;
 			}
 			printf("Lookup for '%.*s' discarded slot %i because it "
 					"is not a CONST or CONST_TYPE slot.\n",
 					ALIT(node->lookup.name), slot);
+			*/
 		}
 	}
+
+	return false;
 }
 
 void
@@ -414,7 +434,49 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_NODE_LOOKUP:
-			ast_resolve_node_lookup(ctx, env, scope, node);
+			{
+				struct atom *name = node->lookup.name;
+				// NOTE: If the name is found, node will be replaced by a node
+				// of kind slot.
+				if (!ast_resolve_node_lookup(ctx, env, scope, node)) {
+					stg_error(ctx->err, node->loc, "'%.*s' was not found.",
+							ALIT(name));
+				} else {
+				}
+			}
 			break;
 	}
+}
+
+static void
+ast_namespace_resolve_names(struct ast_context *ctx, struct ast_env *env,
+		struct ast_scope *scope, struct ast_namespace *ns)
+{
+	struct ast_scope inner_scope = {0};
+
+	inner_scope.parent = NULL;
+	inner_scope.parent_func = NULL;
+	inner_scope.parent_ns = scope;
+
+	inner_scope.object = AST_SLOT_NOT_FOUND;
+	inner_scope.ns = ns;
+	inner_scope.num_names = 0;
+
+	for (size_t i = 0; i < ns->num_names; i++) {
+		switch (ns->names[i].kind) {
+			case AST_MODULE_NAME_DECL:
+				ast_node_resolve_names(ctx, env, &inner_scope, ns->names[i].decl.expr);
+				break;
+
+			case AST_MODULE_NAME_NAMESPACE:
+				ast_namespace_resolve_names(ctx, env, &inner_scope, ns->names[i].ns);
+				break;
+		}
+	}
+}
+
+void
+ast_module_resolve_names(struct ast_context *ctx, struct ast_module *mod)
+{
+	ast_namespace_resolve_names(ctx, &mod->env, NULL, &mod->root);
 }

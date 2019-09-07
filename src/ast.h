@@ -54,6 +54,7 @@ struct ast_scope {
 	struct ast_scope *parent_ns;
 
 	ast_slot_id object;
+	struct ast_namespace *ns;
 	struct ast_scope_name *names;
 	size_t num_names;
 };
@@ -330,6 +331,10 @@ ast_node_substitute_slot(struct ast_node *,
 		ast_slot_id target, ast_slot_id new_slot);
 
 void
+ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+		struct ast_scope *scope, struct ast_node *node);
+
+void
 ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
 
 enum ast_module_name_kind {
@@ -358,7 +363,10 @@ struct ast_namespace {
 	struct ast_module_name *names;
 	size_t num_names;
 
+	// TODO: Free expressions
+
 	struct ast_object_def def;
+	ast_slot_id instance;
 };
 
 struct ast_module_dependency {
@@ -383,12 +391,16 @@ ast_namespace_add_decl(struct ast_context *, struct ast_module *,
 		struct atom *name, struct ast_node *expr);
 
 struct ast_namespace *
-ast_namespace_add_ns(struct ast_namespace *,
-		struct atom *name);
+ast_namespace_add_ns(struct ast_context *, struct ast_env *,
+		struct ast_namespace *, struct atom *name);
 
 ast_slot_id
 ast_module_add_dependency(struct ast_context *,
 		struct ast_module *, struct atom *name);
+
+void
+ast_module_resolve_names(struct ast_context *, struct ast_module *);
+
 
 ast_slot_id
 ast_module_finalize(struct ast_context *, struct ast_module *);
