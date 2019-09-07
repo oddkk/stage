@@ -141,7 +141,7 @@ print_errors(struct stg_error_context *err)
 			fseek(fp, line_begin, SEEK_SET);
 			fread(buffer, 1, buffer_length, fp);
 
-			for (ssize_t n = msg->loc.byte_from; n >= buffer_begin; n--) {
+			for (ssize_t n = msg->loc.byte_from; n >= (ssize_t)buffer_begin; n--) {
 				// TODO: Handle all kinds of line break.
 				if (buffer[n - buffer_begin] == '\n') {
 					line_begin = n + 1;
