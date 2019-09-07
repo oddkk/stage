@@ -621,15 +621,6 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_mo
 			   ctx.num_jobs_failed, ctx.err.num_errors);
 	}
 
-	// scope_print(vm, &vm->root_scope);
-	/*
-	printf("\n");
-	ast_print_module(ctx.ast_ctx, &mod->mod);
-
-	printf("\n");
-	ast_env_print(vm, &mod->mod.env);
-	*/
-
 	vm->err = NULL;
 	return 0;
 }
