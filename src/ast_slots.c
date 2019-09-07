@@ -96,6 +96,11 @@ ast_alloc_slot(struct ast_env *ctx,
 	ctx->slots[res].type = type;
 	ctx->slots[res].kind = kind;
 
+	assert(
+			type >= 0 ||
+			type == AST_SLOT_TYPE ||
+			type == AST_BIND_FAILED);
+
 	return res;
 }
 
@@ -829,20 +834,28 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			ast_slot_id members[num_members];
 			ast_slot_id member_type_slot = AST_BIND_NEW;
 
+			for (size_t i = 0; i < num_members; i++) {
+				members[i] = AST_BIND_NEW;
+			}
+
 			if (target != AST_BIND_NEW) {
 				struct ast_env_slot target_slot;
 				target_slot = ast_env_slot(ctx->ctx, dest, target);
 
 				if (target_slot.kind == AST_SLOT_CONS_ARRAY) {
+					if (target_slot.cons_array.num_members != num_members) {
+						printf("Attempted to bind a CONS_ARRAY of length %zu with "
+								"one of length %zu.\n",
+								target_slot.cons_array.num_members,
+								num_members);
+						return AST_BIND_FAILED;
+					}
+
 					for (size_t i = 0; i < num_members; i++) {
 						members[i] = target_slot.cons_array.members[i];
 					}
 
 					member_type_slot = target_slot.cons_array.member_type;
-				}
-			} else {
-				for (size_t i = 0; i < num_members; i++) {
-					members[i] = AST_BIND_NEW;
 				}
 			}
 
