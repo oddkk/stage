@@ -114,6 +114,11 @@ ST_NODE(ARRAY_LIT, struct {
 	struct st_node *items;
 })
 
+ST_NODE(SPECIAL, struct {
+	struct atom *name;
+	struct st_node *args;
+})
+
 ST_NODE(NUM_LIT, int64_t)
 
 ST_NODE(STR_LIT, struct string)

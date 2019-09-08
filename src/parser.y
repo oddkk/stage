@@ -129,7 +129,7 @@ struct YYLTYPE
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>"
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg
 
 
 %type <struct atom *> IDENTIFIER
@@ -182,7 +182,23 @@ assign_stmt:
 		|		ident ':' expr '=' expr { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=$3,   .body=$5  ); }
 		;
 
+special: 		'@' IDENTIFIER '(' special_args ')' { $$ = MKNODE(SPECIAL, .name=$2, .args=$4  ); }
+		;
+
+special_args:	special_args1 ','                   { $$ = $1; }
+		|		special_args1                       { $$ = $1; }
+		;
+
+special_args1:	special_args1 ',' special_arg       { $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
+		|		special_arg                         { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
+		;
+
+special_arg:	numlit
+		|		strlit
+		;
+
 func_decl:		func_proto "=>" expr    { $$ = MKNODE(LAMBDA, .proto=$1, .body=$3); }
+		|		func_proto special		{ $$ = MKNODE(LAMBDA, .proto=$1, .body=$2); }
 		;
 
 func_proto:		'(' func_params ')'             { $$ = MKNODE(FUNC_PROTO, .params=$2, .ret=NULL); }
@@ -259,6 +275,7 @@ expr1:			l_expr                  { $$ = $1; }
 		|		strlit                  { $$ = $1; }
 		|		func_call               { $$ = $1; }
 		/*|		func_proto              { $$ = $1; } */
+		|		special                 { $$ = $1; }
 		|		'$' IDENTIFIER          { $$ = MKNODE(TEMPLATE_VAR, .name=$2); }
 
 		|		expr1 '+'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_ADD); }

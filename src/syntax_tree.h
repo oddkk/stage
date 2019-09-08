@@ -175,6 +175,10 @@ extern struct string st_node_names[ST_NODES_LEN];
 		TREE_VISIT_NODE((node), ARRAY_LIT, items);		\
 		break;											\
 														\
+	case ST_NODE_SPECIAL:								\
+		TREE_VISIT_NODE((node), SPECIAL, args);		 	\
+		break;											\
+														\
 	case ST_NODE_NUM_LIT:								\
 		break;											\
 														\
