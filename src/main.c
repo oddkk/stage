@@ -84,7 +84,6 @@ static bool check_clock_support()
 }
 
 extern struct stg_module_info mod_base;
-extern struct stg_module_info mod_channel;
 
 struct object
 obj_register_integer(struct vm *, struct objstore *,
@@ -109,7 +108,6 @@ int main(int argc, char *argv[])
 	}
 
 	vm_register_module(&vm, &mod_base);
-	vm_register_module(&vm, &mod_channel);
 
 	struct ast_context ctx;
 	ctx = ast_init_context(NULL, &vm.atom_table, &vm,
