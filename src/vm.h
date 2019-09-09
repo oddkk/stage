@@ -107,8 +107,6 @@ struct vm {
 	struct stg_module **modules;
 	size_t num_modules;
 
-	struct stg_error_context *err;
-
 	struct {
 		type_id type;
 		type_id integer;

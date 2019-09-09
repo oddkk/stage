@@ -609,9 +609,6 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_mo
 	assert(!ctx.ast_ctx->err);
 	ctx.ast_ctx->err = &ctx.err;
 
-	assert(!vm->err);
-	vm->err = &ctx.err;
-
 	DISPATCH_JOB(&ctx, load_module, COMPILE_PHASE_DISCOVER,
 			.module_name = vm_atoms(vm, "main"),
 			.module_src_dir = initial_module_src_dir);
@@ -644,7 +641,6 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_mo
 			   ctx.num_jobs_failed, ctx.err.num_errors);
 	}
 
-	vm->err = NULL;
 	ctx.ast_ctx->err = NULL;
 	return 0;
 }
