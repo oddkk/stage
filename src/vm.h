@@ -99,6 +99,8 @@ enum vm_instruction {
 struct stg_module;
 struct stg_module_info;
 
+struct stg_native_module;
+
 struct vm {
 	/* struct objstore store; */
 	struct arena memory;
@@ -106,6 +108,9 @@ struct vm {
 
 	struct stg_module **modules;
 	size_t num_modules;
+
+	struct stg_native_module **precompiled_native_modules;
+	size_t num_precompiled_native_modules;
 
 	struct {
 		type_id type;
@@ -148,6 +153,9 @@ vm_atom(struct vm *, struct string name);
 
 // Create an atom from a cstr.
 #define vm_atoms(vm, str) vm_atom(vm, STR(str))
+
+struct stg_native_module *
+vm_add_precompiled_native_module(struct vm *, struct string name);
 
 void
 vm_exec(struct vm *vm, struct exec_stack *stack, void *instructions, size_t length);

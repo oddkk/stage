@@ -88,6 +88,18 @@ type_base_register_unifier(struct type_base *type1,
 	}
 }
 
+struct type
+_init_plain_type(struct type_base *base, struct atom *name, size_t size)
+{
+	struct type t = {0};
+
+	t.name = name;
+	t.base = base;
+	t.size = size;
+
+	return t;
+}
+
 struct object
 register_object(struct vm *vm, struct objstore *store, struct object obj) {
 	if (store->page_size == 0) {

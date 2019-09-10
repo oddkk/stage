@@ -82,6 +82,12 @@ struct type {
 	int num_template_params; // TODO: Remove
 };
 
+struct type
+_init_plain_type(struct type_base *, struct atom *name, size_t size);
+
+#define init_plain_type(base, name, datatype) \
+	_init_plain_type(base, name, sizeof(datatype))
+
 struct object {
 	type_id type;
 	void *data;

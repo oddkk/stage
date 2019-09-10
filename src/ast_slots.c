@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
-#include "modules/base/mod.h"
+#include "base/mod.h"
 
 #define AST_DEBUG_BINDS 0
 #define AST_DEBUG_UNION 0

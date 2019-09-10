@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
-#include "modules/base/mod.h"
+#include "base/mod.h"
 
 ast_slot_id
 ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot)

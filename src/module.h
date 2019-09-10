@@ -36,6 +36,15 @@ struct stg_module {
 	void *data;
 };
 
+struct atom *
+mod_atom(struct stg_module *, struct string name);
+
+// Create an atom from a cstr.
+#define mod_atoms(mod, str) mod_atom(mod, STR(str))
+
+type_id
+stg_register_type(struct stg_module *, struct type);
+
 enum builtin_func_kind {
 	STG_BUILTIN_FUNC_PURE,
 	STG_BUILTIN_FUNC_IMPURE,

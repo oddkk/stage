@@ -1,7 +1,25 @@
 #include "module.h"
 #include "string.h"
-#include "modules/base/mod.h"
+#include "base/mod.h"
 #include <stdlib.h>
+
+struct atom *
+mod_atom(struct stg_module *mod, struct string name)
+{
+	return atom_create(&mod->vm->atom_table, name);
+}
+
+type_id
+stg_register_type(struct stg_module *mod, struct type t)
+{
+	modtype_id local_tid;
+	local_tid = register_type(&mod->store, t);
+
+	type_id tid;
+	tid = TYPE_ID(mod->id, local_tid);
+
+	return tid;
+}
 
 struct object
 stg_register_builtin_func_obj(struct stg_module *mod,
@@ -53,14 +71,14 @@ stg_register_builtin_func(struct stg_module *mod,
 
 	struct atom *func_name;
 	func_name = atom_create(mod->atom_table, func.name);
-	int err = -1;
+	// int err = -1;
 
 	// TODO: Insert object into ast.
 
-	if (err < 0) {
-		panic("Failed to insert %.*s.%.*s.\n",
-			  LIT(mod->info.name), LIT(func.name));
-	}
+	// if (err < 0) {
+	// 	panic("Failed to insert %.*s.%.*s.\n",
+	// 		  LIT(mod->info.name), LIT(func.name));
+	// }
 }
 
 type_id
@@ -90,14 +108,14 @@ stg_register_builtin_type(struct stg_module *mod,
 	struct object new_obj;
 	new_obj = register_object(mod->vm, &mod->store, obj);
 
-	int err = -1;
+	// int err = -1;
 
 	// TODO: Insert object into ast.
 
-	if (err < 0) {
-		panic("Failed to insert %.*s.%.*s.\n",
-			  LIT(type.mod), LIT(type.name));
-	}
+	// if (err < 0) {
+	// 	panic("Failed to insert %.*s.%.*s.\n",
+	// 		  LIT(type.mod), LIT(type.name));
+	// }
 
 	return tid;
 }

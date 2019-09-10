@@ -2,6 +2,7 @@
 #include "vm.h"
 #include "compile.h"
 #include "ast.h"
+#include "base/mod.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,8 +84,6 @@ static bool check_clock_support()
 	return true;
 }
 
-extern struct stg_module_info mod_base;
-
 struct object
 obj_register_integer(struct vm *, struct objstore *,
 		int64_t value);
@@ -107,7 +106,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	vm_register_module(&vm, &mod_base);
+	stg_base_load(&vm);
 
 	struct ast_context ctx;
 	ctx = ast_init_context(NULL, &vm.atom_table, &vm,

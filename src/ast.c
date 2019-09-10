@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
-#include "modules/base/mod.h"
+#include "module.h"
+#include "base/mod.h"
 
 struct ast_context
 ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, struct vm *vm, type_id type, type_id integer)

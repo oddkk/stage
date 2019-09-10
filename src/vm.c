@@ -1,8 +1,9 @@
 #include "vm.h"
 #include "utils.h"
 #include "module.h"
+#include "native.h"
 #include "dlist.h"
-#include "modules/base/mod.h"
+#include "base/mod.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -69,12 +70,11 @@ vm_register_module(struct vm *vm, struct stg_module_info *info)
 	mod->id = dlist_append(vm->modules,
 						   vm->num_modules, &mod);
 	mod->store.mod_id = mod->id;
+	mod->mod.env.store = &mod->store;
 
 	if (mod->info.init) {
 		mod->info.init(mod);
 	}
-
-	mod->mod.env.store = &mod->store;
 
 	return mod;
 }
@@ -145,6 +145,21 @@ struct atom *
 vm_atom(struct vm *vm, struct string name)
 {
 	return atom_create(&vm->atom_table, name);
+}
+
+struct stg_native_module *
+vm_add_precompiled_native_module(struct vm *vm, struct string name)
+{
+	struct stg_native_module *mod;
+
+	mod = calloc(1, sizeof(struct stg_native_module));
+
+	mod->name = vm_atom(vm, name);
+
+	size_t id = dlist_append(vm->precompiled_native_modules,
+			vm->num_precompiled_native_modules, &mod);
+
+	return vm->precompiled_native_modules[id];
 }
 
 int arena_alloc_stack(struct exec_stack *stack, struct arena *mem, size_t stack_size)
@@ -274,10 +289,12 @@ void vm_exec(struct vm *vm, struct exec_stack *stack, void *instructions, size_t
 		} break;
 
 		case VM_INST_CALL: {
+							   /*
 			struct obj_builtin_func_data data;
 			stack_pop(stack, &data, sizeof(data));
 
 			data.func(vm, stack, data.data);
+			*/
 		} break;
 
 		case VM_INST_CALL_BUILTIN: {

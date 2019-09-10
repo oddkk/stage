@@ -3,6 +3,7 @@
 #include "utils.h"
 #include "dlist.h"
 #include "ast.h"
+#include "native.h"
 #include "objstore.h"
 #include "errors.h"
 #include "term_color.h"
@@ -339,25 +340,12 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 	fts_close(ftsp);
 }
 
-static int
-native_module_init(struct stg_module *mod) {
-	mod->mod = *(struct ast_module *)mod->info.data;
-	return 0;
-}
-
-static void
-native_module_free(struct stg_module *mod) {
-}
-
 static struct job_status
 job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 {
 	switch (data->state) {
 		case JOB_LOAD_MODULE_DISCOVER:
-			memset(&data->mod, 0, sizeof(struct ast_module));
-			data->mod.env.store = &ctx->store;
-			data->mod.root.instance = ast_bind_slot_cons(ctx->ast_ctx, &data->mod.env,
-					AST_BIND_NEW, NULL, NULL);
+			assert(data->module_name != NULL || data->module_src_dir.length != 0);
 
 			if (data->module_name) {
 				struct stg_module *lookup_mod;
@@ -371,18 +359,58 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 					return JOB_OK;
 				}
+
+				for (size_t i = 0; i < ctx->vm->num_precompiled_native_modules; i++) {
+					struct stg_native_module *native_mod;
+					native_mod = ctx->vm->precompiled_native_modules[i];
+					if (native_mod->name == data->module_name) {
+						data->native_mod = native_mod;
+						break;
+					}
+				}
 			}
 
-			if (data->module_src_dir.length == 0) {
-				panic("TODO: Implement looking up module location.");
+			{
+				bool should_discover_files = true;
+
+				if (data->module_src_dir.length == 0) {
+					printf("TODO: Implement looking up module location.\n");
+
+					if (!data->native_mod) {
+						stg_error(&ctx->err, STG_NO_LOC, "Could not find module '%.*s'",
+								ALIT(data->module_name));
+						return JOB_ERROR;
+					}
+
+					should_discover_files = false;
+				}
+
+				struct stg_module_info modinfo = {
+					.name = data->module_name->name,
+					.version = {0, 1},
+				};
+
+				data->stg_mod = vm_register_module(ctx->vm, &modinfo);
+
+				data->mod = &data->stg_mod->mod;
+				data->mod->env.store = &ctx->store;
+				data->mod->root.instance = ast_bind_slot_cons(ctx->ast_ctx, &data->mod->env,
+						AST_BIND_NEW, NULL, NULL);
+
+				if (data->module_name != vm_atoms(ctx->vm, "base")) {
+					ast_module_add_dependency(ctx->ast_ctx, data->mod,
+							vm_atoms(ctx->vm, "base"));
+				}
+
+				if (should_discover_files) {
+					discover_module_files(ctx, data->mod,
+							data->module_src_dir,
+							&data->num_unparsed_files);
+				} else {
+					data->state = JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES;
+					return JOB_YIELD;
+				}
 			}
-
-			ast_module_add_dependency(ctx->ast_ctx, &data->mod,
-					vm_atoms(ctx->vm, "base"));
-
-			discover_module_files(ctx, &data->mod,
-					data->module_src_dir,
-					&data->num_unparsed_files);
 
 			data->state = JOB_LOAD_MODULE_PARSE;
 			// fallthrough
@@ -394,18 +422,18 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 			assert(data->num_unparsed_files == 0);
 
-			for (size_t i = 0; i < data->mod.num_dependencies; i++) {
+			for (size_t i = 0; i < data->mod->num_dependencies; i++) {
 				DISPATCH_JOB(ctx, load_module, COMPILE_PHASE_DISCOVER,
-						.module_name = data->mod.dependencies[i].name,
-						.out_module  = &data->mod.dependencies[i].mod);
+						.module_name = data->mod->dependencies[i].name,
+						.out_module  = &data->mod->dependencies[i].mod);
 			}
 
 			data->state = JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES;
 			// fallthrough
 
 		case JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES:
-			for (size_t i = 0; i < data->mod.num_dependencies; i++) {
-				if (data->mod.dependencies[i].mod == NULL) {
+			for (size_t i = 0; i < data->mod->num_dependencies; i++) {
+				if (data->mod->dependencies[i].mod == NULL) {
 					return JOB_YIELD;
 				}
 			}
@@ -414,7 +442,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			// fallthrough
 
 		case JOB_LOAD_MODULE_RESOLVE_LOOKUPS:
-			ast_module_resolve_names(ctx->ast_ctx, &data->mod);
+			ast_module_resolve_names(ctx->ast_ctx, data->mod);
 
 			data->state = JOB_LOAD_MODULE_WAIT_FOR_TYPECHECK;
 			// fallthrough
@@ -424,31 +452,18 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			// fallthrough
 
 		case JOB_LOAD_MODULE_DONE:
-			ast_module_finalize(ctx->ast_ctx, &data->mod);
-			{
-				struct stg_module_info modinfo = {
-					.name = data->module_name->name,
-					.version = {0, 1},
-					.data = &data->mod,
-
-					.init  = native_module_init,
-					.free  = native_module_free,
-				};
-				struct stg_module *stg_mod;
-
-				stg_mod = vm_register_module(ctx->vm, &modinfo);
+			ast_module_finalize(ctx->ast_ctx, data->mod);
 
 #if 0
-				printf("\n");
-				ast_print_module(ctx->ast_ctx, &data->mod);
+			printf("\n");
+			ast_print_module(ctx->ast_ctx, data->mod);
 
-				printf("\n");
-				ast_env_print(ctx->vm, &data->mod.env);
+			printf("\n");
+			ast_env_print(ctx->vm, &data->mod->env);
 #endif
 
-				if (data->out_module) {
-					*data->out_module = &stg_mod->mod;
-				}
+			if (data->out_module) {
+				*data->out_module = data->mod;
 			}
 
 			return JOB_OK;
@@ -458,7 +473,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 	return JOB_ERROR;
 }
 
-#define COMPILE_DEBUG_JOBS 0
+#define COMPILE_DEBUG_JOBS 1
 
 static void compile_exec_job(struct compile_ctx *ctx, struct complie_job *job)
 {
