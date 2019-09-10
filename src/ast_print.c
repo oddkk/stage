@@ -6,6 +6,85 @@
 #include "vm.h"
 
 void
+ast_print_slot_internal(struct ast_context *ctx, struct ast_env *env,
+		ast_slot_id slot_id, bool print_type)
+{
+	struct ast_env_slot slot; 
+	slot = ast_env_slot(ctx, env, slot_id);
+
+	switch (slot.kind) {
+		case AST_SLOT_ERROR:
+			printf("(error)");
+			break;
+
+		case AST_SLOT_WILDCARD:
+			printf("?");
+			break;
+
+		case AST_SLOT_CONST_TYPE:
+			print_type_repr(ctx->vm, vm_get_type(ctx->vm, slot.const_type));
+			break;
+
+		case AST_SLOT_CONST:
+			print_obj_repr(ctx->vm, slot.const_object);
+			break;
+
+		case AST_SLOT_PARAM:
+			printf("param[%li]", slot.param_index);
+			break;
+
+		case AST_SLOT_TEMPL:
+			printf("(templ)");
+			break;
+
+		case AST_SLOT_FREE:
+			printf("(free)");
+			break;
+
+		case AST_SLOT_CONS:
+			printf("%p{", (void *)slot.cons.def);
+			for (size_t j = 0; j < slot.cons.num_present_args; j++) {
+				if (j != 0)
+					printf(", ");
+				printf("%.*s=", ALIT(slot.cons.args[j].name));
+				ast_print_slot_internal(ctx, env, slot.cons.args[j].slot, true);
+			}
+			printf("}");
+			break;
+
+		case AST_SLOT_CONS_ARRAY:
+			// printf("Array<type=");
+			// ast_print_slot_internal(ctx, env, slot.cons_array.member_type, print_type);
+			// printf("count=");
+			// ast_print_slot_internal(ctx, env, slot.cons_array.member_count, print_type);
+			// printf(">[");
+			printf("[");
+			for (size_t j = 0; j < slot.cons_array.num_members; j++) {
+				if (j != 0)
+					printf(", ");
+				ast_print_slot_internal(ctx, env, slot.cons_array.members[j], false);
+			}
+			printf("]");
+			break;
+
+		case AST_SLOT_SUBST:
+			ast_print_slot_internal(ctx, env, slot.subst, print_type);
+			break;
+	}
+
+	if (print_type) {
+		printf(":");
+		ast_print_slot_internal(ctx, env, slot.type, false);
+	}
+}
+
+void
+ast_print_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot_id)
+{
+	ast_print_slot_internal(ctx, env, slot_id, true);
+}
+
+void
 ast_env_print(struct vm *vm, struct ast_env *env)
 {
 	printf("|#  |name      |type |kind      |\n");

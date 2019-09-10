@@ -220,6 +220,10 @@ ast_env_slot(struct ast_context *, struct ast_env *, ast_slot_id);
 void
 ast_env_print(struct vm *vm, struct ast_env *);
 
+void
+ast_print_slot(struct ast_context *, struct ast_env *, ast_slot_id);
+
+
 struct ast_object_def_param {
 	struct atom *name;
 	ast_slot_id type;

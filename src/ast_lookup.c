@@ -48,6 +48,14 @@ ast_bind_lookup_node(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node, ast_slot_id slot)
 {
 	assert(node->kind == AST_NODE_LOOKUP);
+#if 0
+	printf("lookup '%.*s' bind %i -> %i\n", ALIT(node->lookup.name), slot, node->lookup.slot);
+	printf("  ");
+	ast_print_slot(ctx, env, slot);
+	printf(" -> ");
+	ast_print_slot(ctx, env, node->lookup.slot);
+	printf("\n");
+#endif
 	node->kind = AST_NODE_SLOT;
 	node->slot = ast_union_slot(ctx, env, slot, node->lookup.slot);
 }

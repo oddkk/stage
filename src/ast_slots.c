@@ -211,6 +211,9 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 		}
 	} else if (target >= 0 && type == ctx->types.type) {
 		ast_substitute(ctx, env, target, AST_SLOT_TYPE);
+#if AST_DEBUG_BINDS
+		printf("=== bind const type of type, %i -> -1: \n", target);
+#endif
 		target = AST_SLOT_TYPE;
 	} else {
 		struct ast_env_slot target_slot;
