@@ -98,6 +98,19 @@ ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *en
 				}
 			}
 		}
+
+		for (size_t i = 0; i < scope->ns->num_used_objects; i++) {
+			ast_slot_id obj_id = scope->ns->used_objects[i];
+			assert(ast_env_slot(ctx, env, obj_id).cons.def != NULL);
+
+			ast_slot_id slot =
+				ast_unpack_arg_named(ctx, env,
+						obj_id, node->lookup.name);
+
+			if (slot != AST_BIND_FAILED) {
+				return slot;
+			}
+		}
 	}
 
 	return AST_BIND_FAILED;
