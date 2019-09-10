@@ -340,6 +340,7 @@ ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
 enum ast_module_name_kind {
 	AST_MODULE_NAME_DECL,
 	AST_MODULE_NAME_NAMESPACE,
+	AST_MODULE_NAME_IMPORT,
 };
 
 struct ast_namespace;
@@ -353,12 +354,19 @@ struct ast_module_name {
 			ast_slot_id value;
 		} decl;
 		struct ast_namespace *ns;
+		struct {
+			struct atom *name;
+			ast_slot_id value;
+		} import;
 	};
 };
 
 struct ast_namespace {
 	struct atom *name;
 	struct ast_namespace *parent;
+
+	ast_slot_id *used_objects;
+	size_t num_used_objects;
 
 	struct ast_module_name *names;
 	size_t num_names;
@@ -394,9 +402,21 @@ struct ast_namespace *
 ast_namespace_add_ns(struct ast_context *, struct ast_env *,
 		struct ast_namespace *, struct atom *name);
 
+void
+ast_namespace_add_import(struct ast_context *, struct ast_module *,
+		struct ast_namespace *, struct atom *name);
+
 ast_slot_id
 ast_module_add_dependency(struct ast_context *,
 		struct ast_module *, struct atom *name);
+
+void
+ast_namespace_use(struct ast_context *,
+		struct ast_module *, struct ast_namespace *,
+		ast_slot_id object);
+
+void
+ast_module_resolve_dependencies(struct ast_context *, struct ast_module *);
 
 void
 ast_module_resolve_names(struct ast_context *, struct ast_module *);

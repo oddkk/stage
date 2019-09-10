@@ -312,13 +312,17 @@ ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *en
 
 	if (scope->ns) {
 		for (size_t i = 0; i < scope->ns->num_names; i++) {
-			if (scope->ns->names[i].name == node->lookup.name) {
-				switch (scope->ns->names[i].kind) {
+			struct ast_module_name *name = &scope->ns->names[i];
+			if (name->name == node->lookup.name) {
+				switch (name->kind) {
 					case AST_MODULE_NAME_DECL:
-						return scope->ns->names[i].decl.value;
+						return name->decl.value;
 
 					case AST_MODULE_NAME_NAMESPACE:
-						return scope->ns->names[i].ns->instance;
+						return name->ns->instance;
+
+					case AST_MODULE_NAME_IMPORT:
+						return name->import.value;
 				}
 			}
 		}
@@ -449,9 +453,10 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 }
 
 static void
-ast_namespace_resolve_names(struct ast_context *ctx, struct ast_env *env,
+ast_namespace_resolve_names(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_scope *scope, struct ast_namespace *ns)
 {
+	struct ast_env *env = &mod->env;
 	struct ast_scope inner_scope = {0};
 
 	inner_scope.parent = NULL;
@@ -469,7 +474,21 @@ ast_namespace_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				break;
 
 			case AST_MODULE_NAME_NAMESPACE:
-				ast_namespace_resolve_names(ctx, env, &inner_scope, ns->names[i].ns);
+				ast_namespace_resolve_names(ctx, mod, &inner_scope, ns->names[i].ns);
+				break;
+
+			case AST_MODULE_NAME_IMPORT:
+				{
+					struct ast_module *dep = NULL;
+
+					for (size_t dep_i = 0; dep_i < mod->num_dependencies; dep_i++) {
+						if (mod->dependencies[dep_i].name == ns->names[i].import.name) {
+							dep = mod->dependencies[dep_i].mod;
+						}
+					}
+
+					assert(dep != NULL);
+				}
 				break;
 		}
 	}
@@ -478,5 +497,5 @@ ast_namespace_resolve_names(struct ast_context *ctx, struct ast_env *env,
 void
 ast_module_resolve_names(struct ast_context *ctx, struct ast_module *mod)
 {
-	ast_namespace_resolve_names(ctx, &mod->env, NULL, &mod->root);
+	ast_namespace_resolve_names(ctx, mod, NULL, &mod->root);
 }

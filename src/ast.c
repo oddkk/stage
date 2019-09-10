@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
+#include "dlist.h"
 #include "module.h"
 #include "base/mod.h"
 
@@ -176,6 +177,80 @@ ast_namespace_add_ns(struct ast_context *ctx, struct ast_env *env,
 	return value.ns;
 }
 
+void
+ast_namespace_add_import(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_namespace *ns, struct atom *name)
+{
+	struct ast_module_name value = {0};
+
+	value.kind = AST_MODULE_NAME_IMPORT;
+	value.name = name;
+	value.import.name = name;
+	value.import.value =
+		ast_module_add_dependency(ctx, mod, name);
+
+}
+
+
+void
+ast_namespace_use(struct ast_context *ctx,
+		struct ast_module *mod, struct ast_namespace *ns,
+		ast_slot_id object)
+{
+	struct ast_env_slot slot = ast_env_slot(ctx, &mod->env, object);
+
+	assert(slot.kind == AST_SLOT_CONS);
+
+	dlist_append(ns->used_objects, ns->num_used_objects, &object);
+}
+
+ast_slot_id
+ast_module_add_dependency(struct ast_context *ctx,
+		struct ast_module *mod, struct atom *name)
+{
+	for (size_t i = 0; i < mod->num_dependencies; i++) {
+		if (name == mod->dependencies[i].name) {
+			return mod->dependencies[i].slot;
+		}
+	}
+
+	size_t dep_id = mod->num_dependencies;
+
+	size_t tmp_num_deps;
+	struct ast_module_dependency *tmp_deps;
+	tmp_num_deps = mod->num_dependencies + 1;
+	tmp_deps = realloc(mod->dependencies,
+			sizeof(struct ast_module_dependency) * tmp_num_deps);
+	if (!tmp_deps) {
+		panic("Failed to allocate space for module dependencies.");
+		return AST_BIND_FAILED;
+	}
+
+	mod->dependencies = tmp_deps;
+	mod->num_dependencies = tmp_num_deps;
+
+	memset(&mod->dependencies[dep_id], 0, sizeof(struct ast_module_dependency));
+	mod->dependencies[dep_id].name = name;
+	mod->dependencies[dep_id].slot =
+		ast_bind_slot_cons(ctx, &mod->env, AST_BIND_NEW, name, NULL);
+
+	return mod->dependencies[dep_id].slot;
+}
+
+void
+ast_module_resolve_dependencies(struct ast_context *ctx,
+		struct ast_module *mod)
+{
+	for (size_t i = 0; i < mod->num_dependencies; i++) {
+		struct ast_module_dependency *dep;
+		dep = &mod->dependencies[i];
+
+		dep->slot =
+			ast_bind_slot_cons(ctx, &mod->env, dep->slot,
+					NULL, &dep->mod->root.def);
+	}
+}
+
 static struct type_base namespace_type_base = {
 	.name = STR("namespace"),
 	// TODO: Make repr functions.
@@ -245,40 +320,6 @@ ast_namespace_finalize(struct ast_context *ctx,
 	ns->instance = instance;
 
 	return instance;
-}
-
-ast_slot_id
-ast_module_add_dependency(struct ast_context *ctx,
-		struct ast_module *mod, struct atom *name)
-{
-	for (size_t i = 0; i < mod->num_dependencies; i++) {
-		if (name == mod->dependencies[i].name) {
-			return mod->dependencies[i].slot;
-		}
-	}
-
-	size_t dep_id = mod->num_dependencies;
-
-	size_t tmp_num_deps;
-	struct ast_module_dependency *tmp_deps;
-	tmp_num_deps = mod->num_dependencies + 1;
-	tmp_deps = realloc(mod->dependencies,
-			sizeof(struct ast_module_dependency) * tmp_num_deps);
-	if (!tmp_deps) {
-		mod->num_dependencies -= 1;
-		panic("Failed to allocate space for module dependencies.");
-		return AST_BIND_FAILED;
-	}
-
-	mod->dependencies = tmp_deps;
-	mod->num_dependencies = tmp_num_deps;
-
-	memset(&mod->dependencies[dep_id], 0, sizeof(struct ast_module_dependency));
-	mod->dependencies[dep_id].name = name;
-	mod->dependencies[dep_id].slot =
-		ast_bind_slot_cons(ctx, &mod->env, AST_BIND_NEW, name, NULL);
-
-	return mod->dependencies[dep_id].slot;
 }
 
 ast_slot_id

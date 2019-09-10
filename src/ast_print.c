@@ -172,6 +172,16 @@ static void
 ast_print_namespace(struct ast_context *ctx, struct ast_env *env,
 		struct ast_namespace *ns, int indent)
 {
+	if (ns->num_used_objects > 0) {
+		print_indent(indent);
+		printf("use:\n");
+
+		for (size_t i = 0; i < ns->num_used_objects; i++) {
+			print_indent(indent + 1);
+			printf("- %i\n", ns->used_objects[i]);
+		}
+	}
+
 	for (size_t i = 0; i < ns->num_names; i++) {
 		struct ast_module_name *name = &ns->names[i];
 
@@ -187,6 +197,12 @@ ast_print_namespace(struct ast_context *ctx, struct ast_env *env,
 			case AST_MODULE_NAME_NAMESPACE:
 				printf("ns\n");
 				ast_print_namespace(ctx, env, name->ns, indent+1);
+				break;
+
+			case AST_MODULE_NAME_IMPORT:
+				printf("import %.*s -> %i\n",
+						ALIT(name->import.name),
+						name->import.value);
 				break;
 		}
 	}

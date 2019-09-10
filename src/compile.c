@@ -391,8 +391,11 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 						AST_BIND_NEW, NULL, NULL);
 
 				if (data->module_name != vm_atoms(ctx->vm, "base")) {
-					ast_module_add_dependency(ctx->ast_ctx, data->mod,
+					ast_slot_id dep_obj;
+					dep_obj = ast_module_add_dependency(ctx->ast_ctx, data->mod,
 							vm_atoms(ctx->vm, "base"));
+					ast_namespace_use(ctx->ast_ctx, data->mod,
+							&data->mod->root, dep_obj);
 				}
 
 				if (should_discover_files) {
@@ -430,6 +433,9 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 					return JOB_YIELD;
 				}
 			}
+
+			ast_module_resolve_dependencies(
+					ctx->ast_ctx, data->mod);
 
 			{
 				struct stg_module_info modinfo = {
