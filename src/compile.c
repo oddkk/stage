@@ -385,14 +385,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 					should_discover_files = false;
 				}
 
-				struct stg_module_info modinfo = {
-					.name = data->module_name->name,
-					.version = {0, 1},
-				};
-
-				data->stg_mod = vm_register_module(ctx->vm, &modinfo);
-
-				data->mod = &data->stg_mod->mod;
+				data->mod = &data->_tmp_module;
 				data->mod->env.store = &ctx->store;
 				data->mod->root.instance = ast_bind_slot_cons(ctx->ast_ctx, &data->mod->env,
 						AST_BIND_NEW, NULL, NULL);
@@ -436,6 +429,28 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				if (data->mod->dependencies[i].mod == NULL) {
 					return JOB_YIELD;
 				}
+			}
+
+			{
+				struct stg_module_info modinfo = {
+					.name = data->module_name->name,
+					.version = {0, 1},
+				};
+
+				if (data->native_mod) {
+					modinfo.init = data->native_mod->hook_init;
+					modinfo.free = data->native_mod->hook_free;
+				}
+
+				// We register the module here because at this point all
+				// dependencies are resolved, so the module's init function can
+				// reference them. After this point, _tmp_module should not be
+				// used.
+				data->stg_mod = vm_register_module(ctx->vm, &modinfo);
+				data->mod = &data->stg_mod->mod;
+				*data->mod = data->_tmp_module;
+
+				memset(&data->_tmp_module, 0, sizeof(struct ast_module));
 			}
 
 			data->state = JOB_LOAD_MODULE_RESOLVE_LOOKUPS;

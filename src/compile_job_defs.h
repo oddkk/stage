@@ -8,6 +8,12 @@ COMPILE_JOB(load_module, struct {
 	int num_unparsed_files;
 	struct stg_native_module *native_mod;
 
+	// This module struct is used in place of stg_mod->mod until stg_mod is
+	// registered. We delay the registration of stg_mod until after all
+	// dependencies have been resolve. Do not use _tmp_module after the module
+	// is registered.
+	struct ast_module _tmp_module;
+
 	struct ast_module **out_module;
 })
 

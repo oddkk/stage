@@ -15,6 +15,7 @@ struct stg_native_type {
 };
 
 struct atom;
+struct stg_module;
 
 struct stg_native_module {
 	struct atom *name;
@@ -24,6 +25,9 @@ struct stg_native_module {
 
 	struct stg_native_type *types;
 	size_t num_types;
+
+	int  (*hook_init)(struct stg_module *);
+	void (*hook_free)(struct stg_module *);
 };
 
 void
