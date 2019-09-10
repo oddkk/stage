@@ -36,21 +36,12 @@ struct type_base {
 	type_free free;
 };
 
-void
-type_base_init(struct type_base *, struct string name);
-
-void
-type_base_init_unfilled(struct type_base *base);
-
 struct type {
 	struct atom *name;
 	struct type_base *base;
-	struct scope *object_scope; // TODO: Remove
 	void *data;
 
 	size_t size;
-
-	int num_template_params; // TODO: Remove
 };
 
 struct type

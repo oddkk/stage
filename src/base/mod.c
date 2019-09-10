@@ -11,7 +11,7 @@ stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
-		type_base_init(base, STR("unset"));
+		base->name = STR("unset");
 
 		struct type unset = {0};
 		unset.name = atom_create(mod->atom_table, STR("unset"));
@@ -19,14 +19,13 @@ stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 		unset.size = 0;
 
 		type_id unset_id = register_type(&mod->store, unset);
-		// type_base_register_unifier(base, NULL, type_unset_unify);
 
 		assert(unset_id == TYPE_UNSET);
 	}
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
-		type_base_init(base, STR("none"));
+		base->name = STR("none");
 
 		struct type none = {0};
 		none.name = atom_create(mod->atom_table, STR("none"));

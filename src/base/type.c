@@ -23,8 +23,6 @@ static struct type_base base_type_base = {
 void
 base_bootstrap_register_type(struct stg_module *mod)
 {
-	type_base_init_unfilled(&base_type_base);
-
 	struct type t;
 	t = init_plain_type(
 			&base_type_base,

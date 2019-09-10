@@ -22,24 +22,6 @@ static struct string default_obj_repr(struct vm *vm, struct arena *mem,
 	return type->base->name;
 }
 
-void type_base_init(struct type_base *base, struct string name)
-{
-	base->name = name;
-	base->repr = default_type_repr;
-	base->obj_repr = default_obj_repr;
-}
-
-void type_base_init_unfilled(struct type_base *base)
-{
-	if (base->repr == NULL) {
-		base->repr = default_type_repr;
-	}
-
-	if (base->obj_repr == NULL) {
-		base->obj_repr = default_obj_repr;
-	}
-}
-
 struct type
 _init_plain_type(struct type_base *base, struct atom *name, size_t size)
 {
