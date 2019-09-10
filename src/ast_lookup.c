@@ -1,5 +1,47 @@
 #include "ast.h"
 #include <stdlib.h>
+#include <string.h>
+
+void
+ast_scope_push_namespace(struct ast_scope *target, struct ast_scope *parent,
+		struct ast_namespace *ns)
+{
+	memset(target, 0, sizeof(struct ast_scope));
+
+	target->parent = parent;
+	target->parent_func = NULL;
+	target->last_func = NULL;
+	target->last_ns = target;
+
+	target->ns = ns;
+	target->object = AST_SLOT_NOT_FOUND;
+}
+
+void
+ast_scope_push_expr(struct ast_scope *target, struct ast_scope *parent)
+{
+	memset(target, 0, sizeof(struct ast_scope));
+
+	target->parent = parent;
+	target->parent_func = parent->parent_func;
+	target->last_func = target;
+	target->last_ns = parent->last_ns;
+
+	target->object = AST_SLOT_NOT_FOUND;
+}
+
+void
+ast_scope_push_func(struct ast_scope *target, struct ast_scope *parent)
+{
+	memset(target, 0, sizeof(struct ast_scope));
+
+	target->parent = parent->last_ns;
+	target->parent_func = parent->last_func;
+	target->last_func = target;
+	target->last_ns = parent->last_ns;
+
+	target->object = AST_SLOT_NOT_FOUND;
+}
 
 static void
 ast_bind_lookup_node(struct ast_context *ctx, struct ast_env *env,
@@ -70,45 +112,26 @@ ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
 			ast_bind_lookup_node(ctx, env, node, slot);
 			return true;
 		}
-	}
 
-	for (struct ast_scope *scope = root_scope->parent_func;
-			scope != NULL;
-			scope = scope->parent_func) {
-		ast_slot_id slot =
-			ast_try_resolve_node_lookup_in_scope(
-				ctx, env, scope, node);
+		// TODO: Closures
+		/*
+		if (scope->parent_func) {
+			for (struct ast_scope *func_scope = root_scope->parent_func;
+					scope != NULL;
+					scope = scope->parent_func) {
+				ast_slot_id slot =
+					ast_try_resolve_node_lookup_in_scope(
+							ctx, env, scope, node);
 
-		if (slot != AST_BIND_FAILED) {
-			printf("TODO: wildcards. Found '%.*s' as slot %i.\n",
-					ALIT(node->lookup.name), slot);
-			// ast_bind_lookup_node(ctx, env, node, slot);
-			return true;
-		}
-	}
-
-	for (struct ast_scope *scope = root_scope->parent_ns;
-			scope != NULL;
-			scope = scope->parent_ns) {
-		ast_slot_id slot =
-			ast_try_resolve_node_lookup_in_scope(
-				ctx, env, scope, node);
-
-		if (slot != AST_BIND_FAILED) {
-			ast_bind_lookup_node(ctx, env, node, slot);
-			return true;
-
-			/*
-			struct ast_env_slot found = ast_env_slot(ctx, env, slot);
-			if (found.kind == AST_SLOT_CONST ||
-					found.kind == AST_SLOT_CONST_TYPE) {
-				return;
+				if (slot != AST_BIND_FAILED) {
+					printf("TODO: wildcards. Found '%.*s' as slot %i.\n",
+							ALIT(node->lookup.name), slot);
+					// ast_bind_lookup_node(ctx, env, node, slot);
+					return true;
+				}
 			}
-			printf("Lookup for '%.*s' discarded slot %i because it "
-					"is not a CONST or CONST_TYPE slot.\n",
-					ALIT(node->lookup.name), slot);
-			*/
 		}
+		*/
 	}
 
 	return false;
@@ -125,27 +148,43 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 		case AST_NODE_FUNC:
 			{
-				struct ast_scope func_scope = {0};
+				struct ast_scope templates_scope = {0};
+				struct ast_scope params_scope = {0};
 
-				func_scope.parent = NULL;
-				func_scope.parent_func = scope;
-				func_scope.parent_ns = scope->parent_ns;
+				ast_scope_push_func(&templates_scope, scope);
 
-				func_scope.object = AST_SLOT_NOT_FOUND;
-				func_scope.num_names = node->func.num_params;
-				func_scope.names = calloc(
-						func_scope.num_names, sizeof(struct ast_scope_name));
+				if (false) {
+					templates_scope.num_names = 0;
+					templates_scope.names = calloc(
+							templates_scope.num_names, sizeof(struct ast_scope_name));
 
-				for (size_t i = 0; i < func_scope.num_names; i++) {
-					func_scope.names[i].name = node->func.params[i].name;
-					func_scope.names[i].slot = node->func.params[i].slot;
+					for (size_t i = 0; i < templates_scope.num_names; i++) {
+						templates_scope.names[i].name = node->func.params[i].name;
+						templates_scope.names[i].slot = node->func.params[i].slot;
+					}
 				}
 
-				for (size_t i = 0; i < func_scope.num_names; i++) {
-					ast_node_resolve_names(ctx, env, scope, node->func.params[i].type);
+				ast_scope_push_expr(&params_scope, &templates_scope);
+
+				params_scope.num_names = node->func.num_params;
+				params_scope.names = calloc(
+						params_scope.num_names, sizeof(struct ast_scope_name));
+
+				for (size_t i = 0; i < params_scope.num_names; i++) {
+					params_scope.names[i].name = node->func.params[i].name;
+					params_scope.names[i].slot = node->func.params[i].slot;
 				}
 
-				ast_node_resolve_names(ctx, env, scope, node->func.return_type);
+				for (size_t i = 0; i < params_scope.num_names; i++) {
+					ast_node_resolve_names(ctx, env,
+							&templates_scope, node->func.params[i].type);
+				}
+
+				ast_node_resolve_names(ctx, env,
+						&templates_scope, node->func.return_type);
+
+				ast_node_resolve_names(ctx, env,
+						&params_scope, node->func.body);
 			}
 			break;
 
@@ -181,13 +220,7 @@ ast_namespace_resolve_names(struct ast_context *ctx, struct ast_module *mod,
 	struct ast_env *env = &mod->env;
 	struct ast_scope inner_scope = {0};
 
-	inner_scope.parent = NULL;
-	inner_scope.parent_func = NULL;
-	inner_scope.parent_ns = scope;
-
-	inner_scope.object = AST_SLOT_NOT_FOUND;
-	inner_scope.ns = ns;
-	inner_scope.num_names = 0;
+	ast_scope_push_namespace(&inner_scope, scope, ns);
 
 	for (size_t i = 0; i < ns->num_names; i++) {
 		switch (ns->names[i].kind) {

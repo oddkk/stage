@@ -46,18 +46,32 @@ struct ast_env;
 struct ast_namespace;
 
 struct ast_scope {
-	// Used for multiple scopes within a single expression.
+	// The immediate lookup parent of the current scope. For functions this
+	// should be the last seen namespace. Closures should be resolved by
+	// looking through the parent_func scopes.
 	struct ast_scope *parent;
 	// Used for resolving closures from parent functions.
 	struct ast_scope *parent_func;
-	// Used for looking up objects from outside the expression.
-	struct ast_scope *parent_ns;
+	// The last seen function scope, including the current one.
+	struct ast_scope *last_func;
+	// The last seen namespace scope, including the current one.
+	struct ast_scope *last_ns;
 
 	ast_slot_id object;
 	struct ast_namespace *ns;
 	struct ast_scope_name *names;
 	size_t num_names;
 };
+
+void
+ast_scope_push_namespace(struct ast_scope *target, struct ast_scope *parent,
+		struct ast_namespace *ns);
+
+void
+ast_scope_push_expr(struct ast_scope *target, struct ast_scope *parent);
+
+void
+ast_scope_push_func(struct ast_scope *target, struct ast_scope *parent);
 
 int
 ast_scope_insert(struct ast_scope *,

@@ -36,6 +36,7 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 	ast_slot_id param_types[num_params];
 
 	for (size_t i = 0; i < num_params; i++) {
+		node->func.params[i].name = param_names[i];
 		node->func.params[i].slot = ast_bind_slot_param(
 				ctx, env, AST_BIND_NEW,
 				param_names[i], i,
