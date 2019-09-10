@@ -22,18 +22,11 @@ static struct string default_obj_repr(struct vm *vm, struct arena *mem,
 	return type->base->name;
 }
 
-static type_id default_type_subtypes_iter(struct vm *vm, struct type *type,
-										  size_t *iter)
-{
-	return TYPE_SUBTYPES_END;
-}
-
 void type_base_init(struct type_base *base, struct string name)
 {
 	base->name = name;
 	base->repr = default_type_repr;
 	base->obj_repr = default_obj_repr;
-	base->subtypes_iter = default_type_subtypes_iter;
 }
 
 void type_base_init_unfilled(struct type_base *base)
@@ -44,47 +37,6 @@ void type_base_init_unfilled(struct type_base *base)
 
 	if (base->obj_repr == NULL) {
 		base->obj_repr = default_obj_repr;
-	}
-
-	if (base->subtypes_iter == NULL) {
-		base->subtypes_iter = default_type_subtypes_iter;
-	}
-}
-
-void
-type_base_register_unifier(struct type_base *type1,
-						   struct type_base *type2,
-						   type_unify unifier)
-{
-	if (type1 == NULL) {
-		struct type_base *tmp;
-		tmp = type1;
-		type1 = type2;
-		type2 = tmp;
-	}
-
-	assert(type1 != NULL);
-
-	// Make sure no more than one pair of unifiers
-	for (size_t i = 0; i < type1->num_unifiers; i++) {
-		assert(type1->unifiers[i].other != type2);
-	}
-
-	if (type2) {
-		for (size_t i = 0; i < type2->num_unifiers; i++) {
-			assert(type2->unifiers[i].other != type1);
-		}
-	}
-
-	struct type_unifier uni = {0};
-	uni.unify = unifier;
-	uni.other = type2;
-
-	dlist_append(type1->unifiers, type1->num_unifiers, &uni);
-
-	if (type2 != NULL) {
-		uni.other = type1;
-		dlist_append(type2->unifiers, type2->num_unifiers, &uni);
 	}
 }
 
@@ -201,51 +153,6 @@ type_id register_type(struct objstore *store, struct type type)
 	modtype_id mtid;
 	mtid = dlist_append(store->types, store->num_types, &type);
 	return TYPE_ID(store->mod_id, mtid);
-}
-
-bool unify_types(struct vm *vm, struct objstore *store, type_id lhs, type_id rhs, type_id *out)
-{
-	if (lhs == rhs) {
-		 *out = lhs;
-		 return true;
-	}
-
-	struct type *lhs_type = vm_get_type(vm, lhs);
-	struct type *rhs_type = vm_get_type(vm, rhs);
-
-	struct type_unifier *unifier = NULL;
-
-	for (size_t i = 0; i < lhs_type->base->num_unifiers; i++) {
-		struct type_unifier *uni;
-		uni = &lhs_type->base->unifiers[i];
-
-		if (uni->other == rhs_type->base ||
-			uni->other == NULL) {
-			unifier = uni;
-			break;
-		}
-	}
-
-	if (!unifier) {
-		for (size_t i = 0; i < rhs_type->base->num_unifiers; i++) {
-			struct type_unifier *uni;
-			uni = &rhs_type->base->unifiers[i];
-
-			if (uni->other == NULL) {
-				unifier = uni;
-				break;
-			}
-
-			assert(uni->other != lhs_type->base ||
-				!"unifiers where not applied symmetrically");
-		}
-	}
-
-	if (!unifier) {
-		return false;
-	}
-
-	return unifier->unify(vm, store, lhs, rhs, out);
 }
 
 void print_type_repr(struct vm *vm, struct type *type)
