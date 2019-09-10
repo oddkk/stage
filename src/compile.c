@@ -446,9 +446,9 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				// dependencies are resolved, so the module's init function can
 				// reference them. After this point, _tmp_module should not be
 				// used.
-				data->stg_mod = vm_register_module(ctx->vm, &modinfo);
+				data->stg_mod = vm_register_module(ctx->vm,
+						ctx->ast_ctx, data->mod, &modinfo);
 				data->mod = &data->stg_mod->mod;
-				*data->mod = data->_tmp_module;
 
 				memset(&data->_tmp_module, 0, sizeof(struct ast_module));
 			}
@@ -470,7 +470,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			ast_module_finalize(ctx->ast_ctx, data->mod);
 
 #if 0
-			printf("\n");
+			printf("%.*s (%.*s)\n", ALIT(data->module_name), LIT(data->module_src_dir));
 			ast_print_module(ctx->ast_ctx, data->mod);
 
 			printf("\n");
@@ -488,7 +488,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 	return JOB_ERROR;
 }
 
-#define COMPILE_DEBUG_JOBS 1
+#define COMPILE_DEBUG_JOBS 0
 
 static void compile_exec_job(struct compile_ctx *ctx, struct complie_job *job)
 {

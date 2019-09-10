@@ -133,8 +133,12 @@ struct exec_stack {
 
 typedef void (*vm_builtin_func)(struct vm *, struct exec_stack *, void *);
 
+struct ast_context;
+struct ast_module;
+
 struct stg_module *
-vm_register_module(struct vm *vm, struct stg_module_info *);
+vm_register_module(struct vm *vm, struct ast_context *,
+		struct ast_module *, struct stg_module_info *);
 
 struct stg_module *
 vm_get_module(struct vm *vm, struct string name);

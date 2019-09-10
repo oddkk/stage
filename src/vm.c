@@ -55,7 +55,8 @@ int vm_start(struct vm *vm)
 
 
 struct stg_module *
-vm_register_module(struct vm *vm, struct stg_module_info *info)
+vm_register_module(struct vm *vm, struct ast_context *ctx,
+		struct ast_module *old_module, struct stg_module_info *info)
 {
 
 	struct stg_module *mod;
@@ -70,10 +71,16 @@ vm_register_module(struct vm *vm, struct stg_module_info *info)
 	mod->id = dlist_append(vm->modules,
 						   vm->num_modules, &mod);
 	mod->store.mod_id = mod->id;
-	mod->mod.env.store = &mod->store;
+	if (old_module) {
+		mod->mod = *old_module;
+	} else {
+		mod->mod.env.store = &mod->store;
+		mod->mod.root.instance = ast_bind_slot_cons(ctx, &mod->mod.env,
+				AST_BIND_NEW, NULL, NULL);
+	}
 
 	if (mod->info.init) {
-		mod->info.init(mod);
+		mod->info.init(ctx, mod);
 	}
 
 	return mod;

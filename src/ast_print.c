@@ -31,6 +31,7 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 
 			case AST_SLOT_CONST_TYPE:
 				print_type_repr(vm, vm_get_type(vm, slot->const_type));
+				printf(" (%li)", slot->const_type);
 				break;
 
 			case AST_SLOT_CONST:

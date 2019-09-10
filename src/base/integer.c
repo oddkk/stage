@@ -28,7 +28,7 @@ struct type_base base_integer_base = {
 };
 
 void
-base_register_integer(struct stg_module *mod)
+base_bootstrap_register_integer(struct stg_module *mod)
 {
 	type_base_init_unfilled(&base_integer_base);
 
