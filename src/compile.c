@@ -33,6 +33,13 @@ enum job_load_module_state {
 	JOB_LOAD_MODULE_DONE,
 };
 
+enum job_compile_expr_state {
+	JOB_COMPILE_EXPR_WAIT_FOR_DEPENDENCIES = 0,
+	JOB_COMPILE_EXPR_TYPECHECK,
+	JOB_COMPILE_EXPR_GENERATE_OBJECT,
+	JOB_COMPILE_EXPR_DONE,
+};
+
 #define COMPILE_JOB(name, data) typedef data job_##name##_t;
 #include "compile_job_defs.h"
 #undef COMPILE_JOB
@@ -340,6 +347,31 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 	fts_close(ftsp);
 }
 
+static void
+dispatch_compile_expr(struct compile_ctx *ctx,
+		job_load_module_t *data, struct ast_namespace *ns)
+{
+	for (size_t i = 0; i < ns->num_names; i++) {
+		switch (ns->names[i].kind) {
+			case AST_MODULE_NAME_DECL:
+				DISPATCH_JOB(ctx, compile_expr, COMPILE_PHASE_DISCOVER,
+						.mod = data->mod,
+						.expr = ns->names[i].decl.expr,
+						.out_value = ns->names[i].decl.value,
+						.num_uncompiled_exprs = &data->num_uncompiled_exprs);
+				data->num_uncompiled_exprs += 1;
+				break;
+
+			case AST_MODULE_NAME_NAMESPACE:
+				dispatch_compile_expr(ctx, data, ns->names[i].ns);
+				break;
+
+			case AST_MODULE_NAME_IMPORT:
+				break;
+		}
+	}
+}
+
 static struct job_status
 job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 {
@@ -465,17 +497,25 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 		case JOB_LOAD_MODULE_RESOLVE_LOOKUPS:
 			ast_module_resolve_names(ctx->ast_ctx, data->mod);
 
+			dispatch_compile_expr(ctx, data, &data->mod->root);
+
 			data->state = JOB_LOAD_MODULE_WAIT_FOR_TYPECHECK;
 			// fallthrough
 
 		case JOB_LOAD_MODULE_WAIT_FOR_TYPECHECK:
+			if (data->num_uncompiled_exprs > 0) {
+				return JOB_YIELD;
+			}
+
+			assert(data->num_uncompiled_exprs == 0);
+
 			data->state = JOB_LOAD_MODULE_DONE;
 			// fallthrough
 
 		case JOB_LOAD_MODULE_DONE:
 			ast_module_finalize(ctx->ast_ctx, data->mod);
 
-#if 0
+#if 1
 			printf("%.*s (%.*s)\n", ALIT(data->module_name), LIT(data->module_src_dir));
 			ast_print_module(ctx->ast_ctx, data->mod);
 
@@ -494,7 +534,42 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 	return JOB_ERROR;
 }
 
-#define COMPILE_DEBUG_JOBS 0
+static struct job_status
+job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
+{
+	switch (data->state) {
+		case JOB_COMPILE_EXPR_WAIT_FOR_DEPENDENCIES:
+			if (!ast_node_dependencies_fulfilled(
+						ctx->ast_ctx, &data->mod->env, data->expr)) {
+				return JOB_YIELD;
+			}
+
+			data->state = JOB_COMPILE_EXPR_TYPECHECK;
+			// fallthrough
+
+		case JOB_COMPILE_EXPR_TYPECHECK:
+			ast_print(ctx->ast_ctx, &data->mod->env, data->expr);
+
+			data->state = JOB_COMPILE_EXPR_GENERATE_OBJECT;
+			// fallthrough
+
+		case JOB_COMPILE_EXPR_GENERATE_OBJECT:
+
+			data->state = JOB_COMPILE_EXPR_DONE;
+			// fallthrough
+
+		case JOB_COMPILE_EXPR_DONE:
+
+			// bind data->out_value
+			*data->num_uncompiled_exprs -= 1;
+			return JOB_OK;
+	}
+
+	panic("Compile expr reached an invalid state.");
+	return JOB_ERROR;
+}
+
+#define COMPILE_DEBUG_JOBS 1
 
 static void compile_exec_job(struct compile_ctx *ctx, struct complie_job *job)
 {

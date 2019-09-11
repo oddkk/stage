@@ -192,7 +192,9 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 
 			for (size_t i = 0; i < node->func.num_params; i++) {
 				print_indent(depth + 1);
-				printf("param %li '%.*s' type\n", i, ALIT(node->func.params[i].name));
+				printf("param %li '%.*s' %i type\n", i,
+						ALIT(node->func.params[i].name),
+						node->func.params[i].slot);
 				ast_print_internal(ctx, env, node->func.params[i].type, depth + 2);
 			}
 
@@ -236,6 +238,11 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			print_slot(env, node->lookup.slot);
 			printf(": ");
 			print_slot(env, ast_node_type(ctx, env, node));
+			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
+				printf(" (not found)");
+			} else {
+				printf(" (found: %i)", node->lookup.value);
+			}
 			printf("\n");
 			break;
 	}

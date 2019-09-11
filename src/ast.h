@@ -296,6 +296,7 @@ struct ast_node {
 		struct {
 			struct atom *name;
 			ast_slot_id slot;
+			ast_slot_id value;
 		} lookup;
 	};
 };
@@ -348,6 +349,10 @@ void
 ast_node_substitute_slot(struct ast_node *,
 		ast_slot_id target, ast_slot_id new_slot);
 
+bool
+ast_node_dependencies_fulfilled(struct ast_context *ctx,
+		struct ast_env *env, struct ast_node *node);
+
 void
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		struct ast_scope *scope, struct ast_node *node);
@@ -393,6 +398,8 @@ struct ast_namespace {
 
 	struct ast_object_def def;
 	ast_slot_id instance;
+
+	struct ast_scope scope;
 };
 
 struct ast_module_dependency {

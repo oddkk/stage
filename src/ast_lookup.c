@@ -56,8 +56,10 @@ ast_bind_lookup_node(struct ast_context *ctx, struct ast_env *env,
 	ast_print_slot(ctx, env, node->lookup.slot);
 	printf("\n");
 #endif
-	node->kind = AST_NODE_SLOT;
-	node->slot = ast_union_slot(ctx, env, slot, node->lookup.slot);
+	// node->kind = AST_NODE_SLOT;
+	// node->slot = ast_union_slot(ctx, env, slot, node->lookup.slot);
+
+	node->lookup.value = slot;
 }
 
 static ast_slot_id

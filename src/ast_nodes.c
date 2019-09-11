@@ -208,6 +208,7 @@ ast_init_node_lookup(
 	node->lookup.name = name;
 	node->lookup.slot = ast_bind_slot_wildcard(
 			ctx, env, slot, NULL, AST_BIND_NEW);
+	node->lookup.value = AST_SLOT_NOT_FOUND;
 
 	return node;
 }
@@ -278,4 +279,60 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 
 	panic("Invalid ast node.");
 	return AST_BIND_FAILED;
+}
+
+bool
+ast_node_dependencies_fulfilled(struct ast_context *ctx,
+		struct ast_env *env, struct ast_node *node)
+{
+	bool result = true;
+	switch (node->kind) {
+		case AST_NODE_FUNC:
+			result &= ast_node_dependencies_fulfilled(
+					ctx, env, node->func.body);
+			result &= ast_node_dependencies_fulfilled(
+					ctx, env, node->func.return_type);
+			for (size_t i = 0; i < node->func.num_params; i++) {
+				result &= ast_node_dependencies_fulfilled(
+						ctx, env, node->func.params[i].type);
+			}
+			break;
+
+		case AST_NODE_CALL:
+			result &= ast_node_dependencies_fulfilled(
+					ctx, env, node->call.func);
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				result &= ast_node_dependencies_fulfilled(
+						ctx, env, node->call.args[i].value);
+			}
+			break;
+
+		case AST_NODE_SLOT:
+			break;
+
+		case AST_NODE_LOOKUP:
+			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
+				result = false;
+			} else {
+				struct ast_env_slot slot =
+					ast_env_slot(ctx, env, node->lookup.value);
+
+				if (slot.kind == AST_SLOT_CONST ||
+						slot.kind == AST_SLOT_CONST_TYPE) {
+					node->kind = AST_NODE_SLOT;
+					node->slot =
+						ast_union_slot(ctx, env,
+								node->lookup.value, node->lookup.slot);
+				} else {
+					result = false;
+				}
+			}
+			break;
+
+		case AST_NODE_FUNC_UNINIT:
+			panic("Encountered uninitialized func in dependency check.");
+			return false;
+	}
+
+	return result;
 }
