@@ -21,6 +21,7 @@ struct object;
 struct objstore;
 struct exec_stack;
 struct stg_module;
+struct ast_object_def;
 
 // TYPE_UNSET
 #define TYPE_SUBTYPES_END ((type_id)0)
@@ -39,6 +40,8 @@ struct type_base {
 struct type {
 	struct atom *name;
 	struct type_base *base;
+	struct ast_object_def *obj_def;
+	struct ast_object_def *type_def;
 	void *data;
 
 	size_t size;

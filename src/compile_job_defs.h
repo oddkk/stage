@@ -21,7 +21,7 @@ COMPILE_JOB(load_module, struct {
 COMPILE_JOB(compile_expr, struct {
 	struct ast_module *mod;
 	struct ast_node *expr;
-	ast_slot_id out_value;
+	ast_slot_id *out_value;
 	int *num_uncompiled_exprs;
 
 	enum job_compile_expr_state state;

@@ -79,6 +79,8 @@ vm_register_module(struct vm *vm, struct ast_context *ctx,
 				AST_BIND_NEW, NULL, NULL);
 	}
 
+	mod->mod.stg_mod = mod;
+
 	if (mod->info.init) {
 		mod->info.init(ctx, mod);
 	}

@@ -217,6 +217,9 @@ ast_env_lookup_or_alloc_free(struct ast_context *,
 struct ast_env_slot
 ast_env_slot(struct ast_context *, struct ast_env *, ast_slot_id);
 
+bool
+ast_resolve_slot(struct ast_context *, struct ast_env *, ast_slot_id);
+
 void
 ast_env_print(struct vm *vm, struct ast_env *);
 
@@ -225,16 +228,30 @@ ast_print_slot(struct ast_context *, struct ast_env *, ast_slot_id);
 
 
 struct ast_object_def_param {
+	int param_id;
 	struct atom *name;
 	ast_slot_id type;
 };
+
+typedef struct object (*ast_object_unpack)(
+		struct ast_context *, struct ast_env *,
+		struct ast_object_def *, int param_id, struct object);
+
+typedef struct object (*ast_object_pack)(
+		struct ast_context *, struct ast_env *,
+		struct ast_object_def *, ast_slot_id);
 
 struct ast_object_def {
 	struct ast_object_def_param *params;
 	size_t num_params;
 	struct ast_env env;
 
-	ast_slot_id  ret_type;
+	ast_slot_id ret_type;
+
+	ast_object_unpack unpack;
+	ast_object_pack pack;
+
+	void *data;
 };
 
 struct ast_object_def *
@@ -244,6 +261,10 @@ void
 ast_object_def_finalize(struct ast_object_def *,
 		struct ast_object_def_param *params, size_t num_params,
 		ast_slot_id ret_type);
+
+int
+ast_slot_pack(struct ast_context *, struct ast_env *,
+		ast_slot_id obj, struct object *out);
 
 enum ast_node_kind {
 	AST_NODE_FUNC,
@@ -357,6 +378,14 @@ void
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		struct ast_scope *scope, struct ast_node *node);
 
+bool
+ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node);
+
+bool
+ast_node_resolve_slots(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node);
+
 void
 ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
 
@@ -409,13 +438,19 @@ struct ast_module_dependency {
 	struct ast_module *mod;
 };
 
+struct stg_module;
+
 struct ast_module {
+	// TODO: This should probably not be here.
+	struct stg_module *stg_mod;
 	struct ast_env env;
 
 	struct ast_namespace root;
 
 	struct ast_module_dependency *dependencies;
 	size_t num_dependencies;
+
+	struct object instance;
 };
 
 int
@@ -447,7 +482,7 @@ void
 ast_module_resolve_names(struct ast_context *, struct ast_module *);
 
 
-ast_slot_id
+int
 ast_module_finalize(struct ast_context *, struct ast_module *);
 
 void

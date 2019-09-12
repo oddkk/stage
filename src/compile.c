@@ -357,7 +357,7 @@ dispatch_compile_expr(struct compile_ctx *ctx,
 				DISPATCH_JOB(ctx, compile_expr, COMPILE_PHASE_DISCOVER,
 						.mod = data->mod,
 						.expr = ns->names[i].decl.expr,
-						.out_value = ns->names[i].decl.value,
+						.out_value = &ns->names[i].decl.value,
 						.num_uncompiled_exprs = &data->num_uncompiled_exprs);
 				data->num_uncompiled_exprs += 1;
 				break;
@@ -513,7 +513,16 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			// fallthrough
 
 		case JOB_LOAD_MODULE_DONE:
-			ast_module_finalize(ctx->ast_ctx, data->mod);
+			printf("Finalize module %.*s\n", ALIT(data->module_name));
+			{
+				int err;
+				err = ast_module_finalize(ctx->ast_ctx, data->mod);
+				if (err) {
+					print_error("compile", "Failed to finalize module '%.*s'.",
+							ALIT(data->module_name));
+					return JOB_ERROR;
+				}
+			}
 
 #if 1
 			printf("%.*s (%.*s)\n", ALIT(data->module_name), LIT(data->module_src_dir));
@@ -548,6 +557,10 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 			// fallthrough
 
 		case JOB_COMPILE_EXPR_TYPECHECK:
+			ast_node_resolve_slots(ctx->ast_ctx, &data->mod->env, data->expr);
+			if (!ast_node_is_typed(ctx->ast_ctx, &data->mod->env, data->expr)) {
+				return JOB_ERROR;
+			}
 			ast_print(ctx->ast_ctx, &data->mod->env, data->expr);
 
 			data->state = JOB_COMPILE_EXPR_GENERATE_OBJECT;
@@ -559,8 +572,12 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 			// fallthrough
 
 		case JOB_COMPILE_EXPR_DONE:
-
-			// bind data->out_value
+			*data->out_value = ast_copy_slot(ctx->ast_ctx,
+					&data->mod->env, *data->out_value,
+					&data->mod->env, ast_node_value(
+						ctx->ast_ctx, &data->mod->env,
+						data->expr));
+			ast_print_slot(ctx->ast_ctx, &data->mod->env, *data->out_value);
 			*data->num_uncompiled_exprs -= 1;
 			return JOB_OK;
 	}

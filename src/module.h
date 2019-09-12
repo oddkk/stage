@@ -36,6 +36,21 @@ struct stg_module {
 	void *data;
 };
 
+struct object_decons_member {
+	struct atom *name;
+	type_id type;
+	bool ref;
+	size_t offset;
+};
+
+struct object_decons {
+	struct object_decons_member *members;
+	size_t num_members;
+
+	type_id target_type;
+};
+
+
 struct atom *
 mod_atom(struct stg_module *, struct string name);
 
@@ -44,5 +59,10 @@ mod_atom(struct stg_module *, struct string name);
 
 type_id
 stg_register_type(struct stg_module *, struct type);
+
+struct ast_object_def *
+stg_create_simple_object_def(struct ast_context *ctx,
+		struct ast_module *mod, struct ast_object_def *,
+		struct object_decons);
 
 #endif

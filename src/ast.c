@@ -31,8 +31,8 @@ ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, s
 			ast_object_def_register(&vm->modules[0]->store);
 
 		struct ast_object_def_param array_type_params[] = {
-			{ctx.atoms.array_cons_arg_type, AST_SLOT_TYPE},
-			{ctx.atoms.array_cons_arg_count,
+			{0, ctx.atoms.array_cons_arg_type, AST_SLOT_TYPE},
+			{1, ctx.atoms.array_cons_arg_count,
 				ast_bind_slot_const_type(
 						&ctx, &array_type_def->env, AST_BIND_NEW,
 						NULL, integer)},
@@ -70,8 +70,8 @@ ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, s
 						NULL, integer));
 
 		struct ast_object_def_param func_type_params[] = {
-			{ctx.atoms.func_cons_arg_ret,    AST_SLOT_TYPE},
-			{ctx.atoms.func_cons_arg_params, func_params_type},
+			{0, ctx.atoms.func_cons_arg_ret,    AST_SLOT_TYPE},
+			{1, ctx.atoms.func_cons_arg_params, func_params_type},
 		};
 
 		ast_object_def_finalize(func_type_def,
@@ -107,6 +107,56 @@ ast_object_def_finalize(struct ast_object_def *obj,
 	memcpy(obj->params, params, sizeof(struct ast_object_def_param) * num_params);
 
 	obj->ret_type = ret_type;
+}
+
+int
+ast_slot_pack(struct ast_context *ctx, struct ast_env *env,
+		ast_slot_id obj, struct object *out)
+{
+	struct ast_env_slot slot = ast_env_slot(ctx, env, obj);
+
+	switch (slot.kind) {
+		case AST_SLOT_ERROR:
+		case AST_SLOT_PARAM:
+		case AST_SLOT_TEMPL:
+		case AST_SLOT_FREE:
+		case AST_SLOT_WILDCARD:
+			return -1;
+
+		case AST_SLOT_CONST_TYPE:
+			{
+				struct object tmp_obj;
+				tmp_obj.type = ctx->types.type;
+				tmp_obj.data = &slot.const_type;
+
+				*out = register_object(ctx->vm, env->store, tmp_obj);
+				return 0;
+			}
+
+		case AST_SLOT_CONST:
+			*out = slot.const_object;
+			return 0;
+
+
+		case AST_SLOT_CONS:
+			if (!slot.cons.def) {
+				// TODO: Try to resolve def from type.
+				printf("Cons is missing a def.");
+				return -1;
+			}
+
+			*out = slot.cons.def->pack(ctx, env, slot.cons.def, obj);
+			return 0;
+
+		case AST_SLOT_CONS_ARRAY:
+			break;
+
+		case AST_SLOT_SUBST:
+			return ast_slot_pack(ctx, env, slot.subst, out);
+	}
+
+	panic("Got invalid slot kind in ast_slot_pack.");
+	return -1;
 }
 
 static int
@@ -246,8 +296,8 @@ ast_module_resolve_dependencies(struct ast_context *ctx,
 		dep = &mod->dependencies[i];
 
 		dep->slot =
-			ast_bind_slot_cons(ctx, &mod->env, dep->slot,
-					NULL, &dep->mod->root.def);
+			ast_bind_slot_const(ctx, &mod->env, dep->slot,
+					NULL, dep->mod->instance);
 	}
 }
 
@@ -268,41 +318,67 @@ ast_namespace_finalize(struct ast_context *ctx,
 		}
 	}
 
-	ns->def.env.store = mod->env.store;
+	struct object_decons decons = {0};
+	decons.num_members = ns->num_names;
+	decons.members = calloc(decons.num_members,
+			sizeof(struct object_decons_member));
 
-	ns->def.num_params = ns->num_names;
-	ns->def.params = calloc(ns->def.num_params,
-			sizeof(struct ast_object_def_param));
+	size_t offset = 0;
+	for (size_t i = 0; i < decons.num_members; i++) {
+		decons.members[i].name = ns->names[i].name;
+
+		ast_slot_id slot;
+
+		switch (ns->names[i].kind) {
+			case AST_MODULE_NAME_DECL:
+				slot = ns->names[i].decl.value;
+				break;
+
+			case AST_MODULE_NAME_NAMESPACE:
+				slot = ns->names[i].ns->instance;
+				break;
+
+			case AST_MODULE_NAME_IMPORT:
+				slot = ns->names[i].import.value;
+				break;
+		}
+
+		struct object obj;
+		int err;
+		err = ast_slot_pack(ctx, &mod->env, slot, &obj);
+		if (err) {
+			printf("Finalize failed on %.*s: ", ALIT(ns->names[i].name));
+			ast_print_slot(ctx, &mod->env, slot);
+			printf("\n");
+			return AST_BIND_FAILED;
+		}
+
+		decons.members[i].type = obj.type;
+		decons.members[i].ref = false;
+		decons.members[i].offset = offset;
+
+		struct type *member_type = vm_get_type(ctx->vm, obj.type);
+
+		offset += member_type->size;
+	}
 
 	struct type ns_type_def = {0};
 
 	ns_type_def.name = ns->name;
 	ns_type_def.base = &namespace_type_base;
-	// TODO: Do we have to store anything on the namespace?
-	ns_type_def.size = 0;
-	ns_type_def.data = &ns->def;
+	ns_type_def.size = offset;
+	ns_type_def.obj_def = &ns->def;
 
 	type_id ns_type;
-	ns_type = register_type(mod->env.store, ns_type_def);
+	ns_type = stg_register_type(mod->stg_mod, ns_type_def);
 
-	ns->def.ret_type = ast_bind_slot_const_type(
-			ctx, &ns->def.env, AST_BIND_NEW, NULL,
-			ns_type);
+	printf("ns %.*s type = %li\n", ALIT(ns->name), ns_type);
+	decons.target_type = ns_type;
 
-	// TODO: Ensure all types are resolved.
+	stg_create_simple_object_def(ctx, mod,
+			&ns->def, decons);
 
-	for (size_t i = 0; i < ns->def.num_params; i++) {
-		ns->def.params[i].name = ns->names[i].name;
-		ns->def.params[i].type =
-			ast_copy_slot(ctx,
-					&ns->def.env, AST_BIND_NEW,
-					&mod->env, ast_env_slot(ctx, &mod->env,
-						ast_node_resolve_slot(&mod->env, &ns->names[i].decl.value)).type);
-	}
-
-	ast_slot_id instance;
-
-	instance = ast_bind_slot_cons(
+	ns->instance = ast_bind_slot_cons(
 			ctx, &mod->env, ns->instance, NULL,
 			&ns->def);
 
@@ -310,20 +386,21 @@ ast_namespace_finalize(struct ast_context *ctx,
 		ast_slot_id arg;
 
 		arg = ast_unpack_arg_named(ctx, &mod->env,
-				instance, ns->names[i].name);
+				ns->instance, ns->names[i].name);
 
 		// TODO: Ensure the value is evaluated.
 		// TODO: Avoid having to alloc duplicate slots and join them.
 		ast_union_slot(ctx, &mod->env, ns->names[i].decl.value, arg);
 	}
 
-	ns->instance = instance;
-
-	return instance;
+	return ns->instance;
 }
 
-ast_slot_id
+int
 ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 {
-	return ast_namespace_finalize(ctx, mod, &mod->root);
+	ast_slot_id root;
+	root = ast_namespace_finalize(ctx, mod, &mod->root);
+
+	return ast_slot_pack(ctx, &mod->env, root, &mod->instance);
 }

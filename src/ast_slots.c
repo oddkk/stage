@@ -1101,3 +1101,30 @@ ast_env_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot)
 		};
 	}
 }
+
+bool
+ast_resolve_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot_id)
+{
+	struct ast_env_slot slot =
+		ast_env_slot(ctx, env, slot_id);
+
+	switch (slot.kind) {
+		case AST_SLOT_ERROR:
+			return false;
+
+		case AST_SLOT_CONST_TYPE:
+		case AST_SLOT_CONST:
+			return true;
+
+		case AST_SLOT_CONS:
+		case AST_SLOT_CONS_ARRAY:
+
+		case AST_SLOT_WILDCARD:
+		case AST_SLOT_PARAM:
+		case AST_SLOT_TEMPL:
+		case AST_SLOT_FREE:
+
+		case AST_SLOT_SUBST:
+			return ast_resolve_slot(ctx, env, slot.subst);
+	}
+}

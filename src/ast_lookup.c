@@ -229,7 +229,6 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				if (!ast_resolve_node_lookup(ctx, env, scope, node)) {
 					stg_error(ctx->err, node->loc, "'%.*s' was not found.",
 							ALIT(name));
-				} else {
 				}
 			}
 			break;
