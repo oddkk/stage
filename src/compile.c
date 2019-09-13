@@ -563,7 +563,8 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			// fallthrough
 
 		case JOB_LOAD_MODULE_RESOLVE_LOOKUPS:
-			ast_module_resolve_names(ctx->ast_ctx, data->mod);
+			ast_module_resolve_names(ctx->ast_ctx, data->mod,
+					data->native_mod);
 
 			dispatch_compile_expr(ctx, data, &data->mod->root);
 

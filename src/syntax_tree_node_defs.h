@@ -83,6 +83,7 @@ ST_NODE(BIN_OP, struct {
 ST_NODE(LAMBDA, struct {
 	struct st_node *proto;
 	struct st_node *body;
+	bool special;
 })
 
 ST_NODE(FUNC_CALL, struct {

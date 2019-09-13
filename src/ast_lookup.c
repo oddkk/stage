@@ -1,4 +1,5 @@
 #include "ast.h"
+#include "native.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -162,6 +163,7 @@ ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
 
 void
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+		struct stg_native_module *native_mod,
 		struct ast_scope *scope, struct ast_node *node)
 {
 	switch (node->kind) {
@@ -199,22 +201,71 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				}
 
 				for (size_t i = 0; i < params_scope.num_names; i++) {
-					ast_node_resolve_names(ctx, env,
+					ast_node_resolve_names(ctx, env, native_mod,
 							&templates_scope, node->func.params[i].type);
 				}
 
-				ast_node_resolve_names(ctx, env,
+				ast_node_resolve_names(ctx, env, native_mod,
 						&templates_scope, node->func.return_type);
 
-				ast_node_resolve_names(ctx, env,
+				ast_node_resolve_names(ctx, env, native_mod,
 						&params_scope, node->func.body);
 			}
 			break;
 
+		case AST_NODE_FUNC_NATIVE:
+			{
+				struct ast_scope templates_scope = {0};
+
+				ast_scope_push_func(&templates_scope, scope);
+
+				if (false) {
+					templates_scope.num_names = 0;
+					templates_scope.names = calloc(
+							templates_scope.num_names, sizeof(struct ast_scope_name));
+
+					for (size_t i = 0; i < templates_scope.num_names; i++) {
+						templates_scope.names[i].name = node->func.params[i].name;
+						templates_scope.names[i].slot = node->func.params[i].slot;
+					}
+				}
+
+				for (size_t i = 0; i < node->func.num_params; i++) {
+					ast_node_resolve_names(ctx, env, native_mod,
+							&templates_scope, node->func.params[i].type);
+				}
+
+				ast_node_resolve_names(ctx, env, native_mod,
+						&templates_scope, node->func.return_type);
+
+				if (!native_mod) {
+					stg_error(ctx->err, node->loc,
+							"This module does not have a native module.");
+				} else {
+					for (size_t i = 0; i < native_mod->num_funcs; i++) {
+						if (string_equal(
+									native_mod->funcs[i].name,
+									node->func.native.name)) {
+							node->func.native.func = native_mod->funcs[i].func;
+						}
+					}
+
+					if (!node->func.native.func) {
+						stg_error(ctx->err, node->loc,
+								"This module does not contain a native function '%.*s'.",
+								LIT(node->func.native.name));
+					}
+				}
+
+			}
+			break;
+
 		case AST_NODE_CALL:
-			ast_node_resolve_names(ctx, env, scope, node->call.func);
+			ast_node_resolve_names(ctx, env, native_mod,
+					scope, node->call.func);
 			for (size_t i = 0; i < node->call.num_args; i++) {
-				ast_node_resolve_names(ctx, env, scope, node->call.args[i].value);
+				ast_node_resolve_names(ctx, env, native_mod,
+						scope, node->call.args[i].value);
 			}
 			break;
 
@@ -237,6 +288,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 static void
 ast_namespace_resolve_names(struct ast_context *ctx, struct ast_module *mod,
+		struct stg_native_module *native_mod,
 		struct ast_scope *scope, struct ast_namespace *ns)
 {
 	struct ast_env *env = &mod->env;
@@ -247,11 +299,13 @@ ast_namespace_resolve_names(struct ast_context *ctx, struct ast_module *mod,
 	for (size_t i = 0; i < ns->num_names; i++) {
 		switch (ns->names[i].kind) {
 			case AST_MODULE_NAME_DECL:
-				ast_node_resolve_names(ctx, env, &inner_scope, ns->names[i].decl.expr);
+				ast_node_resolve_names(ctx, env, native_mod,
+						&inner_scope, ns->names[i].decl.expr);
 				break;
 
 			case AST_MODULE_NAME_NAMESPACE:
-				ast_namespace_resolve_names(ctx, mod, &inner_scope, ns->names[i].ns);
+				ast_namespace_resolve_names(ctx, mod, native_mod,
+						&inner_scope, ns->names[i].ns);
 				break;
 
 			case AST_MODULE_NAME_IMPORT:
@@ -272,7 +326,8 @@ ast_namespace_resolve_names(struct ast_context *ctx, struct ast_module *mod,
 }
 
 void
-ast_module_resolve_names(struct ast_context *ctx, struct ast_module *mod)
+ast_module_resolve_names(struct ast_context *ctx, struct ast_module *mod,
+		struct stg_native_module *native_mod)
 {
-	ast_namespace_resolve_names(ctx, mod, NULL, &mod->root);
+	ast_namespace_resolve_names(ctx, mod, native_mod, NULL, &mod->root);
 }

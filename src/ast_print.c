@@ -181,6 +181,7 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 	switch (node->kind) {
 		case AST_NODE_FUNC:
 		case AST_NODE_FUNC_UNINIT:
+		case AST_NODE_FUNC_NATIVE:
 			print_indent(depth);
 			if (node->kind == AST_NODE_FUNC_UNINIT) {
 				printf("func (uninit)");
@@ -202,9 +203,14 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("return type\n");
 			ast_print_internal(ctx, env, node->func.return_type, depth + 2);
 
-			print_indent(depth + 1);
-			printf("body\n");
-			ast_print_internal(ctx, env, node->func.body, depth + 2);
+			if (node->kind == AST_NODE_FUNC) {
+				print_indent(depth + 1);
+				printf("body\n");
+				ast_print_internal(ctx, env, node->func.body, depth + 2);
+			} else if (node->kind == AST_NODE_FUNC_NATIVE) {
+				print_indent(depth + 1);
+				printf("body native %.*s\n", LIT(node->func.native.name));
+			}
 			break;
 
 		case AST_NODE_CALL:

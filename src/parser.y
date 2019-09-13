@@ -197,8 +197,8 @@ special_arg:	numlit
 		|		strlit
 		;
 
-func_decl:		func_proto "=>" expr    { $$ = MKNODE(LAMBDA, .proto=$1, .body=$3); }
-		|		func_proto special		{ $$ = MKNODE(LAMBDA, .proto=$1, .body=$2); }
+func_decl:		func_proto "=>" expr    { $$ = MKNODE(LAMBDA, .proto=$1, .body=$3, .special=false); }
+		|		func_proto special		{ $$ = MKNODE(LAMBDA, .proto=$1, .body=$2, .special=true ); }
 		;
 
 func_proto:		'(' func_params ')'             { $$ = MKNODE(FUNC_PROTO, .params=$2, .ret=NULL); }

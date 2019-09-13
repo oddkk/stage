@@ -117,8 +117,8 @@ st_node_unpack_func_proto(struct st_node *proto_node,
 }
 
 struct ast_node *
-st_node_visit_expr(struct ast_context *ctx,
-					struct ast_env *env, struct st_node *node)
+st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
+		struct st_node *node)
 {
 	switch (node->type) {
 
@@ -212,7 +212,8 @@ st_node_visit_expr(struct ast_context *ctx,
 		struct ast_node *ret_type = NULL, *body = NULL;
 
 		for (size_t i = 0; i < params_decl.num_members; i++) {
-			params[i] = st_node_visit_expr(ctx, env, params_decl.types[i]);
+			params[i] = st_node_visit_expr(ctx, env,
+					params_decl.types[i]);
 		}
 
 		if (ret_type_decl) {
@@ -229,11 +230,55 @@ st_node_visit_expr(struct ast_context *ctx,
 		struct st_node *body_decl;
 		body_decl = node->LAMBDA.body;
 
-		body = st_node_visit_expr(ctx, env, body_decl);
+		if (node->LAMBDA.special) {
+			if (body_decl->SPECIAL.name == vm_atoms(ctx->vm, "native")) {
+				struct st_node *args = body_decl->SPECIAL.args;
 
-		ast_finalize_node_func(ctx, env, func,
-				params, params_decl.num_members,
-				ret_type, body);
+				if (!args || args->next_sibling) {
+					size_t num_args_provided = 0;
+					for (struct st_node *nd = args;
+							nd != NULL; nd = nd->next_sibling) {
+						num_args_provided += 1;
+					}
+					stg_error(ctx->err, body_decl->loc,
+							"@native expected exactly one argument, got %zu.",
+							num_args_provided);
+					return NULL;
+				}
+
+				if (args->type != ST_NODE_STR_LIT) {
+					char *arg_kind = NULL;
+					switch (args->type) {
+						case ST_NODE_NUM_LIT:
+							arg_kind = "integer";
+							break;
+
+						default:
+							panic("Invalid node as argument for SPECIAL.");
+					}
+
+					assert(arg_kind);
+
+					stg_error(ctx->err, args->loc,
+							"Expected string, got %s.", arg_kind);
+					return NULL;
+				}
+
+				ast_finalize_node_func_native(ctx, env, func,
+						params, params_decl.num_members,
+						ret_type, args->STR_LIT);
+			} else {
+				stg_error(ctx->err, body_decl->loc,
+						"Invalid special expression.");
+				return NULL;
+			}
+		} else {
+			body = st_node_visit_expr(ctx, env, body_decl);
+
+			ast_finalize_node_func(ctx, env, func,
+					params, params_decl.num_members,
+					ret_type, body);
+		}
 
 		free(params_decl.names);
 		free(params_decl.types);

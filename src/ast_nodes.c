@@ -118,6 +118,39 @@ ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
 }
 
 struct ast_node *
+ast_finalize_node_func_native(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, struct ast_node **param_types, size_t num_params,
+		struct ast_node *return_type, struct string native_func_name)
+{
+	assert(node != NULL && node != AST_NODE_NEW && node->kind == AST_NODE_FUNC_UNINIT);
+
+	assert(
+		node &&
+		(param_types || num_params == 0) &&
+		node->func.num_params == num_params &&
+		return_type
+	);
+
+	node->kind = AST_NODE_FUNC_NATIVE;
+	node->func.native.name = native_func_name;
+	node->func.native.func = NULL;
+	node->func.return_type = return_type;
+
+	ast_union_slot(ctx, env,
+			ast_node_value(ctx, env, node->func.return_type),
+			ast_node_resolve_slot(env, &node->func.return_type_slot));
+
+	for (size_t i = 0; i < num_params; i++) {
+		node->func.params[i].type = param_types[i];
+		ast_union_slot(ctx, env,
+				ast_env_slot(ctx, env, node->func.params[i].slot).type,
+				ast_node_type(ctx, env, node->func.params[i].type));
+	}
+
+	return node;
+}
+
+struct ast_node *
 ast_init_node_call(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node, struct stg_location loc,
@@ -218,6 +251,7 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 {
 	switch (node->kind) {
 		case AST_NODE_FUNC_UNINIT:
+		case AST_NODE_FUNC_NATIVE:
 		case AST_NODE_FUNC:
 			return ast_node_resolve_slot(env, &node->func.type);
 
@@ -267,6 +301,7 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 		case AST_NODE_LOOKUP:
 			return ast_node_resolve_slot(env, &node->lookup.slot);
 
+		case AST_NODE_FUNC_NATIVE:
 		case AST_NODE_FUNC:
 		case AST_NODE_CALL:
 			panic("TODO: eval");
@@ -290,6 +325,15 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 		case AST_NODE_FUNC:
 			result &= ast_node_dependencies_fulfilled(
 					ctx, env, node->func.body);
+			result &= ast_node_dependencies_fulfilled(
+					ctx, env, node->func.return_type);
+			for (size_t i = 0; i < node->func.num_params; i++) {
+				result &= ast_node_dependencies_fulfilled(
+						ctx, env, node->func.params[i].type);
+			}
+			break;
+
+		case AST_NODE_FUNC_NATIVE:
 			result &= ast_node_dependencies_fulfilled(
 					ctx, env, node->func.return_type);
 			for (size_t i = 0; i < node->func.num_params; i++) {
@@ -355,6 +399,15 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 			}
 			break;
 
+		case AST_NODE_FUNC_NATIVE:
+			result &= ast_node_is_typed(ctx, env,
+					node->func.return_type);
+			for (size_t i = 0; i < node->func.num_params; i++) {
+				result &= ast_node_is_typed(ctx, env,
+						node->func.params[i].type);
+			}
+			break;
+
 		case AST_NODE_CALL:
 			result &= ast_node_is_typed(ctx, env,
 					node->call.func);
@@ -410,6 +463,15 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_env *env,
 			}
 
 			ast_node_resolve_slots(ctx, env, node->func.body);
+			break;
+
+		case AST_NODE_FUNC_NATIVE:
+			ast_node_resolve_slots(ctx, env, node->func.return_type);
+
+			for (size_t i = 0; i < node->func.num_params; i++) {
+				ast_node_resolve_slots(ctx, env,
+						node->func.params[i].type);
+			}
 			break;
 
 		case AST_NODE_CALL:

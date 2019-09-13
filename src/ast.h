@@ -268,6 +268,7 @@ ast_slot_pack(struct ast_context *, struct ast_env *,
 
 enum ast_node_kind {
 	AST_NODE_FUNC,
+	AST_NODE_FUNC_NATIVE,
 	AST_NODE_CALL,
 	AST_NODE_SLOT,
 	AST_NODE_LOOKUP,
@@ -294,7 +295,13 @@ struct ast_node {
 
 	union {
 		struct {
-			struct ast_node *body;
+			union {
+				struct ast_node *body;
+				struct {
+					struct string name;
+					void *func;
+				} native;
+			};
 
 			struct ast_func_param *params;
 			size_t num_params;
@@ -348,6 +355,11 @@ ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *return_type, struct ast_node *body);
 
 struct ast_node *
+ast_finalize_node_func_native(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct ast_node **params, size_t num_params,
+		struct ast_node *return_type, struct string native_func_name);
+
+struct ast_node *
 ast_init_node_call(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location,
@@ -374,8 +386,11 @@ bool
 ast_node_dependencies_fulfilled(struct ast_context *ctx,
 		struct ast_env *env, struct ast_node *node);
 
+struct stg_native_module;
+
 void
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+		struct stg_native_module *native_module,
 		struct ast_scope *scope, struct ast_node *node);
 
 bool
@@ -479,8 +494,8 @@ void
 ast_module_resolve_dependencies(struct ast_context *, struct ast_module *);
 
 void
-ast_module_resolve_names(struct ast_context *, struct ast_module *);
-
+ast_module_resolve_names(struct ast_context *, struct ast_module *,
+		struct stg_native_module *);
 
 int
 ast_module_finalize(struct ast_context *, struct ast_module *);
