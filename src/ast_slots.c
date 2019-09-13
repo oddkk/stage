@@ -150,7 +150,6 @@ ast_bind_slot_const(struct ast_context *ctx,
 		switch (target_slot.kind) {
 			case AST_SLOT_TEMPL:
 			case AST_SLOT_WILDCARD:
-				// TODO: Union types
 				// TODO: Name?
 				env->slots[target].kind = AST_SLOT_CONST;
 
@@ -158,29 +157,73 @@ ast_bind_slot_const(struct ast_context *ctx,
 						target_slot.type, NULL, obj.type);
 				break;
 
-			case AST_SLOT_CONST: {
-				if (target_slot.const_object.type != obj.type) {
-					printf("Warning: Attempted to bind CONST with type '");
-					print_type_repr(ctx->vm, vm_get_type(ctx->vm, obj.type));
-					printf("' over CONST with type '");
-					print_type_repr(ctx->vm, vm_get_type(ctx->vm, target_slot.const_object.type));
-					printf("'. (bind %i)\n", target);
-					return AST_BIND_FAILED;
+			case AST_SLOT_CONST:
+				{
+					if (target_slot.const_object.type != obj.type) {
+						printf("Warning: Attempted to bind CONST with type '");
+						print_type_repr(ctx->vm, vm_get_type(ctx->vm, obj.type));
+						printf("' over CONST with type '");
+						print_type_repr(ctx->vm, vm_get_type(ctx->vm,
+									target_slot.const_object.type));
+						printf("'. (bind %i)\n", target);
+						return AST_BIND_FAILED;
+					}
+
+					struct type *type = vm_get_type(ctx->vm, target_slot.const_object.type);
+
+					// TODO: Use user defined comparator.
+					if (memcmp(target_slot.const_object.data, obj.data, type->size) != 0) {
+						printf("Warning: Attempted to bind CONST '");
+						print_obj_repr(ctx->vm, obj);
+						printf("' over CONST '");
+						print_obj_repr(ctx->vm, target_slot.const_object);
+						printf("'. (bind %i)\n", target);
+						return AST_BIND_FAILED;
+					}
 				}
+				break;
 
-				struct type *type = vm_get_type(ctx->vm, target_slot.const_object.type);
+			case AST_SLOT_CONS:
+				{
+					struct type *type = vm_get_type(ctx->vm, obj.type);
 
-				// TODO: Use user defined comparator.
-				if (memcmp(target_slot.const_object.data, obj.data, type->size) != 0) {
-					printf("Warning: Attempted to bind CONST '");
-					print_obj_repr(ctx->vm, obj);
-					printf("' over CONST '");
-					print_obj_repr(ctx->vm, target_slot.const_object);
-					printf("'. (bind %i)\n", target);
-					return AST_BIND_FAILED;
+					if (!type->obj_def) {
+						printf("Warning: Attempted to bind CONS over CONST with "
+								"object that does not have a constructor.\n");
+						return AST_BIND_FAILED;
+					}
+
+					if (!target_slot.cons.def) {
+						target = ast_bind_slot_cons(ctx, env, target,
+								NULL, type->obj_def);
+					} else {
+						if (target_slot.cons.def != type->obj_def) {
+							printf("Warning: Attempted to bind CONS over CONST with "
+									"object that does not match the one in CONS.\n");
+							return AST_BIND_FAILED;
+						}
+					}
+
+					struct ast_object_def *def = type->obj_def;
+
+					for (size_t i = 0; i < def->num_params; i++) {
+						struct object member;
+
+						member = def->unpack(ctx, env, def,
+								def->params[i].param_id, obj);
+
+						ast_slot_id member_slot;
+						member_slot = ast_unpack_arg_named(ctx, env, target,
+								def->params[i].name);
+
+						ast_slot_id new_member_slot;
+						new_member_slot =
+							ast_bind_slot_const(ctx, env, member_slot, NULL, member);
+
+						ast_substitute(ctx, env, new_member_slot, member_slot);
+					}
 				}
-
-			} break;
+				return target;
 
 			default:
 				printf("Warning: Attempted to bind CONST over %s. (bind %i)\n",
@@ -416,6 +459,40 @@ ast_bind_slot_cons(struct ast_context *ctx,
 				type_slot = old_slot.type;
 				break;
 
+			case AST_SLOT_CONST:
+				{
+					struct object slot_obj = old_slot.const_object;
+					struct type *slot_obj_type =
+						vm_get_type(ctx->vm, slot_obj.type);
+
+					if (!slot_obj_type->obj_def) {
+						printf("Warning: Attempted to unpack a object that cannot be "
+								"unpacked (missing def).\n");
+						return AST_BIND_FAILED;
+					}
+
+					if (def && slot_obj_type->obj_def != def) {
+						printf("Warning: Attempted to bind CONS with def %p over "
+								"CONST with def %p.\n",
+								(void *)def,
+								(void *)slot_obj_type->obj_def);
+					}
+
+					// We first rebind the target slot to wildcard to allow us
+					// to use bind_slot_cons to correctly instantiate it as a
+					// cons slot. Then we apply the const object on top of the
+					// cons.
+					env->slots[target].kind = AST_SLOT_WILDCARD;
+					env->slots[target].const_object.type = 0;
+					env->slots[target].const_object.data = NULL;
+
+					target = ast_bind_slot_cons(ctx, env, target, NULL,
+							slot_obj_type->obj_def);
+					target = ast_bind_slot_const(ctx, env, target, NULL,
+							slot_obj);
+				}
+				return target;
+
 			default:
 				printf("Warning: Attempted to bind CONS over %s. (bind %i)\n",
 						ast_slot_name(old_slot.kind), target);
@@ -465,6 +542,8 @@ ast_bind_slot_cons(struct ast_context *ctx,
 		for (size_t arg_i = 0; arg_i < env->slots[target].cons.num_present_args; arg_i++) {
 			bool found = false;
 			struct atom *arg_name = env->slots[target].cons.args[arg_i].name;
+			printf("arg '%.*s'\n", ALIT(arg_name));
+
 			for (size_t param_i = 0; param_i < def->num_params; param_i++) {
 				if (def->params[param_i].name == arg_name) {
 #if AST_OBJ_DUPLICATE_CHECK
@@ -683,7 +762,11 @@ ast_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 {
 	struct ast_env_slot slot = ast_env_slot(ctx, env, obj);
 
-	if (slot.kind != AST_SLOT_CONS) {
+	if (slot.kind == AST_SLOT_CONST) {
+		obj = ast_bind_slot_cons(ctx, env, obj, NULL, NULL);
+
+		slot = ast_env_slot(ctx, env, obj);
+	} else if (slot.kind != AST_SLOT_CONS) {
 		return AST_BIND_FAILED;
 	}
 
