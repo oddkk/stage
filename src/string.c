@@ -46,6 +46,8 @@ struct string string_duplicate_cstr(char *str)
 		result.length = 0;
 	}
 
+	memcpy(result.text, str, result.length);
+
 	return result;
 }
 
