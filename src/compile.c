@@ -654,7 +654,7 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 	return JOB_ERROR;
 }
 
-#define COMPILE_DEBUG_JOBS 1
+#define COMPILE_DEBUG_JOBS 0
 
 static void compile_exec_job(struct compile_ctx *ctx, struct complie_job *job)
 {

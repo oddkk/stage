@@ -50,12 +50,25 @@ simple_obj_def_pack(struct ast_context *ctx, struct ast_env *env,
 
 	assert(obj_slot.cons.num_present_args == def->num_params);
 
-	for (size_t i = 0; i < obj_slot.cons.num_present_args; i++) {
+	for (size_t i = 0; i < def->num_params; i++) {
 		struct object_decons_member *member;
 		member = &decons->members[def->params[i].param_id];
 
+		ssize_t arg_i = -1;
+
+		for (size_t j = 0; j < obj_slot.cons.num_present_args; j++) {
+			if (obj_slot.cons.args[j].name == def->params[i].name) {
+				arg_i = j;
+				break;
+			}
+		}
+
+		// All the parameters of the def should be bound at this stage.
+		// Therefore the arg should always be found.
+		assert(arg_i >= 0);
+
 		struct object value;
-		err = ast_slot_pack(ctx, env, obj_slot.cons.args[i].slot, &value);
+		err = ast_slot_pack(ctx, env, obj_slot.cons.args[arg_i].slot, &value);
 		if (err) {
 			return OBJ_NONE;
 		}

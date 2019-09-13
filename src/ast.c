@@ -343,9 +343,12 @@ ast_namespace_finalize(struct ast_context *ctx,
 				break;
 		}
 
-		struct object obj;
+		ast_slot_id type_slot;
+		type_slot = ast_env_slot(ctx, &mod->env, slot).type;
+
+		struct object type_obj;
 		int err;
-		err = ast_slot_pack(ctx, &mod->env, slot, &obj);
+		err = ast_slot_pack(ctx, &mod->env, type_slot, &type_obj);
 		if (err) {
 			printf("Finalize failed on %.*s: ", ALIT(ns->names[i].name));
 			ast_print_slot(ctx, &mod->env, slot);
@@ -353,11 +356,13 @@ ast_namespace_finalize(struct ast_context *ctx,
 			return AST_BIND_FAILED;
 		}
 
-		decons.members[i].type = obj.type;
+		assert(type_obj.type == ctx->types.type);
+
+		decons.members[i].type = *(type_id *)type_obj.data;
 		decons.members[i].ref = false;
 		decons.members[i].offset = offset;
 
-		struct type *member_type = vm_get_type(ctx->vm, obj.type);
+		struct type *member_type = vm_get_type(ctx->vm, decons.members[i].type);
 
 		offset += member_type->size;
 	}
@@ -372,7 +377,6 @@ ast_namespace_finalize(struct ast_context *ctx,
 	type_id ns_type;
 	ns_type = stg_register_type(mod->stg_mod, ns_type_def);
 
-	printf("ns %.*s type = %li\n", ALIT(ns->name), ns_type);
 	decons.target_type = ns_type;
 
 	stg_create_simple_object_def(ctx, mod,
@@ -382,15 +386,33 @@ ast_namespace_finalize(struct ast_context *ctx,
 			ctx, &mod->env, ns->instance, NULL,
 			&ns->def);
 
-	for (size_t i = 0; i < ns->def.num_params; i++) {
+	for (size_t i = 0; i < ns->num_names; i++) {
 		ast_slot_id arg;
 
 		arg = ast_unpack_arg_named(ctx, &mod->env,
 				ns->instance, ns->names[i].name);
 
+		ast_slot_id *name_value = NULL;
+
+		switch (ns->names[i].kind) {
+			case AST_MODULE_NAME_DECL:
+				name_value = &ns->names[i].decl.value;
+				break;
+
+			case AST_MODULE_NAME_NAMESPACE:
+				name_value = &ns->names[i].ns->instance;
+				break;
+
+			case AST_MODULE_NAME_IMPORT:
+				name_value = &ns->names[i].import.value;
+				break;
+		}
+
+		assert(name_value);
+
 		// TODO: Ensure the value is evaluated.
 		// TODO: Avoid having to alloc duplicate slots and join them.
-		ast_union_slot(ctx, &mod->env, ns->names[i].decl.value, arg);
+		*name_value = ast_union_slot(ctx, &mod->env, *name_value, arg);
 	}
 
 	return ns->instance;
