@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include <errno.h>
+#include <linux/limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fts.h>
@@ -113,6 +114,8 @@ struct compile_ctx {
 	size_t num_jobs_failed;
 
 	struct stg_error_context err;
+
+	struct stg_compile_options opts;
 };
 
 static void
@@ -274,6 +277,11 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 	FTS *ftsp;
 	ftsp = fts_open(paths, FTS_PHYSICAL, NULL);
 
+	if (!ftsp) {
+		perror("fts_open");
+		return;
+	}
+
 	struct ast_namespace *dir_ns = &mod->root;
 
 	FTSENT *f;
@@ -406,15 +414,75 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				bool should_discover_files = true;
 
 				if (data->module_src_dir.length == 0) {
-					printf("TODO: Implement looking up module location.\n");
+					bool module_found = false;
 
-					if (!data->native_mod) {
+					char path_buffer[PATH_MAX + 1];
+					for (size_t i = 0; i < ctx->opts.num_module_locations; i++) {
+						struct string base_dir = ctx->opts.module_locations[i];
+
+						size_t predicted_path_length =
+							base_dir.length +
+							data->module_name->name.length + 2;
+
+						if (predicted_path_length > PATH_MAX) {
+							print_error("lookup module",
+									"Module location path '%.*s' is too long. (%zu of max %zu)",
+									base_dir.length + data->module_name->name.length, PATH_MAX);
+							continue;
+						}
+						size_t path_length =
+							snprintf(path_buffer, PATH_MAX + 1,
+								"%.*s/%.*s/", LIT(base_dir), ALIT(data->module_name));
+
+						for (size_t i = 0; i < path_length; i++) {
+							if (path_buffer[i] == '\0') {
+								print_error("lookup module",
+										"Path contained invalid character '0'.");
+								return JOB_ERROR;
+							}
+						}
+
+						char real_path_buffer[PATH_MAX + 2];
+						realpath(path_buffer, real_path_buffer);
+
+						struct stat file_stat = {0};
+
+						int err;
+						err = stat(real_path_buffer, &file_stat);
+						if (err) {
+							perror("stat");
+							continue;
+						}
+
+						if (!S_ISDIR(file_stat.st_mode)) {
+							print_info("'%s' is not a module as it is not a directory.\n",
+									real_path_buffer);
+							continue;
+						}
+
+						struct string real_path_string;
+						real_path_string.text = real_path_buffer;
+						real_path_string.length = strlen(real_path_buffer);
+
+						if (real_path_string.text[real_path_string.length - 1] != '/') {
+							real_path_string.length += 1;
+							real_path_string.text[real_path_string.length - 1] = '/';
+							real_path_string.text[real_path_string.length] = '\0';
+						}
+
+						printf("Looking in '%s'\n", real_path_buffer);
+						data->module_src_dir =
+							string_duplicate_cstr(real_path_buffer);
+						module_found = true;
+					}
+
+					if (!module_found && !data->native_mod) {
 						stg_error(&ctx->err, STG_NO_LOC, "Could not find module '%.*s'",
 								ALIT(data->module_name));
 						return JOB_ERROR;
 					}
 
-					should_discover_files = false;
+					should_discover_files = module_found;
 				}
 
 				data->mod = &data->_tmp_module;
@@ -725,7 +793,8 @@ static void compile_exec_job(struct compile_ctx *ctx, struct complie_job *job)
 }
 
 int
-stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_module_src_dir)
+stg_compile(struct vm *vm, struct ast_context *ast_ctx,
+		struct stg_compile_options opts, struct string initial_module_src_dir)
 {
 	struct compile_ctx ctx = {0};
 
@@ -733,6 +802,7 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx, struct string initial_mo
 	ctx.mem = &vm->memory;
 	ctx.err.string_arena = &vm->memory;
 	ctx.ast_ctx = ast_ctx;
+	ctx.opts = opts;
 
 	assert(!ctx.ast_ctx->err);
 	ctx.ast_ctx->err = &ctx.err;

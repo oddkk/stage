@@ -113,7 +113,16 @@ int main(int argc, char *argv[])
 			vm.default_types.type,
 			vm.default_types.integer);
 
-	err = stg_compile(&vm, &ctx, STR("./config/"));
+	struct string module_locations[] = {
+		STR("./modules/"),
+	};
+
+	struct stg_compile_options compile_opts = {
+		.module_locations = module_locations,
+		.num_module_locations = ARRAY_LENGTH(module_locations),
+	};
+
+	err = stg_compile(&vm, &ctx, compile_opts, STR("./config/"));
 	if (err) {
 		printf("Failed to compile config.\n");
 		return -1;
