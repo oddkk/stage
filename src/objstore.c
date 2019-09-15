@@ -128,13 +128,32 @@ void free_objstore(struct objstore *store) {
 	if (store->pages) {
 		free(store->pages);
 	}
+
+	if (store->types) {
+		free(store->types);
+		store->types = NULL;
+	}
+
+	if (store->funcs) {
+		free(store->funcs);
+		store->funcs = NULL;
+	}
 }
 
-type_id register_type(struct objstore *store, struct type type)
+modtype_id
+store_register_type(struct objstore *store, struct type type)
 {
 	modtype_id mtid;
 	mtid = dlist_append(store->types, store->num_types, &type);
 	return TYPE_ID(store->mod_id, mtid);
+}
+
+modfunc_id
+store_register_func(struct objstore *store, struct func func)
+{
+	modfunc_id mfid;
+	mfid = dlist_append(store->funcs, store->num_funcs, &func);
+	return FUNC_ID(store->mod_id, mfid);
 }
 
 void print_type_repr(struct vm *vm, struct type *type)

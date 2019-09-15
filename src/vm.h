@@ -100,6 +100,7 @@ struct stg_module;
 struct stg_module_info;
 
 struct stg_native_module;
+struct ast_object_def;
 
 struct vm {
 	/* struct objstore store; */
@@ -119,6 +120,10 @@ struct vm {
 		type_id boolean;
 	} default_types;
 
+	struct {
+		struct ast_object_def *func;
+		struct ast_object_def *array;
+	} default_cons;
 };
 
 struct exec_stack {
@@ -151,6 +156,16 @@ vm_find_type(struct vm *, struct string mod, struct string name);
 
 type_id
 vm_find_type_id(struct vm *, struct string mod, struct string name);
+
+struct func *
+vm_get_func(struct vm *, func_id);
+
+// Note that this function expects ret to have its type set to the expected
+// return, and to have data point to a memory location where the result will be
+// written.
+int
+vm_call_func(struct vm *, func_id, struct object *args,
+		size_t num_args, struct object *ret);
 
 struct atom *
 vm_atom(struct vm *, struct string name);

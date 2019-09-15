@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
+#include "module.h"
 #include "base/mod.h"
 
 ast_slot_id
@@ -511,4 +512,107 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_env *env,
 	}
 
 	return result;
+}
+
+int
+ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node, struct object *out)
+{
+	switch (node->kind) {
+		case AST_NODE_FUNC:
+		case AST_NODE_FUNC_NATIVE:
+			{
+				if (node->func.instance == FUNC_UNSET) {
+					struct func func = {0};
+
+					if (node->kind == AST_NODE_FUNC) {
+						panic("TODO: Compile non-native funcs.");
+					} else if (node->kind == AST_NODE_FUNC_NATIVE) {
+						func.kind = FUNC_NATIVE;
+						func.name = vm_atom(ctx->vm, node->func.native.name);
+						func.native = node->func.native.func;
+					}
+
+					node->func.instance =
+						stg_register_func(mod->stg_mod, func);
+				}
+
+				struct object func_type_obj;
+				int err;
+				err = ast_slot_pack(ctx, mod, env, node->func.type, &func_type_obj);
+				if (err) {
+					printf("Falied to pack func type.\n");
+					return -1;
+				}
+
+				assert(func_type_obj.type == ctx->types.type);
+				type_id func_type = *(type_id *)func_type_obj.data;
+
+				struct stg_func_object func_obj_data = {0};
+
+				func_obj_data.func = node->func.instance;
+
+				assert(vm_get_type(ctx->vm, func_type)->size == sizeof(struct stg_func_object));
+
+				struct object func_obj = {0};
+				func_obj.type = func_type;
+				func_obj.data = &func_obj_data;
+
+				*out = register_object(ctx->vm, env->store, func_obj);
+				return 0;
+			}
+			break;
+
+		case AST_NODE_CALL:
+			{
+				struct object args[node->call.num_args];
+				struct object func = {0};
+
+				// TODO: Prealloc the space for the argument values to avoid
+				// pushing to the arena.
+
+				memset(args, 0, sizeof(struct object) * node->call.num_args);
+
+				int err;
+
+				err = ast_node_eval(ctx, mod, env, node->call.func, &func);
+				if (err) {
+					return -1;
+				}
+
+				for (size_t i = 0; i < node->call.num_args; i++) {
+					err = ast_node_eval(ctx, mod, env, node->call.args[i].value, &args[i]);
+					if (err) {
+						return -1;
+					}
+				}
+
+				// struct type *type = vm_get_type(ctx->vm, func.type);
+				// TODO: assert(type->base == func_type_base)
+
+				struct stg_func_object func_obj = *(struct stg_func_object  *)func.data;
+
+				return vm_call_func(ctx->vm, func_obj.func,
+						args, node->call.num_args, out);
+			}
+			break;
+
+		case AST_NODE_SLOT:
+			return ast_slot_pack(ctx, mod, env, node->slot, out);
+
+		case AST_NODE_LOOKUP:
+			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
+				printf("Lookup was not resolved.\n");
+				return -1;
+			}
+			return ast_slot_pack(ctx, mod, env, node->lookup.value, out);
+
+
+		case AST_NODE_FUNC_UNINIT:
+			break;
+
+	}
+
+	panic("Invalid node in ast_node_eval");
+	return -1;
 }

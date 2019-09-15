@@ -6,6 +6,7 @@
 #include "base/mod.h"
 #include <stdlib.h>
 #include <string.h>
+#include <ffi.h>
 
 int vm_init(struct vm *vm)
 {
@@ -148,6 +149,71 @@ vm_find_type(struct vm *vm, struct string mod, struct string name)
 	type_id tid;
 	tid = vm_find_type_id(vm, mod, name);
 	return vm_get_type(vm, tid);
+}
+
+struct func *
+vm_get_func(struct vm *vm, func_id fid)
+{
+	uint32_t mid = FUNC_ID_MOD(fid);
+	modtype_id mfid = FUNC_ID_TYPE(fid);
+
+	assert(mid < vm->num_modules);
+	return store_get_func(&vm->modules[mid]->store, mfid);
+}
+
+int
+vm_call_func(struct vm *vm, func_id fid, struct object *args,
+		size_t num_args, struct object *ret)
+{
+	struct func *func = vm_get_func(vm, fid);
+	struct type *type = vm_get_type(vm, func->type);
+
+	struct stg_func_type func_type;
+	func_type = *(struct stg_func_type *)type->data;
+
+	if (func_type.num_params != num_args) {
+		printf("Attempted to call function '%.*s' with %zu parameters, expected %zu.\n",
+				ALIT(func->name), num_args, func_type.num_params);
+		return -1;
+	}
+
+	assert(ret->type == func_type.return_type);
+	assert(ret->data != NULL);
+
+	switch (func->kind) {
+		case FUNC_NATIVE:
+			{
+				ffi_cif cif;
+				ffi_type *arg_types[num_args];
+				void *arg_values[num_args];
+
+				struct type *return_type;
+				return_type = vm_get_type(vm, func_type.return_type);
+				assert(return_type->ffi_type);
+
+				for (size_t i = 0; i < num_args; i++) {
+					struct type *arg_type = vm_get_type(vm, func_type.params[i]);
+					assert(args[i].type == func_type.params[i]);
+
+					assert(arg_type->ffi_type);
+					arg_types[i] = arg_type->ffi_type;
+					arg_values[i] = args[i].data;
+				}
+
+				if (!ffi_prep_cif(&cif, FFI_DEFAULT_ABI, num_args,
+							return_type->ffi_type, arg_types)) {
+					printf("Failed to prepare call interface.\n");
+					return -1;
+				}
+
+				ffi_call(&cif, (void (*)(void))func->native,
+						ret->data, arg_values);
+			}
+			return -1;
+	}
+
+	panic("Invalid func kind");
+	return -1;
 }
 
 struct atom *

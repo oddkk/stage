@@ -636,16 +636,28 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 			// fallthrough
 
 		case JOB_COMPILE_EXPR_GENERATE_OBJECT:
+			{
+				int err;
+				struct object obj = {0};
+				err = ast_node_eval(ctx->ast_ctx, data->mod,
+						&data->mod->env, data->expr, &obj);
+
+				*data->out_value =
+					ast_bind_slot_const(ctx->ast_ctx, &data->mod->env,
+							*data->out_value, NULL, obj);
+			}
 
 			data->state = JOB_COMPILE_EXPR_DONE;
 			// fallthrough
 
 		case JOB_COMPILE_EXPR_DONE:
+			/*
 			*data->out_value = ast_copy_slot(ctx->ast_ctx,
 					&data->mod->env, *data->out_value,
 					&data->mod->env, ast_node_value(
 						ctx->ast_ctx, &data->mod->env,
 						data->expr));
+			*/
 			ast_print_slot(ctx->ast_ctx, &data->mod->env, *data->out_value);
 			*data->num_uncompiled_exprs -= 1;
 			return JOB_OK;

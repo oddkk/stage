@@ -58,8 +58,8 @@ ast_object_def_finalize(struct ast_object_def *obj,
 }
 
 int
-ast_slot_pack(struct ast_context *ctx, struct ast_env *env,
-		ast_slot_id obj, struct object *out)
+ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, ast_slot_id obj, struct object *out)
 {
 	struct ast_env_slot slot = ast_env_slot(ctx, env, obj);
 
@@ -93,14 +93,15 @@ ast_slot_pack(struct ast_context *ctx, struct ast_env *env,
 				return -1;
 			}
 
-			*out = slot.cons.def->pack(ctx, env, slot.cons.def, obj);
+			*out = slot.cons.def->pack(ctx, mod, env,
+					slot.cons.def, obj);
 			return 0;
 
 		case AST_SLOT_CONS_ARRAY:
 			break;
 
 		case AST_SLOT_SUBST:
-			return ast_slot_pack(ctx, env, slot.subst, out);
+			return ast_slot_pack(ctx, mod, env, slot.subst, out);
 	}
 
 	panic("Got invalid slot kind in ast_slot_pack.");
@@ -296,7 +297,7 @@ ast_namespace_finalize(struct ast_context *ctx,
 
 		struct object type_obj;
 		int err;
-		err = ast_slot_pack(ctx, &mod->env, type_slot, &type_obj);
+		err = ast_slot_pack(ctx, mod, &mod->env, type_slot, &type_obj);
 		if (err) {
 			printf("Finalize failed on %.*s: ", ALIT(ns->names[i].name));
 			ast_print_slot(ctx, &mod->env, slot);
@@ -372,5 +373,5 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 	ast_slot_id root;
 	root = ast_namespace_finalize(ctx, mod, &mod->root);
 
-	return ast_slot_pack(ctx, &mod->env, root, &mod->instance);
+	return ast_slot_pack(ctx, mod, &mod->env, root, &mod->instance);
 }

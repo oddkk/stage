@@ -30,7 +30,7 @@ base_bootstrap_register_type(struct stg_module *mod)
 			type_id);
 
 	modtype_id local_tid;
-	local_tid = register_type(&mod->store, t);
+	local_tid = store_register_type(&mod->store, t);
 
 	type_id tid;
 	tid = TYPE_ID(mod->id, local_tid);

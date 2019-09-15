@@ -13,6 +13,7 @@ typedef int32_t ast_slot_id;
 #define AST_BIND_FAILED ((ast_slot_id)-5)
 
 
+struct ast_module;
 struct ast_object_def;
 
 struct ast_object_arg {
@@ -238,7 +239,7 @@ typedef struct object (*ast_object_unpack)(
 		struct ast_object_def *, int param_id, struct object);
 
 typedef struct object (*ast_object_pack)(
-		struct ast_context *, struct ast_env *,
+		struct ast_context *, struct ast_module *, struct ast_env *,
 		struct ast_object_def *, ast_slot_id);
 
 struct ast_object_def {
@@ -263,8 +264,8 @@ ast_object_def_finalize(struct ast_object_def *,
 		ast_slot_id ret_type);
 
 int
-ast_slot_pack(struct ast_context *, struct ast_env *,
-		ast_slot_id obj, struct object *out);
+ast_slot_pack(struct ast_context *, struct ast_module *,
+		struct ast_env *, ast_slot_id obj, struct object *out);
 
 enum ast_node_kind {
 	AST_NODE_FUNC,
@@ -310,6 +311,8 @@ struct ast_node {
 			ast_slot_id return_type_slot;
 
 			ast_slot_id type;
+
+			func_id instance;
 		} func;
 
 		struct {
@@ -400,6 +403,11 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 bool
 ast_node_resolve_slots(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node);
+
+int
+ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node,
+		struct object *out);
 
 void
 ast_print(struct ast_context *, struct ast_env *, struct ast_node *);

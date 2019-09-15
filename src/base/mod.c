@@ -18,7 +18,7 @@ stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 		unset.base = base;
 		unset.size = 0;
 
-		type_id unset_id = register_type(&mod->store, unset);
+		type_id unset_id = store_register_type(&mod->store, unset);
 
 		assert(unset_id == TYPE_UNSET);
 	}

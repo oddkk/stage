@@ -8,11 +8,19 @@
 typedef unsigned int obj_id;
 typedef uint64_t type_id;
 typedef uint32_t modtype_id;
+typedef uint64_t func_id;
+typedef uint32_t modfunc_id;
 typedef size_t template_id;
 
 #define TYPE_ID(modid, typeid) (((type_id)modid << 32) | ((type_id)typeid & 0xffffffff))
 #define TYPE_ID_MOD(typeid) (uint32_t)((typeid >> 32) & 0xffffffff)
 #define TYPE_ID_TYPE(typeid) (modtype_id)(typeid & 0xffffffff)
+
+#define FUNC_ID(modid, funcid) (((func_id)modid << 32) | ((func_id)funcid & 0xffffffff))
+#define FUNC_ID_MOD(funcid) (uint32_t)((funcid >> 32) & 0xffffffff)
+#define FUNC_ID_TYPE(funcid) (modfunc_id)(funcid & 0xffffffff)
+
+#define FUNC_UNSET ((func_id)0)
 
 struct vm;
 struct type;
@@ -37,11 +45,14 @@ struct type_base {
 	type_free free;
 };
 
+typedef struct _ffi_type ffi_type;
+
 struct type {
 	struct atom *name;
 	struct type_base *base;
 	struct ast_object_def *obj_def;
 	struct ast_object_def *type_def;
+	ffi_type *ffi_type;
 	void *data;
 
 	size_t size;
@@ -52,6 +63,20 @@ _init_plain_type(struct type_base *, struct atom *name, size_t size);
 
 #define init_plain_type(base, name, datatype) \
 	_init_plain_type(base, name, sizeof(datatype))
+
+enum func_kind {
+	FUNC_NATIVE,
+};
+
+struct func {
+	struct atom *name;
+	enum func_kind kind;
+	type_id type;
+
+	union {
+		void *native;
+	};
+};
 
 struct object {
 	type_id type;
@@ -74,10 +99,17 @@ struct objstore {
 	// TODO: Better data structure?
 	struct type *types;
 	size_t num_types;
+
+	// TODO: Better data structure?
+	struct func *funcs;
+	size_t num_funcs;
 };
 
-type_id register_type(struct objstore *store, struct type type);
-bool unify_types(struct vm *vm, struct objstore *, type_id lhs, type_id rhs, type_id *out);
+modtype_id
+store_register_type(struct objstore *store, struct type type);
+
+modfunc_id
+store_register_func(struct objstore *store, struct func func);
 
 void print_type_repr(struct vm *vm, struct type *);
 void print_obj_repr(struct vm *vm, struct object);
@@ -100,6 +132,15 @@ static inline struct type *store_get_type(struct objstore *store, type_id id) {
 	type = &store->types[id];
 
 	return type;
+}
+
+static inline struct func *store_get_func(struct objstore *store, func_id id) {
+	struct func *func;
+
+	assert(id < store->num_funcs);
+	func = &store->funcs[id];
+
+	return func;
 }
 
 void free_objstore(struct objstore *store);

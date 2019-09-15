@@ -14,7 +14,7 @@ type_id
 stg_register_type(struct stg_module *mod, struct type t)
 {
 	modtype_id local_tid;
-	local_tid = register_type(&mod->store, t);
+	local_tid = store_register_type(&mod->store, t);
 
 	type_id tid;
 	tid = TYPE_ID(mod->id, local_tid);
@@ -22,9 +22,21 @@ stg_register_type(struct stg_module *mod, struct type t)
 	return tid;
 }
 
+func_id
+stg_register_func(struct stg_module *mod, struct func f)
+{
+	modfunc_id local_fid;
+	local_fid = store_register_func(&mod->store, f);
+
+	func_id fid;
+	fid = TYPE_ID(mod->id, local_fid);
+
+	return fid;
+}
+
 static struct object
-simple_obj_def_pack(struct ast_context *ctx, struct ast_env *env,
-		struct ast_object_def *def, ast_slot_id obj)
+simple_obj_def_pack(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_object_def *def, ast_slot_id obj)
 {
 	struct object_decons *decons = def->data;
 	struct object ret_type_obj;
@@ -34,7 +46,7 @@ simple_obj_def_pack(struct ast_context *ctx, struct ast_env *env,
 	assert(obj_slot.kind == AST_SLOT_CONS);
 	assert(obj_slot.cons.def == def);
 
-	err = ast_slot_pack(ctx, env, obj_slot.type, &ret_type_obj);
+	err = ast_slot_pack(ctx, mod, env, obj_slot.type, &ret_type_obj);
 	if (err) {
 		return OBJ_NONE;
 	}
@@ -68,7 +80,7 @@ simple_obj_def_pack(struct ast_context *ctx, struct ast_env *env,
 		assert(arg_i >= 0);
 
 		struct object value;
-		err = ast_slot_pack(ctx, env, obj_slot.cons.args[arg_i].slot, &value);
+		err = ast_slot_pack(ctx, mod, env, obj_slot.cons.args[arg_i].slot, &value);
 		if (err) {
 			return OBJ_NONE;
 		}
