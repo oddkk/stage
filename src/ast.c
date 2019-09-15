@@ -7,7 +7,7 @@
 #include "base/mod.h"
 
 struct ast_context
-ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, struct vm *vm, type_id type, type_id integer)
+ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, struct vm *vm)
 {
 	struct ast_context ctx;
 
@@ -21,65 +21,13 @@ ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, s
 	ctx.atoms.array_cons_arg_type  = atom_create(atom_table, STR("T"));
 	ctx.atoms.array_cons_arg_count = atom_create(atom_table, STR("N"));
 
-	ctx.types.type = type;
-	ctx.types.integer = integer;
+	ctx.types.type = vm->default_types.type;
+	ctx.types.integer = vm->default_types.integer;
+
+	ctx.cons.func = vm->default_cons.func;
+	ctx.cons.array = vm->default_cons.array;
 
 	ctx.vm = vm;
-
-	{
-		struct ast_object_def *array_type_def =
-			ast_object_def_register(&vm->modules[0]->store);
-
-		struct ast_object_def_param array_type_params[] = {
-			{0, ctx.atoms.array_cons_arg_type, AST_SLOT_TYPE},
-			{1, ctx.atoms.array_cons_arg_count,
-				ast_bind_slot_const_type(
-						&ctx, &array_type_def->env, AST_BIND_NEW,
-						NULL, integer)},
-		};
-
-		ast_object_def_finalize(array_type_def,
-				array_type_params, ARRAY_LENGTH(array_type_params),
-				AST_SLOT_TYPE);
-
-		ctx.cons.array = array_type_def;
-	}
-
-	{
-		struct ast_object_def *func_type_def =
-			ast_object_def_register(&vm->modules[0]->store);
-
-		ast_slot_id func_params_type = ast_bind_slot_cons(
-				&ctx, &func_type_def->env, AST_BIND_NEW,
-				NULL, ctx.cons.array);
-
-		ast_slot_id func_params_T =
-			ast_unpack_arg_named(&ctx, &func_type_def->env,
-					func_params_type, ctx.atoms.array_cons_arg_type);
-		func_params_T = ast_bind_slot_templ(
-				&ctx, &func_type_def->env, func_params_T,
-				ctx.atoms.array_cons_arg_type, AST_SLOT_TYPE);
-
-		ast_slot_id func_params_N =
-			ast_unpack_arg_named(&ctx, &func_type_def->env,
-					func_params_type, ctx.atoms.array_cons_arg_count);
-		func_params_N = ast_bind_slot_templ(
-				&ctx, &func_type_def->env, func_params_N, ctx.atoms.array_cons_arg_count,
-				ast_bind_slot_const_type(&ctx, &func_type_def->env,
-					ast_env_slot(&ctx, &func_type_def->env, func_params_N).type,
-						NULL, integer));
-
-		struct ast_object_def_param func_type_params[] = {
-			{0, ctx.atoms.func_cons_arg_ret,    AST_SLOT_TYPE},
-			{1, ctx.atoms.func_cons_arg_params, func_params_type},
-		};
-
-		ast_object_def_finalize(func_type_def,
-				func_type_params, ARRAY_LENGTH(func_type_params),
-				AST_SLOT_TYPE);
-
-		ctx.cons.func = func_type_def;
-	}
 
 	return ctx;
 }

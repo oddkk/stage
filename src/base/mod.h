@@ -12,4 +12,10 @@ base_bootstrap_register_type(struct stg_module *mod);
 void
 base_bootstrap_register_integer(struct stg_module *mod);
 
+void
+base_bootstrap_register_array(struct ast_context *, struct stg_module *mod);
+
+void
+base_bootstrap_register_func(struct ast_context *, struct stg_module *mod);
+
 #endif

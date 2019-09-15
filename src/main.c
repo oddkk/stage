@@ -109,9 +109,7 @@ int main(int argc, char *argv[])
 	stg_base_load(&vm);
 
 	struct ast_context ctx;
-	ctx = ast_init_context(NULL, &vm.atom_table, &vm,
-			vm.default_types.type,
-			vm.default_types.integer);
+	ctx = ast_init_context(NULL, &vm.atom_table, &vm);
 
 	struct string module_locations[] = {
 		STR("./modules/"),

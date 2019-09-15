@@ -148,7 +148,7 @@ struct ast_context {
 };
 
 struct ast_context
-ast_init_context(struct stg_error_context *, struct atom_table *, struct vm *, type_id type, type_id integer);
+ast_init_context(struct stg_error_context *, struct atom_table *, struct vm *);
 
 ast_slot_id
 ast_bind_slot_wildcard(struct ast_context *,

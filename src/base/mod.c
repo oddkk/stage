@@ -32,12 +32,18 @@ stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 		none.base = base;
 		none.size = 0;
 
-		type_id none_id = register_type(&mod->store, none);
+		type_id none_id = store_register_type(&mod->store, none);
 		assert(none_id == TYPE_NONE);
 	}
 
 	base_bootstrap_register_type(mod);
 	base_bootstrap_register_integer(mod);
+
+	struct ast_context tmp_ctx;
+	tmp_ctx = ast_init_context(NULL, &mod->vm->atom_table, mod->vm);
+
+	base_bootstrap_register_array(&tmp_ctx, mod);
+	base_bootstrap_register_func(&tmp_ctx, mod);
 
 	return 0;
 }
