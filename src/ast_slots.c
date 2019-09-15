@@ -283,6 +283,50 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 				}
 				break;
 
+			case AST_SLOT_CONS:
+				{
+					struct type *type_inst = vm_get_type(ctx->vm, type);
+
+					if (!type_inst->type_def) {
+						printf("Warning: Attempted to bind CONS over CONST_TYPE with "
+								"object that does not have a constructor.\n");
+						return AST_BIND_FAILED;
+					}
+
+					if (!target_slot.cons.def) {
+						target = ast_bind_slot_cons(ctx, env, target,
+								NULL, type_inst->type_def);
+					} else {
+						if (target_slot.cons.def != type_inst->type_def) {
+							printf("Warning: Attempted to bind CONS over CONST_TYPE with "
+									"object that does not match the one in CONS.\n");
+							return AST_BIND_FAILED;
+						}
+					}
+
+					struct ast_object_def *def = type_inst->type_def;
+					struct object type_obj = {0};
+					type_obj.data = &type;
+
+					for (size_t i = 0; i < def->num_params; i++) {
+						struct object member;
+
+						member = def->unpack(ctx, env, def,
+								def->params[i].param_id, type_obj);
+
+						ast_slot_id member_slot;
+						member_slot = ast_unpack_arg_named(ctx, env, target,
+								def->params[i].name);
+
+						ast_slot_id new_member_slot;
+						new_member_slot =
+							ast_bind_slot_const(ctx, env, member_slot, NULL, member);
+
+						ast_substitute(ctx, env, new_member_slot, member_slot);
+					}
+				}
+				return target;
+
 			default:
 				printf("Warning: Attempted to bind CONST_TYPE over %s. (bind %i)\n",
 						ast_slot_name(target_slot.kind), target);
@@ -490,6 +534,39 @@ ast_bind_slot_cons(struct ast_context *ctx,
 							slot_obj_type->obj_def);
 					target = ast_bind_slot_const(ctx, env, target, NULL,
 							slot_obj);
+				}
+				return target;
+
+			case AST_SLOT_CONST_TYPE:
+				{
+					type_id slot_val = old_slot.const_type;
+					struct type *slot_val_type =
+						vm_get_type(ctx->vm, slot_val);
+
+					if (!slot_val_type->type_def) {
+						printf("Warning: Attempted to unpack a type that cannot be "
+								"unpacked (missing def).\n");
+						return AST_BIND_FAILED;
+					}
+
+					if (def && slot_val_type->type_def != def) {
+						printf("Warning: Attempted to bind CONS with def %p over "
+								"CONST with def %p.\n",
+								(void *)def,
+								(void *)slot_val_type->type_def);
+					}
+
+					// We first rebind the target slot to wildcard to allow us
+					// to use bind_slot_cons to correctly instantiate it as a
+					// cons slot. Then we apply the const object on top of the
+					// cons.
+					env->slots[target].kind = AST_SLOT_WILDCARD;
+					env->slots[target].const_type = 0;
+
+					target = ast_bind_slot_cons(ctx, env, target, NULL,
+							slot_val_type->type_def);
+					target = ast_bind_slot_const_type(ctx, env, target, NULL,
+							slot_val);
 				}
 				return target;
 

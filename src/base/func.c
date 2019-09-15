@@ -22,7 +22,6 @@ base_func_unpack(struct ast_context *ctx, struct ast_env *env,
 
 				return res;
 			}
-			break;
 
 		case FUNC_PARAM_PARAMS:
 			{
@@ -30,8 +29,9 @@ base_func_unpack(struct ast_context *ctx, struct ast_env *env,
 
 				res.type = data->params_type;
 				res.data = data->params;
+
+				return res;
 			}
-			break;
 	}
 
 	panic("Invalid param %i requested from function type.", param_id);
@@ -181,6 +181,7 @@ stg_register_func_type(struct stg_module *mod,
 	struct type type = {0};
 	type.base = &func_type_base;
 	type.data = data;
+	type.type_def = mod->vm->default_cons.func;
 	type.size = sizeof(struct stg_func_object);
 
 	return stg_register_type(mod, type);
