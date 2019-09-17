@@ -112,7 +112,7 @@ ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
 		node->func.params[i].type = param_types[i];
 		ast_union_slot(ctx, env,
 				ast_env_slot(ctx, env, node->func.params[i].slot).type,
-				ast_node_type(ctx, env, node->func.params[i].type));
+				ast_node_value(ctx, env, node->func.params[i].type));
 	}
 
 	return node;
@@ -145,7 +145,7 @@ ast_finalize_node_func_native(struct ast_context *ctx, struct ast_env *env,
 		node->func.params[i].type = param_types[i];
 		ast_union_slot(ctx, env,
 				ast_env_slot(ctx, env, node->func.params[i].slot).type,
-				ast_node_type(ctx, env, node->func.params[i].type));
+				ast_node_value(ctx, env, node->func.params[i].type));
 	}
 
 	return node;
@@ -358,9 +358,12 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 		case AST_NODE_LOOKUP:
 			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
 				result = false;
+				panic("Name '%.*s' was not found before dependency check.",
+						ALIT(node->lookup.name));
 			} else {
 				struct ast_env_slot slot =
-					ast_env_slot(ctx, env, node->lookup.value);
+					ast_env_slot(ctx, env,
+							ast_node_resolve_slot(env, &node->lookup.value));
 
 				if (slot.kind == AST_SLOT_CONST ||
 						slot.kind == AST_SLOT_CONST_TYPE) {
