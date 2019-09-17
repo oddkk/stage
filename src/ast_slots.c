@@ -876,11 +876,20 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 		}
 	}
 
-	for (size_t i = 0; i < num_members; i++) {
-		env->slots[target].cons_array.members[i] =
-			ast_union_slot(ctx, env,
-				env->slots[target].cons_array.members[i],
-				members[i]);
+	if (members) {
+		for (size_t i = 0; i < num_members; i++) {
+			env->slots[target].cons_array.members[i] =
+				ast_union_slot(ctx, env,
+					env->slots[target].cons_array.members[i],
+					members[i]);
+		}
+	} else {
+		for (size_t i = 0; i < num_members; i++) {
+			env->slots[target].cons_array.members[i] =
+				ast_bind_slot_wildcard(ctx, env,
+						env->slots[target].cons_array.members[i],
+						NULL, env->slots[target].cons_array.member_type);
+		}
 	}
 
 #if AST_DEBUG_BINDS
