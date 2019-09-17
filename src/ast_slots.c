@@ -211,6 +211,7 @@ ast_bind_slot_const(struct ast_context *ctx,
 
 						member = def->unpack(ctx, env, def,
 								def->params[i].param_id, obj);
+						member = register_object(ctx->vm, env->store, member);
 
 						ast_slot_id member_slot;
 						member_slot = ast_unpack_arg_named(ctx, env, target,
@@ -241,6 +242,7 @@ ast_bind_slot_const(struct ast_context *ctx,
 						struct object member;
 
 						member = def->unpack(ctx, env, def, i, obj);
+						member = register_object(ctx->vm, env->store, member);
 
 						ast_slot_id member_slot;
 						member_slot = target_slot.cons_array.members[i];
@@ -345,6 +347,7 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 
 						member = def->unpack(ctx, env, def,
 								def->params[i].param_id, type_obj);
+						member = register_object(ctx->vm, env->store, member);
 
 						ast_slot_id member_slot;
 						member_slot = ast_unpack_arg_named(ctx, env, target,
