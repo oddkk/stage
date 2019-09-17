@@ -517,6 +517,23 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_env *env,
 	return result;
 }
 
+static int
+ast_node_eval_type(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node, type_id *out)
+{
+	struct object type_obj;
+	int err;
+	err = ast_node_eval(ctx, mod, env, node, &type_obj);
+	if (err) {
+		return err;
+	}
+
+	assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
+
+	*out = *(type_id *)type_obj.data;
+	return 0;
+}
+
 int
 ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node, struct object *out)
@@ -527,6 +544,29 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 			{
 				if (node->func.instance == FUNC_UNSET) {
 					struct func func = {0};
+
+					type_id ret_type;
+					type_id param_types[node->func.num_params];
+					int err;
+
+					err = ast_node_eval_type(ctx, mod, env,
+							node->func.return_type, &ret_type);
+					if (err) {
+						printf("Failed to resolve function return type.\n");
+						return -1;
+					}
+
+					for (size_t i = 0; i < node->func.num_params; i++) {
+						err = ast_node_eval_type(ctx, mod, env,
+								node->func.return_type, &param_types[i]);
+						if (err) {
+							printf("Failed to resolve function parameter.\n");
+							return -1;
+						}
+					}
+
+					func.type = stg_register_func_type(mod->stg_mod, ret_type,
+							param_types, node->func.num_params);
 
 					if (node->kind == AST_NODE_FUNC) {
 						panic("TODO: Compile non-native funcs.");
@@ -593,10 +633,25 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 				// struct type *type = vm_get_type(ctx->vm, func.type);
 				// TODO: assert(type->base == func_type_base)
 
-				struct stg_func_object func_obj = *(struct stg_func_object  *)func.data;
+				struct stg_func_object *func_obj = (struct stg_func_object  *)func.data;
+				struct func *func_inst = vm_get_func(ctx->vm, func_obj->func);
+				struct type *func_type = vm_get_type(ctx->vm, func_inst->type);
+				struct stg_func_type *func_info = (struct stg_func_type *)func_type->data;;
+				struct type *ret_type  = vm_get_type(ctx->vm, func_info->return_type);
 
-				return vm_call_func(ctx->vm, func_obj.func,
-						args, node->call.num_args, out);
+				struct object res = {0};
+				uint8_t buffer[ret_type->size];
+				res.type = func_info->return_type;
+				res.data = buffer;
+
+				err = vm_call_func(ctx->vm, func_obj->func,
+						args, node->call.num_args, &res);
+				if (err) {
+					return err;
+				}
+
+				*out = register_object(ctx->vm, env->store, res);
+				return err;
 			}
 			break;
 
