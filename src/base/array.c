@@ -72,7 +72,7 @@ struct object base_array_pack(
 		return OBJ_NONE;
 	}
 
-	assert(array_type_obj.type == ctx->types.type);
+	assert_type_equals(ctx->vm, array_type_obj.type, ctx->types.type);
 	type_id array_type_id;
 	array_type_id = *(type_id *)array_type_obj.type;
 
@@ -98,7 +98,7 @@ struct object base_array_pack(
 			return OBJ_NONE;
 		}
 
-		assert(member.type == array_info->member_type);
+		assert_type_equals(ctx->vm, member.type, array_info->member_type);
 
 		memcpy(&array_data[i * member_type->size],
 				member.data, member_type->size);
@@ -116,9 +116,25 @@ static struct ast_array_def array_type_def = {
 	.unpack = base_array_unpack,
 };
 
+bool
+base_array_type_equals(struct vm *vm, struct type *lhs, struct type *rhs)
+{
+	struct stg_array_type *lhs_info;
+	struct stg_array_type *rhs_info;
+
+	lhs_info = (struct stg_array_type *)lhs->data;
+	rhs_info = (struct stg_array_type *)rhs->data;
+
+	return (
+		lhs_info->length == rhs_info->length &&
+		type_equals(vm, lhs_info->member_type, rhs_info->member_type)
+	);
+}
+
 static struct type_base array_type_base = {
 	.name = STR("array"),
 	.array_def = &array_type_def,
+	.equals = &base_array_type_equals,
 	// TODO: type and object repr
 };
 

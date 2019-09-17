@@ -131,7 +131,7 @@ ast_bind_slot_const(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
 		struct atom *name, struct object obj)
 {
-	if (obj.type == ctx->types.type) {
+	if (type_equals(ctx->vm, obj.type, ctx->types.type)) {
 		return ast_bind_slot_const_type(
 				ctx, env, target, name,
 				// TODO: We should have a procedure to unpack type object data.
@@ -280,12 +280,12 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 		struct atom *name, type_id type)
 {
 	if (target == AST_BIND_NEW) {
-		if (type == ctx->types.type) {
+		if (type_equals(ctx->vm, type, ctx->types.type)) {
 			target = AST_SLOT_TYPE;
 		} else {
 			target = ast_alloc_slot(env, name, AST_SLOT_TYPE, AST_SLOT_CONST_TYPE);
 		}
-	} else if (target >= 0 && type == ctx->types.type) {
+	} else if (target >= 0 && type_equals(ctx->vm, type, ctx->types.type)) {
 		ast_substitute(ctx, env, target, AST_SLOT_TYPE);
 #if AST_DEBUG_BINDS
 		printf("=== bind const type of type, %i -> -1: \n", target);

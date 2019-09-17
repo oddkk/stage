@@ -34,6 +34,36 @@ _init_plain_type(struct type_base *base, struct atom *name, size_t size)
 	return t;
 }
 
+bool
+type_equals(struct vm *vm, type_id lhs_id, type_id rhs_id)
+{
+	if (lhs_id == rhs_id) {
+		return true;
+	}
+
+	struct type *lhs = vm_get_type(vm, lhs_id);
+	struct type *rhs = vm_get_type(vm, rhs_id);
+
+	return (
+		lhs->base == rhs->base &&
+		lhs->base->equals &&
+		lhs->base->equals(vm, lhs, rhs)
+	);
+}
+
+void
+_assert_type_equals_failed(struct vm *vm, type_id lhs, type_id rhs,
+		const char *file, int line, const char *func)
+{
+	printf("stage: %s:%i: %s: Assertion type_equals(<",
+			file, line, func);
+	print_type_repr(vm, vm_get_type(vm, lhs));
+	printf(">, <");
+	print_type_repr(vm, vm_get_type(vm, rhs));
+	printf(">) failed.\n");
+	abort();
+}
+
 struct object
 register_object(struct vm *vm, struct objstore *store, struct object obj) {
 	if (store->page_size == 0) {
@@ -195,7 +225,11 @@ arena_string_append_type_repr(struct string *str, struct vm *vm,
 	struct string type_repr;
 
 	struct arena tmp_mem = arena_push(mem);
-	type_repr = type->base->repr(vm, &tmp_mem, type);
+	if (type->base->repr) {
+		type_repr = type->base->repr(vm, &tmp_mem, type);
+	} else {
+		type_repr = default_type_repr(vm, &tmp_mem, type);
+	}
 	arena_pop(mem, tmp_mem);
 
 	arena_string_append(mem, str, type_repr);
@@ -210,7 +244,11 @@ arena_string_append_obj_repr(struct string *str, struct vm *vm,
 	type = vm_get_type(vm, object->type);
 
 	struct arena tmp_mem = arena_push(mem);
-	repr = type->base->obj_repr(vm, &tmp_mem, object);
+	if (type->base->obj_repr) {
+		repr = type->base->obj_repr(vm, &tmp_mem, object);
+	} else {
+		repr = default_obj_repr(vm, &tmp_mem, object);
+	}
 	arena_pop(mem, tmp_mem);
 
 	arena_string_append(mem, str, repr);

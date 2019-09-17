@@ -177,7 +177,7 @@ vm_call_func(struct vm *vm, func_id fid, struct object *args,
 		return -1;
 	}
 
-	assert(ret->type == func_type.return_type);
+	assert_type_equals(vm, ret->type, func_type->return_type);
 	assert(ret->data != NULL);
 
 	switch (func->kind) {

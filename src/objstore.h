@@ -37,13 +37,16 @@ struct ast_object_def;
 
 typedef struct string (*type_repr)(struct vm *vm, struct arena *mem, struct type *);
 typedef struct string (*obj_repr)(struct vm *vm, struct arena *mem, struct object *);
+typedef bool (*type_equals_func)(struct vm *vm, struct type *lhs, struct type *rhs);
 typedef void (*type_free)(struct vm *vm, struct type *type);
+
 
 struct type_base {
 	struct string name;
 	type_repr repr;
 	obj_repr obj_repr;
 	type_free free;
+	type_equals_func equals;
 
 	struct ast_array_def *array_def;
 };
@@ -66,6 +69,18 @@ _init_plain_type(struct type_base *, struct atom *name, size_t size);
 
 #define init_plain_type(base, name, datatype) \
 	_init_plain_type(base, name, sizeof(datatype))
+
+bool
+type_equals(struct vm *, type_id lhs, type_id rhs);
+
+void
+_assert_type_equals_failed(struct vm *, type_id lhs, type_id rhs,
+		const char *file, int line, const char *func);
+
+#define assert_type_equals(vm, lhs, rhs) \
+	do { if (!type_equals((vm), (lhs), (rhs))) { \
+		_assert_type_equals_failed((vm), (lhs), (rhs), __FILE__, __LINE__, __func__); \
+	} } while (0)
 
 enum func_kind {
 	FUNC_NATIVE,

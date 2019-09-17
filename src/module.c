@@ -51,7 +51,7 @@ simple_obj_def_pack(struct ast_context *ctx, struct ast_module *mod,
 		return OBJ_NONE;
 	}
 
-	assert(ret_type_obj.type == ctx->types.type);
+	assert_type_equals(ctx->vm, ret_type_obj.type, ctx->types.type);
 
 	type_id ret_tid = *(type_id *)ret_type_obj.data;
 
@@ -85,7 +85,7 @@ simple_obj_def_pack(struct ast_context *ctx, struct ast_module *mod,
 			return OBJ_NONE;
 		}
 
-		assert(value.type == member->type);
+		assert_type_equals(ctx->vm, value.type, member->type);
 
 		struct type *member_type = vm_get_type(ctx->vm, member->type);
 

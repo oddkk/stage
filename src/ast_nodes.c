@@ -545,7 +545,7 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 					return -1;
 				}
 
-				assert(func_type_obj.type == ctx->types.type);
+				assert_type_equals(ctx->vm, func_type_obj.type, ctx->types.type);
 				type_id func_type = *(type_id *)func_type_obj.data;
 
 				struct stg_func_object func_obj_data = {0};

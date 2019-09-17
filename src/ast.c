@@ -330,7 +330,7 @@ ast_namespace_finalize(struct ast_context *ctx,
 			return AST_BIND_FAILED;
 		}
 
-		assert(type_obj.type == ctx->types.type);
+		assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
 
 		decons.members[i].type = *(type_id *)type_obj.data;
 		decons.members[i].ref = false;

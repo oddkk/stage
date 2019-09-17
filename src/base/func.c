@@ -11,7 +11,7 @@ static struct object
 base_func_unpack(struct ast_context *ctx, struct ast_env *env,
 		struct ast_object_def *def, int param_id, struct object obj)
 {
-	assert(obj.type == ctx->types.type);
+	assert_type_equals(ctx->vm, obj.type, ctx->types.type);
 	type_id tid = *(type_id *)obj.data;
 	struct type *type = vm_get_type(ctx->vm, tid);
 	struct stg_func_type *data = (struct stg_func_type *)type->data;
@@ -86,7 +86,7 @@ base_func_pack(struct ast_context *ctx, struct ast_module *mod,
 			return OBJ_NONE;
 		}
 
-		assert(param_type_obj.type == ctx->types.type);
+		assert_type_equals(ctx->vm, param_type_obj.type, ctx->types.type);
 
 		param_types[i] = *(type_id *)param_type_obj.data;
 	}
@@ -105,7 +105,7 @@ base_func_pack(struct ast_context *ctx, struct ast_module *mod,
 		return OBJ_NONE;
 	}
 
-	assert(ret_type_obj.type == ctx->types.type);
+	assert_type_equals(ctx->vm, ret_type_obj.type, ctx->types.type);
 
 	ret_type = *(type_id *)ret_type_obj.data;
 	
@@ -161,9 +161,69 @@ base_bootstrap_register_func(struct ast_context *ctx, struct stg_module *mod)
 	ctx->cons.func = func_type_def;
 }
 
+static struct string
+base_type_func_repr(struct vm *vm, struct arena *mem, struct type *type)
+{
+	struct stg_func_type *func_info = type->data;
+	struct string res = arena_string_init(mem);
+
+	struct type *ret_type;
+
+	ret_type = vm_get_type(vm, func_info->return_type);
+
+	arena_string_append(mem, &res, STR("("));
+
+	for (size_t i = 0; i < func_info->num_params; i++) {
+		if (i != 0) {
+			arena_string_append(mem, &res, STR(", "));
+		}
+
+		struct type *item_type;
+		item_type = vm_get_type(vm, func_info->params[i]);
+		arena_string_append_type_repr(&res, vm, mem, item_type);
+	}
+
+	arena_string_append(mem, &res, STR(") -> "));
+	arena_string_append_type_repr(&res, vm, mem, ret_type);
+
+	return res;
+}
+
+bool
+base_type_func_equals(struct vm *vm, struct type *lhs, struct type *rhs)
+{
+	struct stg_func_type *lhs_info;
+	struct stg_func_type *rhs_info;
+
+	lhs_info = (struct stg_func_type *)lhs->data;
+	rhs_info = (struct stg_func_type *)rhs->data;
+
+	if (!type_equals(vm,
+				lhs_info->return_type,
+				rhs_info->return_type)) {
+		return false;
+	}
+
+	if (lhs_info->num_params != rhs_info->num_params) {
+		return false;
+	}
+
+	for (size_t i = 0; i < lhs_info->num_params; i++) {
+		if (!type_equals(vm,
+					lhs_info->params[i],
+					rhs_info->params[i])) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 static struct type_base func_type_base = {
 	.name = STR("function"),
-	// todo: type and object repr
+	.repr = base_type_func_repr,
+	.equals = base_type_func_equals,
+	// todo: object repr
 };
 
 type_id
