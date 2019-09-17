@@ -87,5 +87,7 @@ stg_base_load(struct vm *vm)
 	struct stg_native_module *mod;
 	mod = vm_add_precompiled_native_module(vm, STR("base"));
 
+	base_integer_register_native(mod);
+
 	mod->hook_init = stg_base_init;
 }

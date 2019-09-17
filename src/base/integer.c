@@ -1,19 +1,31 @@
 #include "mod.h"
 #include "../module.h"
+#include "../native.h"
+#include <ffi.h>
 
-/*
 static int64_t
-opadd_int_int(int64_t lhs, int64_t rhs)
+op_add_int_int(int64_t lhs, int64_t rhs)
 {
 	return lhs + rhs;
 }
 
 static int64_t
-opsub_int_int(int64_t lhs, int64_t rhs)
+op_sub_int_int(int64_t lhs, int64_t rhs)
 {
 	return lhs - rhs;
 }
-*/
+
+static int64_t
+op_mul_int_int(int64_t lhs, int64_t rhs)
+{
+	return lhs * rhs;
+}
+
+static int64_t
+op_div_int_int(int64_t lhs, int64_t rhs)
+{
+	return lhs / rhs;
+}
 
 static struct string
 obj_integer_repr(struct vm *vm, struct arena *mem, struct object *obj)
@@ -40,4 +52,12 @@ base_bootstrap_register_integer(struct stg_module *mod)
 	tid = stg_register_type(mod, t);
 
 	mod->vm->default_types.integer = tid;
+}
+
+void
+base_integer_register_native(struct stg_native_module *mod) {
+	stg_native_register_funcs(mod, op_add_int_int);
+	stg_native_register_funcs(mod, op_sub_int_int);
+	stg_native_register_funcs(mod, op_mul_int_int);
+	stg_native_register_funcs(mod, op_div_int_int);
 }
