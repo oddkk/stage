@@ -34,6 +34,9 @@ struct stg_native_module {
 void
 stg_native_register_func(struct stg_native_module *,
 		struct string name, void *func);
+#define stg_native_register_funcs(mod, func) \
+	stg_native_register_func((mod), STR(#func), (void *)(func))
+
 void
 stg_native_register_type(struct stg_native_module *,
 		struct string name, struct type);

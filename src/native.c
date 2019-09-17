@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 void
-ast_native_register_func(struct stg_native_module *mod,
+stg_native_register_func(struct stg_native_module *mod,
 		struct string name, void *func)
 {
 	struct stg_native_func *tmp_funcs;
@@ -29,7 +29,7 @@ ast_native_register_func(struct stg_native_module *mod,
 }
 
 void
-ast_native_register_type(struct stg_native_module *mod,
+stg_native_register_type(struct stg_native_module *mod,
 		struct string name, struct type type)
 {
 	struct stg_native_type *tmp_types;
