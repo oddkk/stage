@@ -229,6 +229,7 @@ job_parse_file(struct compile_ctx *ctx, job_parse_file_t *data)
 	err = parse_config_file(data->file_name, &ctx->vm->atom_table,
 							&ctx->vm->memory, file_id, &ctx->err, &node);
 	if (err) {
+		printf("Failed to parse source file.\n");
 		return JOB_ERROR;
 	}
 
@@ -628,6 +629,7 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 		case JOB_COMPILE_EXPR_TYPECHECK:
 			ast_node_resolve_slots(ctx->ast_ctx, &data->mod->env, data->expr);
 			if (!ast_node_is_typed(ctx->ast_ctx, &data->mod->env, data->expr)) {
+				printf("Failed type expression.\n");
 				return JOB_ERROR;
 			}
 			ast_print(ctx->ast_ctx, &data->mod->env, data->expr);
@@ -658,7 +660,9 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 						ctx->ast_ctx, &data->mod->env,
 						data->expr));
 			*/
+			printf("Compiled ");
 			ast_print_slot(ctx->ast_ctx, &data->mod->env, *data->out_value);
+			printf(" -> %i\n", *data->out_value);
 			*data->num_uncompiled_exprs -= 1;
 			return JOB_OK;
 	}
