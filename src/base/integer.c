@@ -47,6 +47,7 @@ base_bootstrap_register_integer(struct stg_module *mod)
 			&base_integer_base,
 			mod_atoms(mod, "int"),
 			int64_t);
+	t.ffi_type = &ffi_type_sint64;
 
 	type_id tid;
 	tid = stg_register_type(mod, t);

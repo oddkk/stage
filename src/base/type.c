@@ -1,5 +1,6 @@
 #include "mod.h"
 #include "../module.h"
+#include <ffi.h>
 
 static struct string
 obj_type_repr(struct vm *vm, struct arena *mem, struct object *obj)
@@ -28,6 +29,7 @@ base_bootstrap_register_type(struct stg_module *mod)
 			&base_type_base,
 			mod_atoms(mod, "Type"),
 			type_id);
+	t.ffi_type = &ffi_type_uint64;
 
 	modtype_id local_tid;
 	local_tid = store_register_type(&mod->store, t);
