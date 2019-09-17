@@ -168,12 +168,12 @@ vm_call_func(struct vm *vm, func_id fid, struct object *args,
 	struct func *func = vm_get_func(vm, fid);
 	struct type *type = vm_get_type(vm, func->type);
 
-	struct stg_func_type func_type;
-	func_type = *(struct stg_func_type *)type->data;
+	struct stg_func_type *func_type;
+	func_type = (struct stg_func_type *)type->data;
 
-	if (func_type.num_params != num_args) {
+	if (func_type->num_params != num_args) {
 		printf("Attempted to call function '%.*s' with %zu parameters, expected %zu.\n",
-				ALIT(func->name), num_args, func_type.num_params);
+				ALIT(func->name), num_args, func_type->num_params);
 		return -1;
 	}
 
@@ -188,13 +188,27 @@ vm_call_func(struct vm *vm, func_id fid, struct object *args,
 				void *arg_values[num_args];
 
 				struct type *return_type;
-				return_type = vm_get_type(vm, func_type.return_type);
+				return_type = vm_get_type(vm, func_type->return_type);
+				if (!return_type->ffi_type) {
+					printf("Type '");
+					print_type_repr(vm, return_type);
+					printf("' is missing a ffi_type.\n");
+					abort();
+					return -1;
+				}
 				assert(return_type->ffi_type);
 
 				for (size_t i = 0; i < num_args; i++) {
-					struct type *arg_type = vm_get_type(vm, func_type.params[i]);
-					assert(args[i].type == func_type.params[i]);
+					struct type *arg_type = vm_get_type(vm, func_type->params[i]);
+					assert_type_equals(vm, args[i].type, func_type->params[i]);
 
+					if (!arg_type->ffi_type) {
+						printf("Type '");
+						print_type_repr(vm, arg_type);
+						printf("' is missing a ffi_type.\n");
+						abort();
+						return -1;
+					}
 					assert(arg_type->ffi_type);
 					arg_types[i] = arg_type->ffi_type;
 					arg_values[i] = args[i].data;
