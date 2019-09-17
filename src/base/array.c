@@ -3,6 +3,7 @@
 #include "../utils.h"
 #include "../ast.h"
 #include <stdlib.h>
+#include <string.h>
 
 void
 base_bootstrap_register_array(struct ast_context *ctx, struct stg_module *mod)
@@ -26,9 +27,99 @@ base_bootstrap_register_array(struct ast_context *ctx, struct stg_module *mod)
 	ctx->cons.array = array_type_def;
 }
 
+static struct type_base array_type_base;
+
+struct object base_array_unpack(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_array_def *def, size_t member_id, struct object obj)
+{
+	struct type *obj_type = vm_get_type(ctx->vm, obj.type);
+	assert(&array_type_base == obj_type->base);
+	struct stg_array_type *array_info;
+	array_info = (struct stg_array_type *)obj_type->data;
+
+	if (member_id >= array_info->length) {
+		printf("Attempted to unpack member %zu while the array has length %zu\n",
+				member_id, array_info->length);
+		return OBJ_NONE;
+	}
+
+	struct type *member_type;
+	member_type = vm_get_type(ctx->vm, array_info->member_type);
+
+	struct object member = {0};
+	member.type = array_info->member_type;
+	member.data = (void *)((uint8_t *)obj.data +
+		(member_id * member_type->size));
+
+	return member;
+}
+
+struct object base_array_pack(
+		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
+		struct ast_array_def *def, ast_slot_id array_slot_id)
+{
+	struct ast_env_slot array_slot;
+	array_slot = ast_env_slot(ctx, env, array_slot_id);
+
+	struct object array_type_obj;
+	int err;
+
+	err = ast_slot_pack(ctx, mod, env,
+			array_slot.type, &array_type_obj);
+	if (err) {
+		printf("Failed to pack array type.\n");
+		return OBJ_NONE;
+	}
+
+	assert(array_type_obj.type == ctx->types.type);
+	type_id array_type_id;
+	array_type_id = *(type_id *)array_type_obj.type;
+
+	struct type *array_type;
+	struct stg_array_type *array_info;
+	array_type = vm_get_type(ctx->vm, array_type_id);
+	array_info = (struct stg_array_type *)array_type->data;
+
+	assert(array_info->length == array_slot.cons_array.num_members);
+
+	struct type *member_type;
+	member_type = vm_get_type(ctx->vm, array_info->member_type);
+
+	uint8_t array_data[array_info->length * member_type->size];
+
+	for (size_t i = 0; i < array_info->length; i++) {
+		struct object member;
+		// TODO: Avoid this allocation!
+		err = ast_slot_pack(ctx, mod, env,
+				array_slot.cons_array.members[i], &member);
+		if (err) {
+			printf("Failed to pack member %zu\n", i);
+			return OBJ_NONE;
+		}
+
+		assert(member.type == array_info->member_type);
+
+		memcpy(&array_data[i * member_type->size],
+				member.data, member_type->size);
+	}
+
+	struct object result = {0};
+	result.type = array_type_id;
+	result.data = array_data;
+
+	return register_object(ctx->vm, env->store, result);
+}
+
+static struct ast_array_def array_type_def = {
+	.pack = base_array_pack,
+	.unpack = base_array_unpack,
+};
+
 static struct type_base array_type_base = {
 	.name = STR("array"),
-	// todo: type and object repr
+	.array_def = &array_type_def,
+	// TODO: type and object repr
 };
 
 type_id

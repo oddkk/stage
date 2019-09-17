@@ -225,6 +225,37 @@ ast_bind_slot_const(struct ast_context *ctx,
 				}
 				return target;
 
+			case AST_SLOT_CONS_ARRAY:
+				{
+					struct type *type = vm_get_type(ctx->vm, obj.type);
+					struct ast_array_def *def = type->base->array_def;
+
+					if (!def) {
+						printf("Warning: Attempted to bind CONS_ARRAY over CONST with "
+								"object that does not have an array constructor.\n");
+						return AST_BIND_FAILED;
+					}
+
+
+					for (size_t i = 0; i < target_slot.cons_array.num_members; i++) {
+						struct object member;
+
+						member = def->unpack(ctx, env, def, i, obj);
+
+						ast_slot_id member_slot;
+						member_slot = target_slot.cons_array.members[i];
+
+						ast_slot_id new_member_slot;
+						new_member_slot =
+							ast_bind_slot_const(ctx, env,
+									member_slot,
+									NULL, member);
+
+						ast_substitute(ctx, env, new_member_slot, member_slot);
+					}
+				}
+				return target;
+
 			default:
 				printf("Warning: Attempted to bind CONST over %s. (bind %i)\n",
 						ast_slot_name(target_slot.kind), target);
@@ -761,6 +792,39 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 					return AST_BIND_FAILED;
 				}
 				break;
+
+			case AST_SLOT_CONST:
+				{
+					struct object slot_obj = old_slot.const_object;
+					struct type *slot_obj_type =
+						vm_get_type(ctx->vm, slot_obj.type);
+					struct stg_array_type *array_info =
+						(struct stg_array_type *)slot_obj_type->data;
+
+					if (!slot_obj_type->base->array_def) {
+						printf("Warning: Attempted to unpack an object as an "
+								"array that cannot be unpacked (missing def).\n");
+						return AST_BIND_FAILED;
+					}
+
+					// We first rebind the target slot to wildcard to allow us
+					// to use bind_slot_cons to correctly instantiate it as a
+					// cons slot. Then we apply the const object on top of the
+					// cons.
+					env->slots[target].kind = AST_SLOT_WILDCARD;
+					env->slots[target].const_object.type = 0;
+					env->slots[target].const_object.data = NULL;
+
+					ast_slot_id member_type;
+					member_type = ast_bind_slot_const_type(
+							ctx, env, AST_BIND_NEW, NULL, array_info->member_type);
+
+					target = ast_bind_slot_cons_array(ctx, env, target, NULL,
+							NULL, array_info->length, member_type);
+					target = ast_bind_slot_const(ctx, env, target, NULL,
+							slot_obj);
+				}
+				return target;
 
 			default:
 				printf("Warning: Attempted to bind CONS_ARRAY over %s. (bind %i)\n",

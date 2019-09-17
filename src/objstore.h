@@ -29,6 +29,7 @@ struct object;
 struct objstore;
 struct exec_stack;
 struct stg_module;
+struct ast_array_def;
 struct ast_object_def;
 
 // TYPE_UNSET
@@ -43,6 +44,8 @@ struct type_base {
 	type_repr repr;
 	obj_repr obj_repr;
 	type_free free;
+
+	struct ast_array_def *array_def;
 };
 
 typedef struct _ffi_type ffi_type;

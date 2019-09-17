@@ -98,7 +98,32 @@ ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
 			return 0;
 
 		case AST_SLOT_CONS_ARRAY:
-			break;
+			{
+				struct object array_type_obj;
+
+				int err;
+				err = ast_slot_pack(ctx, mod, env, slot.type, &array_type_obj);
+				if (err) {
+					printf("Failed to pack array type.");
+					return -1;
+				}
+
+				type_id array_type_id;
+				array_type_id = *(type_id *)array_type_obj.data;
+
+				struct type *array_type;
+				array_type = vm_get_type(ctx->vm, array_type_id);
+
+				if (!array_type->base->array_def) {
+					// TODO: Try to resolve def from type.
+					printf("Cons array is missing a def.");
+					return -1;
+				}
+
+				*out = array_type->base->array_def->pack(ctx, mod, env,
+						array_type->base->array_def, obj);
+			}
+			return 0;
 
 		case AST_SLOT_SUBST:
 			return ast_slot_pack(ctx, mod, env, slot.subst, out);

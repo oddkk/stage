@@ -31,7 +31,6 @@ struct ast_array {
 	ast_slot_id member_type;
 	ast_slot_id member_count;
 	ast_slot_id *members;
-	size_t num_present_members;
 	size_t num_members;
 };
 
@@ -262,6 +261,21 @@ void
 ast_object_def_finalize(struct ast_object_def *,
 		struct ast_object_def_param *params, size_t num_params,
 		ast_slot_id ret_type);
+
+typedef struct object (*ast_array_unpack)(
+		struct ast_context *, struct ast_env *,
+		struct ast_array_def *, size_t member_id, struct object);
+
+typedef struct object (*ast_array_pack)(
+		struct ast_context *, struct ast_module *, struct ast_env *,
+		struct ast_array_def *, ast_slot_id);
+
+struct ast_array_def {
+	ast_array_unpack unpack;
+	ast_array_pack pack;
+
+	void *data;
+};
 
 int
 ast_slot_pack(struct ast_context *, struct ast_module *,
