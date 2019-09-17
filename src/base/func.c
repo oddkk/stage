@@ -11,7 +11,10 @@ static struct object
 base_func_unpack(struct ast_context *ctx, struct ast_env *env,
 		struct ast_object_def *def, int param_id, struct object obj)
 {
-	struct stg_func_type *data = (struct stg_func_type *)obj.data;
+	assert(obj.type == ctx->types.type);
+	type_id tid = *(type_id *)obj.data;
+	struct type *type = vm_get_type(ctx->vm, tid);
+	struct stg_func_type *data = (struct stg_func_type *)type->data;
 
 	switch (param_id) {
 		case FUNC_PARAM_RET:
@@ -177,6 +180,10 @@ stg_register_func_type(struct stg_module *mod,
 	data->params_type =
 		stg_register_array_type(mod,
 				mod->vm->default_types.type, num_params);
+
+	for (size_t i = 0; i < num_params; i++) {
+		data->params[i] = param_types[i];
+	}
 
 	struct type type = {0};
 	type.base = &func_type_base;

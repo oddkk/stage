@@ -153,7 +153,7 @@ ast_bind_slot_const(struct ast_context *ctx,
 				// TODO: Name?
 				env->slots[target].kind = AST_SLOT_CONST;
 
-				ast_bind_slot_const_type(ctx, env,
+				env->slots[target].type = ast_bind_slot_const_type(ctx, env,
 						target_slot.type, NULL, obj.type);
 				break;
 
@@ -306,6 +306,7 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 
 					struct ast_object_def *def = type_inst->type_def;
 					struct object type_obj = {0};
+					type_obj.type = ctx->types.type;
 					type_obj.data = &type;
 
 					for (size_t i = 0; i < def->num_params; i++) {
@@ -1283,6 +1284,7 @@ ast_resolve_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot_
 		case AST_SLOT_PARAM:
 		case AST_SLOT_TEMPL:
 		case AST_SLOT_FREE:
+			return false;
 
 		case AST_SLOT_SUBST:
 			return ast_resolve_slot(ctx, env, slot.subst);
