@@ -3,6 +3,7 @@
 #include "../utils.h"
 #include "../ast.h"
 #include <stdlib.h>
+#include <ffi.h>
 
 #define FUNC_PARAM_RET 0
 #define FUNC_PARAM_PARAMS 1
@@ -252,4 +253,61 @@ stg_register_func_type(struct stg_module *mod,
 	type.size = sizeof(struct stg_func_object);
 
 	return stg_register_type(mod, type);
+}
+
+void *
+stg_func_ffi_cif(struct vm *vm, type_id func_tid)
+{
+	struct type *type = vm_get_type(vm, func_tid);
+	assert(type->base == &func_type_base);
+	struct stg_func_type *func_info = type->data;
+
+	if (!func_info->ffi_cif) {
+		ffi_type **param_types; // [func_info->num_params];
+		ffi_type *ret_type;
+
+		param_types = calloc(func_info->num_params, sizeof(ffi_type *));
+
+		for (size_t i = 0; i < func_info->num_params; i++) {
+			struct type *param_type;
+			param_type = vm_get_type(vm, func_info->params[i]);
+			if (!param_type->ffi_type) {
+				printf("Type '");
+				print_type_repr(vm, param_type);
+				printf("' is missing a ffi_type.\n");
+				free(param_types);
+				abort();
+				return NULL;
+			}
+			param_types[i] = param_type->ffi_type;
+		}
+
+		struct type *return_type;
+		return_type = vm_get_type(vm, func_info->return_type);
+		if (!return_type->ffi_type) {
+			printf("Type '");
+			print_type_repr(vm, return_type);
+			printf("' is missing a ffi_type.\n");
+			free(param_types);
+			abort();
+			return NULL;
+		}
+		ret_type = return_type->ffi_type;
+
+		func_info->ffi_cif = calloc(1, sizeof(ffi_cif));
+
+		int err;
+		err = ffi_prep_cif(func_info->ffi_cif, FFI_DEFAULT_ABI,
+				func_info->num_params, ret_type, param_types);
+		if (err != FFI_OK) {
+			printf("Failed to prepare call interface (%i).\n", err);
+			free(func_info->ffi_cif);
+			free(param_types);
+			func_info->ffi_cif = NULL;
+
+			return NULL;
+		}
+	}
+
+	return func_info->ffi_cif;
 }

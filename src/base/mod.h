@@ -28,6 +28,9 @@ type_id
 stg_register_func_type(struct stg_module *, type_id return_type,
 		type_id *param_types, size_t num_params);
 
+void *
+stg_func_ffi_cif(struct vm *, type_id);
+
 struct stg_func_object {
 	func_id func;
 	// TODO: Closure
@@ -38,6 +41,7 @@ struct stg_func_type {
 	type_id *params;
 	size_t num_params;
 	type_id params_type;
+	void *ffi_cif;
 };
 
 struct stg_array_type {

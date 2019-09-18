@@ -5,6 +5,7 @@
 #include "dlist.h"
 #include "base/mod.h"
 #include "bytecode.h"
+#include "native_bytecode.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ffi.h>
@@ -230,7 +231,15 @@ vm_call_func(struct vm *vm, func_id fid, struct object *args,
 			return 0;
 
 		case FUNC_BYTECODE:
-			return -1;
+			{
+				void *call_args[num_args];
+				for (size_t i = 0; i < num_args; i++) {
+					call_args[i] = args[i].data;
+				}
+				nbc_exec(vm, func->bytecode->nbc,
+						call_args, num_args, ret->data);
+			}
+			return 0;
 	}
 
 	panic("Invalid func kind");

@@ -1,5 +1,6 @@
 #include "ast.h"
 #include "bytecode.h"
+#include "native_bytecode.h"
 #include "vm.h"
 #include <stdlib.h>
 
@@ -200,10 +201,25 @@ ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 	assert(func_instr.first && func_instr.last);
 
+	append_bc_instr(&func_instr,
+			bc_gen_ret(bc_env, func_instr.out_var));
+
 	bc_env->entry_point = func_instr.first;
 
+#define AST_GEN_SHOW_BC 0
+
+#if AST_GEN_SHOW_BC
 	printf("\nbc:\n");
 	bc_print(bc_env, bc_env->entry_point);
+#endif
+
+	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
+	nbc_compile_from_bc(bc_env->nbc, bc_env);
+
+#if AST_GEN_SHOW_BC
+	printf("\nnbc:\n");
+	nbc_print(bc_env->nbc);
+#endif
 
 	return bc_env;
 }

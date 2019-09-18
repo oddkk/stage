@@ -71,6 +71,7 @@ struct bc_instr_store {
 };
 
 struct vm;
+struct nbc_func;
 
 struct bc_env {
 	struct vm *vm;
@@ -85,6 +86,8 @@ struct bc_env {
 
 	type_id *param_types;
 	size_t num_params;
+
+	struct nbc_func *nbc;
 };
 
 bc_var
