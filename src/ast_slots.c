@@ -189,7 +189,8 @@ ast_bind_slot_const(struct ast_context *ctx,
 
 					if (!type->obj_def) {
 						printf("Warning: Attempted to bind CONS over CONST with "
-								"object that does not have a constructor.\n");
+								"object that does not have a constructor (bind %i).\n",
+								target);
 						return AST_BIND_FAILED;
 					}
 
@@ -322,7 +323,8 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 
 					if (!type_inst->type_def) {
 						printf("Warning: Attempted to bind CONS over CONST_TYPE with "
-								"object that does not have a constructor.\n");
+								"object that does not have a constructor. (bind %i)\n",
+								target);
 						return AST_BIND_FAILED;
 					}
 
