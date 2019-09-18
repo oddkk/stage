@@ -69,6 +69,8 @@ ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
 		case AST_SLOT_TEMPL:
 		case AST_SLOT_FREE:
 		case AST_SLOT_WILDCARD:
+			printf("Tried to pack slot of kind %s.\n",
+					ast_slot_name(slot.kind));
 			return -1;
 
 		case AST_SLOT_CONST_TYPE:
@@ -305,15 +307,18 @@ ast_namespace_finalize(struct ast_context *ctx,
 
 		switch (ns->names[i].kind) {
 			case AST_MODULE_NAME_DECL:
-				slot = ns->names[i].decl.value;
+				slot = ast_node_resolve_slot(
+						&mod->env, &ns->names[i].decl.value);
 				break;
 
 			case AST_MODULE_NAME_NAMESPACE:
-				slot = ns->names[i].ns->instance;
+				slot = ast_node_resolve_slot(
+						&mod->env, &ns->names[i].ns->instance);
 				break;
 
 			case AST_MODULE_NAME_IMPORT:
-				slot = ns->names[i].import.value;
+				slot = ast_node_resolve_slot(
+					&mod->env, &ns->names[i].import.value);
 				break;
 		}
 
