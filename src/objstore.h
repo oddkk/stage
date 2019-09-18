@@ -27,7 +27,6 @@ struct type;
 struct scope;
 struct object;
 struct objstore;
-struct exec_stack;
 struct stg_module;
 struct ast_array_def;
 struct ast_object_def;
