@@ -83,7 +83,10 @@ _assert_type_equals_failed(struct vm *, type_id lhs, type_id rhs,
 
 enum func_kind {
 	FUNC_NATIVE,
+	FUNC_BYTECODE,
 };
+
+struct bc_env;
 
 struct func {
 	struct atom *name;
@@ -92,6 +95,7 @@ struct func {
 
 	union {
 		void *native;
+		struct bc_env *bytecode;
 	};
 };
 

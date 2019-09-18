@@ -574,7 +574,8 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 								ctx, mod, env, node);
 						assert(bc_env);
 
-						panic("TODO: Compile non-native funcs.");
+						func.kind = FUNC_BYTECODE;
+						func.bytecode = bc_env;
 					} else if (node->kind == AST_NODE_FUNC_NATIVE) {
 						func.kind = FUNC_NATIVE;
 						func.name = vm_atom(ctx->vm, node->func.native.name);

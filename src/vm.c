@@ -228,6 +228,9 @@ vm_call_func(struct vm *vm, func_id fid, struct object *args,
 						ret->data, arg_values);
 			}
 			return 0;
+
+		case FUNC_BYTECODE:
+			return -1;
 	}
 
 	panic("Invalid func kind");
