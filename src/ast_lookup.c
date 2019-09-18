@@ -323,6 +323,11 @@ ast_namespace_resolve_names(struct ast_context *ctx, struct ast_module *mod,
 				break;
 		}
 	}
+
+	for (size_t i = 0; i < ns->num_free_exprs; i++) {
+		ast_node_resolve_names(ctx, env, native_mod,
+				&inner_scope, ns->free_exprs[i].expr);
+	}
 }
 
 void

@@ -1,7 +1,6 @@
 asdf := 2 * 4;
 foo := (a: int) => a * a + 2;
 
-a := print(asdf);
-b := print(foo(10));
-c := print(foo(20));
-
+print(asdf);
+print(foo(10));
+print(foo(20));

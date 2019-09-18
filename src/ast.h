@@ -477,6 +477,11 @@ struct ast_module_name {
 	};
 };
 
+struct ast_namespace_free_expr {
+	struct ast_node *expr;
+	ast_slot_id value;
+};
+
 struct ast_namespace {
 	struct atom *name;
 	struct ast_namespace *parent;
@@ -487,7 +492,8 @@ struct ast_namespace {
 	struct ast_module_name *names;
 	size_t num_names;
 
-	// TODO: Free expressions
+	struct ast_namespace_free_expr *free_exprs;
+	size_t num_free_exprs;
 
 	struct ast_object_def def;
 	ast_slot_id instance;
@@ -519,8 +525,11 @@ struct ast_module {
 
 int
 ast_namespace_add_decl(struct ast_context *, struct ast_module *,
-		struct ast_namespace *,
-		struct atom *name, struct ast_node *expr);
+		struct ast_namespace *, struct atom *name, struct ast_node *expr);
+
+void
+ast_namespace_add_free_expr(struct ast_context *, struct ast_module *,
+		struct ast_namespace *, struct ast_node *expr);
 
 struct ast_namespace *
 ast_namespace_add_ns(struct ast_context *, struct ast_env *,

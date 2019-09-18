@@ -179,6 +179,21 @@ ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
 	return err >= 0 ? 0 : -1;
 }
 
+void
+ast_namespace_add_free_expr(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_namespace *ns, struct ast_node *expr)
+{
+	struct ast_namespace_free_expr value = {0};
+
+	value.expr = expr;
+	value.value = ast_bind_slot_wildcard(
+			ctx, &mod->env, AST_BIND_NEW, NULL,
+			ast_node_type(ctx, &mod->env, expr));
+
+	dlist_append(ns->free_exprs, ns->num_free_exprs, &value);
+}
+
+
 struct ast_namespace *
 ast_namespace_add_ns(struct ast_context *ctx, struct ast_env *env,
 		struct ast_namespace *ns, struct atom *name)

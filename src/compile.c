@@ -184,24 +184,39 @@ static void visit_stmt(struct compile_ctx *ctx, struct ast_module *mod,
 	case ST_NODE_USE_STMT:
 		break;
 
-	case ST_NODE_ASSIGN_STMT: {
-		struct atom *name;
+	case ST_NODE_ASSIGN_STMT:
+		{
+			struct atom *name;
 
-		name = node->ASSIGN_STMT.ident->IDENT;
+			name = node->ASSIGN_STMT.ident->IDENT;
 
-		struct st_node *body_node;
-		body_node = node->ASSIGN_STMT.body;
+			struct st_node *body_node;
+			body_node = node->ASSIGN_STMT.body;
 
-		struct ast_node *expr;
-		expr = st_node_visit_expr(ctx->ast_ctx, &mod->env, body_node);
+			struct ast_node *expr;
+			expr = st_node_visit_expr(ctx->ast_ctx, &mod->env, body_node);
 
-		if (node->ASSIGN_STMT.type) {
-			panic("TODO: assign stmt type.");
+			if (node->ASSIGN_STMT.type) {
+				panic("TODO: assign stmt type.");
+			}
+
+			ast_namespace_add_decl(
+					ctx->ast_ctx, mod, ns, name, expr);
 		}
+		break;
 
-		ast_namespace_add_decl(
-				ctx->ast_ctx, mod, ns, name, expr);
-	} break;
+	case ST_NODE_LAMBDA:
+	case ST_NODE_FUNC_CALL:
+	case ST_NODE_BIN_OP:
+	case ST_NODE_BIND:
+		{
+			struct ast_node *expr;
+			expr = st_node_visit_expr(ctx->ast_ctx, &mod->env, node);
+
+			ast_namespace_add_free_expr(
+					ctx->ast_ctx, mod, ns, expr);
+		}
+		break;
 
 	default:
 		panic("Invalid node '%.*s' as statement.",
@@ -378,6 +393,15 @@ dispatch_compile_expr(struct compile_ctx *ctx,
 			case AST_MODULE_NAME_IMPORT:
 				break;
 		}
+	}
+
+	for (size_t i = 0; i < ns->num_free_exprs; i++) {
+		DISPATCH_JOB(ctx, compile_expr, COMPILE_PHASE_DISCOVER,
+				.mod = data->mod,
+				.expr = ns->free_exprs[i].expr,
+				.out_value = &ns->free_exprs[i].value,
+				.num_uncompiled_exprs = &data->num_uncompiled_exprs);
+		data->num_uncompiled_exprs += 1;
 	}
 }
 
