@@ -471,7 +471,6 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 							real_path_string.text[real_path_string.length] = '\0';
 						}
 
-						printf("Looking in '%s'\n", real_path_buffer);
 						data->module_src_dir =
 							string_duplicate_cstr(real_path_buffer);
 						module_found = true;
@@ -583,7 +582,6 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			// fallthrough
 
 		case JOB_LOAD_MODULE_DONE:
-			printf("Finalize module %.*s\n", ALIT(data->module_name));
 			{
 				int err;
 				err = ast_module_finalize(ctx->ast_ctx, data->mod);
@@ -594,7 +592,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				}
 			}
 
-#if 1
+#if 0
 			printf("%.*s (%.*s)\n", ALIT(data->module_name), LIT(data->module_src_dir));
 			ast_print_module(ctx->ast_ctx, data->mod);
 
@@ -639,7 +637,6 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 				printf("Failed type expression.\n");
 				return JOB_ERROR;
 			}
-			ast_print(ctx->ast_ctx, &data->mod->env, data->expr);
 
 			data->state = JOB_COMPILE_EXPR_GENERATE_OBJECT;
 			// fallthrough
@@ -660,21 +657,11 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 							*data->out_value, NULL, obj);
 			}
 
+			*data->num_uncompiled_exprs -= 1;
 			data->state = JOB_COMPILE_EXPR_DONE;
 			// fallthrough
 
 		case JOB_COMPILE_EXPR_DONE:
-			/*
-			*data->out_value = ast_copy_slot(ctx->ast_ctx,
-					&data->mod->env, *data->out_value,
-					&data->mod->env, ast_node_value(
-						ctx->ast_ctx, &data->mod->env,
-						data->expr));
-			*/
-			printf("Compiled ");
-			ast_print_slot(ctx->ast_ctx, &data->mod->env, *data->out_value);
-			printf(" -> %i\n", *data->out_value);
-			*data->num_uncompiled_exprs -= 1;
 			return JOB_OK;
 	}
 

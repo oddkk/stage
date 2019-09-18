@@ -126,6 +126,17 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+#if 0
+	for (size_t i = 0; i < vm.num_modules; i++) {
+		printf("Module %.*s:\n", LIT(vm.modules[i]->info.name));
+		ast_print_module(&ctx, &vm.modules[i]->mod);
+
+		printf("\n");
+		ast_env_print(&vm, &vm.modules[i]->mod.env);
+		printf("\n");
+	}
+#endif
+
 	return 0;
 
 	vm_start(&vm);
