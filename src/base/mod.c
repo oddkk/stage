@@ -4,6 +4,13 @@
 #include "../native.h"
 #include <stdlib.h>
 
+static int64_t
+print_int(int64_t val)
+{
+	printf("= %li\n", val);
+	return val;
+}
+
 static int
 stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 	assert(mod->id == 0);
@@ -88,6 +95,7 @@ stg_base_load(struct vm *vm)
 	mod = vm_add_precompiled_native_module(vm, STR("base"));
 
 	base_integer_register_native(mod);
+	stg_native_register_funcs(mod, print_int);
 
 	mod->hook_init = stg_base_init;
 }

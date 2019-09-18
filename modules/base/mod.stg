@@ -2,3 +2,5 @@ op+ := (lhs: int, rhs: int) -> int @native("op_add_int_int");
 op- := (lhs: int, rhs: int) -> int @native("op_sub_int_int");
 op* := (lhs: int, rhs: int) -> int @native("op_mul_int_int");
 op/ := (lhs: int, rhs: int) -> int @native("op_div_int_int");
+
+print := (val: int) -> int @native("print_int");
