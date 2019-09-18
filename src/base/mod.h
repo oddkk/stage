@@ -42,7 +42,7 @@ struct stg_func_type {
 
 struct stg_array_type {
 	type_id member_type;
-	size_t length;
+	int64_t length;
 };
 
 #endif

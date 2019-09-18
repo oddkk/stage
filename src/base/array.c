@@ -5,6 +5,93 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define ARRAY_TYPE_PARAM_TYPE 0
+#define ARRAY_TYPE_PARAM_LENGTH 1
+
+static struct type_base array_type_base;
+
+static struct object
+base_array_type_unpack(struct ast_context *ctx, struct ast_env *env,
+		struct ast_object_def *def, int param_id, struct object obj)
+{
+	assert_type_equals(ctx->vm, obj.type, ctx->types.type);
+	struct type *type = vm_get_type(ctx->vm, *(type_id *)obj.data);
+	assert(type->base == &array_type_base);
+
+	struct stg_array_type *array_info = (struct stg_array_type *)type->data;
+
+	switch (param_id) {
+		case ARRAY_TYPE_PARAM_TYPE:
+			{
+				struct object res = {0};
+
+				res.type = ctx->types.type;
+				res.data = &array_info->member_type;
+
+				return res;
+			}
+
+		case ARRAY_TYPE_PARAM_LENGTH:
+			{
+				struct object res = {0};
+
+				res.type = ctx->types.integer;
+				res.data = &array_info->length;
+
+				return res;
+			}
+	}
+
+	panic("Invalid param %i requested from array type.", param_id);
+	return OBJ_NONE;
+}
+
+static struct object
+base_array_type_pack(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_object_def *def, ast_slot_id obj_slot)
+{
+	int err;
+
+	ast_slot_id member_type_slot;
+	member_type_slot =
+		ast_unpack_arg_named(ctx, &mod->env, obj_slot,
+			ctx->atoms.array_cons_arg_type);
+
+	struct object member_type_obj;
+	err = ast_slot_pack(ctx, mod, env,
+			member_type_slot, &member_type_obj);
+	if (err) {
+		printf("Failed to pack array member type slot.\n");
+		return OBJ_NONE;
+	}
+	assert(member_type_obj.type == ctx->types.type);
+
+	ast_slot_id length_slot;
+	length_slot =
+		ast_unpack_arg_named(ctx, &mod->env, obj_slot,
+			ctx->atoms.array_cons_arg_count);
+
+	struct object length_obj;
+	err = ast_slot_pack(ctx, mod, env,
+			length_slot, &length_obj);
+	if (err) {
+		printf("Failed to pack array count slot.\n");
+		return OBJ_NONE;
+	}
+	assert(length_obj.type == ctx->types.type);
+
+	type_id member_type = *(type_id *)member_type_obj.data;
+	int64_t length = *(int64_t *)length_obj.data;
+
+	type_id type_id = stg_register_array_type(mod->stg_mod, member_type, length);
+
+	struct object type_obj = {0};
+	type_obj.type = ctx->types.type;
+	type_obj.data = &type_id;
+
+	return register_object(ctx->vm, env->store, type_obj);
+}
+
 void
 base_bootstrap_register_array(struct ast_context *ctx, struct stg_module *mod)
 {
@@ -12,8 +99,8 @@ base_bootstrap_register_array(struct ast_context *ctx, struct stg_module *mod)
 		ast_object_def_register(&mod->store);
 
 	struct ast_object_def_param array_type_params[] = {
-		{0, ctx->atoms.array_cons_arg_type, AST_SLOT_TYPE},
-		{1, ctx->atoms.array_cons_arg_count,
+		{ARRAY_TYPE_PARAM_TYPE,   ctx->atoms.array_cons_arg_type, AST_SLOT_TYPE},
+		{ARRAY_TYPE_PARAM_LENGTH, ctx->atoms.array_cons_arg_count,
 			ast_bind_slot_const_type(
 					ctx, &array_type_def->env, AST_BIND_NEW,
 					NULL, ctx->types.integer)},
@@ -22,6 +109,9 @@ base_bootstrap_register_array(struct ast_context *ctx, struct stg_module *mod)
 	ast_object_def_finalize(array_type_def,
 			array_type_params, ARRAY_LENGTH(array_type_params),
 			AST_SLOT_TYPE);
+
+	array_type_def->pack = base_array_type_pack;
+	array_type_def->unpack = base_array_type_unpack;
 
 	mod->vm->default_cons.array = array_type_def;
 	ctx->cons.array = array_type_def;
@@ -111,7 +201,7 @@ struct object base_array_pack(
 	return register_object(ctx->vm, env->store, result);
 }
 
-static struct ast_array_def array_type_def = {
+static struct ast_array_def array_def = {
 	.pack = base_array_pack,
 	.unpack = base_array_unpack,
 };
@@ -133,7 +223,7 @@ base_array_type_equals(struct vm *vm, struct type *lhs, struct type *rhs)
 
 static struct type_base array_type_base = {
 	.name = STR("array"),
-	.array_def = &array_type_def,
+	.array_def = &array_def,
 	.equals = &base_array_type_equals,
 	// TODO: type and object repr
 };
@@ -154,6 +244,7 @@ stg_register_array_type(struct stg_module *mod, type_id member_type, size_t leng
 	type.base = &array_type_base;
 	type.data = data;
 	type.size = member_type_inst->size * data->length;
+	type.type_def = mod->vm->default_cons.array;
 
 	return stg_register_type(mod, type);
 }
