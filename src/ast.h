@@ -432,6 +432,24 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node,
 		struct object *out);
 
+struct bc_env;
+struct bc_instr;
+typedef int bc_var;
+
+struct ast_gen_bc_result {
+	struct bc_instr *first;
+	struct bc_instr *last;
+	bc_var out_var;
+};
+
+struct ast_gen_bc_result
+ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct bc_env *bc_env, struct ast_node *node);
+
+struct bc_env *
+ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node);
+
 void
 ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
 

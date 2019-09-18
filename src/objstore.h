@@ -129,6 +129,15 @@ store_register_type(struct objstore *store, struct type type);
 modfunc_id
 store_register_func(struct objstore *store, struct func func);
 
+type_id
+func_return_type(struct vm *, type_id func_type);
+
+size_t
+func_num_params(struct vm *, type_id func_type);
+
+type_id
+func_param_type(struct vm *, type_id func_type, size_t param_i);
+
 void print_type_repr(struct vm *vm, struct type *);
 void print_obj_repr(struct vm *vm, struct object);
 

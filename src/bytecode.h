@@ -1,19 +1,120 @@
 #ifndef STAGE_BYTECODE_H
 #define STAGE_BYTECODE_H
 
-typedef bc_var unsigned int;
+#include "objstore.h"
+#include <limits.h>
+
+typedef int bc_var;
+typedef unsigned int bc_const;
+
+#define BC_VAR_NEW ((bc_var)INT_MIN)
 
 enum bc_op {
+	// Do nothing.
 	BC_NOP,
+
+	// Load global into var.
 	BC_LOAD,
-	BC_PUSH_PARAM,
-	BC_CALL,
+
+	// Append a var to the list of args for the next CALL.
+	BC_PUSH_ARG,
+
+	// Call litteral function.
+	BC_LCALL,
+
+	// Call var function.
+	BC_VCALL,
+
+	// Passes a var and returns execution to the caller.
+	BC_RET,
 };
 
-struct {
+struct bc_instr {
 	enum bc_op op;
 	union {
+		struct {
+			bc_const obj;
+			bc_var target;
+		} load;
+
+		struct {
+			bc_var var;
+		} push_arg;
+
+		struct {
+			func_id func;
+			bc_var target;
+		} lcall;
+
+		struct {
+			bc_var func;
+			bc_var target;
+		} vcall;
+
+		struct {
+			bc_var var;
+		} ret;
 	};
-} bc_instr;
+
+	struct bc_instr *next, *jmp;
+};
+
+struct bc_instr_store {
+	size_t page_size;
+	size_t instr_per_page;
+
+	struct bc_instr **pages;
+	size_t last_page_num_used;
+	size_t num_pages;
+
+	// TODO: Freelist?
+};
+
+struct vm;
+
+struct bc_env {
+	struct vm *vm;
+	struct bc_instr_store *store;
+
+	struct bc_instr *entry_point;
+	struct object *consts;
+	size_t num_consts;
+
+	type_id *var_types;
+	size_t num_vars;
+
+	type_id *param_types;
+	size_t num_params;
+};
+
+bc_var
+bc_alloc_var(struct bc_env *, type_id);
+
+type_id
+bc_get_var_type(struct bc_env *, bc_var);
+
+bc_var
+bc_alloc_param(struct bc_env *, unsigned int param_id, type_id);
+
+struct bc_instr *
+bc_gen_nop(struct bc_env *);
+
+struct bc_instr *
+bc_gen_load(struct bc_env *, bc_var target, struct object obj);
+
+struct bc_instr *
+bc_gen_push_arg(struct bc_env *, bc_var var);
+
+struct bc_instr *
+bc_gen_lcall(struct bc_env *, bc_var target, func_id);
+
+struct bc_instr *
+bc_gen_vcall(struct bc_env *, bc_var target, bc_var func);
+
+struct bc_instr *
+bc_gen_ret(struct bc_env *, bc_var var);
+
+void
+bc_print(struct bc_env *, struct bc_instr *);
 
 #endif

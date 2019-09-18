@@ -8,6 +8,7 @@
 #include "dlist.h"
 #include "utils.h"
 #include "vm.h"
+#include "base/mod.h"
 
 static struct string default_type_repr(struct vm *vm, struct arena *mem,
 									   struct type *type)
@@ -184,6 +185,37 @@ store_register_func(struct objstore *store, struct func func)
 	modfunc_id mfid;
 	mfid = dlist_append(store->funcs, store->num_funcs, &func);
 	return FUNC_ID(store->mod_id, mfid);
+}
+
+type_id
+func_return_type(struct vm *vm, type_id func_type_id)
+{
+	struct type *func_type = vm_get_type(vm, func_type_id);
+	struct stg_func_type *func_info =
+		(struct stg_func_type *)func_type->data;
+
+	return func_info->return_type;
+}
+
+size_t
+func_num_params(struct vm *vm, type_id func_type_id)
+{
+	struct type *func_type = vm_get_type(vm, func_type_id);
+	struct stg_func_type *func_info =
+		(struct stg_func_type *)func_type->data;
+
+	return func_info->num_params;
+}
+
+type_id
+func_param_type(struct vm *vm, type_id func_type_id, size_t param_i)
+{
+	struct type *func_type = vm_get_type(vm, func_type_id);
+	struct stg_func_type *func_info =
+		(struct stg_func_type *)func_type->data;
+
+	assert(param_i < func_info->num_params);
+	return func_info->params[param_i];
 }
 
 void print_type_repr(struct vm *vm, struct type *type)

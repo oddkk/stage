@@ -101,6 +101,7 @@ struct stg_module_info;
 
 struct stg_native_module;
 struct ast_object_def;
+struct bc_instr_store;
 
 struct vm {
 	/* struct objstore store; */
@@ -112,6 +113,8 @@ struct vm {
 
 	struct stg_native_module **precompiled_native_modules;
 	size_t num_precompiled_native_modules;
+
+	struct bc_instr_store *instr_store;
 
 	struct {
 		type_id type;

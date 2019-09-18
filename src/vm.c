@@ -4,6 +4,7 @@
 #include "native.h"
 #include "dlist.h"
 #include "base/mod.h"
+#include "bytecode.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ffi.h>
@@ -21,6 +22,8 @@ int vm_init(struct vm *vm)
 
 	vm->atom_table.string_arena = &vm->memory;
 	atom_table_rehash(&vm->atom_table, 64);
+
+	vm->instr_store = calloc(1, sizeof(struct bc_instr_store));
 
 	return 0;
 }

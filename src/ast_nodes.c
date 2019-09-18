@@ -364,7 +364,8 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 							ast_node_resolve_slot(env, &node->lookup.value));
 
 				if (slot.kind == AST_SLOT_CONST ||
-						slot.kind == AST_SLOT_CONST_TYPE) {
+						slot.kind == AST_SLOT_CONST_TYPE ||
+						slot.kind == AST_SLOT_PARAM) {
 					node->kind = AST_NODE_SLOT;
 					node->slot =
 						ast_union_slot(ctx, env,
@@ -567,6 +568,12 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 							param_types, node->func.num_params);
 
 					if (node->kind == AST_NODE_FUNC) {
+						struct bc_env *bc_env;
+
+						bc_env = ast_func_gen_bytecode(
+								ctx, mod, env, node);
+						assert(bc_env);
+
 						panic("TODO: Compile non-native funcs.");
 					} else if (node->kind == AST_NODE_FUNC_NATIVE) {
 						func.kind = FUNC_NATIVE;
