@@ -213,17 +213,18 @@ vm_call_func(struct vm *vm, func_id fid, struct object *args,
 					arg_types[i] = arg_type->ffi_type;
 					arg_values[i] = args[i].data;
 				}
-
-				if (!ffi_prep_cif(&cif, FFI_DEFAULT_ABI, num_args,
-							return_type->ffi_type, arg_types)) {
-					printf("Failed to prepare call interface.\n");
+				int err;
+				err = ffi_prep_cif(&cif, FFI_DEFAULT_ABI, num_args,
+						return_type->ffi_type, arg_types);
+				if (err != FFI_OK) {
+					printf("Failed to prepare call interface (%i).\n", err);
 					return -1;
 				}
 
 				ffi_call(&cif, (void (*)(void))func->native,
 						ret->data, arg_values);
 			}
-			return -1;
+			return 0;
 	}
 
 	panic("Invalid func kind");

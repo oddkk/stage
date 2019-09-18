@@ -643,6 +643,10 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 				struct object obj = {0};
 				err = ast_node_eval(ctx->ast_ctx, data->mod,
 						&data->mod->env, data->expr, &obj);
+				if (err) {
+					printf("Failed to generate object.\n");
+					return JOB_ERROR;
+				}
 
 				*data->out_value =
 					ast_bind_slot_const(ctx->ast_ctx, &data->mod->env,
