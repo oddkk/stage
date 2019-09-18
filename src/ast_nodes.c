@@ -317,11 +317,11 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 	return AST_BIND_FAILED;
 }
 
-bool
+enum ast_node_dependencies_state
 ast_node_dependencies_fulfilled(struct ast_context *ctx,
 		struct ast_env *env, struct ast_node *node)
 {
-	bool result = true;
+	enum ast_node_dependencies_state result = AST_NODE_DEPS_OK;
 	switch (node->kind) {
 		case AST_NODE_FUNC:
 			result &= ast_node_dependencies_fulfilled(
@@ -357,9 +357,7 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 
 		case AST_NODE_LOOKUP:
 			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
-				result = false;
-				panic("Name '%.*s' was not found before dependency check.",
-						ALIT(node->lookup.name));
+				result = AST_NODE_DEPS_NOT_OK;
 			} else {
 				struct ast_env_slot slot =
 					ast_env_slot(ctx, env,
@@ -372,14 +370,14 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 						ast_union_slot(ctx, env,
 								node->lookup.value, node->lookup.slot);
 				} else {
-					result = false;
+					result = AST_NODE_DEPS_NOT_READY;
 				}
 			}
 			break;
 
 		case AST_NODE_FUNC_UNINIT:
 			panic("Encountered uninitialized func in dependency check.");
-			return false;
+			return AST_NODE_DEPS_NOT_OK;
 	}
 
 	return result;

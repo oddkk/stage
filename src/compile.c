@@ -618,9 +618,16 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 {
 	switch (data->state) {
 		case JOB_COMPILE_EXPR_WAIT_FOR_DEPENDENCIES:
-			if (!ast_node_dependencies_fulfilled(
-						ctx->ast_ctx, &data->mod->env, data->expr)) {
-				return JOB_YIELD;
+			{
+				enum ast_node_dependencies_state dep_state;
+				dep_state = ast_node_dependencies_fulfilled(
+						ctx->ast_ctx, &data->mod->env, data->expr);
+				if (dep_state == AST_NODE_DEPS_NOT_READY) {
+					return JOB_YIELD;
+				} else if (dep_state == AST_NODE_DEPS_NOT_OK) {
+					return JOB_ERROR;
+				}
+				assert(dep_state == AST_NODE_DEPS_OK);
 			}
 
 			data->state = JOB_COMPILE_EXPR_TYPECHECK;
