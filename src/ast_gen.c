@@ -8,6 +8,7 @@ static inline void
 append_bc_instr(struct ast_gen_bc_result *res, struct bc_instr *instr)
 {
 	if (res->last) {
+		assert(res->first);
 		res->last->next = instr;
 	} else {
 		res->first = instr;
@@ -18,6 +19,10 @@ append_bc_instr(struct ast_gen_bc_result *res, struct bc_instr *instr)
 static inline void
 append_bc_instrs(struct ast_gen_bc_result *res, struct ast_gen_bc_result instrs)
 {
+	if (!instrs.first) {
+		return;
+	}
+	assert(instrs.first && instrs.last);
 	append_bc_instr(res, instrs.first);
 	res->last = instrs.last;
 }
