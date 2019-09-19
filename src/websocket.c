@@ -1,5 +1,5 @@
 #include "websocket.h"
-#include "string.h"
+#include "str.h"
 
 #include <endian.h>
 #include <unistd.h>

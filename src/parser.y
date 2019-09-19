@@ -6,7 +6,7 @@
 %code requires
 {
 	#include "syntax_tree.h"
-	#include "string.h"
+	#include "str.h"
 	#include "arena.h"
 	#include "utils.h"
 	#include <stdio.h>

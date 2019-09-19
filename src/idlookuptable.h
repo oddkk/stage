@@ -3,7 +3,7 @@
 
 #include "intdef.h"
 #include "arena.h"
-#include "string.h"
+#include "str.h"
 #define ID_LOOKUP_TABLE_PAGE_CAPACITY (20)
 
 struct name_id_pair {

@@ -2,7 +2,7 @@
 #define STAGE_ERROR_H
 
 #include "arena.h"
-#include "string.h"
+#include "str.h"
 #include <stdarg.h>
 
 typedef unsigned int file_id_t;

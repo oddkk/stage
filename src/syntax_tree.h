@@ -2,7 +2,7 @@
 #define STAGE_SYNTAX_TREE_H
 
 #include "atom.h"
-#include "string.h"
+#include "str.h"
 #include "errors.h"
 
 #define ST_BIN_OPS								\

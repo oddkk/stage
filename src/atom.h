@@ -1,7 +1,7 @@
 #ifndef STAGE_ATOM_H
 #define STAGE_ATOM_H
 
-#include "string.h"
+#include "str.h"
 #include "arena.h"
 
 struct atom {

@@ -1,5 +1,5 @@
 #include "module.h"
-#include "string.h"
+#include "str.h"
 #include "base/mod.h"
 #include <stdlib.h>
 #include <string.h>
