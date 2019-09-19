@@ -304,6 +304,12 @@ struct ast_func_param {
 	ast_slot_id slot;
 };
 
+struct ast_func_template_param {
+	struct atom *name;
+	ast_slot_id slot;
+	struct stg_location loc;
+};
+
 struct ast_node {
 	enum ast_node_kind kind;
 	struct stg_location loc;
@@ -320,6 +326,9 @@ struct ast_node {
 
 			struct ast_func_param *params;
 			size_t num_params;
+
+			struct ast_func_template_param *template_params;
+			size_t num_template_params;
 
 			struct ast_node *return_type;
 			ast_slot_id return_type_slot;
@@ -394,6 +403,12 @@ ast_init_node_lookup(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location,
 		struct atom *name, ast_slot_id slot);
+
+ast_slot_id
+ast_node_func_register_templ_param(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *func, struct atom *name,
+		struct stg_location loc, ast_slot_id type_slot);
 
 void
 ast_node_substitute_slot(struct ast_node *,

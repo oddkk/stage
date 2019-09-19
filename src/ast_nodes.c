@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "module.h"
 #include "base/mod.h"
+#include "dlist.h"
 
 ast_slot_id
 ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot)
@@ -248,6 +249,47 @@ ast_init_node_lookup(
 }
 
 ast_slot_id
+ast_node_func_register_templ_param(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *func, struct atom *name,
+		struct stg_location loc, ast_slot_id type_slot)
+{
+	if (!func) {
+		stg_error(ctx->err, loc,
+				"Template parameters can only be declared inside functions.");
+		return AST_BIND_FAILED;
+	}
+	assert(func->kind == AST_NODE_FUNC ||
+			func->kind == AST_NODE_FUNC_UNINIT);
+	for (size_t i = 0; i < func->func.num_template_params; i++) {
+		if (func->func.template_params[i].name == name) {
+			stg_error(ctx->err, loc,
+					"Template parameter '%.*s' has already been declared.",
+					ALIT(name));
+			stg_appendage(ctx->err, func->func.template_params[i].loc, "Here.");
+			return func->func.template_params[i].slot;
+		}
+	}
+
+	struct ast_func_template_param tmpl_param = {0};
+
+	tmpl_param.name = name;
+	tmpl_param.loc = loc;
+	tmpl_param.slot =
+		ast_bind_slot_templ(ctx, env, AST_BIND_NEW, name,
+				ast_bind_slot_wildcard(
+					ctx, env, type_slot,
+					NULL, AST_SLOT_TYPE));
+
+	dlist_append(
+			func->func.template_params,
+			func->func.num_template_params,
+			&tmpl_param);
+
+	return tmpl_param.slot;
+}
+
+ast_slot_id
 ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
 {
 	switch (node->kind) {
@@ -365,7 +407,8 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 
 				if (slot.kind == AST_SLOT_CONST ||
 						slot.kind == AST_SLOT_CONST_TYPE ||
-						slot.kind == AST_SLOT_PARAM) {
+						slot.kind == AST_SLOT_PARAM ||
+						slot.kind == AST_SLOT_TEMPL) {
 					node->kind = AST_NODE_SLOT;
 					node->slot =
 						ast_union_slot(ctx, env,
@@ -458,17 +501,20 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_env *env,
 
 	switch (node->kind) {
 		case AST_NODE_FUNC:
-			ast_node_resolve_slots(ctx, env, node->func.return_type);
+			if (node->func.num_template_params == 0) {
+				ast_node_resolve_slots(ctx, env, node->func.return_type);
 
-			for (size_t i = 0; i < node->func.num_params; i++) {
-				ast_node_resolve_slots(ctx, env,
-						node->func.params[i].type);
+				for (size_t i = 0; i < node->func.num_params; i++) {
+					ast_node_resolve_slots(ctx, env,
+							node->func.params[i].type);
+				}
+
+				ast_node_resolve_slots(ctx, env, node->func.body);
 			}
-
-			ast_node_resolve_slots(ctx, env, node->func.body);
 			break;
 
 		case AST_NODE_FUNC_NATIVE:
+			assert(node->func.num_template_params == 0);
 			ast_node_resolve_slots(ctx, env, node->func.return_type);
 
 			for (size_t i = 0; i < node->func.num_params; i++) {

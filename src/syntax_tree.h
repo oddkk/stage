@@ -204,6 +204,6 @@ struct stg_module;
 
 struct ast_node *
 st_node_visit_expr(struct ast_context *, struct ast_env *,
-		struct st_node *);
+		struct ast_node *func_node, struct st_node *);
 
 #endif

@@ -194,7 +194,8 @@ static void visit_stmt(struct compile_ctx *ctx, struct ast_module *mod,
 			body_node = node->ASSIGN_STMT.body;
 
 			struct ast_node *expr;
-			expr = st_node_visit_expr(ctx->ast_ctx, &mod->env, body_node);
+			expr = st_node_visit_expr(ctx->ast_ctx,
+					&mod->env, NULL, body_node);
 
 			if (node->ASSIGN_STMT.type) {
 				panic("TODO: assign stmt type.");
@@ -211,7 +212,8 @@ static void visit_stmt(struct compile_ctx *ctx, struct ast_module *mod,
 	case ST_NODE_BIND:
 		{
 			struct ast_node *expr;
-			expr = st_node_visit_expr(ctx->ast_ctx, &mod->env, node);
+			expr = st_node_visit_expr(ctx->ast_ctx,
+					&mod->env, NULL, node);
 
 			ast_namespace_add_free_expr(
 					ctx->ast_ctx, mod, ns, expr);
