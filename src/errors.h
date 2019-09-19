@@ -20,6 +20,8 @@ struct stg_location {
 enum stg_error_level {
 	STG_ERROR,
 	STG_WARNING,
+	STG_INFO,
+	STG_APPENDAGE,
 };
 
 struct stg_error {
@@ -55,6 +57,12 @@ stg_error(struct stg_error_context *, struct stg_location, const char *fmt, ...)
 
 __attribute__((__format__ (__printf__, 3, 4))) void
 stg_warning(struct stg_error_context *, struct stg_location, const char *fmt, ...);
+
+__attribute__((__format__ (__printf__, 3, 4))) void
+stg_info(struct stg_error_context *, struct stg_location, const char *fmt, ...);
+
+__attribute__((__format__ (__printf__, 3, 4))) void
+stg_appendage(struct stg_error_context *, struct stg_location, const char *fmt, ...);
 
 void
 print_errors(struct stg_error_context *);

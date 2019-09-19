@@ -34,8 +34,10 @@ static const char *
 level_prefix(enum stg_error_level lvl)
 {
 	switch (lvl) {
-		case STG_ERROR:   return TC(TC_BRIGHT_RED, "ERROR");
-		case STG_WARNING: return TC(TC_YELLOW, "WARNING");
+		case STG_ERROR:    return TC(TC_BRIGHT_RED, "ERROR") ": ";
+		case STG_WARNING:  return TC(TC_YELLOW, "WARNING") ": ";
+		case STG_INFO:     return TC(TC_BRIGHT_BLUE, "INFO") ": ";
+		case STG_APPENDAGE: return "";
 	}
 }
 
@@ -56,6 +58,8 @@ stg_msgv(struct stg_error_context *err, struct stg_location loc,
 	switch (lvl) {
 		case STG_ERROR: err->num_errors += 1; break;
 		case STG_WARNING: err->num_warnings += 1; break;
+		case STG_INFO: break;
+		case STG_APPENDAGE: break;
 	}
 }
 
@@ -74,6 +78,24 @@ stg_warning(struct stg_error_context *err, struct stg_location loc, const char *
 	va_list ap;
 	va_start(ap, fmt);
 	stg_msgv(err, loc, STG_WARNING, fmt, ap);
+	va_end(ap);
+}
+
+__attribute__((__format__ (__printf__, 3, 4))) void
+stg_info(struct stg_error_context *err, struct stg_location loc, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	stg_msgv(err, loc, STG_INFO, fmt, ap);
+	va_end(ap);
+}
+
+__attribute__((__format__ (__printf__, 3, 4))) void
+stg_appendage(struct stg_error_context *err, struct stg_location loc, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	stg_msgv(err, loc, STG_APPENDAGE, fmt, ap);
 	va_end(ap);
 }
 
@@ -102,7 +124,7 @@ print_errors(struct stg_error_context *err)
 			}
 		}
 
-		fprintf(out, "%s: %.*s\n",
+		fprintf(out, "%s%.*s\n",
 			level_prefix(msg->level),
 			LIT(file_name)
 		);
