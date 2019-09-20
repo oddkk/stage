@@ -204,8 +204,6 @@ ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 	func_instr = ast_node_gen_bytecode(ctx, mod, env,
 			bc_env, node->func.body);
 
-	assert(func_instr.first && func_instr.last);
-
 	append_bc_instr(&func_instr,
 			bc_gen_ret(bc_env, func_instr.out_var));
 
