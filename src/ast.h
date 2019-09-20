@@ -330,6 +330,8 @@ struct ast_node {
 
 			struct ast_func_arg *args;
 			size_t num_args;
+
+			ast_slot_id ret_type;
 		} call;
 
 		ast_slot_id slot;
