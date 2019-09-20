@@ -85,7 +85,6 @@ enum ast_slot_kind {
 	AST_SLOT_CONST,
 	AST_SLOT_PARAM,
 	AST_SLOT_TEMPL,
-	AST_SLOT_FREE,
 	AST_SLOT_CONS,
 	AST_SLOT_CONS_ARRAY,
 
@@ -176,11 +175,6 @@ ast_bind_slot_templ(struct ast_context *ctx,
 		struct atom *name, ast_slot_id type);
 
 ast_slot_id
-ast_bind_slot_free(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		struct atom *name, ast_slot_id type);
-
-ast_slot_id
 ast_bind_slot_cons(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
 		struct atom *name, struct ast_object_def *);
@@ -206,13 +200,6 @@ ast_copy_slot(struct ast_context *,
 void
 ast_substitute(struct ast_context *, struct ast_env *,
 		ast_slot_id new_slot, ast_slot_id target);
-
-ast_slot_id
-ast_env_lookup(struct ast_env *, struct atom *name);
-
-ast_slot_id
-ast_env_lookup_or_alloc_free(struct ast_context *,
-		struct ast_env *, struct atom *name, ast_slot_id type);
 
 struct ast_env_slot
 ast_env_slot(struct ast_context *, struct ast_env *, ast_slot_id);

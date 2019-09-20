@@ -21,7 +21,6 @@ ast_slot_name(enum ast_slot_kind kind) {
 		case AST_SLOT_CONST:      return "CONST";
 		case AST_SLOT_PARAM:      return "PARAM";
 		case AST_SLOT_TEMPL:      return "TEMPL";
-		case AST_SLOT_FREE:       return "FREE";
 		case AST_SLOT_CONS:       return "CONS";
 		case AST_SLOT_CONS_ARRAY: return "CONS_ARRAY";
 
@@ -447,40 +446,6 @@ ast_bind_slot_templ(struct ast_context *ctx,
 
 #if AST_DEBUG_BINDS
 	printf("bind %i=templ\n", target);
-#endif
-
-	return target;
-}
-
-
-ast_slot_id
-ast_bind_slot_free(struct ast_context *ctx,
-		struct ast_env *env, ast_slot_id target,
-		struct atom *name, ast_slot_id type)
-{
-	if (target == AST_BIND_NEW) {
-		target = ast_alloc_slot(env, name, type, AST_SLOT_FREE);
-	} else {
-		struct ast_env_slot target_slot;
-
-		target_slot = ast_env_slot(ctx, env, target);
-		switch (target_slot.kind) {
-			case AST_SLOT_TEMPL:
-			case AST_SLOT_WILDCARD:
-				// TODO: Union types
-				// TODO: Name?
-				env->slots[target].kind = AST_SLOT_FREE;
-				break;
-
-			default:
-				printf("Warning: Attempted to bind FREE over %s. (bind %i)\n",
-						ast_slot_name(target_slot.kind), target);
-				return AST_BIND_FAILED;
-		}
-	}
-
-#if AST_DEBUG_BINDS
-	printf("bind %i=free\n", target);
 #endif
 
 	return target;
@@ -1049,12 +1014,6 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			break;
 
 
-		case AST_SLOT_FREE:
-			result = ast_bind_slot_free(
-					ctx->ctx, dest, target, slot.name,
-					ast_union_slot_internal(ctx, dest, type_target, src, slot.type));
-			break;
-
 		case AST_SLOT_CONS:
 			result = ast_bind_slot_cons(
 					ctx->ctx, dest, target, slot.name,
@@ -1287,36 +1246,9 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 			case AST_SLOT_CONST:
 			case AST_SLOT_PARAM:
 			case AST_SLOT_TEMPL:
-			case AST_SLOT_FREE:
 				break;
 		}
 	}
-}
-
-ast_slot_id
-ast_env_lookup(struct ast_env *env, struct atom *name)
-{
-	for (ast_slot_id i = 0; i < env->num_slots; i++) {
-		if (env->slots[i].name == name) {
-			return i;
-		}
-	}
-
-	return AST_SLOT_NOT_FOUND;
-}
-
-ast_slot_id
-ast_env_lookup_or_alloc_free(struct ast_context *ctx,
-		struct ast_env *env, struct atom *name, ast_slot_id type)
-{
-	ast_slot_id slot;
-
-	slot = ast_env_lookup(env, name);
-	if (slot == AST_SLOT_NOT_FOUND) {
-		slot = ast_bind_slot_free(ctx, env, AST_BIND_NEW, name, type);
-	}
-
-	return slot;
 }
 
 struct ast_env_slot
@@ -1361,7 +1293,6 @@ ast_resolve_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot_
 		case AST_SLOT_WILDCARD:
 		case AST_SLOT_PARAM:
 		case AST_SLOT_TEMPL:
-		case AST_SLOT_FREE:
 			return false;
 
 		case AST_SLOT_SUBST:
