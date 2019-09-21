@@ -77,6 +77,10 @@ ast_print_slot_internal(struct ast_context *ctx, struct ast_env *env,
 void
 ast_print_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot_id)
 {
+	if (!ctx) {
+		printf("(no ctx)");
+		return;
+	}
 	ast_print_slot_internal(ctx, env, slot_id, true);
 }
 

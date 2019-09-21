@@ -322,6 +322,8 @@ struct ast_node {
 			struct ast_node *return_type;
 			ast_slot_id return_type_slot;
 
+			ast_slot_id param_types_slot;
+
 			ast_slot_id type;
 
 			func_id instance;

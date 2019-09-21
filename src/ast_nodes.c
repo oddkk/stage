@@ -32,7 +32,6 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 	node->loc = loc;
 
 	node->func.params = calloc(sizeof(struct ast_func_param), num_params);
-	// memcpy(node->func.params, params, sizeof(struct ast_func_param) * num_params);
 	node->func.num_params = num_params;
 
 	ast_slot_id param_types[num_params];
@@ -48,28 +47,21 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 				ctx, env, node->func.params[i].slot).type;
 	}
 
-	node->func.type = ast_bind_slot_cons(ctx, env, AST_BIND_NEW,
-			NULL, ctx->cons.func);
-
-	node->func.return_type_slot =
-		ast_unpack_arg_named(ctx, env,
-			node->func.type,
-			ctx->atoms.func_cons_arg_ret);
+	node->func.type =
+		ast_bind_slot_wildcard(ctx, env,
+				AST_BIND_NEW,
+				NULL, AST_SLOT_TYPE);
 
 	node->func.return_type_slot =
 		ast_bind_slot_wildcard(ctx, env,
-				node->func.return_type_slot,
+				AST_BIND_NEW,
 				NULL, AST_SLOT_TYPE);
 
-	ast_slot_id param_types_slot =
-		ast_unpack_arg_named(ctx, env,
-			node->func.type,
-			ctx->atoms.func_cons_arg_params);
-
-	param_types_slot = ast_bind_slot_cons_array(
-			ctx, env, param_types_slot, NULL,
-			param_types, num_params,
-			AST_SLOT_TYPE);
+	node->func.param_types_slot =
+		ast_bind_slot_cons_array(
+				ctx, env, AST_BIND_NEW, NULL,
+				param_types, num_params,
+				AST_SLOT_TYPE);
 
 	return node;
 }
@@ -528,8 +520,37 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 	bool result = true;
 
 	switch (node->kind) {
+		case AST_NODE_FUNC_NATIVE:
+			if (node->func.num_template_params != 0) {
+				stg_error(ctx->err, node->loc,
+						"Native functions can not take template parameters.");
+				return false;
+			}
+			// fallthrough.
+
 		case AST_NODE_FUNC:
 			if (node->func.num_template_params == 0) {
+				node->func.type =
+					ast_bind_slot_cons(ctx, env,
+							node->func.type,
+							NULL, ctx->cons.func);
+
+				node->func.return_type_slot =
+					ast_union_slot(ctx, env,
+							ast_unpack_arg_named(ctx, env,
+								node->func.type,
+								ctx->atoms.func_cons_arg_ret),
+							node->func.return_type_slot);
+
+				node->func.param_types_slot =
+					ast_union_slot(ctx, env,
+							ast_unpack_arg_named(ctx, env,
+								node->func.type,
+								ctx->atoms.func_cons_arg_params),
+							node->func.param_types_slot);
+
+
+
 				ast_node_resolve_slots(ctx, mod, env, node->func.return_type);
 
 				for (size_t i = 0; i < node->func.num_params; i++) {
@@ -537,17 +558,10 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 							node->func.params[i].type);
 				}
 
-				ast_node_resolve_slots(ctx, mod, env, node->func.body);
-			}
-			break;
-
-		case AST_NODE_FUNC_NATIVE:
-			assert(node->func.num_template_params == 0);
-			ast_node_resolve_slots(ctx, mod, env, node->func.return_type);
-
-			for (size_t i = 0; i < node->func.num_params; i++) {
-				ast_node_resolve_slots(ctx, mod, env,
-						node->func.params[i].type);
+				if (node->kind == AST_NODE_FUNC) {
+					ast_node_resolve_slots(ctx, mod, env, node->func.body);
+				}
+			} else {
 			}
 			break;
 
