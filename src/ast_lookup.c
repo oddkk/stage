@@ -263,6 +263,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_NODE_CALL:
+		case AST_NODE_CONS:
 			ast_node_resolve_names(ctx, env, native_mod,
 					scope, node->call.func);
 			for (size_t i = 0; i < node->call.num_args; i++) {

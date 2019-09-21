@@ -658,9 +658,16 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 			// fallthrough
 
 		case JOB_COMPILE_EXPR_TYPECHECK:
-			ast_node_resolve_slots(ctx->ast_ctx, &data->mod->env, data->expr);
+			ast_node_resolve_slots(ctx->ast_ctx, data->mod,
+					&data->mod->env, data->expr);
 			if (!ast_node_is_typed(ctx->ast_ctx, &data->mod->env, data->expr)) {
 				printf("Failed type expression.\n");
+#if 0
+				ast_print(ctx->ast_ctx, &data->mod->env, data->expr);
+
+				printf("\n");
+				ast_env_print(ctx->vm, &data->mod->env);
+#endif
 				return JOB_ERROR;
 			}
 

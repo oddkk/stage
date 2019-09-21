@@ -44,6 +44,7 @@ stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 	}
 
 	base_bootstrap_register_type(mod);
+	base_bootstrap_register_cons(mod);
 	base_bootstrap_register_integer(mod);
 
 	struct ast_context tmp_ctx;
@@ -63,7 +64,8 @@ static struct stg_module_info base_bootstrap_mod_info = {
 };
 
 static int
-stg_base_init(struct ast_context *ctx, struct stg_module *mod) {
+stg_base_init(struct ast_context *ctx, struct stg_module *mod)
+{
 	struct ast_node *int_type_expr;
 	int_type_expr = ast_init_node_slot(ctx, &mod->mod.env,
 			AST_NODE_NEW, STG_NO_LOC,
@@ -78,6 +80,8 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod) {
 			AST_NODE_NEW, STG_NO_LOC, AST_SLOT_TYPE);
 	ast_namespace_add_decl(ctx, &mod->mod,
 			&mod->mod.root, mod_atoms(mod, "type"), type_type_expr);
+
+	base_init_register_cons(ctx, mod);
 
 	return 0;
 }

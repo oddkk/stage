@@ -86,6 +86,10 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			}
 			return result;
 
+		case AST_NODE_CONS:
+			panic("TODO: Implement generating bytecode for cons.");
+			break;
+
 		case AST_NODE_SLOT:
 			{
 				struct ast_env_slot slot;

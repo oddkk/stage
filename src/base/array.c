@@ -78,7 +78,7 @@ base_array_type_pack(struct ast_context *ctx, struct ast_module *mod,
 		printf("Failed to pack array count slot.\n");
 		return OBJ_NONE;
 	}
-	assert(length_obj.type == ctx->types.type);
+	assert_type_equals(ctx->vm, length_obj.type, ctx->types.integer);
 
 	type_id member_type = *(type_id *)member_type_obj.data;
 	int64_t length = *(int64_t *)length_obj.data;

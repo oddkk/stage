@@ -207,8 +207,21 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_NODE_CALL:
+		case AST_NODE_CONS:
 			print_indent(depth);
-			printf("call\n");
+			if (node->kind == AST_NODE_CALL) {
+				printf("call: ");
+				print_slot(env, node->call.ret_type);
+				printf("\n");
+			} else {
+				printf("cons: ");
+				print_slot(env, node->call.ret_type);
+				printf("\n");
+				print_indent(depth + 1);
+				printf("cons slot ");
+				print_slot(env, node->call.cons);
+				printf("\n");
+			}
 
 			print_indent(depth + 1);
 			printf("target\n");

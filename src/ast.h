@@ -134,6 +134,7 @@ struct ast_context {
 
 	struct {
 		type_id type;
+		type_id cons;
 		type_id integer;
 	} types;
 
@@ -272,6 +273,7 @@ enum ast_node_kind {
 	AST_NODE_FUNC,
 	AST_NODE_FUNC_NATIVE,
 	AST_NODE_CALL,
+	AST_NODE_CONS,
 	AST_NODE_SLOT,
 	AST_NODE_LOOKUP,
 
@@ -325,6 +327,7 @@ struct ast_node {
 			func_id instance;
 		} func;
 
+		// Used for both call and cons.
 		struct {
 			struct ast_node *func;
 
@@ -332,6 +335,9 @@ struct ast_node {
 			size_t num_args;
 
 			ast_slot_id ret_type;
+
+			// Used only for cons.
+			ast_slot_id cons;
 		} call;
 
 		ast_slot_id slot;
@@ -428,8 +434,8 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node);
 
 bool
-ast_node_resolve_slots(struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *node);
+ast_node_resolve_slots(struct ast_context *, struct ast_module *,
+		struct ast_env *, struct ast_node *);
 
 int
 ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
