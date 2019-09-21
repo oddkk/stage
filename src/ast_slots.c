@@ -765,7 +765,10 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 		ast_slot_id *members, size_t num_members, ast_slot_id member_type_slot)
 {
 	if (target == AST_BIND_NEW) {
-		target = ast_alloc_slot(env, name, AST_BIND_NEW, AST_SLOT_CONS_ARRAY);
+		target = ast_alloc_slot(env, name,
+				ast_bind_slot_wildcard(ctx, env,
+					AST_BIND_NEW, NULL, AST_SLOT_TYPE),
+				AST_SLOT_CONS_ARRAY);
 		env->slots[target].cons_array.member_count = AST_BIND_NEW;
 		env->slots[target].cons_array.member_type = AST_BIND_NEW;
 		env->slots[target].cons_array.members = NULL;
