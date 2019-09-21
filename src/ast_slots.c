@@ -1104,6 +1104,12 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 					ctx, dest, member_type_slot,
 					src, slot.cons_array.member_type);
 
+			// Because unioning some members might change others, we have to
+			// resolve the slots to unwrap substitutions.
+			for (size_t i = 0; i < num_members; i++) {
+				ast_node_resolve_slot(dest, &members[i]);
+			}
+
 			result = ast_bind_slot_cons_array(
 					ctx->ctx, dest, target, slot.name,
 					members, num_members, member_type_slot);
