@@ -384,7 +384,8 @@ ast_namespace_finalize(struct ast_context *ctx,
 		ast_slot_id arg;
 
 		arg = ast_unpack_arg_named(ctx, &mod->env,
-				ns->instance, ns->names[i].name);
+				ns->instance, AST_BIND_NEW,
+				ns->names[i].name);
 
 		ast_slot_id *name_value = NULL;
 

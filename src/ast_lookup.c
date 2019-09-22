@@ -77,8 +77,8 @@ ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *en
 		assert(ast_env_slot(ctx, env, scope->object).cons.def != NULL);
 
 		ast_slot_id slot =
-			ast_unpack_arg_named(ctx, env,
-					scope->object, node->lookup.name);
+			ast_unpack_arg_named(ctx, env, scope->object,
+					AST_BIND_NEW, node->lookup.name);
 
 		if (slot != AST_BIND_FAILED) {
 			return slot;
@@ -107,8 +107,8 @@ ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *en
 			assert(ast_env_slot(ctx, env, obj_id).cons.def != NULL);
 
 			ast_slot_id slot =
-				ast_unpack_arg_named(ctx, env,
-						obj_id, node->lookup.name);
+				ast_unpack_arg_named(ctx, env, obj_id,
+						AST_BIND_NEW, node->lookup.name);
 
 			if (slot != AST_BIND_FAILED) {
 				return slot;

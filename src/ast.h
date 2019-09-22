@@ -186,8 +186,8 @@ ast_bind_slot_cons_array(struct ast_context *,
 		ast_slot_id *members, size_t num_members, ast_slot_id member_type);
 
 ast_slot_id
-ast_unpack_arg_named(struct ast_context *,
-		struct ast_env *, ast_slot_id obj, struct atom *name);
+ast_unpack_arg_named(struct ast_context *, struct ast_env *,
+		ast_slot_id obj, ast_slot_id target, struct atom *name);
 
 ast_slot_id
 ast_union_slot(struct ast_context *, struct ast_env *,

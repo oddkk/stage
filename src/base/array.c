@@ -55,7 +55,8 @@ base_array_type_pack(struct ast_context *ctx, struct ast_module *mod,
 	ast_slot_id member_type_slot;
 	member_type_slot =
 		ast_unpack_arg_named(ctx, &mod->env, obj_slot,
-			ctx->atoms.array_cons_arg_type);
+				AST_BIND_NEW,
+				ctx->atoms.array_cons_arg_type);
 
 	struct object member_type_obj;
 	err = ast_slot_pack(ctx, mod, env,
@@ -69,7 +70,8 @@ base_array_type_pack(struct ast_context *ctx, struct ast_module *mod,
 	ast_slot_id length_slot;
 	length_slot =
 		ast_unpack_arg_named(ctx, &mod->env, obj_slot,
-			ctx->atoms.array_cons_arg_count);
+				AST_BIND_NEW,
+				ctx->atoms.array_cons_arg_count);
 
 	struct object length_obj;
 	err = ast_slot_pack(ctx, mod, env,

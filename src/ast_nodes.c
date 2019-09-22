@@ -539,6 +539,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					ast_union_slot(ctx, env,
 							ast_unpack_arg_named(ctx, env,
 								node->func.type,
+								AST_BIND_NEW,
 								ctx->atoms.func_cons_arg_ret),
 							node->func.return_type_slot);
 
@@ -546,6 +547,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					ast_union_slot(ctx, env,
 							ast_unpack_arg_named(ctx, env,
 								node->func.type,
+								AST_BIND_NEW,
 								ctx->atoms.func_cons_arg_params),
 							node->func.param_types_slot);
 
@@ -604,6 +606,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					ast_slot_id ret_type;
 					ret_type = ast_unpack_arg_named(
 							ctx, env, func_type_slot,
+							AST_BIND_NEW,
 							ctx->atoms.func_cons_arg_ret);
 
 					ret_type = ast_bind_slot_wildcard(ctx, env,
@@ -614,7 +617,8 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 
 					ast_slot_id param_types = ast_unpack_arg_named(ctx, env,
-							func_type_slot, ctx->atoms.func_cons_arg_params);
+							func_type_slot, AST_BIND_NEW,
+							ctx->atoms.func_cons_arg_params);
 
 					param_types = ast_bind_slot_cons_array(
 							ctx, env, param_types, NULL,
@@ -673,7 +677,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 					ast_slot_id cons_arg_slot;
 					cons_arg_slot = ast_unpack_arg_named(ctx, env,
-							node->call.cons, param_name);
+							node->call.cons, AST_BIND_NEW, param_name);
 
 					ast_slot_id node_arg_slot;
 					node_arg_slot = ast_node_value(ctx, env,

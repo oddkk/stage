@@ -217,7 +217,7 @@ ast_bind_slot_const(struct ast_context *ctx,
 
 						ast_slot_id member_slot;
 						member_slot = ast_unpack_arg_named(ctx, env, target,
-								def->params[i].name);
+								AST_BIND_NEW, def->params[i].name);
 
 						ast_slot_id new_member_slot;
 						new_member_slot =
@@ -366,7 +366,7 @@ ast_bind_slot_const_type(struct ast_context *ctx,
 
 						ast_slot_id member_slot;
 						member_slot = ast_unpack_arg_named(ctx, env, target,
-								def->params[i].name);
+								AST_BIND_NEW, def->params[i].name);
 
 						ast_slot_id new_member_slot;
 						new_member_slot =
@@ -843,6 +843,7 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 	env->slots[target].cons_array.member_count =
 		ast_unpack_arg_named(ctx, env,
 				env->slots[target].type,
+				AST_BIND_NEW,
 				ctx->atoms.array_cons_arg_count);
 	assert(old_member_count == AST_BIND_NEW ||
 			old_member_count == env->slots[target].cons_array.member_count);
@@ -851,6 +852,7 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 	env->slots[target].cons_array.member_type =
 		ast_unpack_arg_named(ctx, env,
 				env->slots[target].type,
+				AST_BIND_NEW,
 				ctx->atoms.array_cons_arg_type);
 	assert(old_member_type == AST_BIND_NEW || old_member_type == AST_SLOT_TYPE ||
 			old_member_type == env->slots[target].cons_array.member_type);
@@ -911,7 +913,7 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 
 ast_slot_id
 ast_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
-		ast_slot_id obj, struct atom *arg_name)
+		ast_slot_id obj, ast_slot_id target, struct atom *arg_name)
 {
 	struct ast_env_slot slot = ast_env_slot(ctx, env, obj);
 
@@ -928,7 +930,13 @@ ast_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 
 	for (size_t i = 0; i < slot.cons.num_present_args; i++) {
 		if (slot.cons.args[i].name == arg_name) {
-			return slot.cons.args[i].slot;
+			ast_slot_id res;
+			res = slot.cons.args[i].slot;
+			if (target != AST_BIND_NEW) {
+				res = ast_union_slot(ctx, env,
+						res, target);
+			}
+			return res;
 		}
 	}
 
@@ -942,9 +950,18 @@ ast_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 		tmp_args = realloc(slot.cons.args, tmp_num_args * sizeof(struct ast_object_arg));
 
 		tmp_args[tmp_num_args - 1].name = arg_name;
-		tmp_args[tmp_num_args - 1].slot = ast_bind_slot_wildcard(
-				ctx, env, AST_BIND_NEW, NULL, ast_bind_slot_wildcard(
-					ctx, env, AST_BIND_NEW, NULL, AST_SLOT_TYPE));
+		if (target == AST_BIND_NEW) {
+			tmp_args[tmp_num_args - 1].slot = ast_bind_slot_wildcard(
+					ctx, env, AST_BIND_NEW, NULL, ast_bind_slot_wildcard(
+						ctx, env, AST_BIND_NEW, NULL, AST_SLOT_TYPE));
+		} else {
+			tmp_args[tmp_num_args - 1].slot = target;
+			// Make sure the type of the type is type.
+			ast_bind_slot_const_type(ctx, env,
+					ast_env_slot(ctx, env,
+						ast_env_slot(ctx, env, target).type).type,
+					NULL, ctx->types.type);
+		}
 
 		env->slots[obj].cons.num_present_args = tmp_num_args;
 		env->slots[obj].cons.args = tmp_args;
@@ -1052,8 +1069,10 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 					slot.cons.def);
 
 			for (size_t i = 0; i < slot.cons.num_present_args; i++) {
-				ast_slot_id arg_slot = ast_unpack_arg_named(
-						ctx->ctx, dest, result, slot.cons.args[i].name);
+				ast_slot_id arg_slot =
+					ast_unpack_arg_named(ctx->ctx, dest, result,
+							AST_BIND_NEW, // TODO: slot.cons.args[i].slot,
+							slot.cons.args[i].name);
 
 				ast_union_slot_internal(ctx,
 						dest, arg_slot,
