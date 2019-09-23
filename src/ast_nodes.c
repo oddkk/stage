@@ -245,7 +245,7 @@ ast_node_func_register_templ_param(
 		}
 	}
 
-	struct ast_func_template_param tmpl_param = {0};
+	struct ast_template_param tmpl_param = {0};
 
 	tmpl_param.name = name;
 	tmpl_param.loc = loc;
@@ -275,6 +275,10 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
 			return node->call.ret_type;
+
+		case AST_NODE_TEMPL:
+			return ast_env_slot(ctx, env,
+					ast_node_resolve_slot(env, &node->templ.slot)).type;
 
 		case AST_NODE_SLOT:
 			return ast_env_slot(ctx, env,
@@ -307,6 +311,9 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 
 		case AST_NODE_CONS:
 			return ast_node_resolve_slot(env, &node->call.cons);
+
+		case AST_NODE_TEMPL:
+			return ast_node_resolve_slot(env, &node->templ.slot);
 
 		case AST_NODE_FUNC_UNINIT:
 			panic("Attempted to resolve value of uninitialized func.");
@@ -351,6 +358,11 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 				result &= ast_node_dependencies_fulfilled(
 						ctx, env, node->call.args[i].value);
 			}
+			break;
+
+		case AST_NODE_TEMPL:
+			result &= ast_node_dependencies_fulfilled(
+					ctx, env, node->templ.body);
 			break;
 
 		case AST_NODE_SLOT:
@@ -492,6 +504,24 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 			}
 			break;
 
+		case AST_NODE_TEMPL:
+			result &= ast_node_is_typed(ctx, env,
+					node->templ.body);
+
+			for (size_t i = 0; i < node->templ.num_params; i++) {
+				bool res;
+				res = ast_slot_is_resolved(ctx, env,
+						node->templ.params[i].slot);
+				if (!result) {
+					stg_error(ctx->err, node->templ.params[i].loc,
+							"Could not resolve the type of template parameter '%.*s'.",
+							ALIT(node->templ.params[i].name));
+				}
+
+				result &= res;
+			}
+			break;
+
 		case AST_NODE_SLOT:
 			result &= ast_slot_is_resolved(ctx, env, node->slot);
 			if (!result) {
@@ -532,7 +562,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 			if (node->func.num_template_params == 0) {
 				node->func.type =
 					ast_bind_slot_cons(ctx, env,
-							node->func.type,
+							ast_node_resolve_slot(env, &node->func.type),
 							NULL, ctx->cons.func);
 
 				node->func.return_type_slot =
@@ -564,6 +594,53 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					ast_node_resolve_slots(ctx, mod, env, node->func.body);
 				}
 			} else {
+				struct ast_node *func = calloc(1, sizeof(struct ast_node));
+
+				// Replace the current node with a (templ -> func) node pair to
+				// represent the template parameters.
+				*func = *node;
+				memset(node, 0, sizeof(struct ast_node));
+				node->kind = AST_NODE_TEMPL;
+				node->loc = func->loc;
+				node->templ.body = func;
+				node->templ.params = func->func.template_params;
+				node->templ.num_params = func->func.num_template_params;
+				func->func.template_params = NULL;
+				func->func.num_template_params = 0;
+
+				// Keep the same output slot to preserve the relationship with
+				// node's parent.
+				ast_slot_id slot_type = func->func.type;
+				slot_type =
+					ast_bind_slot_const_type(ctx, env,
+						slot_type, NULL, ctx->types.cons);
+				node->templ.slot =
+					ast_bind_slot_wildcard(ctx, env,
+							AST_BIND_NEW, NULL, slot_type);
+
+				func->func.type =
+					ast_bind_slot_wildcard(ctx, env,
+							AST_BIND_NEW, NULL, AST_SLOT_TYPE);
+
+				node->templ.cons =
+					ast_bind_slot_cons(ctx, env,
+							AST_BIND_NEW, NULL, NULL);
+
+				for (size_t i = 0; i < node->templ.num_params; i++) {
+					node->templ.params[i].slot =
+						ast_unpack_arg_named(ctx, env, node->templ.cons,
+								ast_node_resolve_slot(env, &node->templ.params[i].slot),
+								node->templ.params[i].name);
+				}
+
+				ast_slot_id cons_type;
+				cons_type = ast_env_slot(ctx, env, node->templ.cons).type;
+
+				cons_type = ast_union_slot(ctx, env,
+						cons_type,
+						ast_node_type(ctx, env, node->templ.body));
+
+				ast_node_resolve_slots(ctx, mod, env, node->templ.body);
 			}
 			break;
 
@@ -689,6 +766,9 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 			}
 			break;
 
+		case AST_NODE_TEMPL:
+			break;
+
 		case AST_NODE_SLOT:
 			break;
 
@@ -734,6 +814,88 @@ ast_node_eval_type(struct ast_context *ctx, struct ast_module *mod,
 
 	*out = *(type_id *)type_obj.data;
 	return 0;
+}
+
+struct ast_templ_node_data {
+	struct ast_object_def def;
+	struct ast_node *node;
+};
+
+static struct object
+ast_templ_node_unpack(struct ast_context *ctx, struct ast_env *env,
+		struct ast_object_def *def, int param_id, struct object obj)
+{
+	panic("Attemped to unpack tmpl node.");
+	return OBJ_NONE;
+}
+
+static struct object
+ast_templ_node_pack(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_object_def *def, ast_slot_id obj)
+{
+	struct ast_env_slot slot;
+	slot = ast_env_slot(ctx, env, obj);
+
+	assert(slot.kind == AST_SLOT_CONS);
+
+	struct ast_templ_node_data *data;
+	data = (struct ast_templ_node_data *)def->data;
+
+	struct ast_node *tmpl_node = data->node;
+	assert(tmpl_node->kind == AST_NODE_TEMPL);
+
+	struct ast_node *new_node;
+	new_node = ast_node_deep_copy(ctx, env,
+			&data->def.env, tmpl_node);
+
+	for (size_t i = 0; i < new_node->templ.num_params; i++) {
+		ast_slot_id arg_slot = new_node->templ.params[i].slot;
+		ast_slot_id param_value_slot =
+			ast_unpack_arg_named(ctx, env, obj,
+					AST_BIND_NEW, new_node->templ.params[i].name);
+
+		/*
+		printf("param %.*s: ", ALIT(new_node->templ.params[i].name));
+		ast_print_slot(ctx, env, param_value_slot);
+		printf("->");
+		ast_print_slot(ctx, env, arg_slot);
+
+		printf("(res: ");
+		*/
+
+		arg_slot = ast_copy_slot(ctx,
+				env, arg_slot,
+				env, param_value_slot);
+
+		/*
+		ast_print_slot(ctx, env, arg_slot);
+		printf(")\n");
+		*/
+	}
+
+	struct ast_node *result;
+	result = new_node->templ.body;
+
+	free(new_node->templ.params);
+	free(new_node);
+
+	ast_node_resolve_slots(ctx, mod, env, result);
+	if (!ast_node_is_typed(ctx, env, result)) {
+		printf("Failed to type expression. (templated)\n");
+		return OBJ_NONE;
+	}
+
+	int err;
+	struct object res;
+	err = ast_node_eval(ctx, mod, env, result, &res);
+	if (err) {
+		printf("Failed to generate object. (templated)\n");
+		return OBJ_NONE;
+	}
+
+	// TODO: Free the ast or keep it somewhere.
+
+	return res;
 }
 
 int
@@ -878,6 +1040,7 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 				struct ast_object_def *cons;
 				cons = *(struct ast_object_def **)cons_obj.data;
 				assert(cons);
+				assert(cons->pack);
 
 				*out = cons->pack(ctx, mod, env,
 						cons, node->call.cons);
@@ -885,6 +1048,41 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 				return 0;
 			}
 			break;
+
+		case AST_NODE_TEMPL:
+			if (!node->templ.def) {
+				struct ast_templ_node_data *data;
+				data = calloc(1, sizeof(struct ast_templ_node_data));
+				data->def.env.store = env->store;
+
+				if (!ast_object_def_from_cons(ctx, env, &data->def, node->templ.cons)) {
+					free(data);
+					return -1;
+				}
+
+				data->node = ast_node_deep_copy(
+						ctx, &data->def.env, env, node);
+
+				/*
+				ast_print(ctx, &data->def.env, data->node);
+				ast_env_print(ctx->vm, &data->def.env);
+				*/
+
+				data->def.pack   = ast_templ_node_pack;
+				data->def.unpack = ast_templ_node_unpack;
+				data->def.data   = data;
+
+				node->templ.def = &data->def;
+			}
+
+			{
+				struct object res = {0};
+				res.type = ctx->types.cons;
+				res.data = &node->templ.def;
+
+				*out = register_object(ctx->vm, env->store, res);
+			}
+			return 0;
 
 		case AST_NODE_SLOT:
 			return ast_slot_pack(ctx, mod, env, node->slot, out);

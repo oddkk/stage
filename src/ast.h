@@ -208,6 +208,10 @@ ast_env_slot(struct ast_context *, struct ast_env *, ast_slot_id);
 bool
 ast_resolve_slot(struct ast_context *, struct ast_env *, ast_slot_id);
 
+bool
+ast_object_def_from_cons(struct ast_context *, struct ast_env *,
+		struct ast_object_def *out, ast_slot_id);
+
 void
 ast_env_print(struct vm *vm, struct ast_env *);
 
@@ -274,6 +278,7 @@ enum ast_node_kind {
 	AST_NODE_FUNC_NATIVE,
 	AST_NODE_CALL,
 	AST_NODE_CONS,
+	AST_NODE_TEMPL,
 	AST_NODE_SLOT,
 	AST_NODE_LOOKUP,
 
@@ -293,11 +298,14 @@ struct ast_func_param {
 	ast_slot_id slot;
 };
 
-struct ast_func_template_param {
+struct ast_template_param {
 	struct atom *name;
 	ast_slot_id slot;
 	struct stg_location loc;
 };
+
+// defined in ast_nodes.c
+struct ast_templ_node_data;
 
 struct ast_node {
 	enum ast_node_kind kind;
@@ -316,7 +324,7 @@ struct ast_node {
 			struct ast_func_param *params;
 			size_t num_params;
 
-			struct ast_func_template_param *template_params;
+			struct ast_template_param *template_params;
 			size_t num_template_params;
 
 			struct ast_node *return_type;
@@ -341,6 +349,19 @@ struct ast_node {
 			// Used only for cons.
 			ast_slot_id cons;
 		} call;
+
+		struct {
+			struct ast_node *body;
+
+			struct ast_template_param *params;
+			size_t num_params;
+
+			ast_slot_id cons;
+
+			ast_slot_id slot;
+
+			struct ast_object_def *def;
+		} templ;
 
 		ast_slot_id slot;
 
@@ -443,6 +464,12 @@ int
 ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node,
 		struct object *out);
+
+
+// Defined in ast_slots.c
+struct ast_node *
+ast_node_deep_copy(struct ast_context *ctx, struct ast_env *dest_env,
+		struct ast_env *src_env, struct ast_node *src);
 
 struct bc_env;
 struct bc_instr;

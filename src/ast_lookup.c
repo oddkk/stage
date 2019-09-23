@@ -272,6 +272,28 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			}
 			break;
 
+		case AST_NODE_TEMPL:
+			{
+				struct ast_scope templates_scope = {0};
+
+				ast_scope_push_func(&templates_scope, scope);
+
+				if (node->func.num_template_params > 0) {
+					templates_scope.num_names = node->func.num_template_params;
+					templates_scope.names = calloc(
+							templates_scope.num_names, sizeof(struct ast_scope_name));
+
+					for (size_t i = 0; i < templates_scope.num_names; i++) {
+						templates_scope.names[i].name =
+							node->func.template_params[i].name;
+						templates_scope.names[i].slot =
+							node->func.template_params[i].slot;
+					}
+				}
+
+			}
+			break;
+
 		case AST_NODE_SLOT:
 			break;
 

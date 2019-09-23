@@ -1145,8 +1145,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			printf("failed bind (%p)%i -> (%p)%i\n", (void *)src, src_slot, (void *)dest, target);
 			panic("SUBST-slot in union (%i(%i) -> %i).", src_slot, slot.subst, target);
 #endif
-			return ast_union_slot_internal(ctx, src, slot.subst, dest, target);
-			break;
+			return ast_union_slot_internal(ctx,
+					dest, target,
+					src,  slot.subst);
 	}
 	assert(result != AST_SLOT_NOT_FOUND);
 
@@ -1355,4 +1356,191 @@ ast_resolve_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot_
 		case AST_SLOT_SUBST:
 			return ast_resolve_slot(ctx, env, slot.subst);
 	}
+}
+
+bool
+ast_object_def_from_cons(struct ast_context *ctx, struct ast_env *env,
+		struct ast_object_def *out, ast_slot_id obj)
+{
+	struct ast_env_slot slot;
+	slot = ast_env_slot(ctx, env, obj);
+	assert(slot.kind == AST_SLOT_CONS);
+
+	ast_slot_id slot_map[env->num_slots];
+
+	for (size_t i = 0; i < env->num_slots; i++) {
+		slot_map[i] = AST_SLOT_NOT_FOUND;
+	}
+
+	struct ast_union_context cpy_ctx = {0};
+	cpy_ctx.ctx = ctx;
+	cpy_ctx.slot_map = slot_map;
+	cpy_ctx.copy_mode = true;
+
+	out->num_params = slot.cons.num_present_args;
+	out->params = calloc(out->num_params,
+			sizeof(struct ast_object_def_param));
+	for (size_t i = 0; i < out->num_params; i++) {
+		out->params[i].name = slot.cons.args[i].name;
+		out->params[i].type =
+			ast_union_slot_internal(&cpy_ctx,
+					&out->env, AST_BIND_NEW,
+					env,       ast_env_slot(ctx, env, slot.cons.args[i].slot).type);
+	}
+
+	out->ret_type =
+		ast_union_slot_internal(&cpy_ctx,
+				&out->env, AST_BIND_NEW,
+				env,       slot.type);
+
+	return true;
+}
+
+struct ast_node *
+ast_node_deep_copy_internal(
+		struct ast_union_context *ctx, struct ast_env *dest_env,
+		struct ast_env *src_env, struct ast_node *src)
+{
+	struct ast_node *result;
+	result = calloc(1, sizeof(struct ast_node));
+
+#define DCP_NODE(name)                               \
+	do {                                             \
+	result->name =                                   \
+		ast_node_deep_copy_internal(                 \
+				ctx, dest_env, src_env, src->name);  \
+	} while (0);
+
+#define DCP_SLOT(name)                               \
+	do {                                             \
+		if (src->name < 0) {                         \
+			result->name = src->name;                \
+		} else {                                     \
+			result->name =                           \
+				ast_union_slot_internal(ctx,         \
+						dest_env, AST_BIND_NEW,      \
+						src_env,  src->name);        \
+		}                                            \
+	} while (0);
+
+#define DCP_LIT(name)                                \
+	do { result->name = src->name; } while (0);
+
+#define DCP_DLIST(array_name, count_name)            \
+	do {                                             \
+		DCP_LIT(count_name);                         \
+		if ((result->count_name) > 0) {              \
+			result->array_name = calloc(             \
+					result->count_name,              \
+					sizeof(*result->array_name));    \
+		} else {                                     \
+			result->array_name = NULL;               \
+		}                                            \
+	} while (0);
+
+	DCP_LIT(kind);
+	DCP_LIT(loc);
+
+	switch (src->kind) {
+	case AST_NODE_FUNC_UNINIT:
+		panic("Got uninitialized function in copy slot.");
+	case AST_NODE_FUNC_NATIVE:
+	case AST_NODE_FUNC:
+		if (src->kind == AST_NODE_FUNC_NATIVE) {
+			DCP_LIT(func.native);
+		} else {
+			DCP_NODE(func.body);
+		}
+		DCP_DLIST(func.params, func.num_params);
+		for (size_t i = 0; i < result->func.num_params; i++) {
+			DCP_LIT(func.params[i].name);
+			DCP_NODE(func.params[i].type);
+			DCP_SLOT(func.params[i].slot);
+		}
+
+		DCP_DLIST(func.template_params, func.num_template_params);
+		for (size_t i = 0; i < result->func.num_template_params; i++) {
+			DCP_LIT(func.template_params[i].name);
+			DCP_SLOT(func.template_params[i].slot);
+			DCP_LIT(func.template_params[i].loc);
+		}
+
+		DCP_NODE(func.return_type);
+		DCP_SLOT(func.return_type_slot);
+		DCP_SLOT(func.param_types_slot);
+		DCP_SLOT(func.type);
+		DCP_LIT(func.instance);
+		break;
+
+		break;
+
+	case AST_NODE_CONS:
+		DCP_SLOT(call.cons);
+		// fallthrough
+
+	case AST_NODE_CALL:
+		DCP_DLIST(call.args, call.num_args);
+		for (size_t i = 0; i < result->call.num_args; i++) {
+			DCP_LIT(call.args[i].name);
+			DCP_NODE(call.args[i].value);
+		}
+
+		DCP_NODE(call.func);
+		DCP_SLOT(call.ret_type);
+		break;
+
+	case AST_NODE_TEMPL:
+		DCP_NODE(templ.body);
+
+		DCP_DLIST(templ.params, templ.num_params);
+		for (size_t i = 0; i < result->templ.num_params; i++) {
+			DCP_LIT(templ.params[i].name);
+			DCP_SLOT(templ.params[i].slot);
+			DCP_LIT(templ.params[i].loc);
+		}
+
+		DCP_SLOT(templ.cons);
+		DCP_SLOT(templ.slot);
+		DCP_LIT(templ.def);
+		break;
+
+	case AST_NODE_SLOT:
+		DCP_SLOT(slot);
+		break;
+
+	case AST_NODE_LOOKUP:
+		DCP_LIT(lookup.name);
+		DCP_SLOT(lookup.slot);
+		DCP_SLOT(lookup.value);
+		break;
+
+	}
+
+#undef DCP_NODE
+#undef DCP_SLOT
+#undef DCP_LIT
+#undef DCP_DLIST
+
+	return result;
+}
+
+// NOTE: This function is here instead of in ast_nodes.c because it needs
+// ast_union_slot_internal to keep copy-context between copy calls.
+struct ast_node *
+ast_node_deep_copy(struct ast_context *ctx, struct ast_env *dest_env,
+		struct ast_env *src_env, struct ast_node *src)
+{
+	ast_slot_id slot_map[src_env->num_slots];
+
+	for (size_t i = 0; i < src_env->num_slots; i++) {
+		slot_map[i] = AST_SLOT_NOT_FOUND;
+	}
+
+	struct ast_union_context cpy_ctx = {0};
+	cpy_ctx.ctx = ctx;
+	cpy_ctx.slot_map = slot_map;
+	cpy_ctx.copy_mode = true;
+
+	return ast_node_deep_copy_internal(
+			&cpy_ctx, dest_env, src_env, src);
 }

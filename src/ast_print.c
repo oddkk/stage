@@ -236,7 +236,22 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 				printf("arg %li '%.*s' value\n", i, ALIT(node->call.args[i].name));
 				ast_print_internal(ctx, env, node->call.args[i].value, depth + 2);
 			}
+			break;
 
+		case AST_NODE_TEMPL:
+			print_indent(depth);
+			printf("templ:\n");
+			print_indent(depth + 1);
+			printf("params:\n");
+			for (size_t i = 0; i < node->templ.num_params; i++) {
+				print_indent(depth + 2);
+				printf("'%.*s'", ALIT(node->templ.params[i].name));
+				print_slot(env, node->templ.params[i].slot);
+				printf("\n");
+			}
+			print_indent(depth + 1);
+			printf("body:\n");
+			ast_print_internal(ctx, env, node->templ.body, depth + 2);
 			break;
 
 		case AST_NODE_SLOT:
