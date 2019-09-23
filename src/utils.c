@@ -22,6 +22,7 @@ void print_error(const char *tag, const char *fmt, ...)
 	fprintf(stderr, "[%s] ", tag);
 	vfprintf(stderr, fmt, ap);
 	fprintf(stderr, "\n");
+	fflush(stdout);
 	va_end(ap);
 }
 
@@ -34,6 +35,7 @@ void panic(const char *fmt, ...)
 	vfprintf(stderr, fmt, ap);
 	fprintf(stderr, "\n");
 	va_end(ap);
+	fflush(stdout);
 	abort();
 }
 
