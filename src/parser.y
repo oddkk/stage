@@ -309,8 +309,9 @@ l_expr:			ident                   { $$ = $1; }
 func_call:		expr1 '(' func_args ')' { $$ = MKNODE(FUNC_CALL, .ident=$1, .params=$3); }
 		;
 
-func_args:		func_args1              { $$ = MKNODE(TUPLE_LIT, .items=$1, .named=false); }
-		|		func_args1 ','          { $$ = MKNODE(TUPLE_LIT, .items=$1, .named=false); }
+func_args:		func_args1              { $$ = MKNODE(TUPLE_LIT, .items=$1,   .named=false); }
+		|		func_args1 ','          { $$ = MKNODE(TUPLE_LIT, .items=$1,   .named=false); }
+		|		%empty                  { $$ = MKNODE(TUPLE_LIT, .items=NULL, .named=false); }
 		;
 
 func_args1:		func_args1 ',' func_arg { $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
