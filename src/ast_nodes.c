@@ -690,7 +690,9 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 							ret_type, NULL, AST_SLOT_TYPE);
 
 					node->call.ret_type =
-						ast_union_slot(ctx, env, node->call.ret_type, ret_type);
+						ast_union_slot(ctx, env,
+								ast_node_resolve_slot(env, &node->call.ret_type),
+								ret_type);
 
 
 					ast_slot_id param_types = ast_unpack_arg_named(ctx, env,
