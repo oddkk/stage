@@ -715,12 +715,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 				}
 			}
 
-			ast_slot_id arg_type_slot = AST_BIND_NEW;
-
-			if (found) {
-				arg_type_slot = ast_env_slot(ctx, env,
-						env->slots[target].cons.args[arg].slot).type;
-			} else {
+			if (!found) {
 				arg = env->slots[target].cons.num_present_args;
 				env->slots[target].cons.num_present_args += 1;
 				assert(env->slots[target].cons.num_present_args <= def->num_params);
@@ -729,14 +724,10 @@ ast_bind_slot_cons(struct ast_context *ctx,
 				env->slots[target].cons.args[arg].slot = AST_BIND_NEW;
 			}
 
-			arg_type_slot =
-				ast_union_slot_internal(&cpy_ctx,
-						env, arg_type_slot,
-						&def->env, def->params[param_i].type);
-
 			env->slots[target].cons.args[arg].slot =
-				ast_bind_slot_wildcard(ctx, env,
-					env->slots[target].cons.args[arg].slot, NULL, arg_type_slot);
+				ast_union_slot_internal(&cpy_ctx,
+						env, env->slots[target].cons.args[arg].slot,
+						&def->env, def->params[param_i].slot);
 		}
 
 		assert(env->slots[target].cons.num_present_args == def->num_params);
@@ -1409,10 +1400,10 @@ ast_object_def_from_cons(struct ast_context *ctx, struct ast_env *env,
 			sizeof(struct ast_object_def_param));
 	for (size_t i = 0; i < out->num_params; i++) {
 		out->params[i].name = slot.cons.args[i].name;
-		out->params[i].type =
+		out->params[i].slot =
 			ast_union_slot_internal(&cpy_ctx,
 					&out->env, AST_BIND_NEW,
-					env,       ast_env_slot(ctx, env, slot.cons.args[i].slot).type);
+					env,       slot.cons.args[i].slot);
 	}
 
 	out->ret_type =

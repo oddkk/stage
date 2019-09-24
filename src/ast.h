@@ -222,7 +222,7 @@ ast_print_slot(struct ast_context *, struct ast_env *, ast_slot_id);
 struct ast_object_def_param {
 	int param_id;
 	struct atom *name;
-	ast_slot_id type;
+	ast_slot_id slot;
 };
 
 typedef struct object (*ast_object_unpack)(

@@ -145,9 +145,11 @@ stg_create_simple_object_def(struct ast_context *ctx,
 		decons->members[i] = in_decons.members[i];
 		def->params[i].param_id = i;
 		def->params[i].name = decons->members[i].name;
-		def->params[i].type =
-			ast_bind_slot_const_type(ctx, &def->env, AST_BIND_NEW,
-					NULL, decons->members[i].type);
+		def->params[i].slot =
+			ast_bind_slot_templ(ctx, &def->env, AST_BIND_NEW,
+					decons->members[i].name,
+					ast_bind_slot_const_type(ctx, &def->env, AST_BIND_NEW,
+						NULL, decons->members[i].type));
 	}
 
 	def->pack = simple_obj_def_pack;
