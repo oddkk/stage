@@ -479,6 +479,8 @@ ast_bind_slot_templ(struct ast_context *ctx,
 struct ast_union_context {
 	struct ast_context *ctx;
 	ast_slot_id *slot_map;
+	size_t slot_map_len;
+	bool slot_map_freeable;
 
 	bool copy_mode;
 };
@@ -620,6 +622,7 @@ ast_bind_slot_cons(struct ast_context *ctx,
 
 		cpy_ctx.ctx = ctx;
 		cpy_ctx.slot_map = slot_map;
+		cpy_ctx.slot_map_len = num_map_slots;
 		cpy_ctx.copy_mode = true;
 
 		type_slot = ast_union_slot_internal(
@@ -1000,6 +1003,27 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 
 	assert(src_slot >= 0 && src_slot < src->num_slots);
 
+	if (src_slot >= ctx->slot_map_len) {
+		ast_slot_id *new_slot_map;
+		if (ctx->slot_map_freeable) {
+			new_slot_map = realloc(
+					ctx->slot_map, src->num_slots * sizeof(ast_slot_id));
+		} else {
+			new_slot_map = calloc(
+					src->num_slots, sizeof(ast_slot_id));
+			memcpy(new_slot_map, ctx->slot_map,
+					ctx->slot_map_len * sizeof(ast_slot_id));
+			ctx->slot_map_freeable = true;
+		}
+
+		for (size_t i = ctx->slot_map_len; i < src->num_slots; i++) {
+			new_slot_map[i] = AST_SLOT_NOT_FOUND;
+		}
+
+		ctx->slot_map = new_slot_map;
+		ctx->slot_map_len = src->num_slots;
+	}
+
 	if (ctx->slot_map[src_slot] != AST_SLOT_NOT_FOUND) {
 		struct ast_env_slot mapped_slot;
 		mapped_slot = ast_env_slot(ctx->ctx, dest, ctx->slot_map[src_slot]);
@@ -1185,6 +1209,7 @@ ast_union_slot(struct ast_context *ctx, struct ast_env *env,
 	struct ast_union_context cpy_ctx = {0};
 	cpy_ctx.ctx = ctx;
 	cpy_ctx.slot_map = slot_map;
+	cpy_ctx.slot_map_len = env->num_slots;
 	cpy_ctx.copy_mode = false;
 
 	return ast_union_slot_internal(
@@ -1205,6 +1230,7 @@ ast_copy_slot(struct ast_context *ctx,
 	struct ast_union_context cpy_ctx = {0};
 	cpy_ctx.ctx = ctx;
 	cpy_ctx.slot_map = slot_map;
+	cpy_ctx.slot_map_len = src->num_slots;
 	cpy_ctx.copy_mode = true;
 
 	return ast_union_slot_internal(
@@ -1375,6 +1401,7 @@ ast_object_def_from_cons(struct ast_context *ctx, struct ast_env *env,
 	struct ast_union_context cpy_ctx = {0};
 	cpy_ctx.ctx = ctx;
 	cpy_ctx.slot_map = slot_map;
+	cpy_ctx.slot_map_len = env->num_slots;
 	cpy_ctx.copy_mode = true;
 
 	out->num_params = slot.cons.num_present_args;
@@ -1539,6 +1566,7 @@ ast_node_deep_copy(struct ast_context *ctx, struct ast_env *dest_env,
 	struct ast_union_context cpy_ctx = {0};
 	cpy_ctx.ctx = ctx;
 	cpy_ctx.slot_map = slot_map;
+	cpy_ctx.slot_map_len = src_env->num_slots;
 	cpy_ctx.copy_mode = true;
 
 	return ast_node_deep_copy_internal(
