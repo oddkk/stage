@@ -323,3 +323,10 @@ stg_func_ffi_cif(struct vm *vm, type_id func_tid)
 
 	return func_info->ffi_cif;
 }
+
+bool
+stg_type_is_func(struct vm *vm, type_id tid)
+{
+	struct type *type = vm_get_type(vm, tid);
+	return type->base == &func_type_base;
+}

@@ -34,6 +34,9 @@ type_id
 stg_register_func_type(struct stg_module *, type_id return_type,
 		type_id *param_types, size_t num_params);
 
+bool
+stg_type_is_func(struct vm *, type_id);
+
 void *
 stg_func_ffi_cif(struct vm *, type_id);
 

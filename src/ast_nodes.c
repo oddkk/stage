@@ -543,6 +543,11 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 	return result;
 }
 
+struct ast_templ_node_data {
+	struct ast_object_def def;
+	struct ast_node *node;
+};
+
 bool
 ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node)
@@ -645,18 +650,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 			break;
 
 		case AST_NODE_CALL:
-			ast_node_resolve_slots(ctx, mod, env, node->call.func);
-
-			for (size_t i = 0; i < node->call.num_args; i++) {
-				ast_node_resolve_slots(ctx, mod, env,
-						node->call.args[i].value);
-			}
-
 			{
-				ast_slot_id func_type_slot;
-				func_type_slot = ast_node_type(
-						ctx, env, node->call.func);
-
 				struct object func_type_obj;
 				int err;
 				err = ast_slot_pack(ctx, mod, env,
@@ -666,15 +660,86 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 				assert_type_equals(ctx->vm, ctx->types.type, func_type_obj.type);
 				type_id func_type = *(type_id *)func_type_obj.data;
 
-				if (func_type != ctx->types.cons) {
+				bool is_func_type = true;
+
+				if (func_type == ctx->types.cons) {
+					struct object func_obj;
+					int err;
+
+					err = ast_node_eval(ctx, mod, env,
+							node->call.func, &func_obj);
+					assert_type_equals(ctx->vm, ctx->types.cons, func_obj.type);
+
+					struct ast_object_def *cons;
+					cons = *(struct ast_object_def **)func_obj.data;
+
+					struct ast_templ_node_data *templ_data;
+					templ_data = (struct ast_templ_node_data *)cons->data;
+					assert(templ_data->node->kind == AST_NODE_TEMPL);
+
+					struct ast_env_slot ret_type_slot;
+					ret_type_slot =
+						ast_env_slot(ctx, &cons->env,
+								ast_node_resolve_slot(env, &cons->ret_type));
+
+					is_func_type = false;
+
+					switch (ret_type_slot.kind) {
+						case AST_SLOT_CONS:
+							if (ret_type_slot.cons.def == ctx->cons.func) {
+								is_func_type = true;
+							}
+							break;
+
+						case AST_SLOT_CONST_TYPE:
+							if (stg_type_is_func(ctx->vm, ret_type_slot.const_type)) {
+								is_func_type = true;
+							}
+							break;
+
+						default:
+							break;
+					}
+
+					if (is_func_type) {
+						struct ast_node *cons_node;
+
+						cons_node = calloc(1, sizeof(struct ast_node));
+						cons_node->kind = AST_NODE_CONS;
+						cons_node->loc = templ_data->node->loc;
+
+						cons_node->call.func = node->call.func;
+						node->call.func = cons_node;
+
+						cons_node->call.cons = AST_BIND_NEW;
+
+						cons_node->call.ret_type =
+							ast_bind_slot_wildcard(ctx, env, AST_BIND_NEW,
+									NULL, AST_SLOT_TYPE);
+					}
+				}
+
+				ast_node_resolve_slots(ctx, mod, env, node->call.func);
+
+				for (size_t i = 0; i < node->call.num_args; i++) {
+					ast_node_resolve_slots(ctx, mod, env,
+							node->call.args[i].value);
+				}
+
+				if (is_func_type) {
 					// If the type is not a cons, we expect it to be a
 					// function. Bind the func to the arguments appropriatly.
 					ast_slot_id arg_type_ids[node->call.num_args];
+
 
 					for (size_t i = 0; i < node->call.num_args; i++) {
 						arg_type_ids[i] = ast_node_type(
 								ctx, env, node->call.args[i].value);
 					}
+
+					ast_slot_id func_type_slot;
+					func_type_slot = ast_node_type(
+							ctx, env, node->call.func);
 
 					func_type_slot = ast_bind_slot_cons(
 							ctx, env, func_type_slot,
@@ -703,6 +768,13 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 							ctx, env, param_types, NULL,
 							arg_type_ids, node->call.num_args,
 							AST_SLOT_TYPE);
+
+					ast_node_resolve_slots(ctx, mod, env, node->call.func);
+
+					for (size_t i = 0; i < node->call.num_args; i++) {
+						ast_node_resolve_slots(ctx, mod, env,
+								node->call.args[i].value);
+					}
 
 					break;
 				} else {
@@ -743,29 +815,58 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 				assert(cons_slot.kind == AST_SLOT_CONS);
 				assert(cons_slot.cons.num_present_args == cons->num_params);
 
-				if (node->call.num_args != cons->num_params) {
-					stg_error(ctx->err, node->loc,
-							"Expected %zu arguments to constructor, got %zu.",
-							cons->num_params, node->call.num_args);
-					return false;
-				}
+				if (node->call.num_args == 0) {
+					node->call.num_args = cons->num_params;
+					node->call.args = calloc(cons->num_params,
+							sizeof(struct ast_func_arg));
 
-				for (size_t i = 0; i < node->call.num_args; i++) {
-					struct atom *param_name;
-					param_name = cons->params[i].name;
+					for (size_t i = 0; i < cons->num_params; i++) {
+						struct atom *param_name;
+						param_name = cons->params[i].name;
 
-					ast_slot_id cons_arg_slot;
-					cons_arg_slot = ast_unpack_arg_named(ctx, env,
-							node->call.cons, AST_BIND_NEW, param_name);
+						ast_slot_id cons_arg_slot;
+						cons_arg_slot = ast_unpack_arg_named(ctx, env,
+								node->call.cons, AST_BIND_NEW, param_name);
 
-					ast_slot_id node_arg_slot;
-					node_arg_slot = ast_node_value(ctx, env,
-							node->call.args[i].value);
+						node->call.args[i].name = param_name;
+						node->call.args[i].value =
+							ast_init_node_slot(ctx, env, AST_NODE_NEW,
+									STG_NO_LOC, cons_arg_slot);
+					}
+				} else {
+					if (node->call.num_args != cons->num_params) {
+						stg_error(ctx->err, node->loc,
+								"Expected %zu argument%s to constructor, got %zu.",
+								cons->num_params, (cons->num_params == 1) ? "" : "s",
+								node->call.num_args);
+						return false;
+					}
 
-					ast_union_slot(ctx, env, cons_arg_slot, node_arg_slot);
+					for (size_t i = 0; i < node->call.num_args; i++) {
+						struct atom *param_name;
+						param_name = cons->params[i].name;
+
+						ast_slot_id cons_arg_slot;
+						cons_arg_slot = ast_unpack_arg_named(ctx, env,
+								node->call.cons, AST_BIND_NEW, param_name);
+
+						ast_slot_id node_arg_slot;
+						node_arg_slot = ast_node_value(ctx, env,
+								node->call.args[i].value);
+
+						ast_union_slot(ctx, env, cons_arg_slot, node_arg_slot);
+					}
 				}
 
 			}
+
+			ast_node_resolve_slots(ctx, mod, env, node->call.func);
+
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				ast_node_resolve_slots(ctx, mod, env,
+						node->call.args[i].value);
+			}
+
 			break;
 
 		case AST_NODE_TEMPL:
@@ -818,11 +919,6 @@ ast_node_eval_type(struct ast_context *ctx, struct ast_module *mod,
 	return 0;
 }
 
-struct ast_templ_node_data {
-	struct ast_object_def def;
-	struct ast_node *node;
-};
-
 static struct object
 ast_templ_node_unpack(struct ast_context *ctx, struct ast_env *env,
 		struct ast_object_def *def, int param_id, struct object obj)
@@ -856,23 +952,9 @@ ast_templ_node_pack(struct ast_context *ctx, struct ast_module *mod,
 			ast_unpack_arg_named(ctx, env, obj,
 					AST_BIND_NEW, new_node->templ.params[i].name);
 
-		/*
-		printf("param %.*s: ", ALIT(new_node->templ.params[i].name));
-		ast_print_slot(ctx, env, param_value_slot);
-		printf("->");
-		ast_print_slot(ctx, env, arg_slot);
-
-		printf("(res: ");
-		*/
-
 		arg_slot = ast_copy_slot(ctx,
 				env, arg_slot,
 				env, param_value_slot);
-
-		/*
-		ast_print_slot(ctx, env, arg_slot);
-		printf(")\n");
-		*/
 	}
 
 	struct ast_node *result;
