@@ -18,7 +18,7 @@ typedef size_t template_id;
 
 #define FUNC_ID(modid, funcid) (((func_id)modid << 32) | ((func_id)funcid & 0xffffffff))
 #define FUNC_ID_MOD(funcid) (uint32_t)((funcid >> 32) & 0xffffffff)
-#define FUNC_ID_TYPE(funcid) (modfunc_id)(funcid & 0xffffffff)
+#define FUNC_ID_LOCAL(funcid) (modfunc_id)(funcid & 0xffffffff)
 
 #define FUNC_UNSET ((func_id)0)
 

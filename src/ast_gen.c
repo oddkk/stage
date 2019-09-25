@@ -2,6 +2,7 @@
 #include "bytecode.h"
 #include "native_bytecode.h"
 #include "vm.h"
+#include "base/mod.h"
 #include <stdlib.h>
 
 static inline void
@@ -87,8 +88,20 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			return result;
 
 		case AST_NODE_CONS:
-			panic("TODO: Implement generating bytecode for cons.");
-			break;
+			{
+				struct object obj;
+				int err;
+				err = ast_node_eval(ctx, mod, env, node, &obj);
+				if (err) {
+					panic("Failed to evaluate cons.");
+					return (struct ast_gen_bc_result){0};
+				}
+
+				result.first = result.last =
+					bc_gen_load(bc_env, BC_VAR_NEW, obj);
+				result.out_var = result.first->load.target;
+			}
+			return result;
 
 		case AST_NODE_TEMPL:
 			panic("TODO: Implement generating bytecode for templ.");
@@ -161,6 +174,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			break;
 	}
 
+	printf("Invalid ast node in gen byte code.\n");
 	return (struct ast_gen_bc_result){0};
 }
 

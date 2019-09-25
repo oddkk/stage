@@ -159,7 +159,7 @@ struct func *
 vm_get_func(struct vm *vm, func_id fid)
 {
 	uint32_t mid = FUNC_ID_MOD(fid);
-	modtype_id mfid = FUNC_ID_TYPE(fid);
+	modtype_id mfid = FUNC_ID_LOCAL(fid);
 
 	assert(mid < vm->num_modules);
 	return store_get_func(&vm->modules[mid]->store, mfid);
