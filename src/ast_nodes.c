@@ -543,6 +543,32 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 	return result;
 }
 
+static bool
+is_slot_func_type(struct ast_context *ctx, struct ast_env *env,
+		ast_slot_id slot_id)
+{
+	struct ast_env_slot slot = ast_env_slot(ctx, env, slot_id);
+
+	switch (slot.kind) {
+		case AST_SLOT_CONS:
+			if (slot.cons.def == ctx->cons.func) {
+				return true;
+			}
+			break;
+
+		case AST_SLOT_CONST_TYPE:
+			if (stg_type_is_func(ctx->vm, slot.const_type)) {
+				return true;
+			}
+			break;
+
+		default:
+			break;
+	}
+
+	return false;
+}
+
 struct ast_templ_node_data {
 	struct ast_object_def def;
 	struct ast_node *node;
@@ -650,24 +676,74 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 			break;
 
 		case AST_NODE_CALL:
+			ast_node_resolve_slots(ctx, mod, env, node->call.func);
+
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				ast_node_resolve_slots(ctx, mod, env,
+						node->call.args[i].value);
+			}
+
 			{
-				struct object func_type_obj;
-				int err;
-				err = ast_slot_pack(ctx, mod, env,
-						ast_node_type(ctx, env, node->call.func),
-						&func_type_obj);
+#define FUNC_TYPE_KIND_UNKN 0
+#define FUNC_TYPE_KIND_FUNC 1
+#define FUNC_TYPE_KIND_CONS 2
+				int func_type_kind = FUNC_TYPE_KIND_UNKN;
 
-				assert_type_equals(ctx->vm, ctx->types.type, func_type_obj.type);
-				type_id func_type = *(type_id *)func_type_obj.data;
+				switch (node->call.func->kind) {
+					case AST_NODE_FUNC:
+					case AST_NODE_FUNC_NATIVE:
+						func_type_kind = FUNC_TYPE_KIND_FUNC;
+						break;
 
-				bool is_func_type = true;
+					case AST_NODE_TEMPL:
+						func_type_kind = FUNC_TYPE_KIND_CONS;
+						break;
 
-				if (func_type == ctx->types.cons) {
+					case AST_NODE_CALL:
+					case AST_NODE_CONS:
+					case AST_NODE_SLOT:
+						{
+							struct ast_env_slot func_type_slot;
+							func_type_slot = ast_env_slot(ctx, env,
+									ast_node_type(ctx, env, node->call.func));
+
+							switch (func_type_slot.kind) {
+								case AST_SLOT_CONS:
+									if (func_type_slot.cons.def == ctx->cons.func) {
+										func_type_kind = FUNC_TYPE_KIND_FUNC;
+									}
+									break;
+
+								case AST_SLOT_CONST_TYPE:
+									if (stg_type_is_func(ctx->vm, func_type_slot.const_type)) {
+										func_type_kind = FUNC_TYPE_KIND_FUNC;
+									} else if (func_type_slot.const_type == ctx->types.cons) {
+										func_type_kind = FUNC_TYPE_KIND_CONS;
+									}
+									break;
+
+								default:
+									break;
+							}
+						}
+						break;
+
+					case AST_NODE_LOOKUP:
+						panic("Got lookup as target for call.");
+						break;
+
+					case AST_NODE_FUNC_UNINIT:
+						panic("Got uninitialized node as target for call.");
+						break;
+				}
+
+				if (func_type_kind == FUNC_TYPE_KIND_CONS) {
 					struct object func_obj;
 					int err;
 
 					err = ast_node_eval(ctx, mod, env,
 							node->call.func, &func_obj);
+					assert(!err);
 					assert_type_equals(ctx->vm, ctx->types.cons, func_obj.type);
 
 					struct ast_object_def *cons;
@@ -677,31 +753,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					templ_data = (struct ast_templ_node_data *)cons->data;
 					assert(templ_data->node->kind == AST_NODE_TEMPL);
 
-					struct ast_env_slot ret_type_slot;
-					ret_type_slot =
-						ast_env_slot(ctx, &cons->env,
-								ast_node_resolve_slot(env, &cons->ret_type));
-
-					is_func_type = false;
-
-					switch (ret_type_slot.kind) {
-						case AST_SLOT_CONS:
-							if (ret_type_slot.cons.def == ctx->cons.func) {
-								is_func_type = true;
-							}
-							break;
-
-						case AST_SLOT_CONST_TYPE:
-							if (stg_type_is_func(ctx->vm, ret_type_slot.const_type)) {
-								is_func_type = true;
-							}
-							break;
-
-						default:
-							break;
-					}
-
-					if (is_func_type) {
+					if (is_slot_func_type(ctx, &cons->env, cons->ret_type)) {
 						struct ast_node *cons_node;
 
 						cons_node = calloc(1, sizeof(struct ast_node));
@@ -716,6 +768,8 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 						cons_node->call.ret_type =
 							ast_bind_slot_wildcard(ctx, env, AST_BIND_NEW,
 									NULL, AST_SLOT_TYPE);
+
+						func_type_kind = FUNC_TYPE_KIND_FUNC;
 					}
 				}
 
@@ -726,7 +780,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 							node->call.args[i].value);
 				}
 
-				if (is_func_type) {
+				if (func_type_kind != FUNC_TYPE_KIND_CONS) {
 					// If the type is not a cons, we expect it to be a
 					// function. Bind the func to the arguments appropriatly.
 					ast_slot_id arg_type_ids[node->call.num_args];
@@ -781,6 +835,10 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					node->kind = AST_NODE_CONS;
 					node->call.cons = AST_BIND_NEW;
 				}
+
+#undef FUNC_TYPE_KIND_UNKN
+#undef FUNC_TYPE_KIND_FUNC
+#undef FUNC_TYPE_KIND_CONS
 			}
 			// fallthrough
 
