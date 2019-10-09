@@ -181,6 +181,10 @@ static void visit_stmt(struct compile_ctx *ctx, struct ast_module *mod,
 
 	switch (node->type) {
 
+	case ST_NODE_MOD_STMT:
+		ast_namespace_add_import(ctx->ast_ctx, mod, ns, node->MOD_STMT.ident);
+		break;
+
 	case ST_NODE_USE_STMT:
 		break;
 
@@ -339,6 +343,15 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 						.ns = file_ns,
 						.file_name = file_name,
 						.num_unparsed_files = num_unparsed_files);
+			} else if (has_extension(path, STR("module.so")))  {
+				if (mod->has_native_module_ext) {
+					stg_error(&ctx->err, STG_NO_LOC,
+							"Found multiple native module extensions for module.");
+					break;
+				}
+
+				mod->has_native_module_ext = true;
+				string_duplicate(ctx->mem, &mod->native_module_ext, path);
 			}
 		} break;
 
@@ -348,10 +361,13 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 				name.text = f->fts_name;
 				name.length = f->fts_namelen;
 
-				struct atom *atom = vm_atom(ctx->vm, name);
+				// Discard directories named src as those probably contains c-code.
+				if (!string_equal(name, STR("src"))) {
+					struct atom *atom = vm_atom(ctx->vm, name);
 
-				dir_ns = ast_namespace_add_ns(
-						ctx->ast_ctx, &mod->env, dir_ns, atom);
+					dir_ns = ast_namespace_add_ns(
+							ctx->ast_ctx, &mod->env, dir_ns, atom);
+				}
 			}
 			break;
 
@@ -528,7 +544,14 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 					discover_module_files(ctx, data->mod,
 							data->module_src_dir,
 							&data->num_unparsed_files);
-				} else {
+				}
+
+				if (!data->native_mod && data->mod->has_native_module_ext) {
+					data->native_mod = stg_native_load_module_ext(
+							ctx->vm, data->mod->native_module_ext);
+				}
+
+				if (!should_discover_files) {
 					data->state = JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES;
 					return JOB_YIELD;
 				}

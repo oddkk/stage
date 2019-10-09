@@ -560,6 +560,9 @@ struct ast_module {
 	size_t num_dependencies;
 
 	struct object instance;
+
+	bool has_native_module_ext;
+	struct string native_module_ext;
 };
 
 int

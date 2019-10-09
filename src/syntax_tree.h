@@ -97,6 +97,9 @@ extern struct string st_node_names[ST_NODES_LEN];
 		TREE_VISIT_NODE((node), ENUM_ITEM, data);		\
 		break;											\
 														\
+	case ST_NODE_MOD_STMT:								\
+		break;											\
+														\
 	case ST_NODE_USE_STMT:								\
 		TREE_VISIT_NODE((node), USE_STMT, ident);		\
 		break;											\

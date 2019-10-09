@@ -7,7 +7,7 @@ re2c ./src/parser.y.re2c -o ./src/parser.y.c || exit
 
 SRC=$(find ./src/ -name *.c)
 
-FLAGS="-lssl -lcrypto -lffi"
+FLAGS="-lssl -lcrypto -lffi -ldl"
 
 FLAGS="$FLAGS $(libftdi1-config --libs) $(libftdi1-config --cflags) -DSTAGE_DMX"
 

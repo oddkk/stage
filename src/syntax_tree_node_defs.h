@@ -36,6 +36,10 @@ ST_NODE(USE_STMT, struct {
 	struct st_node *ident;
 })
 
+ST_NODE(MOD_STMT, struct {
+	struct atom *ident;
+})
+
 ST_NODE(USE_ALL, struct {
 	int _dc;
 })

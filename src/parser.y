@@ -124,12 +124,12 @@ struct YYLTYPE
 }
 
 %token END 0
-%token IDENTIFIER NUMLIT STRINGLIT
-%token NAMESPACE "namespace" ENUM "Enum" USE "use"
+%token IDENTIFIER "identifier" NUMLIT "number" STRINGLIT "string"
+%token NAMESPACE "namespace" ENUM "Enum" USE "use" MOD "mod"
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>"
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg
 
 
 %type <struct atom *> IDENTIFIER
@@ -170,6 +170,7 @@ stmt:			stmt1					{ $$ = MKNODE(STMT, .stmt=$1); }
 		;
 
 stmt1:			';'                     { $$ = NULL; }
+		|		mod_stmt    ';'         { $$ = $1; }
 		|		use_stmt    ';'         { $$ = $1; }
 		|		assign_stmt ';'         { $$ = $1; }
 		|		expr        ';'         { $$ = $1; }
@@ -240,6 +241,9 @@ enum_item:		IDENTIFIER                 { $$ = MKNODE(ENUM_ITEM, .name=$1); }
 		;
 
 */
+
+mod_stmt:		"mod" IDENTIFIER           { $$ = MKNODE(MOD_STMT, .ident=$2); }
+		;
 
 use_stmt:		"use" use_expr             { $$ = MKNODE(USE_STMT, .ident=$2); }
 		;
@@ -398,6 +402,7 @@ re2c:define:YYFILL:naked = 1;
 /* "output"      { lloc_col(ctx, lloc, CURRENT_LEN); return OUTPUT; } */
 /* "attr"        { lloc_col(ctx, lloc, CURRENT_LEN); return ATTR; } */
 /* "default"     { lloc_col(ctx, lloc, CURRENT_LEN); return DEFAULT; } */
+"mod"         { lloc_col(ctx, lloc, CURRENT_LEN); return MOD; }
 "Enum"        { lloc_col(ctx, lloc, CURRENT_LEN); return ENUM; }
 "namespace"   { lloc_col(ctx, lloc, CURRENT_LEN); return NAMESPACE; }
 "use"         { lloc_col(ctx, lloc, CURRENT_LEN); return USE; }
