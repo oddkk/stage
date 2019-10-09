@@ -1,5 +1,5 @@
 #include "channel.h"
-#include "../base/mod.h"
+#include "base/mod.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -7,7 +7,7 @@ struct channel_system *
 get_channel_system(struct vm *vm)
 {
 	struct stg_module *mod;
-	mod = vm_get_module(vm, STR(MOD_CHANNEL));
+	mod = vm_get_module(vm, STR("channel"));
 	assert(mod != NULL);
 	return (struct channel_system *)mod->data;
 }
@@ -228,13 +228,11 @@ bind_channel(struct stg_module *mod, struct channel_system *cnls, channel_id src
 	cnl->kind = CHANNEL_BOUND;
 	cnl->src = src;
 
-	type_id res_type;
-	if (!unify_types(mod->vm, &mod->store, cnl->out_type, src_cnl->out_type, &res_type)) {
+	if (!type_equals(mod->vm, cnl->out_type, src_cnl->out_type)) {
 		printf("Channel types does not match (%zu != %zu).\n",
 				cnl->out_type, src_cnl->out_type);
 		return -1;
 	}
-	cnl->out_type = res_type;
 
 	uintmax_t *this_deps = get_downstream_channels(cnls, dest);
 	refresh_channel_dep_mask(cnls, this_deps, dest);
@@ -254,13 +252,11 @@ bind_channel_const(struct stg_module *mod, struct channel_system *cnls, channel_
 	cnl->kind = CHANNEL_CONSTANT;
 	cnl->constant = val;
 
-	type_id res_type;
-	if (!unify_types(mod->vm, &mod->store, cnl->out_type, val.type, &res_type)) {
+	if (!type_equals(mod->vm, cnl->out_type, val.type)) {
 		printf("Channel types does not match (%zu != %zu).\n",
 				cnl->out_type, val.type);
 		return -1;
 	}
-	cnl->out_type = res_type;
 
 	return 0;
 }
@@ -269,7 +265,7 @@ int
 bind_channel_callback(struct stg_module *mod,
 					  struct channel_system *cnls, channel_id cnl_id,
 					  channel_id *inputs, size_t num_inputs,
-					  struct object callback, void *data)
+					  func_id func, void *data)
 {
 	struct channel *cnl = &cnls->channels[cnl_id];
 
@@ -278,19 +274,18 @@ bind_channel_callback(struct stg_module *mod,
 	cnl->kind = CHANNEL_CALLBACK;
 	cnl->callback.num_inputs = num_inputs;
 	cnl->callback.inputs = inputs;
-	cnl->callback.func = callback;
+	cnl->callback.func = func;
 	cnl->callback.user_data = data;
 
-	struct type *func_type = vm_get_type(cnls->vm, callback.type);
-	struct type_func *func_data = func_type->data;
+	struct func *func_inst = vm_get_func(cnls->vm, func);
+	struct type *func_type = vm_get_type(cnls->vm, func_inst->type);
+	struct stg_func_type *func_data = func_type->data;
 
-	type_id res_type;
-	if (!unify_types(mod->vm, &mod->store, cnl->out_type, func_data->ret, &res_type)) {
+	if (!type_equals(mod->vm, cnl->out_type, func_data->return_type)) {
 		printf("Channel types does not match (%zu != %zu).\n",
-				cnl->out_type, func_data->ret);
+				cnl->out_type, func_data->return_type);
 		return -1;
 	}
-	cnl->out_type = res_type;
 
 	uintmax_t *this_deps = get_downstream_channels(cnls, cnl_id);
 	refresh_channel_dep_mask(cnls, this_deps, cnl_id);
@@ -314,6 +309,7 @@ mark_channel_notify(struct channel_system *cnls, channel_id cnl)
 	mark_channel(cnls->notify_channels, cnl);
 }
 
+/*
 struct object
 eval_channel(struct vm *vm, struct channel_system *cnls, struct exec_stack *stack, channel_id cnl_id)
 {
@@ -380,6 +376,7 @@ eval_channel(struct vm *vm, struct channel_system *cnls, struct exec_stack *stac
 	panic("Invalid channel kind.");
 	return OBJ_NONE;
 }
+*/
 
 static inline int
 channel_ffs(uintmax_t val)
@@ -398,6 +395,7 @@ channel_do_notify(struct channel_system *cnls, channel_id id)
 {
 	printf("Notify %zu\n", id);
 
+	/*
 	struct exec_stack stack;
 	struct arena mem = arena_push(&cnls->vm->memory);
 
@@ -406,6 +404,7 @@ channel_do_notify(struct channel_system *cnls, channel_id id)
 	eval_channel(cnls->vm, cnls, &stack, id);
 
 	arena_pop(&cnls->vm->memory, mem);
+	*/
 }
 
 static void *

@@ -21,9 +21,8 @@ struct channel {
 		struct object constant;
 		struct {
 			size_t num_inputs;
-			type_id func_type;
-			struct object func;
 			channel_id *inputs;
+			func_id func;
 			void *user_data;
 		} callback;
 	};
@@ -78,7 +77,7 @@ bind_channel_const(struct stg_module *, struct channel_system *, channel_id, str
 int
 bind_channel_callback(struct stg_module *, struct channel_system *, channel_id,
 					  channel_id *inputs, size_t num_inputs,
-					  struct object callback, void *data);
+					  func_id func, void *data);
 
 void
 mark_channel_dirty(struct channel_system *, channel_id);
