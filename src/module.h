@@ -23,8 +23,24 @@ struct stg_module_info {
 	int  (*start)(struct stg_module *);
 };
 
+enum stg_module_lifetime {
+	STG_MOD_LIFE_INIT = 0,
+	STG_MOD_LIFE_IDLE,
+	STG_MOD_LIFE_RUNNING,
+	STG_MOD_LIFE_DESTROYED,
+};
+
+static inline bool
+stg_mod_state_ok(enum stg_module_lifetime state) {
+	return
+		state == STG_MOD_LIFE_IDLE ||
+		state == STG_MOD_LIFE_RUNNING;
+}
+
 struct stg_module {
 	unsigned int id;
+	enum stg_module_lifetime state;
+
 	struct stg_module_info info;
 
 	struct objstore store;

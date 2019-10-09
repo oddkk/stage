@@ -419,7 +419,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 				lookup_mod = vm_get_module(ctx->vm, data->module_name->name);
 
-				if (lookup_mod) {
+				if (lookup_mod && stg_mod_state_ok(lookup_mod->state)) {
 					if (data->out_module) {
 						*data->out_module = &lookup_mod->mod;
 					}
@@ -625,6 +625,9 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			printf("\n");
 			ast_env_print(ctx->vm, &data->mod->env);
 #endif
+
+			assert(data->stg_mod->state == STG_MOD_LIFE_INIT);
+			data->stg_mod->state = STG_MOD_LIFE_IDLE;
 
 			if (data->out_module) {
 				*data->out_module = data->mod;
