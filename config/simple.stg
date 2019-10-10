@@ -1,4 +1,4 @@
-mod channel;
+use mod channel;
 
 asdf := 2 * 4;
 foo := (a: int) => a * a + 2;
@@ -6,3 +6,5 @@ foo := (a: int) => a * a + 2;
 print(asdf);
 print(foo(10));
 print(foo(20));
+
+intcnl := Channel(int);
