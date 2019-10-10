@@ -749,16 +749,12 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					struct ast_object_def *cons;
 					cons = *(struct ast_object_def **)func_obj.data;
 
-					struct ast_templ_node_data *templ_data;
-					templ_data = (struct ast_templ_node_data *)cons->data;
-					assert(templ_data->node->kind == AST_NODE_TEMPL);
-
 					if (is_slot_func_type(ctx, &cons->env, cons->ret_type)) {
 						struct ast_node *cons_node;
 
 						cons_node = calloc(1, sizeof(struct ast_node));
 						cons_node->kind = AST_NODE_CONS;
-						cons_node->loc = templ_data->node->loc;
+						cons_node->loc = node->loc;
 
 						cons_node->call.func = node->call.func;
 						node->call.func = cons_node;
