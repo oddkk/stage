@@ -230,6 +230,7 @@ ast_namespace_add_import(struct ast_context *ctx, struct ast_module *mod,
 	value.import.value =
 		ast_module_add_dependency(ctx, mod, name);
 
+	ast_namespace_insert(ns, value);
 }
 
 

@@ -251,6 +251,7 @@ use_stmt:		"use" use_expr             { $$ = MKNODE(USE_STMT, .ident=$2); }
 use_expr:		use_expr1                  { $$ = $1; }
 		|		use_expr1 '.' '*'
 					{ $$ = MKNODE(ACCESS, .lhs=$1, .rhs=alloc_node(ctx, ST_NODE_USE_ALL)); }
+		|		mod_stmt                   { $$ = $1; }
 		;
 
 use_expr1:		use_expr1 '.' ident        { $$ = MKNODE(ACCESS, .lhs=$1, .rhs=$3); }

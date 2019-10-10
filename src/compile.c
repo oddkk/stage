@@ -186,6 +186,25 @@ static void visit_stmt(struct compile_ctx *ctx, struct ast_module *mod,
 		break;
 
 	case ST_NODE_USE_STMT:
+		{
+			struct st_node *target;
+			target = node->USE_STMT.ident;
+
+			switch (target->type) {
+				case ST_NODE_MOD_STMT:
+					{
+						ast_slot_id dep_obj;
+						dep_obj = ast_module_add_dependency(ctx->ast_ctx, mod,
+								target->MOD_STMT.ident);
+						ast_namespace_use(ctx->ast_ctx, mod,
+								ns, dep_obj);
+					}
+					break;
+
+				default:
+					break;
+			}
+		}
 		break;
 
 	case ST_NODE_ASSIGN_STMT:
