@@ -25,6 +25,7 @@ ST_NODE(OBJ_DECL, struct {
 
 ST_NODE(ENUM_DECL, struct {
 	struct st_node *items;
+	struct st_node *params;
 })
 
 ST_NODE(ENUM_ITEM, struct {
@@ -57,6 +58,8 @@ ST_NODE(ASSIGN_STMT, struct {
 	struct st_node *ident;
 	struct st_node *type;
 	struct st_node *body;
+	bool decl;
+	bool overridable;
 })
 
 ST_NODE(BIND, struct {
@@ -93,6 +96,16 @@ ST_NODE(LAMBDA, struct {
 ST_NODE(FUNC_CALL, struct {
 	struct st_node *ident;
 	struct st_node *params;
+})
+
+ST_NODE(OBJECT_INST, struct {
+	struct st_node *name;
+	struct st_node *body;
+})
+
+ST_NODE(OBJECT_DECL, struct {
+	struct st_node *params;
+	struct st_node *body;
 })
 
 ST_NODE(TUPLE_DECL, struct {
