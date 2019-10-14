@@ -17,6 +17,13 @@
 	OP(LTE, "<=")								\
 	OP(GT, ">")									\
 	OP(LT, "<")									\
+	OP(BAND, "&")								\
+	OP(BOR, "|")								\
+	OP(BXOR, "|")								\
+	OP(LAND, "&&")								\
+	OP(LOR, "||")								\
+	OP(LSFT, "<<")								\
+	OP(RSFT, ">>")								\
 	OP(BIND, "->")								\
 	OP(SUBSCRIPT, "[]")							\
 

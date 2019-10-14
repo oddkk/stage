@@ -127,9 +127,9 @@ struct YYLTYPE
 %token IDENTIFIER "identifier" NUMLIT "number" STRINGLIT "string"
 %token NAMESPACE "namespace" ENUM "Enum" USE "use" MOD "mod"
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
-%token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>"
-
 %type <struct st_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg
+%token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
+%token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>"
 
 
 %type <struct atom *> IDENTIFIER
@@ -138,8 +138,14 @@ struct YYLTYPE
 
 %right "->"
 %left "<-"
+%left "||"
+%left "&&"
 %left '<' '>' "<=" ">=" "!=" "=="
 %nonassoc ".."
+%left '|'
+%left '^'
+%left '&'
+%left "<<" ">>"
 %left '+' '-'
 %left '*' '/'
 %left '.' '[' '{' '('
@@ -293,6 +299,16 @@ expr1:			l_expr                  { $$ = $1; }
 		|		expr1 ">=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_GTE); }
 		|		expr1 '<'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LT);  }
 		|		expr1 '>'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_GT);  }
+
+		|		expr1 "&&" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LAND);}
+		|		expr1 "||" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LOR); }
+
+		|		expr1 '&' expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BAND);}
+		|		expr1 '|' expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BOR); }
+		|		expr1 '^' expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BXOR);}
+		|		expr1 ">>" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LSFT);}
+		|		expr1 "<<" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_RSFT);}
+
 		|		expr1 "->" expr1        { $$ = MKNODE(BIND, .src=$1, .drain=$3);  }
 		|		expr1 "<-" expr1        { $$ = MKNODE(BIND, .drain=$1, .src=$3);  }
 		|		'(' expr ')'            { $$ = $2;  }
@@ -418,6 +434,12 @@ re2c:define:YYFILL:naked = 1;
 ">="          { lloc_col(ctx, lloc, CURRENT_LEN); return GTE; }
 "=>"          { lloc_col(ctx, lloc, CURRENT_LEN); return LAMBDA; }
 
+"&&"          { lloc_col(ctx, lloc, CURRENT_LEN); return LOGIC_AND; }
+"||"          { lloc_col(ctx, lloc, CURRENT_LEN); return LOGIC_OR; }
+
+">>"          { lloc_col(ctx, lloc, CURRENT_LEN); return LEFT_SHIFT; }
+"<<"          { lloc_col(ctx, lloc, CURRENT_LEN); return RIGHT_SHIFT; }
+
 "\x00"        { lloc_col(ctx, lloc, CURRENT_LEN); return END; }
 "\r\n" | [\r\n] { lloc_line(ctx, lloc); return yylex(lval, lloc, ctx); }
  "#" [^\r\n]*  { lloc_col(ctx, lloc, CURRENT_LEN); return yylex(lval, lloc, ctx); }
@@ -444,12 +466,12 @@ re2c:define:YYFILL:naked = 1;
 	return NUMLIT;
  }
 
-[-+*/:;={}()\[\].,_$@\\] {
+[-+*/:;={}()\[\].,_$@\\~&^] {
 	lloc_col(ctx, lloc, CURRENT_LEN);
 	return *ctx->tok;
  }
 
-"op" ([-+*/:;={}()\[\].,_$@\\] | "->" | "<-" | "==" | "!=" | "<=" | ">=") {
+"op" ([-+*/:;={}()\[\].,_$@\\~&|^] | "->" | "<-" | "==" | "!=" | "<=" | ">=" | "~=" | "&&" | "||" | ">>" | "<<") {
 	lloc_col(ctx, lloc, CURRENT_LEN);
 	lval->IDENTIFIER = atom_create(ctx->atom_table, CURRENT_TOKEN);
 	return IDENTIFIER;
