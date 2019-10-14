@@ -254,6 +254,53 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			ast_print_internal(ctx, env, node->templ.body, depth + 2);
 			break;
 
+		case AST_NODE_COMPOSITE:
+			print_indent(depth);
+			printf("composite:\n");
+			for (size_t i = 0; i < node->composite.num_members; i++) {
+				print_indent(depth + 1);
+				printf("%.*s:\n", ALIT(node->composite.members[i].name));
+				print_indent(depth + 2);
+				printf("type:\n");
+				ast_print_internal(ctx, env, node->composite.members[i].type, depth + 3);
+			}
+
+			print_indent(depth + 1);
+			printf("binds:\n");
+			for (size_t i = 0; i < node->composite.num_binds; i++) {
+				print_indent(depth + 2);
+				printf("target:\n");
+				ast_print_internal(ctx, env,
+						node->composite.binds[i].target, depth + 3);
+				print_indent(depth + 2);
+				printf("value%s:\n",
+						node->composite.binds[i].overridable
+						? " (overridable)" : "");
+				ast_print_internal(ctx, env,
+						node->composite.binds[i].value, depth + 3);
+			}
+
+			print_indent(depth + 1);
+			printf("free exprs:\n");
+			for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
+				ast_print_internal(ctx, env,
+						node->composite.free_exprs[i], depth + 3);
+			}
+			break;
+
+		case AST_NODE_VARIANT:
+			print_indent(depth);
+			printf("variant:\n");
+			for (size_t i = 0; i < node->variant.num_variants; i++) {
+				print_indent(depth + 1);
+				printf("%.*s:\n", ALIT(node->variant.variants[i].name));
+				print_indent(depth + 2);
+				printf("type:\n");
+				ast_print_internal(ctx, env,
+						node->variant.variants[i].type, depth + 3);
+			}
+			break;
+
 		case AST_NODE_SLOT:
 			print_indent(depth);
 			printf("slot ");

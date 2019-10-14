@@ -1532,6 +1532,37 @@ ast_node_deep_copy_internal(
 		DCP_SLOT(lookup.value);
 		break;
 
+	case AST_NODE_COMPOSITE:
+		DCP_DLIST(composite.members, composite.num_members);
+		for (size_t i = 0; i < result->composite.num_members; i++) {
+			DCP_LIT(composite.members[i].name);
+			DCP_NODE(composite.members[i].type);
+		}
+
+		DCP_DLIST(composite.binds, composite.num_binds);
+		for (size_t i = 0; i < result->composite.num_binds; i++) {
+			DCP_NODE(composite.binds[i].target);
+			DCP_NODE(composite.binds[i].value);
+			DCP_LIT(composite.binds[i].overridable);
+		}
+
+		DCP_DLIST(composite.free_exprs, composite.num_free_exprs);
+		for (size_t i = 0; i < result->composite.num_free_exprs; i++) {
+			DCP_NODE(composite.free_exprs[i]);
+		}
+
+		DCP_SLOT(composite.ret_value);
+		break;
+
+	case AST_NODE_VARIANT:
+		DCP_DLIST(variant.variants, variant.num_variants);
+		for (size_t i = 0; i < result->variant.num_variants; i++) {
+			DCP_LIT(variant.variants[i].name);
+			DCP_NODE(variant.variants[i].type);
+		}
+
+		DCP_SLOT(variant.ret_value);
+		break;
 	}
 
 #undef DCP_NODE

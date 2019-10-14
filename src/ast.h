@@ -282,6 +282,10 @@ enum ast_node_kind {
 	AST_NODE_SLOT,
 	AST_NODE_LOOKUP,
 
+	// Datatype declarations
+	AST_NODE_COMPOSITE,
+	AST_NODE_VARIANT,
+
 	AST_NODE_FUNC_UNINIT,
 };
 
@@ -302,6 +306,22 @@ struct ast_template_param {
 	struct atom *name;
 	ast_slot_id slot;
 	struct stg_location loc;
+};
+
+struct ast_datatype_variant {
+	struct atom *name;
+	struct ast_node *type;
+};
+
+struct ast_datatype_member {
+	struct atom *name;
+	struct ast_node *type;
+};
+
+struct ast_datatype_bind {
+	struct ast_node *target;
+	struct ast_node *value;
+	bool overridable;
 };
 
 // defined in ast_nodes.c
@@ -370,6 +390,28 @@ struct ast_node {
 			ast_slot_id slot;
 			ast_slot_id value;
 		} lookup;
+
+		struct {
+			struct ast_datatype_member *members;
+			size_t num_members;
+
+			struct ast_datatype_bind *binds;
+			size_t num_binds;
+
+			struct ast_node **free_exprs;
+			size_t num_free_exprs;
+
+			ast_slot_id cons;
+
+			ast_slot_id ret_value;
+		} composite;
+
+		struct {
+			struct ast_datatype_variant *variants;
+			size_t num_variants;
+
+			ast_slot_id ret_value;
+		} variant;
 	};
 };
 
@@ -427,6 +469,28 @@ ast_node_func_register_templ_param(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *func, struct atom *name,
 		struct stg_location loc, ast_slot_id type_slot);
+
+struct ast_node *
+ast_init_node_composite(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location);
+
+int
+ast_node_composite_add_member(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct atom *name,
+		struct ast_node *type);
+
+void
+ast_node_composite_bind(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *composite, struct ast_node *target,
+		struct ast_node *value, bool overridable);
+
+void
+ast_node_composite_add_free_expr(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct ast_node *expr);
 
 void
 ast_node_substitute_slot(struct ast_node *,

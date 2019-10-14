@@ -263,6 +263,109 @@ ast_node_func_register_templ_param(
 	return tmpl_param.slot;
 }
 
+struct ast_node *
+ast_init_node_composite(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location loc)
+{
+	if (target == AST_NODE_NEW) {
+		target = calloc(sizeof(struct ast_node), 1);
+	}
+
+	memset(target, 0, sizeof(struct ast_node));
+	target->kind = AST_NODE_COMPOSITE;
+	target->loc = loc;
+
+	target->composite.cons =
+		ast_bind_slot_cons(ctx, env, AST_BIND_NEW, NULL, NULL);
+
+	target->composite.ret_value =
+		ast_bind_slot_wildcard(
+				ctx, env, AST_BIND_NEW, NULL,
+				AST_SLOT_TYPE);
+
+	return target;
+}
+
+ast_slot_id
+ast_node_composite_add_member(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct atom *name,
+		struct ast_node *type)
+{
+	assert(target && name);
+	assert(target->kind == AST_NODE_COMPOSITE);
+
+	for (size_t i = 0; i < target->composite.num_members; i++) {
+		if (target->composite.members[i].name == name) {
+			return -1;
+		}
+	}
+
+	struct ast_datatype_member new_member = {0};
+	new_member.name = name;
+	new_member.type = type;
+
+	ast_slot_id value_slot;
+	value_slot = ast_unpack_arg_named(ctx, env,
+			target->composite.cons,
+			AST_BIND_NEW, name);
+
+	if (!new_member.type) {
+		new_member.type = ast_init_node_slot(
+				ctx, env, AST_NODE_NEW, STG_NO_LOC,
+				ast_bind_slot_wildcard(ctx, env,
+					ast_env_slot(ctx, env, value_slot).type,
+					NULL, AST_SLOT_TYPE));
+	} else {
+		ast_union_slot(ctx, env,
+				ast_env_slot(ctx, env, value_slot).type,
+				ast_node_value(ctx, env, new_member.type));
+	}
+
+	dlist_append(
+			target->composite.members,
+			target->composite.num_members,
+			&new_member);
+
+	return 0;
+}
+
+void
+ast_node_composite_bind(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *composite, struct ast_node *target,
+		struct ast_node *value, bool overridable)
+{
+	assert(composite && target && value);
+	assert(composite->kind == AST_NODE_COMPOSITE);
+
+	struct ast_datatype_bind new_bind = {0};
+
+	new_bind.target = target;
+	new_bind.value = value;
+	new_bind.overridable = overridable;
+
+	dlist_append(
+			composite->composite.binds,
+			composite->composite.num_binds,
+			&new_bind);
+}
+
+void
+ast_node_composite_add_free_expr(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct ast_node *expr)
+{
+	assert(target && expr);
+
+	dlist_append(
+			target->composite.free_exprs,
+			target->composite.num_free_exprs,
+			&expr);
+}
+
+
 ast_slot_id
 ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
 {
@@ -287,6 +390,12 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 		case AST_NODE_LOOKUP:
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->lookup.slot)).type;
+
+		case AST_NODE_COMPOSITE:
+			return AST_SLOT_TYPE;
+
+		case AST_NODE_VARIANT:
+			return AST_SLOT_TYPE;
 	}
 
 	panic("Invalid ast node.");
@@ -314,6 +423,12 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 
 		case AST_NODE_TEMPL:
 			return ast_node_resolve_slot(env, &node->templ.slot);
+
+		case AST_NODE_COMPOSITE:
+			return ast_node_resolve_slot(env, &node->composite.ret_value);
+
+		case AST_NODE_VARIANT:
+			return ast_node_resolve_slot(env, &node->variant.ret_value);
 
 		case AST_NODE_FUNC_UNINIT:
 			panic("Attempted to resolve value of uninitialized func.");
@@ -387,6 +502,32 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 				} else {
 					result = AST_NODE_DEPS_NOT_READY;
 				}
+			}
+			break;
+
+		case AST_NODE_COMPOSITE:
+			for (size_t i = 0; i < node->composite.num_members; i++) {
+				result &= ast_node_dependencies_fulfilled(
+						ctx, env, node->composite.members[i].type);
+			}
+
+			for (size_t i = 0; i < node->composite.num_binds; i++) {
+				result &= ast_node_dependencies_fulfilled(
+						ctx, env, node->composite.binds[i].target);
+				result &= ast_node_dependencies_fulfilled(
+						ctx, env, node->composite.binds[i].value);
+			}
+
+			for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
+				result &= ast_node_dependencies_fulfilled(
+						ctx, env, node->composite.free_exprs[i]);
+			}
+			break;
+
+		case AST_NODE_VARIANT:
+			for (size_t i = 0; i < node->composite.num_members; i++) {
+				result &= ast_node_dependencies_fulfilled(
+						ctx, env, node->variant.variants[i].type);
 			}
 			break;
 
@@ -527,6 +668,32 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 			if (!result) {
 				stg_error(ctx->err, node->loc,
 						"Failed to resolve expression.");
+			}
+			break;
+
+		case AST_NODE_COMPOSITE:
+			for (size_t i = 0; i < node->composite.num_members; i++) {
+				result &= ast_node_is_typed(ctx, env,
+						node->composite.members[i].type);
+			}
+
+			for (size_t i = 0; i < node->composite.num_binds; i++) {
+				result &= ast_node_is_typed(ctx, env,
+						node->composite.binds[i].target);
+				result &= ast_node_is_typed(ctx, env,
+						node->composite.binds[i].value);
+			}
+
+			for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
+				result &= ast_node_is_typed(ctx, env,
+						node->composite.free_exprs[i]);
+			}
+			break;
+
+		case AST_NODE_VARIANT:
+			for (size_t i = 0; i < node->composite.num_members; i++) {
+				result &= ast_node_is_typed(ctx, env,
+						node->variant.variants[i].type);
 			}
 			break;
 
@@ -734,6 +901,9 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 					case AST_NODE_FUNC_UNINIT:
 						panic("Got uninitialized node as target for call.");
+						break;
+
+					default:
 						break;
 				}
 
@@ -946,6 +1116,47 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					result = false;
 				}
 			}
+			break;
+
+		case AST_NODE_COMPOSITE:
+			for (size_t i = 0; i < node->composite.num_members; i++) {
+				result &= ast_node_resolve_slots(ctx, mod, env,
+						node->composite.members[i].type);
+			}
+
+			for (size_t i = 0; i < node->composite.num_binds; i++) {
+				result &= ast_node_resolve_slots(ctx, mod, env,
+						node->composite.binds[i].target);
+				result &= ast_node_resolve_slots(ctx, mod, env,
+						node->composite.binds[i].value);
+			}
+
+			for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
+				result &= ast_node_resolve_slots(ctx, mod, env,
+						node->composite.free_exprs[i]);
+			}
+
+			{
+				/*
+				struct object_decons_member members[node->composite.num_members];
+				for (size_t i = 0; i < node->composite.num_members; i++) {
+					members[i].name = node->composite.members[i].name;
+					members[i].type = node->composite.members[i].name;
+				}
+				*/
+				// TODO: Create topological order of initialization.
+				// TODO: Create type.
+			}
+			break;
+
+
+		case AST_NODE_VARIANT:
+			for (size_t i = 0; i < node->variant.num_variants; i++) {
+				result &= ast_node_resolve_slots(ctx, mod, env,
+						node->variant.variants[i].type);
+			}
+
+			// TODO: Make the new type.
 			break;
 
 		case AST_NODE_FUNC_UNINIT:

@@ -324,6 +324,111 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 				func, func_args, num_args);
 	} break;
 
+	case ST_NODE_OBJECT_DECL:
+	{
+		struct ast_node *struct_node;
+		struct_node = ast_init_node_composite(
+				ctx, env, AST_NODE_NEW, node->loc);
+
+		struct st_node *member;
+		member = node->OBJECT_INST.body;
+		while (member) {
+			assert(member->type == ST_NODE_STMT);
+			assert(member->STMT.stmt);
+
+			switch (member->STMT.stmt->type) {
+				case ST_NODE_USE_STMT:
+					panic("TODO: Use statement in composite datatype");
+					break;
+
+				case ST_NODE_ASSIGN_STMT:
+					{
+						struct st_node *assign = member->STMT.stmt;
+
+						struct ast_node *target =
+							st_node_visit_expr(
+									ctx, env, NULL,
+									assign->ASSIGN_STMT.ident);
+
+						struct st_node *expr_node;
+						struct ast_node *expr = NULL;
+
+						expr_node = assign->ASSIGN_STMT.body;
+						if (expr_node) {
+							expr = st_node_visit_expr(
+									ctx, env, NULL, expr_node);
+						}
+
+						bool overridable;
+						overridable = assign->ASSIGN_STMT.overridable;
+
+
+						if (assign->ASSIGN_STMT.decl) {
+							struct st_node *type_node;
+							struct ast_node *type = NULL;
+
+							// TODO: Allow more complex targets.
+							assert(target->kind == AST_NODE_LOOKUP);
+							struct atom *name = target->lookup.name;
+
+							type_node = assign->ASSIGN_STMT.type;
+							if (type_node) {
+								type = st_node_visit_expr(
+										ctx, env, NULL, type_node);
+							}
+
+							assert(expr || type);
+
+							int err;
+							err = ast_node_composite_add_member(
+									ctx, env, struct_node,
+									name, type);
+							if (err) {
+								stg_error(ctx->err, target->loc,
+										"'%.*s' is already declared.",
+										ALIT(name));
+								return NULL;
+							}
+						} else {
+							assert(!assign->ASSIGN_STMT.type);
+							assert(expr);
+						}
+
+						if (expr) {
+							ast_node_composite_bind(
+									ctx, env, struct_node,
+									target, expr, overridable);
+						}
+					}
+					break;
+
+				default:
+					{
+						struct st_node *expr_node;
+						expr_node = member->STMT.stmt;
+
+						struct ast_node *expr;
+						expr = st_node_visit_expr(
+								ctx, env, NULL, expr_node);
+
+
+						ast_node_composite_add_free_expr(
+								ctx, env, struct_node, expr);
+					}
+					break;
+			}
+
+			member = member->next_sibling;
+		}
+
+		return struct_node;
+	}
+
+	case ST_NODE_OBJECT_INST:
+	{
+		break;
+	}
+
 	case ST_NODE_TUPLE_DECL: {
 		/*
 		struct expr_node *first_arg = NULL, *last_arg = NULL;

@@ -308,6 +308,16 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				}
 			}
 			break;
+
+		case AST_NODE_COMPOSITE:
+			// TODO: Popuplate scope.
+			// TODO: Do lookup.
+			break;
+
+		case AST_NODE_VARIANT:
+			// TODO: Popuplate scope.
+			// TODO: Do lookup.
+			break;
 	}
 }
 
