@@ -310,6 +310,7 @@ ast_node_composite_add_member(
 	value_slot = ast_unpack_arg_named(ctx, env,
 			target->composite.cons,
 			AST_BIND_NEW, name);
+	new_member.slot = value_slot;
 
 	if (!new_member.type) {
 		new_member.type = ast_init_node_slot(

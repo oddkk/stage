@@ -278,16 +278,16 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 				ast_scope_push_func(&templates_scope, scope);
 
-				if (node->func.num_template_params > 0) {
-					templates_scope.num_names = node->func.num_template_params;
+				if (node->templ.num_params > 0) {
+					templates_scope.num_names = node->templ.num_params;
 					templates_scope.names = calloc(
 							templates_scope.num_names, sizeof(struct ast_scope_name));
 
 					for (size_t i = 0; i < templates_scope.num_names; i++) {
 						templates_scope.names[i].name =
-							node->func.template_params[i].name;
+							node->templ.params[i].name;
 						templates_scope.names[i].slot =
-							node->func.template_params[i].slot;
+							node->templ.params[i].slot;
 					}
 				}
 
@@ -310,8 +310,39 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_NODE_COMPOSITE:
-			// TODO: Popuplate scope.
-			// TODO: Do lookup.
+			{
+				struct ast_scope member_scope = {0};
+
+				ast_scope_push_expr(&member_scope, scope);
+
+				struct ast_scope_name names[node->composite.num_members];
+				for (size_t i = 0; i < node->composite.num_members; i++) {
+					names[i].name = node->composite.members[i].name;
+					names[i].slot = ast_unpack_arg_named(
+							ctx, env, node->composite.cons,
+							AST_BIND_NEW, names[i].name);
+				}
+
+				member_scope.names = names;
+				member_scope.num_names = node->composite.num_members;
+
+				for (size_t i = 0; i < node->composite.num_members; i++) {
+					ast_node_resolve_names(ctx, env, native_mod,
+							&member_scope, node->composite.members[i].type);
+				}
+
+				for (size_t i = 0; i < node->composite.num_binds; i++) {
+					ast_node_resolve_names(ctx, env, native_mod,
+							&member_scope, node->composite.binds[i].target);
+					ast_node_resolve_names(ctx, env, native_mod,
+							&member_scope, node->composite.binds[i].value);
+				}
+
+				for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
+					ast_node_resolve_names(ctx, env, native_mod,
+							&member_scope, node->composite.free_exprs[i]);
+				}
+			}
 			break;
 
 		case AST_NODE_VARIANT:
