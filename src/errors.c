@@ -194,11 +194,12 @@ print_errors(struct stg_error_context *err)
 
 			int linum_len = (int)log10((double)msg->loc.line_to) + 1;
 
+			fprintf(out, TC(TC_BRIGHT_BLACK, "%*u:") " ", linum_len, msg->loc.line_from);
+
 			if (ellipse_front) {
 				fprintf(out, " ... ");
 			}
 
-			fprintf(out, TC(TC_BRIGHT_BLACK, "%*u:") " ", linum_len, msg->loc.line_from);
 			fprintf(out, "%.*s" TC(TC_BRIGHT_BLUE, "%.*s") "%.*s",
 				LIT(prefix), LIT(token), LIT(postfix));
 
