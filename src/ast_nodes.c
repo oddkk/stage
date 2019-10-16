@@ -1144,17 +1144,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 						node->composite.free_exprs[i]);
 			}
 
-			{
-				/*
-				struct object_decons_member members[node->composite.num_members];
-				for (size_t i = 0; i < node->composite.num_members; i++) {
-					members[i].name = node->composite.members[i].name;
-					members[i].type = node->composite.members[i].name;
-				}
-				*/
-				// TODO: Create topological order of initialization.
-				// TODO: Create type.
-			}
+			ast_dt_finalize_composite(ctx, mod, env, node);
 			break;
 
 
@@ -1451,6 +1441,11 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 			}
 			return ast_slot_pack(ctx, mod, env, node->lookup.value, out);
 
+		case AST_NODE_COMPOSITE:
+			return -1;
+
+		case AST_NODE_VARIANT:
+			return -1;
 
 		case AST_NODE_FUNC_UNINIT:
 			break;

@@ -673,4 +673,12 @@ ast_module_finalize(struct ast_context *, struct ast_module *);
 void
 ast_print_module(struct ast_context *, struct ast_module *);
 
+bool
+ast_dt_is_valid(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *comp);
+
+void
+ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *comp);
+
 #endif
