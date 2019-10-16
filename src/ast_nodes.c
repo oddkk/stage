@@ -312,12 +312,15 @@ ast_node_composite_add_member(
 			AST_BIND_NEW, name);
 	new_member.slot = value_slot;
 
+	value_slot =
+		ast_bind_slot_member(ctx, env,
+				value_slot, NULL, name,
+				ast_env_slot(ctx, env, value_slot).type);
+
 	if (!new_member.type) {
 		new_member.type = ast_init_node_slot(
 				ctx, env, AST_NODE_NEW, STG_NO_LOC,
-				ast_bind_slot_wildcard(ctx, env,
-					ast_env_slot(ctx, env, value_slot).type,
-					NULL, AST_SLOT_TYPE));
+				ast_env_slot(ctx, env, value_slot).type);
 	} else {
 		ast_union_slot(ctx, env,
 				ast_env_slot(ctx, env, value_slot).type,
@@ -495,7 +498,8 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 				if (slot.kind == AST_SLOT_CONST ||
 						slot.kind == AST_SLOT_CONST_TYPE ||
 						slot.kind == AST_SLOT_PARAM ||
-						slot.kind == AST_SLOT_TEMPL) {
+						slot.kind == AST_SLOT_TEMPL ||
+						slot.kind == AST_SLOT_MEMBER) {
 					node->kind = AST_NODE_SLOT;
 					node->slot =
 						ast_union_slot(ctx, env,
@@ -568,6 +572,9 @@ ast_slot_is_resolved(struct ast_context *ctx, struct ast_env *env,
 		return ast_slot_is_resolved(ctx, env, slot.type);
 
 	case AST_SLOT_TEMPL:
+		return ast_slot_is_resolved(ctx, env, slot.type);
+
+	case AST_SLOT_MEMBER:
 		return ast_slot_is_resolved(ctx, env, slot.type);
 
 	case AST_SLOT_CONS:

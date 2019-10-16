@@ -84,6 +84,7 @@ enum ast_slot_kind {
 	AST_SLOT_CONST_TYPE,
 	AST_SLOT_CONST,
 	AST_SLOT_PARAM,
+	AST_SLOT_MEMBER,
 	AST_SLOT_TEMPL,
 	AST_SLOT_CONS,
 	AST_SLOT_CONS_ARRAY,
@@ -103,6 +104,7 @@ struct ast_env_slot {
 		type_id const_type;
 		struct object const_object;
 		int64_t param_index;
+		struct atom *member_name;
 		struct ast_object cons;
 		struct ast_array cons_array;
 
@@ -174,6 +176,11 @@ ast_slot_id
 ast_bind_slot_templ(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
 		struct atom *name, ast_slot_id type);
+
+ast_slot_id
+ast_bind_slot_member(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, struct atom *member_name, ast_slot_id type);
 
 ast_slot_id
 ast_bind_slot_cons(struct ast_context *,

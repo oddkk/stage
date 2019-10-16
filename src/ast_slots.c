@@ -21,6 +21,7 @@ ast_slot_name(enum ast_slot_kind kind) {
 		case AST_SLOT_CONST:      return "CONST";
 		case AST_SLOT_PARAM:      return "PARAM";
 		case AST_SLOT_TEMPL:      return "TEMPL";
+		case AST_SLOT_MEMBER:     return "MEMBER";
 		case AST_SLOT_CONS:       return "CONS";
 		case AST_SLOT_CONS_ARRAY: return "CONS_ARRAY";
 
@@ -469,6 +470,45 @@ ast_bind_slot_templ(struct ast_context *ctx,
 
 #if AST_DEBUG_BINDS
 	printf("bind %i=templ ", target);
+	ast_print_slot(ctx, env, target);
+	printf("\n");
+#endif
+
+	return target;
+}
+
+ast_slot_id
+ast_bind_slot_member(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, struct atom *member_name, ast_slot_id type)
+{
+	if (target == AST_BIND_NEW) {
+		target = ast_alloc_slot(env, name, type, AST_SLOT_MEMBER);
+	} else {
+		struct ast_env_slot target_slot;
+
+		target_slot = ast_env_slot(ctx, env, target);
+		switch (target_slot.kind) {
+			case AST_SLOT_WILDCARD:
+				env->slots[target].kind = AST_SLOT_MEMBER;
+				ast_union_slot(ctx, env, env->slots[target].type, type);
+				break;
+
+			case AST_SLOT_ERROR:
+			case AST_SLOT_SUBST:
+				printf("Warning: Attempted to bind MEMBER over %s. (bind %i)\n",
+						ast_slot_name(target_slot.kind), target);
+				return AST_BIND_FAILED;
+
+			default:
+				break;
+		}
+	}
+
+	env->slots[target].member_name = member_name;
+
+#if AST_DEBUG_BINDS
+	printf("bind %i=member(%.*s) ", target);
 	ast_print_slot(ctx, env, target);
 	printf("\n");
 #endif
@@ -1077,6 +1117,13 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 						ctx, dest, type_target, src, slot.type));
 			break;
 
+		case AST_SLOT_MEMBER:
+			result = ast_bind_slot_member(
+					ctx->ctx, dest, target, slot.name, slot.member_name,
+					ast_union_slot_internal(
+						ctx, dest, type_target, src, slot.type));
+			break;
+
 
 		case AST_SLOT_CONS:
 			result = ast_bind_slot_cons(
@@ -1321,6 +1368,7 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 			case AST_SLOT_CONST:
 			case AST_SLOT_PARAM:
 			case AST_SLOT_TEMPL:
+			case AST_SLOT_MEMBER:
 				break;
 		}
 	}

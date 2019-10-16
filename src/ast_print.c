@@ -37,6 +37,11 @@ ast_print_slot_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("(templ)");
 			break;
 
+		case AST_SLOT_MEMBER:
+			printf("member[%.*s]", ALIT(slot.member_name));
+			break;
+
+
 		case AST_SLOT_CONS:
 			printf("%p{", (void *)slot.cons.def);
 			for (size_t j = 0; j < slot.cons.num_present_args; j++) {
@@ -122,6 +127,10 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 				break;
 
 			case AST_SLOT_TEMPL:
+				break;
+
+			case AST_SLOT_MEMBER:
+				printf("%.*s", ALIT(slot->member_name));
 				break;
 
 			case AST_SLOT_CONS:

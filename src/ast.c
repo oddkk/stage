@@ -68,6 +68,7 @@ ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
 		case AST_SLOT_ERROR:
 		case AST_SLOT_PARAM:
 		case AST_SLOT_TEMPL:
+		case AST_SLOT_MEMBER:
 		case AST_SLOT_WILDCARD:
 			printf("Tried to pack slot of kind %s.\n",
 					ast_slot_name(slot.kind));
