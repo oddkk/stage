@@ -206,9 +206,6 @@ struct ast_env_slot
 ast_env_slot(struct ast_context *, struct ast_env *, ast_slot_id);
 
 bool
-ast_resolve_slot(struct ast_context *, struct ast_env *, ast_slot_id);
-
-bool
 ast_object_def_from_cons(struct ast_context *, struct ast_env *,
 		struct ast_object_def *out, ast_slot_id);
 
