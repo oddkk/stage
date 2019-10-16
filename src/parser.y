@@ -33,6 +33,26 @@ struct YYLTYPE
 };
 # define YYLTYPE_IS_DECLARED 1
 # define YYLTYPE_IS_TRIVIAL 1
+
+# define YYLLOC_DEFAULT(Current, Rhs, N)                         \
+do                                                              \
+	if (N) {                                                    \
+		(Current).first_line   = YYRHSLOC(Rhs, 1).first_line;   \
+		(Current).first_column = YYRHSLOC(Rhs, 1).first_column; \
+		(Current).byte_from    = YYRHSLOC(Rhs, 1).byte_from;    \
+		(Current).last_line    = YYRHSLOC(Rhs, N).last_line;    \
+		(Current).last_column  = YYRHSLOC(Rhs, N).last_column;  \
+		(Current).byte_to      = YYRHSLOC(Rhs, N).byte_to;      \
+	} else {                                                    \
+		(Current).first_line   = (Current).last_line   =        \
+			YYRHSLOC(Rhs, 0).last_line;                         \
+		(Current).first_column = (Current).last_column =        \
+			YYRHSLOC(Rhs, 0).last_column;                       \
+		(Current).byte_from    = (Current).byte_to     =        \
+			YYRHSLOC(Rhs, 0).byte_from;                         \
+	}                                                           \
+while (0)
+
 }
 
 %param { struct lex_context *ctx }
