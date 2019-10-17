@@ -153,6 +153,10 @@ struct ast_context
 ast_init_context(struct stg_error_context *, struct atom_table *, struct vm *);
 
 ast_slot_id
+ast_bind_slot_error(struct ast_context *,
+		struct ast_env *, ast_slot_id target);
+
+ast_slot_id
 ast_bind_slot_wildcard(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
 		struct atom *name, ast_slot_id type);
@@ -229,6 +233,11 @@ struct ast_object_def_param {
 	ast_slot_id slot;
 };
 
+struct ast_object_bind {
+	ast_slot_id target;
+	func_id value;
+};
+
 typedef struct object (*ast_object_unpack)(
 		struct ast_context *, struct ast_env *,
 		struct ast_object_def *, int param_id, struct object);
@@ -241,6 +250,9 @@ struct ast_object_def {
 	struct ast_object_def_param *params;
 	size_t num_params;
 	struct ast_env env;
+
+	struct ast_object_bind *binds;
+	size_t num_binds;
 
 	ast_slot_id ret_type;
 
@@ -677,7 +689,7 @@ bool
 ast_dt_is_valid(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *comp);
 
-void
+type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *comp);
 

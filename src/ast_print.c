@@ -265,7 +265,9 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 
 		case AST_NODE_COMPOSITE:
 			print_indent(depth);
-			printf("composite:\n");
+			printf("composite (");
+			print_slot(env, node->composite.ret_value);
+			printf("):\n");
 			for (size_t i = 0; i < node->composite.num_members; i++) {
 				print_indent(depth + 1);
 				printf("%.*s (", ALIT(node->composite.members[i].name));

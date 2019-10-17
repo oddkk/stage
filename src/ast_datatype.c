@@ -1,5 +1,7 @@
+#include "vm.h"
 #include "ast.h"
 #include "dlist.h"
+#include "module.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,6 +18,7 @@ struct ast_dt_dependency;
 struct ast_dt_member {
 	struct atom *name;
 	ast_slot_id slot;
+
 	struct stg_location decl_loc;
 	struct ast_dt_bind *bound;
 
@@ -412,6 +415,8 @@ ast_dt_composite_order_binds(struct ast_dt_context *ctx)
 	}
 
 	if (ctx->unvisited_edges != 0) {
+		// We found one or more cycles. Report them to the user.
+
 		for (size_t member_i = 0; member_i < ctx->num_members; member_i++) {
 			struct ast_dt_member *member;
 			member = &ctx->members[member_i];
@@ -469,7 +474,48 @@ ast_dt_is_valid(struct ast_context *ctx, struct ast_env *env,
 	return dt_ctx.num_errors == 0;
 }
 
-void
+struct ast_dt_local_member {
+	struct atom *name;
+	type_id type;
+	size_t location;
+};
+
+struct ast_dt_composite_info {
+	struct ast_dt_local_member *members;
+	size_t num_members;
+};
+
+static struct string
+ast_dt_composite_repr(struct vm *vm, struct arena *mem, struct type *type)
+{
+	struct ast_dt_composite_info *info = type->data;
+	struct string res = arena_string_init(mem);
+
+	arena_string_append(mem, &res, STR("Struct { "));
+
+	for (size_t i = 0; i < info->num_members; i++) {
+		struct type *member_type;
+		member_type = vm_get_type(vm, info->members[i].type);
+		arena_string_append_sprintf(mem, &res, "%.*s: ", ALIT(info->members[i].name));
+		arena_string_append_type_repr(&res, vm, mem, member_type);
+		arena_string_append(mem, &res, STR("; "));
+	}
+
+	arena_string_append(mem, &res, STR("}"));
+
+	return res;
+}
+
+struct type_base ast_dt_composite_base = {
+	.name = STR("Struct"),
+	.repr = ast_dt_composite_repr,
+
+	// TODO: Implement
+	// .obj_repr = ...,
+	// .free = ...,
+};
+
+type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *comp)
 {
@@ -489,18 +535,95 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	struct ast_dt_member *bind_order;
 	bind_order = ast_dt_composite_order_binds(&dt_ctx);
 
-	for (struct ast_dt_member *mbr = bind_order;
-			mbr != NULL; mbr = mbr->next) {
-		printf("member '%.*s'\n", ALIT(mbr->name));
-		if (mbr->bound) {
-			printf("bind\n");
-			ast_print(ctx, env, mbr->bound->target);
-			printf("to\n");
-			ast_print(ctx, env, mbr->bound->value);
-		} else {
-			printf("not bound\n");
+	type_id result = TYPE_UNSET;
+
+	if (dt_ctx.num_errors == 0) {
+		assert(bind_order);
+
+		struct ast_object_def *def;
+		def = ast_object_def_register(mod->env.store);
+
+		struct ast_dt_local_member *local_members; //[comp->composite.num_members];
+		local_members = calloc(comp->composite.num_members,
+				sizeof(struct ast_dt_local_member));
+
+		struct ast_object_def_param *params;
+		params = calloc(comp->composite.num_members,
+				sizeof(struct ast_object_def_param));
+
+		size_t num_bound_members = 0;
+		for (struct ast_dt_member *mbr = bind_order;
+				mbr != NULL; mbr = mbr->next) {
+			num_bound_members += 1;
 		}
-		printf("\n");
+
+		struct ast_object_bind *binds;
+		binds = calloc(num_bound_members,
+				sizeof(struct ast_object_bind));
+
+		size_t offset = 0;
+		for (size_t i = 0; i < comp->composite.num_members; i++) {
+			struct object member_type_obj;
+			int err;
+			err = ast_node_eval(ctx, mod, env,
+					comp->composite.members[i].type,
+					&member_type_obj);
+			if (err) {
+				printf("Failed to resolve type of composit member.\n");
+				continue;
+			}
+
+			type_id member_type_id;
+			member_type_id = *(type_id *)member_type_obj.data;
+
+			params[i].param_id = i;
+			params[i].name = comp->composite.members[i].name;
+			params[i].slot =
+				ast_bind_slot_member(ctx, env, AST_BIND_NEW,
+						NULL, params[i].name,
+						ast_bind_slot_const_type(ctx, env, AST_BIND_NEW,
+							NULL, member_type_id));
+
+			struct type *member_type;
+			member_type = vm_get_type(ctx->vm, member_type_id);
+
+			local_members[i].name = comp->composite.members[i].name;
+			local_members[i].type = member_type_id;
+			local_members[i].location = offset;
+
+			offset += member_type->size;
+		}
+
+		def->params = params;
+		def->num_params = comp->composite.num_members;
+
+		size_t bind_i = 0;
+		for (struct ast_dt_member *mbr = bind_order;
+				mbr != NULL; mbr = mbr->next) {
+			// TODO: Populate binds
+			bind_i += 1;
+		}
+
+		def->binds = binds;
+		def->num_binds = num_bound_members;
+
+		struct ast_dt_composite_info *info;
+		info = calloc(1, sizeof(struct ast_dt_composite_info));
+
+		info->num_members = comp->composite.num_members;
+		info->members = local_members;
+
+		def->data = info;
+
+		struct type dt_type = {0};
+		dt_type.base = &ast_dt_composite_base;
+		dt_type.obj_def = def;
+		dt_type.size = offset;
+		dt_type.data = info;
+
+		result = stg_register_type(mod->stg_mod, dt_type);
+
+		def->ret_type = result;
 	}
 
 	for (size_t i = 0; i < num_members; i++) {
@@ -513,4 +636,6 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		bind = bind->next_alloced;
 		free(this_bind);
 	}
+
+	return result;
 }

@@ -105,6 +105,22 @@ ast_alloc_slot(struct ast_env *ctx,
 }
 
 ast_slot_id
+ast_bind_slot_error(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target)
+{
+	if (target == AST_BIND_NEW) {
+		target = ast_alloc_slot(env, NULL, AST_BIND_FAILED, AST_SLOT_ERROR);
+	} else if (target >= 0) {
+		assert(target < env->num_slots);
+		env->slots[target].kind = AST_SLOT_ERROR;
+	} else {
+		target = AST_SLOT_ERROR;
+	}
+
+	return target;
+}
+
+ast_slot_id
 ast_bind_slot_wildcard(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
 		struct atom *name, ast_slot_id type)

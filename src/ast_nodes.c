@@ -1144,7 +1144,20 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 						node->composite.free_exprs[i]);
 			}
 
-			ast_dt_finalize_composite(ctx, mod, env, node);
+			{
+				type_id type;
+				type = ast_dt_finalize_composite(ctx, mod, env, node);
+
+				if (type != TYPE_UNSET) {
+					node->composite.ret_value =
+						ast_bind_slot_const_type(ctx, env,
+								node->composite.ret_value, NULL, type);
+				} else {
+					node->composite.ret_value =
+						ast_bind_slot_error(ctx, env,
+								node->composite.ret_value);
+				}
+			}
 			break;
 
 
