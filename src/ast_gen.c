@@ -5,6 +5,8 @@
 #include "base/mod.h"
 #include <stdlib.h>
 
+#define AST_GEN_SHOW_BC 0
+
 static inline void
 append_bc_instr(struct ast_gen_bc_result *res, struct bc_instr *instr)
 {
@@ -30,7 +32,8 @@ append_bc_instrs(struct ast_gen_bc_result *res, struct ast_gen_bc_result instrs)
 
 struct ast_gen_bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct bc_env *bc_env, struct ast_node *node)
+		struct ast_env *env, struct ast_gen_info *info,
+		struct bc_env *bc_env, struct ast_node *node)
 {
 	struct ast_gen_bc_result result = {0};
 	switch (node->kind) {
@@ -61,7 +64,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 				for (size_t i = 0; i < node->call.num_args; i++) {
 					struct ast_gen_bc_result arg;
-					arg = ast_node_gen_bytecode(ctx, mod, env, bc_env,
+					arg = ast_node_gen_bytecode(ctx, mod, env, info, bc_env,
 							node->call.args[i].value);
 
 					append_bc_instrs(&result, arg);
@@ -69,7 +72,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				}
 
 				struct ast_gen_bc_result func;
-				func = ast_node_gen_bytecode(ctx, mod, env, bc_env,
+				func = ast_node_gen_bytecode(ctx, mod, env, info, bc_env,
 						node->call.func);
 				append_bc_instrs(&result, func);
 
@@ -156,6 +159,39 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 						}
 						return result;
 
+					case AST_SLOT_MEMBER:
+						{
+							struct object type_obj;
+							int err;
+
+							err = ast_slot_pack(ctx, mod, env, slot.type, &type_obj);
+							if (err) {
+								panic("Failed to pack slot type in gen bytecode.");
+								return (struct ast_gen_bc_result){0};
+							}
+
+							assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
+
+							type_id member_type;
+							member_type = *(type_id *)type_obj.data;
+
+							int member_i = -1;
+
+							for (size_t i = 0; i < info->num_member_names; i++) {
+								if (slot.member_name == info->member_names[i]) {
+									member_i = i;
+									break;
+								}
+							}
+
+							assert(member_i > -1);
+
+							result.first = result.last = NULL;
+							result.out_var = bc_alloc_param(
+									bc_env, member_i, member_type);
+						}
+						return result;
+
 					default:
 						panic("Invalid slot %s in bytecode gen.",
 								ast_slot_name(slot.kind));
@@ -163,6 +199,10 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				}
 
 			}
+			break;
+
+		case AST_NODE_COMPOSITE:
+		case AST_NODE_VARIANT:
 			break;
 
 		case AST_NODE_LOOKUP:
@@ -222,8 +262,10 @@ ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 		bc_alloc_param(bc_env, i, param_tid);
 	}
 
+	struct ast_gen_info info = {0};
+
 	struct ast_gen_bc_result func_instr;
-	func_instr = ast_node_gen_bytecode(ctx, mod, env,
+	func_instr = ast_node_gen_bytecode(ctx, mod, env, &info,
 			bc_env, node->func.body);
 
 	append_bc_instr(&func_instr,
@@ -231,7 +273,52 @@ ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 	bc_env->entry_point = func_instr.first;
 
-#define AST_GEN_SHOW_BC 0
+#if AST_GEN_SHOW_BC
+	printf("\nbc:\n");
+	bc_print(bc_env, bc_env->entry_point);
+#endif
+
+	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
+	nbc_compile_from_bc(bc_env->nbc, bc_env);
+
+#if AST_GEN_SHOW_BC
+	printf("\nnbc:\n");
+	nbc_print(bc_env->nbc);
+#endif
+
+	return bc_env;
+}
+
+struct bc_env *
+ast_composite_bind_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct atom **value_names, type_id *value_types, size_t num_values,
+		struct ast_node *expr)
+{
+	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
+	bc_env->vm = ctx->vm;
+	bc_env->store = ctx->vm->instr_store;
+
+	/*
+	 * TODO: Assert that the returned value in byte code has the same type we
+	 * expect.
+	*/
+
+	struct ast_gen_info info = {0};
+	info.member_names = value_names;
+	info.num_member_names = num_values;
+
+	for (size_t i = 0; i < num_values; i++) {
+		bc_alloc_param(bc_env, i, value_types[i]);
+	}
+
+	struct ast_gen_bc_result func_instr;
+	func_instr = ast_node_gen_bytecode(ctx, mod, env, &info,
+			bc_env, expr);
+
+	append_bc_instr(&func_instr,
+			bc_gen_ret(bc_env, func_instr.out_var));
+
+	bc_env->entry_point = func_instr.first;
 
 #if AST_GEN_SHOW_BC
 	printf("\nbc:\n");

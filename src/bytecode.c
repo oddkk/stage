@@ -12,7 +12,7 @@ bc_print_var(struct bc_env *env, bc_var var)
 
 	if (var < 0) {
 		prefix = 'p';
-		var_id -= var_id;
+		var_id = (-var_id) - 1;
 	}
 
 	tid = bc_get_var_type(env, var);

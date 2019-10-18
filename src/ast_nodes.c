@@ -1178,7 +1178,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 	return result;
 }
 
-static int
+int
 ast_node_eval_type(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node, type_id *out)
 {
@@ -1194,6 +1194,27 @@ ast_node_eval_type(struct ast_context *ctx, struct ast_module *mod,
 	*out = *(type_id *)type_obj.data;
 	return 0;
 }
+
+int
+ast_node_eval_type_of(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node, type_id *out)
+{
+	struct object type_obj;
+
+	ast_slot_id type_slot;
+	type_slot = ast_node_type(ctx, env, node);
+	int err;
+	err = ast_slot_pack(ctx, mod, env, type_slot, &type_obj);
+	if (err) {
+		return err;
+	}
+
+	assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
+
+	*out = *(type_id *)type_obj.data;
+	return 0;
+}
+
 
 static struct object
 ast_templ_node_unpack(struct ast_context *ctx, struct ast_env *env,

@@ -2,6 +2,7 @@
 #include "ast.h"
 #include "dlist.h"
 #include "module.h"
+#include "base/mod.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,6 +10,9 @@ struct ast_dt_bind {
 	struct ast_node *target;
 	struct ast_node *value;
 	bool overridable;
+
+	struct ast_dt_member **deps;
+	size_t num_deps;
 
 	struct ast_dt_bind *next_alloced;
 };
@@ -302,6 +306,8 @@ ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node
 		}
 	}
 
+	bind->deps = value_members.nodes;
+	bind->num_deps = value_members.num_nodes;
 	free(target_members.nodes);
 }
 
@@ -600,7 +606,56 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		size_t bind_i = 0;
 		for (struct ast_dt_member *mbr = bind_order;
 				mbr != NULL; mbr = mbr->next) {
-			// TODO: Populate binds
+			if (!mbr->bound) {
+				continue;
+			}
+
+			struct func func = {0};
+
+			type_id value_type;
+
+			int err;
+			err = ast_node_eval_type_of(ctx, mod, env,
+					mbr->bound->value, &value_type);
+			if (err) {
+				printf("Failed to eval bind value  type.\n");
+				continue;
+			}
+
+			size_t num_deps = mbr->bound->num_deps;
+			struct atom *dep_names[num_deps];
+			type_id dep_types[num_deps];
+
+			for (size_t i = 0; i < num_deps; i++) {
+				struct ast_dt_member *dep = mbr->bound->deps[i];
+				dep_names[i] = dep->name;
+
+				struct object dep_type_obj;
+				err = ast_slot_pack(ctx, mod, env,
+						ast_env_slot(ctx, env, dep->slot).type, &dep_type_obj);
+				if (err) {
+					printf("Failed to pack member type.\n");
+					continue;
+				}
+
+				assert_type_equals(ctx->vm, dep_type_obj.type, ctx->types.type);
+
+				dep_types[i] = *(type_id *)dep_type_obj.data;
+			}
+
+			func.type = stg_register_func_type(mod->stg_mod,
+					value_type, dep_types, num_deps);
+
+			func.kind = FUNC_BYTECODE;
+			func.bytecode = ast_composite_bind_gen_bytecode(ctx, mod, env,
+					dep_names, dep_types, num_deps, mbr->bound->value);
+
+			binds[bind_i].target =
+				ast_node_deep_copy(ctx, &def->env, env,
+						mbr->bound->target);
+			binds[bind_i].value =
+				stg_register_func(mod->stg_mod, func);
+
 			bind_i += 1;
 		}
 

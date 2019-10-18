@@ -234,7 +234,7 @@ struct ast_object_def_param {
 };
 
 struct ast_object_bind {
-	ast_slot_id target;
+	struct ast_node *target;
 	func_id value;
 };
 
@@ -547,6 +547,14 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node,
 		struct object *out);
 
+int
+ast_node_eval_type(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node, type_id *out);
+
+int
+ast_node_eval_type_of(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node, type_id *out);
+
 
 // Defined in ast_slots.c
 struct ast_node *
@@ -563,13 +571,24 @@ struct ast_gen_bc_result {
 	bc_var out_var;
 };
 
+struct ast_gen_info {
+	struct atom **member_names;
+	size_t num_member_names;
+};
+
 struct ast_gen_bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct bc_env *bc_env, struct ast_node *node);
+		struct ast_env *env, struct ast_gen_info *info,
+		struct bc_env *bc_env, struct ast_node *node);
 
 struct bc_env *
 ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node);
+
+struct bc_env *
+ast_composite_bind_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct atom **value_names, type_id *value_types, size_t num_values,
+		struct ast_node *expr);
 
 void
 ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
