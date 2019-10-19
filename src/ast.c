@@ -136,148 +136,114 @@ ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
 	return -1;
 }
 
-static int
-ast_namespace_insert(struct ast_namespace *ns,
-		struct ast_module_name value)
-{
-	int new_id = (int)ns->num_names;
-
-	size_t new_num_names = ns->num_names + 1;
-	struct ast_module_name *new_names;
-
-	new_names = realloc(ns->names,
-			new_num_names * sizeof(struct ast_module_name));
-
-	if (!new_names) {
-		return -1;
-	}
-
-	ns->names = new_names;
-	ns->num_names = new_num_names;
-
-	ns->names[new_id] = value;
-
-	return new_id;
-}
-
 int
 ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_namespace *ns,
+		struct ast_node *ns,
 		struct atom *name, struct ast_node *expr)
 {
-	struct ast_module_name value = {0};
-
-	value.kind = AST_MODULE_NAME_DECL;
-	value.name = name;
-	value.decl.expr = expr;
-
-	value.decl.value = ast_bind_slot_wildcard(
-			ctx, &mod->env, AST_BIND_NEW, NULL,
-			ast_node_type(ctx, &mod->env, expr));
+	ast_slot_id type_slot = ast_node_type(ctx, &mod->env, expr);
+	struct ast_node *type;
+	type = ast_init_node_slot(ctx, &mod->env,
+			AST_NODE_NEW, STG_NO_LOC,
+			type_slot);
 
 	int err;
-	err = ast_namespace_insert(ns, value);
-	return err >= 0 ? 0 : -1;
+	err = ast_node_composite_add_member(ctx, &mod->env,
+			ns, name, type);
+	if (err) {
+		return err;
+	}
+
+	struct ast_node *target;
+	target = ast_init_node_slot(ctx, &mod->env,
+			AST_NODE_NEW, STG_NO_LOC,
+			ast_bind_slot_member(ctx, &mod->env,
+				AST_BIND_NEW, NULL, name, type_slot));
+
+	ast_node_composite_bind(ctx, &mod->env, ns,
+			target, expr, false);
+
+	return 0;
 }
 
 void
 ast_namespace_add_free_expr(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_namespace *ns, struct ast_node *expr)
+		struct ast_node *ns, struct ast_node *expr)
 {
-	struct ast_namespace_free_expr value = {0};
-
-	value.expr = expr;
-	value.value = ast_bind_slot_wildcard(
-			ctx, &mod->env, AST_BIND_NEW, NULL,
-			ast_node_type(ctx, &mod->env, expr));
-
-	dlist_append(ns->free_exprs, ns->num_free_exprs, &value);
+	ast_node_composite_add_free_expr(ctx, &mod->env, ns, expr);
 }
 
 
-struct ast_namespace *
+struct ast_node *
 ast_namespace_add_ns(struct ast_context *ctx, struct ast_env *env,
-		struct ast_namespace *ns, struct atom *name)
+		struct ast_node *ns, struct atom *name)
 {
-	struct ast_module_name value = {0};
+	assert(ns->kind == AST_NODE_COMPOSITE);
 
-	value.kind = AST_MODULE_NAME_NAMESPACE;
-	value.name = name;
-	value.ns = calloc(1, sizeof(struct ast_namespace));
-	value.ns->name = name;
-	value.ns->parent = ns;
-	value.ns->instance = ast_bind_slot_cons(ctx, env,
-			AST_BIND_NEW, NULL, NULL);
-
-	int err;
-	err = ast_namespace_insert(ns, value);
-
-	if (err < 0) {
-		return NULL;
+	for (size_t i = 0; i < ns->composite.num_members; i++) {
+		if (ns->composite.members[i].name == name) {
+			return ns->composite.members[i].type;
+		}
 	}
 
-	return value.ns;
+	struct ast_node *ns_type;
+	// TODO: Add a location to make error messages more helpful.
+	ns_type = ast_init_node_composite(ctx, env,
+			AST_NODE_NEW, STG_NO_LOC);
+
+	int err;
+	err = ast_node_composite_add_member(ctx, env,
+			ns, name, ns_type);
+	assert(!err);
+
+	return ns_type;
 }
 
 void
 ast_namespace_add_import(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_namespace *ns, struct atom *name)
+		struct ast_node *ns, struct atom *name)
 {
-	struct ast_module_name value = {0};
-
-	value.kind = AST_MODULE_NAME_IMPORT;
-	value.name = name;
-	value.import.name = name;
-	value.import.value =
-		ast_module_add_dependency(ctx, mod, name);
-
-	ast_namespace_insert(ns, value);
+	ast_module_add_dependency(ctx, mod, ns, name);
 }
 
 
 void
 ast_namespace_use(struct ast_context *ctx,
-		struct ast_module *mod, struct ast_namespace *ns,
+		struct ast_module *mod, struct ast_node *ns,
 		ast_slot_id object)
 {
+	panic("TODO: Implement use\n");
+	/*
 	struct ast_env_slot slot = ast_env_slot(ctx, &mod->env, object);
 
 	assert(slot.kind == AST_SLOT_CONS);
 
 	dlist_append(ns->used_objects, ns->num_used_objects, &object);
+	*/
 }
 
-ast_slot_id
+void
 ast_module_add_dependency(struct ast_context *ctx,
-		struct ast_module *mod, struct atom *name)
+		struct ast_module *mod, struct ast_node *container, struct atom *name)
 {
 	for (size_t i = 0; i < mod->num_dependencies; i++) {
 		if (name == mod->dependencies[i].name) {
-			return mod->dependencies[i].slot;
+			panic("Module %.*s imported multiple times.",
+					ALIT(name));
+			return;
 		}
 	}
 
-	size_t dep_id = mod->num_dependencies;
+	struct ast_module_dependency new_dep = {0};
 
-	size_t tmp_num_deps;
-	struct ast_module_dependency *tmp_deps;
-	tmp_num_deps = mod->num_dependencies + 1;
-	tmp_deps = realloc(mod->dependencies,
-			sizeof(struct ast_module_dependency) * tmp_num_deps);
-	if (!tmp_deps) {
-		panic("Failed to allocate space for module dependencies.");
-		return AST_BIND_FAILED;
-	}
+	new_dep.name = name;
+	new_dep.container = container;
 
-	mod->dependencies = tmp_deps;
-	mod->num_dependencies = tmp_num_deps;
-
-	memset(&mod->dependencies[dep_id], 0, sizeof(struct ast_module_dependency));
-	mod->dependencies[dep_id].name = name;
-	mod->dependencies[dep_id].slot =
-		ast_bind_slot_cons(ctx, &mod->env, AST_BIND_NEW, name, NULL);
-
-	return mod->dependencies[dep_id].slot;
+	size_t dep_id;
+	dep_id = dlist_append(
+			mod->dependencies,
+			mod->num_dependencies,
+			&new_dep);
 }
 
 void
@@ -288,18 +254,30 @@ ast_module_resolve_dependencies(struct ast_context *ctx,
 		struct ast_module_dependency *dep;
 		dep = &mod->dependencies[i];
 
-		dep->slot =
-			ast_bind_slot_const(ctx, &mod->env, dep->slot,
-					NULL, dep->mod->instance);
+		struct ast_node *type;
+		type = ast_init_node_slot(ctx, &mod->env,
+				AST_NODE_NEW, STG_NO_LOC,
+				ast_bind_slot_const_type(ctx, &mod->env,
+					AST_BIND_NEW, NULL, dep->mod->type));
+
+		assert(dep->mod->type != TYPE_UNSET);
+
+		int err;
+		err = ast_node_composite_add_member(ctx, &mod->env,
+				dep->container, dep->name, type);
+		assert(!err);
 	}
 }
 
+/*
 static struct type_base namespace_type_base = {
 	.name = STR("namespace"),
 	// TODO: Make repr functions.
 	// TODO: Make unpack function.
 };
+*/
 
+/*
 static ast_slot_id
 ast_namespace_finalize(struct ast_context *ctx,
 		struct ast_module *mod, struct ast_namespace *ns)
@@ -414,12 +392,17 @@ ast_namespace_finalize(struct ast_context *ctx,
 
 	return ns->instance;
 }
+*/
 
 int
 ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 {
+	/*
 	ast_slot_id root;
 	root = ast_namespace_finalize(ctx, mod, &mod->root);
 
 	return ast_slot_pack(ctx, mod, &mod->env, root, &mod->instance);
+	*/
+	panic("TODO: Implement module finalize.\n");
+	return -1;
 }

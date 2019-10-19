@@ -6,7 +6,7 @@ COMPILE_JOB(load_module, struct {
 	struct ast_module *mod;
 	enum job_load_module_state state;
 	int num_unparsed_files;
-	int num_uncompiled_exprs;
+	// int num_uncompiled_exprs;
 	struct stg_native_module *native_mod;
 
 	// This module struct is used in place of stg_mod->mod until stg_mod is
@@ -18,6 +18,7 @@ COMPILE_JOB(load_module, struct {
 	struct ast_module **out_module;
 })
 
+/*
 COMPILE_JOB(compile_expr, struct {
 	struct ast_module *mod;
 	struct ast_node *expr;
@@ -26,11 +27,12 @@ COMPILE_JOB(compile_expr, struct {
 
 	enum job_compile_expr_state state;
 })
+*/
 
 COMPILE_JOB(parse_file, struct {
 	struct ast_module *mod;
 	struct string file_name;
-	struct ast_namespace *ns;
+	struct ast_node *scope;
 
 	int *num_unparsed_files;
 })

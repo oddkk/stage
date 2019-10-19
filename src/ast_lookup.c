@@ -5,7 +5,7 @@
 
 void
 ast_scope_push_namespace(struct ast_scope *target, struct ast_scope *parent,
-		struct ast_namespace *ns)
+		struct ast_node *ns)
 {
 	memset(target, 0, sizeof(struct ast_scope));
 
@@ -14,7 +14,7 @@ ast_scope_push_namespace(struct ast_scope *target, struct ast_scope *parent,
 	target->last_func = NULL;
 	target->last_ns = target;
 
-	target->ns = ns;
+	// target->ns = ns;
 	target->object = AST_SLOT_NOT_FOUND;
 }
 
@@ -85,6 +85,7 @@ ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *en
 		}
 	}
 
+	/*
 	if (scope->ns) {
 		for (size_t i = 0; i < scope->ns->num_names; i++) {
 			struct ast_module_name *name = &scope->ns->names[i];
@@ -115,6 +116,7 @@ ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *en
 			}
 		}
 	}
+	*/
 
 	return AST_BIND_FAILED;
 }
@@ -352,53 +354,10 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 	}
 }
 
-static void
-ast_namespace_resolve_names(struct ast_context *ctx, struct ast_module *mod,
-		struct stg_native_module *native_mod,
-		struct ast_scope *scope, struct ast_namespace *ns)
-{
-	struct ast_env *env = &mod->env;
-	struct ast_scope inner_scope = {0};
-
-	ast_scope_push_namespace(&inner_scope, scope, ns);
-
-	for (size_t i = 0; i < ns->num_names; i++) {
-		switch (ns->names[i].kind) {
-			case AST_MODULE_NAME_DECL:
-				ast_node_resolve_names(ctx, env, native_mod,
-						&inner_scope, ns->names[i].decl.expr);
-				break;
-
-			case AST_MODULE_NAME_NAMESPACE:
-				ast_namespace_resolve_names(ctx, mod, native_mod,
-						&inner_scope, ns->names[i].ns);
-				break;
-
-			case AST_MODULE_NAME_IMPORT:
-				{
-					struct ast_module *dep = NULL;
-
-					for (size_t dep_i = 0; dep_i < mod->num_dependencies; dep_i++) {
-						if (mod->dependencies[dep_i].name == ns->names[i].import.name) {
-							dep = mod->dependencies[dep_i].mod;
-						}
-					}
-
-					assert(dep != NULL);
-				}
-				break;
-		}
-	}
-
-	for (size_t i = 0; i < ns->num_free_exprs; i++) {
-		ast_node_resolve_names(ctx, env, native_mod,
-				&inner_scope, ns->free_exprs[i].expr);
-	}
-}
-
 void
 ast_module_resolve_names(struct ast_context *ctx, struct ast_module *mod,
 		struct stg_native_module *native_mod)
 {
-	ast_namespace_resolve_names(ctx, mod, native_mod, NULL, &mod->root);
+	assert(mod->root->kind == AST_NODE_COMPOSITE);
+	ast_node_resolve_names(ctx, mod, native_mod, NULL, mod->root);
 }

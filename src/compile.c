@@ -30,7 +30,7 @@ enum job_load_module_state {
 	JOB_LOAD_MODULE_PARSE,
 	JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES,
 	JOB_LOAD_MODULE_RESOLVE_LOOKUPS,
-	JOB_LOAD_MODULE_WAIT_FOR_TYPECHECK,
+	JOB_LOAD_MODULE_TYPECHECK,
 	JOB_LOAD_MODULE_DONE,
 };
 
@@ -166,90 +166,6 @@ dispatch_job(struct compile_ctx *ctx, enum compile_phase_name phase, struct comp
 					 .name = (job_##name##_t){__VA_ARGS__}		\
 				 })
 
-static void visit_stmt(struct compile_ctx *ctx, struct ast_module *mod,
-		struct ast_namespace *ns, struct st_node *stmt)
-{
-	assert(stmt->type == ST_NODE_STMT);
-
-	// TODO: Handle attributes
-
-	struct st_node *node = stmt->STMT.stmt;
-
-	if (!node) {
-		return;
-	}
-
-	switch (node->type) {
-
-	case ST_NODE_MOD_STMT:
-		ast_namespace_add_import(ctx->ast_ctx, mod, ns, node->MOD_STMT.ident);
-		break;
-
-	case ST_NODE_USE_STMT:
-		{
-			struct st_node *target;
-			target = node->USE_STMT.ident;
-
-			switch (target->type) {
-				case ST_NODE_MOD_STMT:
-					{
-						ast_slot_id dep_obj;
-						dep_obj = ast_module_add_dependency(ctx->ast_ctx, mod,
-								target->MOD_STMT.ident);
-						ast_namespace_use(ctx->ast_ctx, mod,
-								ns, dep_obj);
-					}
-					break;
-
-				default:
-					break;
-			}
-		}
-		break;
-
-	case ST_NODE_ASSIGN_STMT:
-		{
-			struct atom *name;
-
-			name = node->ASSIGN_STMT.ident->IDENT;
-
-			struct st_node *body_node;
-			body_node = node->ASSIGN_STMT.body;
-
-			struct ast_node *expr;
-			expr = st_node_visit_expr(ctx->ast_ctx,
-					&mod->env, NULL, body_node);
-
-			if (node->ASSIGN_STMT.type) {
-				panic("TODO: assign stmt type.");
-			}
-
-			ast_namespace_add_decl(
-					ctx->ast_ctx, mod, ns, name, expr);
-		}
-		break;
-
-	case ST_NODE_LAMBDA:
-	case ST_NODE_FUNC_CALL:
-	case ST_NODE_BIN_OP:
-	case ST_NODE_BIND:
-		{
-			struct ast_node *expr;
-			expr = st_node_visit_expr(ctx->ast_ctx,
-					&mod->env, NULL, node);
-
-			ast_namespace_add_free_expr(
-					ctx->ast_ctx, mod, ns, expr);
-		}
-		break;
-
-	default:
-		panic("Invalid node '%.*s' as statement.",
-				LIT(st_node_names[node->type]));
-		break;
-	}
-}
-
 int parse_config_file(struct string filename,
 					  struct atom_table *table,
 					  struct arena *memory,
@@ -275,12 +191,11 @@ job_parse_file(struct compile_ctx *ctx, job_parse_file_t *data)
 
 	assert(node);
 	assert(node->type == ST_NODE_MODULE);
+	struct st_node *stmt;
+	stmt = node->MODULE.body;
 
-	struct st_node *stmt = node->MODULE.body;
 	while (stmt) {
-		assert(stmt->type == ST_NODE_STMT);
-
-		visit_stmt(ctx, data->mod, data->ns, stmt);
+		st_node_visit_stmt(ctx->ast_ctx, &data->mod->env, data->scope, stmt);
 		stmt = stmt->next_sibling;
 	}
 
@@ -323,7 +238,12 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 		return;
 	}
 
-	struct ast_namespace *dir_ns = &mod->root;
+	// TODO: Allow modules with arbitrary depth.
+#define DIR_NS_STACK_CAP 128
+	struct ast_node *dir_ns_stack[DIR_NS_STACK_CAP];
+	size_t dir_ns_head = 0;
+
+	dir_ns_stack[dir_ns_head] = mod->root;
 
 	FTSENT *f;
 	while ((f = fts_read(ftsp)) != NULL) {
@@ -344,13 +264,13 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 				string_duplicate(&ctx->vm->memory, &file_name, path);
 
 				struct atom *atom = vm_atom(ctx->vm, name);
-				struct ast_namespace *file_ns;
+				struct ast_node *file_ns;
 
 				if (atom == vm_atoms(ctx->vm, "mod")) {
-					file_ns = dir_ns;
+					file_ns = dir_ns_stack[dir_ns_head];
 				} else {
-					file_ns = ast_namespace_add_ns(
-							ctx->ast_ctx, &mod->env, dir_ns, atom);
+					file_ns = ast_namespace_add_ns(ctx->ast_ctx, &mod->env,
+							dir_ns_stack[dir_ns_head], atom);
 				}
 
 				if (num_unparsed_files) {
@@ -359,7 +279,7 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 
 				DISPATCH_JOB(ctx, parse_file, COMPILE_PHASE_DISCOVER,
 						.mod = mod,
-						.ns = file_ns,
+						.scope = file_ns,
 						.file_name = file_name,
 						.num_unparsed_files = num_unparsed_files);
 			} else if (has_extension(path, STR("module.so")))  {
@@ -384,15 +304,19 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 				if (!string_equal(name, STR("src"))) {
 					struct atom *atom = vm_atom(ctx->vm, name);
 
-					dir_ns = ast_namespace_add_ns(
-							ctx->ast_ctx, &mod->env, dir_ns, atom);
+					assert(dir_ns_head < DIR_NS_STACK_CAP - 1);
+					dir_ns_head += 1;
+					dir_ns_stack[dir_ns_head] =
+						ast_namespace_add_ns(ctx->ast_ctx, &mod->env,
+								dir_ns_stack[dir_ns_head], atom);
 				}
 			}
 			break;
 
 		case FTS_DP:
 			if (f->fts_namelen) {
-				dir_ns = dir_ns->parent;
+				assert(dir_ns_head > 0);
+				dir_ns_head -= 1;
 			}
 			break;
 
@@ -408,6 +332,7 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 	fts_close(ftsp);
 }
 
+/*
 static void
 dispatch_compile_expr(struct compile_ctx *ctx,
 		job_load_module_t *data, struct ast_namespace *ns)
@@ -441,6 +366,7 @@ dispatch_compile_expr(struct compile_ctx *ctx,
 		data->num_uncompiled_exprs += 1;
 	}
 }
+*/
 
 static struct job_status
 job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
@@ -548,15 +474,13 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 				data->mod = &data->_tmp_module;
 				data->mod->env.store = &ctx->store;
-				data->mod->root.instance = ast_bind_slot_cons(ctx->ast_ctx, &data->mod->env,
-						AST_BIND_NEW, NULL, NULL);
+				data->mod->root = ast_init_node_composite(
+						ctx->ast_ctx, &data->mod->env,
+						AST_NODE_NEW, STG_NO_LOC);
 
 				if (data->module_name != vm_atoms(ctx->vm, "base")) {
-					ast_slot_id dep_obj;
-					dep_obj = ast_module_add_dependency(ctx->ast_ctx, data->mod,
-							vm_atoms(ctx->vm, "base"));
-					ast_namespace_use(ctx->ast_ctx, data->mod,
-							&data->mod->root, dep_obj);
+					ast_module_add_dependency(ctx->ast_ctx, data->mod,
+							data->mod->root, vm_atoms(ctx->vm, "base"));
 				}
 
 				if (should_discover_files) {
@@ -634,17 +558,37 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			ast_module_resolve_names(ctx->ast_ctx, data->mod,
 					data->native_mod);
 
-			dispatch_compile_expr(ctx, data, &data->mod->root);
-
-			data->state = JOB_LOAD_MODULE_WAIT_FOR_TYPECHECK;
+			data->state = JOB_LOAD_MODULE_TYPECHECK;
 			// fallthrough
 
-		case JOB_LOAD_MODULE_WAIT_FOR_TYPECHECK:
-			if (data->num_uncompiled_exprs > 0) {
-				return JOB_YIELD;
+		case JOB_LOAD_MODULE_TYPECHECK:
+			{
+				enum ast_node_dependencies_state dep_state;
+				dep_state = ast_node_dependencies_fulfilled(
+						ctx->ast_ctx, &data->mod->env, data->mod->root);
+				if (dep_state == AST_NODE_DEPS_NOT_READY) {
+					panic("The dependencies were not ready.");
+					return JOB_ERROR;
+				} else if (dep_state == AST_NODE_DEPS_NOT_OK) {
+					return JOB_ERROR;
+				}
+				assert(dep_state == AST_NODE_DEPS_OK);
+			}
+			if (!ast_node_resolve_slots(ctx->ast_ctx, data->mod,
+					&data->mod->env, data->mod->root)) {
+				printf("Failed to resolve nodes.\n");
 			}
 
-			assert(data->num_uncompiled_exprs == 0);
+			if (!ast_node_is_typed(ctx->ast_ctx, &data->mod->env, data->mod->root)) {
+				printf("Failed type module.\n");
+#if 0
+				ast_print(ctx->ast_ctx, &data->mod->env, data->mod->root);
+
+				printf("\n");
+				ast_env_print(ctx->vm, &data->mod->env);
+#endif
+				return JOB_ERROR;
+			}
 
 			data->state = JOB_LOAD_MODULE_DONE;
 			// fallthrough
@@ -682,6 +626,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 	return JOB_ERROR;
 }
 
+/*
 static struct job_status
 job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 {
@@ -746,6 +691,7 @@ job_compile_expr(struct compile_ctx *ctx, job_compile_expr_t *data)
 	panic("Compile expr reached an invalid state.");
 	return JOB_ERROR;
 }
+*/
 
 #define COMPILE_DEBUG_JOBS 0
 

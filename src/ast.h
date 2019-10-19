@@ -13,6 +13,7 @@ typedef int32_t ast_slot_id;
 #define AST_BIND_FAILED ((ast_slot_id)-5)
 
 
+struct ast_node;
 struct ast_module;
 struct ast_object_def;
 
@@ -43,7 +44,6 @@ struct ast_scope_name {
 };
 
 struct ast_env;
-struct ast_namespace;
 
 struct ast_scope {
 	// The immediate lookup parent of the current scope. For functions this
@@ -58,14 +58,13 @@ struct ast_scope {
 	struct ast_scope *last_ns;
 
 	ast_slot_id object;
-	struct ast_namespace *ns;
 	struct ast_scope_name *names;
 	size_t num_names;
 };
 
 void
 ast_scope_push_namespace(struct ast_scope *target, struct ast_scope *parent,
-		struct ast_namespace *ns);
+		struct ast_node *ns);
 
 void
 ast_scope_push_expr(struct ast_scope *target, struct ast_scope *parent);
@@ -599,51 +598,9 @@ enum ast_module_name_kind {
 	AST_MODULE_NAME_IMPORT,
 };
 
-struct ast_namespace;
-
-struct ast_module_name {
-	enum ast_module_name_kind kind;
-	struct atom *name;
-	union {
-		struct {
-			struct ast_node *expr;
-			ast_slot_id value;
-		} decl;
-		struct ast_namespace *ns;
-		struct {
-			struct atom *name;
-			ast_slot_id value;
-		} import;
-	};
-};
-
-struct ast_namespace_free_expr {
-	struct ast_node *expr;
-	ast_slot_id value;
-};
-
-struct ast_namespace {
-	struct atom *name;
-	struct ast_namespace *parent;
-
-	ast_slot_id *used_objects;
-	size_t num_used_objects;
-
-	struct ast_module_name *names;
-	size_t num_names;
-
-	struct ast_namespace_free_expr *free_exprs;
-	size_t num_free_exprs;
-
-	struct ast_object_def def;
-	ast_slot_id instance;
-
-	struct ast_scope scope;
-};
-
 struct ast_module_dependency {
 	struct atom *name;
-	ast_slot_id slot;
+	struct ast_node *container;
 
 	struct ast_module *mod;
 };
@@ -655,40 +612,41 @@ struct ast_module {
 	struct stg_module *stg_mod;
 	struct ast_env env;
 
-	struct ast_namespace root;
+	struct ast_node *root;
 
 	struct ast_module_dependency *dependencies;
 	size_t num_dependencies;
 
-	struct object instance;
-
 	bool has_native_module_ext;
 	struct string native_module_ext;
+
+	type_id type;
 };
 
 int
 ast_namespace_add_decl(struct ast_context *, struct ast_module *,
-		struct ast_namespace *, struct atom *name, struct ast_node *expr);
+		struct ast_node *, struct atom *name, struct ast_node *expr);
 
 void
 ast_namespace_add_free_expr(struct ast_context *, struct ast_module *,
-		struct ast_namespace *, struct ast_node *expr);
+		struct ast_node *, struct ast_node *expr);
 
-struct ast_namespace *
+struct ast_node *
 ast_namespace_add_ns(struct ast_context *, struct ast_env *,
-		struct ast_namespace *, struct atom *name);
+		struct ast_node *, struct atom *name);
 
 void
 ast_namespace_add_import(struct ast_context *, struct ast_module *,
-		struct ast_namespace *, struct atom *name);
+		struct ast_node *, struct atom *name);
 
-ast_slot_id
+void
 ast_module_add_dependency(struct ast_context *,
-		struct ast_module *, struct atom *name);
+		struct ast_module *, struct ast_node *container,
+		struct atom *name);
 
 void
 ast_namespace_use(struct ast_context *,
-		struct ast_module *, struct ast_namespace *,
+		struct ast_module *, struct ast_node *,
 		ast_slot_id object);
 
 void

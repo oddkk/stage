@@ -569,18 +569,19 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 		size_t offset = 0;
 		for (size_t i = 0; i < comp->composite.num_members; i++) {
-			struct object member_type_obj;
+			printf("finalizing %.*s:\n", ALIT(comp->composite.members[i].name));
+			ast_env_print(ctx->vm, env);
+			ast_print(ctx, env, comp->composite.members[i].type);
+
+			type_id member_type_id;
 			int err;
-			err = ast_node_eval(ctx, mod, env,
+			err = ast_node_eval_type(ctx, mod, env,
 					comp->composite.members[i].type,
-					&member_type_obj);
+					&member_type_id);
 			if (err) {
 				printf("Failed to resolve type of composit member.\n");
 				continue;
 			}
-
-			type_id member_type_id;
-			member_type_id = *(type_id *)member_type_obj.data;
 
 			params[i].param_id = i;
 			params[i].name = comp->composite.members[i].name;

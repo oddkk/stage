@@ -40,5 +40,5 @@ base_init_register_cons(struct ast_context *ctx, struct stg_module *mod)
 				AST_BIND_NEW, mod_atoms(mod, "Array"),
 				array_type_cons_obj));
 	ast_namespace_add_decl(ctx, &mod->mod,
-			&mod->mod.root, mod_atoms(mod, "Array"), array_type_cons);
+			mod->mod.root, mod_atoms(mod, "Array"), array_type_cons);
 }

@@ -116,6 +116,102 @@ st_node_unpack_func_proto(struct st_node *proto_node,
 	}
 }
 
+void
+st_node_visit_stmt(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *struct_node, struct st_node *stmt)
+{
+	assert(stmt->type == ST_NODE_STMT);
+	assert(stmt->STMT.stmt);
+
+	switch (stmt->STMT.stmt->type) {
+		case ST_NODE_USE_STMT:
+			panic("TODO: Use statement in composite datatype");
+			break;
+
+		case ST_NODE_ASSIGN_STMT:
+			{
+				struct st_node *assign = stmt->STMT.stmt;
+
+				struct ast_node *target =
+					st_node_visit_expr(
+							ctx, env, NULL,
+							assign->ASSIGN_STMT.ident);
+
+				struct st_node *expr_node;
+				struct ast_node *expr = NULL;
+
+				expr_node = assign->ASSIGN_STMT.body;
+				if (expr_node) {
+					expr = st_node_visit_expr(
+							ctx, env, NULL, expr_node);
+				}
+
+				bool overridable;
+				overridable = assign->ASSIGN_STMT.overridable;
+
+
+				if (assign->ASSIGN_STMT.decl) {
+					struct st_node *type_node;
+					struct ast_node *type = NULL;
+
+					// TODO: Allow more complex targets.
+					assert(target->kind == AST_NODE_LOOKUP);
+					struct atom *name = target->lookup.name;
+
+					type_node = assign->ASSIGN_STMT.type;
+
+					assert(expr || type_node);
+
+					if (type_node) {
+						type = st_node_visit_expr(
+								ctx, env, NULL, type_node);
+					} else {
+						assert(expr);
+						type = ast_init_node_slot(
+								ctx, env, AST_NODE_NEW, assign->loc,
+								ast_node_type(ctx, env, expr));
+					}
+
+					int err;
+					err = ast_node_composite_add_member(
+							ctx, env, struct_node,
+							name, type);
+					if (err) {
+						stg_error(ctx->err, target->loc,
+								"'%.*s' is already declared.",
+								ALIT(name));
+						return;
+					}
+				} else {
+					assert(!assign->ASSIGN_STMT.type);
+					assert(expr);
+				}
+
+				if (expr) {
+					ast_node_composite_bind(
+							ctx, env, struct_node,
+							target, expr, overridable);
+				}
+			}
+			break;
+
+		default:
+			{
+				struct st_node *expr_node;
+				expr_node = stmt->STMT.stmt;
+
+				struct ast_node *expr;
+				expr = st_node_visit_expr(
+						ctx, env, NULL, expr_node);
+
+
+				ast_node_composite_add_free_expr(
+						ctx, env, struct_node, expr);
+			}
+			break;
+	}
+}
+
 struct ast_node *
 st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *func_node, struct st_node *node)
@@ -324,6 +420,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 				func, func_args, num_args);
 	} break;
 
+	case ST_NODE_MODULE:
 	case ST_NODE_OBJECT_DECL:
 	{
 		struct ast_node *struct_node;
@@ -331,93 +428,14 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 				ctx, env, AST_NODE_NEW, node->loc);
 
 		struct st_node *member;
-		member = node->OBJECT_INST.body;
+		if (node->type == ST_NODE_OBJECT_DECL) {
+			member = node->OBJECT_DECL.body;
+		} else {
+			member = node->MODULE.body;
+		}
+
 		while (member) {
-			assert(member->type == ST_NODE_STMT);
-			assert(member->STMT.stmt);
-
-			switch (member->STMT.stmt->type) {
-				case ST_NODE_USE_STMT:
-					panic("TODO: Use statement in composite datatype");
-					break;
-
-				case ST_NODE_ASSIGN_STMT:
-					{
-						struct st_node *assign = member->STMT.stmt;
-
-						struct ast_node *target =
-							st_node_visit_expr(
-									ctx, env, NULL,
-									assign->ASSIGN_STMT.ident);
-
-						struct st_node *expr_node;
-						struct ast_node *expr = NULL;
-
-						expr_node = assign->ASSIGN_STMT.body;
-						if (expr_node) {
-							expr = st_node_visit_expr(
-									ctx, env, NULL, expr_node);
-						}
-
-						bool overridable;
-						overridable = assign->ASSIGN_STMT.overridable;
-
-
-						if (assign->ASSIGN_STMT.decl) {
-							struct st_node *type_node;
-							struct ast_node *type = NULL;
-
-							// TODO: Allow more complex targets.
-							assert(target->kind == AST_NODE_LOOKUP);
-							struct atom *name = target->lookup.name;
-
-							type_node = assign->ASSIGN_STMT.type;
-							if (type_node) {
-								type = st_node_visit_expr(
-										ctx, env, NULL, type_node);
-							}
-
-							assert(expr || type);
-
-							int err;
-							err = ast_node_composite_add_member(
-									ctx, env, struct_node,
-									name, type);
-							if (err) {
-								stg_error(ctx->err, target->loc,
-										"'%.*s' is already declared.",
-										ALIT(name));
-								return NULL;
-							}
-						} else {
-							assert(!assign->ASSIGN_STMT.type);
-							assert(expr);
-						}
-
-						if (expr) {
-							ast_node_composite_bind(
-									ctx, env, struct_node,
-									target, expr, overridable);
-						}
-					}
-					break;
-
-				default:
-					{
-						struct st_node *expr_node;
-						expr_node = member->STMT.stmt;
-
-						struct ast_node *expr;
-						expr = st_node_visit_expr(
-								ctx, env, NULL, expr_node);
-
-
-						ast_node_composite_add_free_expr(
-								ctx, env, struct_node, expr);
-					}
-					break;
-			}
-
+			st_node_visit_stmt(ctx, env, struct_node, member);
 			member = member->next_sibling;
 		}
 

@@ -168,7 +168,7 @@ mod_channel_init(struct ast_context *ctx, struct stg_module *mod)
 		expr = ast_init_node_slot(ctx, &ast_mod->env, AST_NODE_NEW, STG_NO_LOC,
 				ast_bind_slot_const(ctx, &ast_mod->env, AST_BIND_NEW, cons_name, res));
 
-		ast_namespace_add_decl(ctx, ast_mod, &ast_mod->root,
+		ast_namespace_add_decl(ctx, ast_mod, ast_mod->root,
 				cons_name, expr);
 	}
 

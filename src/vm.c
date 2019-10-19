@@ -80,8 +80,9 @@ vm_register_module(struct vm *vm, struct ast_context *ctx,
 		mod->mod = *old_module;
 	} else {
 		mod->mod.env.store = &mod->store;
-		mod->mod.root.instance = ast_bind_slot_cons(ctx, &mod->mod.env,
-				AST_BIND_NEW, NULL, NULL);
+		// TODO: Initialize the module.
+		// mod->mod.root.instance = ast_bind_slot_cons(ctx, &mod->mod.env,
+		// 		AST_BIND_NEW, NULL, NULL);
 	}
 
 	mod->mod.stg_mod = mod;

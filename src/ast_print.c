@@ -345,6 +345,7 @@ ast_print(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
 	ast_print_internal(ctx, env, node, 0);
 }
 
+/*
 static void
 ast_print_namespace(struct ast_context *ctx, struct ast_env *env,
 		struct ast_namespace *ns, int indent)
@@ -390,3 +391,4 @@ ast_print_module(struct ast_context *ctx, struct ast_module *mod)
 {
 	ast_print_namespace(ctx, &mod->env, &mod->root, 0);
 }
+*/
