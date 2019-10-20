@@ -11,7 +11,7 @@ struct ast_dt_bind {
 	struct ast_node *value;
 	bool overridable;
 
-	struct ast_dt_member **deps;
+	ast_member_id *deps;
 	size_t num_deps;
 
 	struct ast_dt_bind *next_alloced;
@@ -34,24 +34,23 @@ struct ast_dt_member {
 	// Used as part of the terminal_nodes linked list until after the member
 	// has been sorted. Then next becomes the id of the next member in the
 	// topological order. The index of another member.
-	struct ast_dt_member *next;
+	ast_member_id next;
 };
 
 struct ast_dt_dependency {
-	struct ast_dt_member *from, *to;
+	ast_member_id from, to;
 	bool visited;
 };
 
 struct ast_dt_context {
 	struct ast_dt_member *members;
 	size_t num_members;
-	size_t cap_members;
 
 	struct ast_dt_bind *alloced_binds;
 
 	// A linked list of all nodes with no incoming edges. The index of another
 	// member.
-	struct ast_dt_member *terminal_nodes;
+	ast_member_id terminal_nodes;
 	size_t unvisited_edges;
 
 	struct ast_context *ast_ctx;
@@ -59,6 +58,13 @@ struct ast_dt_context {
 
 	size_t num_errors;
 };
+
+static inline struct ast_dt_member *
+get_member(struct ast_dt_context *ctx, ast_member_id id)
+{
+	assert(id < ctx->num_members);
+	return &ctx->members[id];
+}
 
 static struct ast_dt_bind *
 ast_dt_register_bind(struct ast_dt_context *ctx,
@@ -77,88 +83,67 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 
 static void
 ast_dt_remove_terminal_member(struct ast_dt_context *ctx,
-		struct ast_dt_member *member)
+		ast_member_id member)
 {
-	struct ast_dt_member **node;
+	ast_member_id *node;
 	node = &ctx->terminal_nodes;
 
-	while (*node) {
+	while (*node >= 0) {
 		if (*node == member) {
-			*node = member->next;
-			member->next = NULL;
+			*node = get_member(ctx, member)->next;
+			get_member(ctx, member)->next = -1;
 			return;
 		}
-		node = &(*node)->next;
+		node = &get_member(ctx, *node)->next;
 	}
 }
 
 static void
 ast_dt_dependency(struct ast_dt_context *ctx,
-		struct ast_dt_member *from, struct ast_dt_member *to)
+		ast_member_id from, ast_member_id to)
 {
 	struct ast_dt_dependency new_edge = {0};
 
 	new_edge.from = from;
 	new_edge.to = to;
 
+	struct ast_dt_member *from_mbr;
+	from_mbr = get_member(ctx, from);
+
 	dlist_append(
-			from->outgoing_edges,
-			from->num_outgoing_edges,
+			from_mbr->outgoing_edges,
+			from_mbr->num_outgoing_edges,
 			&new_edge);
 
-	to->num_incoming_edges += 1;
+	get_member(ctx, to)->num_incoming_edges += 1;
 	ctx->unvisited_edges += 1;
 
-	if (to->num_incoming_edges == 1) {
+	if (get_member(ctx, to)->num_incoming_edges == 1) {
 		ast_dt_remove_terminal_member(ctx, to);
 	}
 }
 
-static struct ast_dt_member *
+static ast_member_id
 ast_dt_register_member(struct ast_dt_context *ctx,
 		struct atom *name, ast_slot_id slot,
 		struct stg_location decl_loc)
 {
-	assert(ctx->num_members < ctx->cap_members);
+	struct ast_dt_member new_mbr = {0};
 
-	size_t member_i = ctx->num_members;
-	ctx->num_members += 1;
+	new_mbr.name = name;
+	new_mbr.slot = slot;
+	new_mbr.decl_loc = decl_loc;
+	new_mbr.next = ctx->terminal_nodes;
 
-	struct ast_dt_member *member;
-	member = &ctx->members[member_i];
+	ast_member_id mbr_id;
+	mbr_id = dlist_append(
+			ctx->members,
+			ctx->num_members,
+			&new_mbr);
 
+	ctx->terminal_nodes = mbr_id;
 
-	memset(member, 0, sizeof(struct ast_dt_member));
-
-	member->name = name;
-	member->slot = slot;
-	member->decl_loc = decl_loc;
-
-	member->next = ctx->terminal_nodes;
-	ctx->terminal_nodes = member;
-
-	return member;
-}
-
-static size_t
-ast_dt_type_node_num_bindable_members(struct ast_node *node)
-{
-	// TODO: Implement.
-	return 0;
-}
-
-static size_t
-ast_dt_composite_num_bindable_members(struct ast_node *node)
-{
-	assert(node->kind == AST_NODE_COMPOSITE);
-
-	size_t count = 0;
-	for (size_t i = 0; i < node->composite.num_members; i++) {
-		count += ast_dt_type_node_num_bindable_members(
-				node->composite.members[i].type);
-	}
-
-	return count + node->composite.num_members;
+	return mbr_id;
 }
 
 static void
@@ -185,23 +170,23 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 	}
 }
 
-static struct ast_dt_member *
+static ast_member_id
 ast_dt_find_member_by_slot(struct ast_dt_context *ctx, ast_slot_id target_slot)
 {
 	for (size_t i = 0; i < ctx->num_members; i++) {
 		// TODO: We should base target resolution on something more consistent
 		// than slots.
 		if (ast_node_resolve_slot(ctx->ast_env, &target_slot) ==
-				ast_node_resolve_slot(ctx->ast_env, &ctx->members[i].slot)) {
-			return &ctx->members[i];
+				ast_node_resolve_slot(ctx->ast_env, &get_member(ctx, i)->slot)) {
+			return i;
 		}
 	}
 
-	return NULL;
+	return -1;
 }
 
 struct ast_dt_find_member_ref_res {
-	struct ast_dt_member **nodes;
+	ast_member_id *nodes;
 	size_t num_nodes;
 };
 
@@ -230,24 +215,28 @@ ast_dt_find_member_refs(struct ast_dt_context *ctx,
 
 		case AST_NODE_SLOT:
 			{
-				struct ast_dt_member *member;
+				ast_member_id member;
 				member = ast_dt_find_member_by_slot(
 						ctx, node->slot);
-				if (member) {
+				if (member >= 0) {
 					dlist_append(
-							res->nodes, res->num_nodes, &member);
+							res->nodes,
+							res->num_nodes,
+							&member);
 				}
 			}
 			break;
 
 		case AST_NODE_LOOKUP:
 			if (node->lookup.value != AST_SLOT_NOT_FOUND) {
-				struct ast_dt_member *member;
+				ast_member_id member;
 				member = ast_dt_find_member_by_slot(
 						ctx, node->lookup.value);
-				if (member) {
+				if (member >= 0) {
 					dlist_append(
-							res->nodes, res->num_nodes, &member);
+							res->nodes,
+							res->num_nodes,
+							&member);
 				}
 			}
 			break;
@@ -274,8 +263,11 @@ ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node
 			ctx, target, value, overridable);
 
 	for (size_t target_i = 0; target_i < target_members.num_nodes; target_i++) {
+		ast_member_id member_id;
+		member_id = target_members.nodes[target_i];
+
 		struct ast_dt_member *member;
-		member = target_members.nodes[target_i];
+		member = get_member(ctx, member_id);
 
 		if (member->bound) {
 			if (!member->bound->overridable && !overridable) {
@@ -302,7 +294,7 @@ ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node
 		member->bound = bind;
 
 		for (size_t val_i = 0; val_i < value_members.num_nodes; val_i++) {
-			ast_dt_dependency(ctx, value_members.nodes[val_i], member);
+			ast_dt_dependency(ctx, value_members.nodes[val_i], member_id);
 		}
 	}
 
@@ -353,22 +345,23 @@ ast_dt_composite_bind(struct ast_dt_context *ctx, struct ast_node *node)
 
 static bool
 ast_dt_output_cycle_errors(struct ast_dt_context *ctx,
-		struct ast_dt_member *origin, struct ast_dt_member *node)
+		ast_member_id origin, ast_member_id node)
 {
 	if (node == origin) {
 		return true;
 	}
 
 	bool found = false;
-	for (size_t i = 0; i < node->num_outgoing_edges; i++) {
+	for (size_t i = 0; i < get_member(ctx, node)->num_outgoing_edges; i++) {
 		struct ast_dt_dependency *edge;
-		edge = &node->outgoing_edges[i];
+		edge = &get_member(ctx, node)->outgoing_edges[i];
 		if (!edge->visited) {
 			if (ast_dt_output_cycle_errors(ctx, origin, edge->to)) {
 				edge->visited = true;
 				found = true;
 
-				stg_appendage(ctx->ast_ctx->err, edge->from->bound->target->loc,
+				stg_appendage(ctx->ast_ctx->err,
+						get_member(ctx, edge->from)->bound->target->loc,
 						"Through");
 			}
 		}
@@ -377,26 +370,28 @@ ast_dt_output_cycle_errors(struct ast_dt_context *ctx,
 	return found;
 }
 
-static struct ast_dt_member *
+static ast_member_id
 ast_dt_composite_order_binds(struct ast_dt_context *ctx)
 {
-	struct ast_dt_member *result = NULL;
-	struct ast_dt_member *result_tail = NULL;
+	ast_member_id result = -1;
+	ast_member_id result_tail = -1;
 
 	// Topological Sort.
-	while (ctx->terminal_nodes) {
+	while (ctx->terminal_nodes >= 0) {
+		ast_member_id member_id;
 		struct ast_dt_member *member;
-		member = ctx->terminal_nodes;
+		member_id = ctx->terminal_nodes;
+		member = get_member(ctx, member_id);
 
 		ctx->terminal_nodes = member->next;
-		member->next = NULL;
+		member->next = -1;
 
-		if (!result) {
-			result = member;
-			result_tail = member;
+		if (result < 0) {
+			result = member_id;
+			result_tail = member_id;
 		} else {
-			result_tail->next = member;
-			result_tail = member;
+			get_member(ctx, result_tail)->next = member_id;
+			result_tail = member_id;
 		}
 
 		for (size_t i = 0; i < member->num_outgoing_edges; i++) {
@@ -406,14 +401,17 @@ ast_dt_composite_order_binds(struct ast_dt_context *ctx)
 			if (!edge->visited) {
 				edge->visited = true;
 
-				assert(edge->to->num_incoming_edges > 0);
-				edge->to->num_incoming_edges -= 1;
+				struct ast_dt_member *edge_to;
+				edge_to = get_member(ctx, edge->to);
+
+				assert(edge_to->num_incoming_edges > 0);
+				edge_to->num_incoming_edges -= 1;
 
 				assert(ctx->unvisited_edges > 0);
 				ctx->unvisited_edges -= 1;
 
-				if (edge->to->num_incoming_edges == 0) {
-					edge->to->next = ctx->terminal_nodes;
+				if (edge_to->num_incoming_edges == 0) {
+					edge_to->next = ctx->terminal_nodes;
 					ctx->terminal_nodes = edge->to;
 				}
 			}
@@ -425,7 +423,7 @@ ast_dt_composite_order_binds(struct ast_dt_context *ctx)
 
 		for (size_t member_i = 0; member_i < ctx->num_members; member_i++) {
 			struct ast_dt_member *member;
-			member = &ctx->members[member_i];
+			member = get_member(ctx, member_i);
 
 			for (size_t edge_i = 0; edge_i < member->num_outgoing_edges; edge_i++) {
 				struct ast_dt_dependency *edge;
@@ -521,24 +519,33 @@ struct type_base ast_dt_composite_base = {
 	// .free = ...,
 };
 
+int
+ast_dt_try_resolve_types(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node)
+{
+	/*
+	switch (node->kind) {
+		case AST_NODE_COMPOSITE:
+			break;
+	}
+	*/
+
+	return -1;
+}
+
 type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *comp)
 {
-	size_t num_members;
-	num_members = ast_dt_composite_num_bindable_members(comp);
-	struct ast_dt_member members[num_members];
-
 	struct ast_dt_context dt_ctx = {0};
 	dt_ctx.ast_ctx = ctx;
 	dt_ctx.ast_env = env;
-	dt_ctx.members = members;
-	dt_ctx.cap_members = num_members;
+	dt_ctx.terminal_nodes = -1;
 
 	ast_dt_composite_populate(&dt_ctx, comp);
 	ast_dt_composite_bind(&dt_ctx, comp);
 
-	struct ast_dt_member *bind_order;
+	ast_member_id bind_order;
 	bind_order = ast_dt_composite_order_binds(&dt_ctx);
 
 	type_id result = TYPE_UNSET;
@@ -558,8 +565,8 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 				sizeof(struct ast_object_def_param));
 
 		size_t num_bound_members = 0;
-		for (struct ast_dt_member *mbr = bind_order;
-				mbr != NULL; mbr = mbr->next) {
+		for (ast_member_id mbr = bind_order;
+				mbr >= 0; mbr = dt_ctx.members[mbr].next) {
 			num_bound_members += 1;
 		}
 
@@ -605,8 +612,11 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		def->num_params = comp->composite.num_members;
 
 		size_t bind_i = 0;
-		for (struct ast_dt_member *mbr = bind_order;
-				mbr != NULL; mbr = mbr->next) {
+		for (ast_member_id mbr_i = bind_order;
+				mbr_i >= 0; mbr_i = get_member(&dt_ctx, mbr_i)->next) {
+			struct ast_dt_member *mbr;
+			mbr = get_member(&dt_ctx, mbr_i);
+
 			if (!mbr->bound) {
 				continue;
 			}
@@ -628,7 +638,8 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 			type_id dep_types[num_deps];
 
 			for (size_t i = 0; i < num_deps; i++) {
-				struct ast_dt_member *dep = mbr->bound->deps[i];
+				ast_member_id dep_i = mbr->bound->deps[i];
+				struct ast_dt_member *dep = get_member(&dt_ctx, dep_i);
 				dep_names[i] = dep->name;
 
 				struct object dep_type_obj;
@@ -682,9 +693,10 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		def->ret_type = result;
 	}
 
-	for (size_t i = 0; i < num_members; i++) {
-		free(members[i].outgoing_edges);
+	for (size_t i = 0; i < dt_ctx.num_members; i++) {
+		free(dt_ctx.members[i].outgoing_edges);
 	}
+	free(dt_ctx.members);
 
 	for (struct ast_dt_bind *bind = dt_ctx.alloced_binds;
 			bind != NULL;) {

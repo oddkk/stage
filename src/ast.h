@@ -94,6 +94,8 @@ enum ast_slot_kind {
 const char *
 ast_slot_name(enum ast_slot_kind kind);
 
+typedef int ast_member_id;
+
 struct ast_env_slot {
 	struct atom *name;
 	ast_slot_id type;
