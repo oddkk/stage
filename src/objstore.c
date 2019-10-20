@@ -69,37 +69,7 @@ struct object
 register_object(struct vm *vm, struct objstore *store, struct object obj) {
 	if (store->page_size == 0) {
 		store->page_size = sysconf(_SC_PAGESIZE);
-		store->elements_per_page = store->page_size / sizeof(struct object);
 	}
-
-	if (store->last_page_num_used == 0 ||
-		store->last_page_num_used >= store->elements_per_page) {
-		size_t new_size = (store->num_pages + 1) * sizeof(struct object *);
-		struct object **new_pages = realloc(store->pages, new_size);
-		if (!new_pages) {
-			perror("realloc");
-			return OBJ_NONE;
-		}
-
-		new_pages[store->num_pages] = mmap(NULL, store->page_size,
-										   PROT_READ|PROT_WRITE,
-										   MAP_PRIVATE|MAP_ANONYMOUS,
-										   -1, 0);
-
-		if (new_pages[store->num_pages] == MAP_FAILED) {
-			perror("mmap");
-			return OBJ_NONE;
-		}
-
-		store->pages = new_pages;
-		store->num_pages = store->num_pages + 1;
-		store->last_page_num_used = 0;
-	}
-
-	obj_id id = (store->num_pages - 1) * store->elements_per_page
-		+ store->last_page_num_used;
-
-	store->last_page_num_used += 1;
 
 	struct type *type = vm_get_type(vm, obj.type);
 
@@ -142,22 +112,20 @@ register_object(struct vm *vm, struct objstore *store, struct object obj) {
 		memcpy((void *)o.data, (void *)obj.data, type->size);
 	}
 
-	store->pages[id / store->elements_per_page][id % store->elements_per_page] = o;
-
 	return o;
 }
 
 void free_objstore(struct objstore *store) {
-	for (size_t i = 0; i < store->num_pages; i++) {
+	for (size_t i = 0; i < store->num_data_pages; i++) {
 		int err;
-		err = munmap(store->pages[i], store->page_size);
+		err = munmap(store->data_pages[i], store->page_size);
 		if (err != 0) {
 			perror("munmap");
 		}
 	}
 
-	if (store->pages) {
-		free(store->pages);
+	if (store->data_pages) {
+		free(store->data_pages);
 	}
 
 	if (store->types) {

@@ -108,11 +108,6 @@ struct objstore {
 	size_t page_size;
 	uint32_t mod_id;
 
-	struct object **pages;
-	size_t num_pages;
-	size_t elements_per_page;
-	size_t last_page_num_used;
-
 	uint8_t **data_pages;
 	size_t num_data_pages;
 	size_t last_data_page_used;
@@ -146,14 +141,6 @@ void print_obj_repr(struct vm *vm, struct object);
 
 struct object
 register_object(struct vm *, struct objstore *store, struct object obj);
-
-static inline struct object get_object(struct objstore *store, obj_id id) {
-	struct object *obj;
-
-	obj = &store->pages[id / store->elements_per_page][id % store->elements_per_page];
-
-	return *obj;
-}
 
 static inline struct type *store_get_type(struct objstore *store, type_id id) {
 	struct type *type;
