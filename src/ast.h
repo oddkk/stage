@@ -45,26 +45,21 @@ struct ast_scope_name {
 
 struct ast_env;
 
-struct ast_scope {
-	// The immediate lookup parent of the current scope. For functions this
-	// should be the last seen namespace. Closures should be resolved by
-	// looking through the parent_func scopes.
-	struct ast_scope *parent;
-	// Used for resolving closures from parent functions.
-	struct ast_scope *parent_func;
-	// The last seen function scope, including the current one.
-	struct ast_scope *last_func;
-	// The last seen namespace scope, including the current one.
-	struct ast_scope *last_ns;
+enum ast_scope_parent_kind {
+	AST_SCOPE_PARENT_LOCAL = 0,
+	AST_SCOPE_PARENT_CLOSURE,
+};
 
-	ast_slot_id object;
+struct ast_scope {
+	struct ast_scope *parent;
+	enum ast_scope_parent_kind parent_kind;
+
 	struct ast_scope_name *names;
 	size_t num_names;
 };
 
 void
-ast_scope_push_namespace(struct ast_scope *target, struct ast_scope *parent,
-		struct ast_node *ns);
+ast_scope_push_composite(struct ast_scope *target, struct ast_scope *parent);
 
 void
 ast_scope_push_expr(struct ast_scope *target, struct ast_scope *parent);
@@ -530,7 +525,7 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 
 struct stg_native_module;
 
-void
+int
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		struct stg_native_module *native_module,
 		struct ast_scope *scope, struct ast_node *node);
@@ -653,10 +648,6 @@ ast_namespace_use(struct ast_context *,
 
 void
 ast_module_resolve_dependencies(struct ast_context *, struct ast_module *);
-
-void
-ast_module_resolve_names(struct ast_context *, struct ast_module *,
-		struct stg_native_module *);
 
 int
 ast_module_finalize(struct ast_context *, struct ast_module *);

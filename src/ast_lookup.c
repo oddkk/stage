@@ -4,18 +4,12 @@
 #include <string.h>
 
 void
-ast_scope_push_namespace(struct ast_scope *target, struct ast_scope *parent,
-		struct ast_node *ns)
+ast_scope_push_composite(struct ast_scope *target, struct ast_scope *parent)
 {
 	memset(target, 0, sizeof(struct ast_scope));
 
 	target->parent = parent;
-	target->parent_func = NULL;
-	target->last_func = NULL;
-	target->last_ns = target;
-
-	// target->ns = ns;
-	target->object = AST_SLOT_NOT_FOUND;
+	target->parent_kind = AST_SCOPE_PARENT_LOCAL;
 }
 
 void
@@ -24,11 +18,7 @@ ast_scope_push_expr(struct ast_scope *target, struct ast_scope *parent)
 	memset(target, 0, sizeof(struct ast_scope));
 
 	target->parent = parent;
-	target->parent_func = parent->parent_func;
-	target->last_func = target;
-	target->last_ns = parent->last_ns;
-
-	target->object = AST_SLOT_NOT_FOUND;
+	target->parent_kind = AST_SCOPE_PARENT_LOCAL;
 }
 
 void
@@ -36,12 +26,8 @@ ast_scope_push_func(struct ast_scope *target, struct ast_scope *parent)
 {
 	memset(target, 0, sizeof(struct ast_scope));
 
-	target->parent = parent->last_ns;
-	target->parent_func = parent->last_func;
-	target->last_func = target;
-	target->last_ns = parent->last_ns;
-
-	target->object = AST_SLOT_NOT_FOUND;
+	target->parent = parent;
+	target->parent_kind = AST_SCOPE_PARENT_CLOSURE;
 }
 
 static void
@@ -73,51 +59,6 @@ ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *en
 		}
 	}
 
-	if (scope->object != AST_SLOT_NOT_FOUND) {
-		assert(ast_env_slot(ctx, env, scope->object).cons.def != NULL);
-
-		ast_slot_id slot =
-			ast_unpack_arg_named(ctx, env, scope->object,
-					AST_BIND_NEW, node->lookup.name);
-
-		if (slot != AST_BIND_FAILED) {
-			return slot;
-		}
-	}
-
-	/*
-	if (scope->ns) {
-		for (size_t i = 0; i < scope->ns->num_names; i++) {
-			struct ast_module_name *name = &scope->ns->names[i];
-			if (name->name == node->lookup.name) {
-				switch (name->kind) {
-					case AST_MODULE_NAME_DECL:
-						return name->decl.value;
-
-					case AST_MODULE_NAME_NAMESPACE:
-						return name->ns->instance;
-
-					case AST_MODULE_NAME_IMPORT:
-						return name->import.value;
-				}
-			}
-		}
-
-		for (size_t i = 0; i < scope->ns->num_used_objects; i++) {
-			ast_slot_id obj_id = scope->ns->used_objects[i];
-			assert(ast_env_slot(ctx, env, obj_id).cons.def != NULL);
-
-			ast_slot_id slot =
-				ast_unpack_arg_named(ctx, env, obj_id,
-						AST_BIND_NEW, node->lookup.name);
-
-			if (slot != AST_BIND_FAILED) {
-				return slot;
-			}
-		}
-	}
-	*/
-
 	return AST_BIND_FAILED;
 }
 
@@ -139,35 +80,22 @@ ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
 			return true;
 		}
 
-		// TODO: Closures
-		/*
-		if (scope->parent_func) {
-			for (struct ast_scope *func_scope = root_scope->parent_func;
-					scope != NULL;
-					scope = scope->parent_func) {
-				ast_slot_id slot =
-					ast_try_resolve_node_lookup_in_scope(
-							ctx, env, scope, node);
-
-				if (slot != AST_BIND_FAILED) {
-					printf("TODO: wildcards. Found '%.*s' as slot %i.\n",
-							ALIT(node->lookup.name), slot);
-					// ast_bind_lookup_node(ctx, env, node, slot);
-					return true;
-				}
-			}
+		if (scope->parent_kind == AST_SCOPE_PARENT_CLOSURE) {
+			// TODO: Closures.
+			break;
 		}
-		*/
 	}
 
 	return false;
 }
 
-void
+int
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		struct stg_native_module *native_mod,
 		struct ast_scope *scope, struct ast_node *node)
 {
+	int err = 0;
+
 	switch (node->kind) {
 		case AST_NODE_FUNC_UNINIT:
 			panic("Encountered uninitialized func node while resolving names.");
@@ -178,26 +106,25 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				struct ast_scope templates_scope = {0};
 				struct ast_scope params_scope = {0};
 
-				ast_scope_push_func(&templates_scope, scope);
+				ast_scope_push_expr(&templates_scope, scope);
 
-				if (node->func.num_template_params > 0) {
-					templates_scope.num_names = node->func.num_template_params;
-					templates_scope.names = calloc(
-							templates_scope.num_names, sizeof(struct ast_scope_name));
+				templates_scope.num_names = node->func.num_template_params;
+				struct ast_scope_name template_scope_names[templates_scope.num_names];
+				templates_scope.names = template_scope_names;
 
-					for (size_t i = 0; i < templates_scope.num_names; i++) {
-						templates_scope.names[i].name =
-							node->func.template_params[i].name;
-						templates_scope.names[i].slot =
-							node->func.template_params[i].slot;
-					}
+				for (size_t i = 0; i < templates_scope.num_names; i++) {
+					templates_scope.names[i].name =
+						node->func.template_params[i].name;
+					templates_scope.names[i].slot =
+						node->func.template_params[i].slot;
 				}
 
-				ast_scope_push_expr(&params_scope, &templates_scope);
+
+				ast_scope_push_func(&params_scope, &templates_scope);
 
 				params_scope.num_names = node->func.num_params;
-				params_scope.names = calloc(
-						params_scope.num_names, sizeof(struct ast_scope_name));
+				struct ast_scope_name params_scope_names[params_scope.num_names];
+				params_scope.names = params_scope_names;
 
 				for (size_t i = 0; i < params_scope.num_names; i++) {
 					params_scope.names[i].name = node->func.params[i].name;
@@ -205,46 +132,32 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				}
 
 				for (size_t i = 0; i < params_scope.num_names; i++) {
-					ast_node_resolve_names(ctx, env, native_mod,
+					err += ast_node_resolve_names(ctx, env, native_mod,
 							&templates_scope, node->func.params[i].type);
 				}
 
-				ast_node_resolve_names(ctx, env, native_mod,
+				err += ast_node_resolve_names(ctx, env, native_mod,
 						&templates_scope, node->func.return_type);
 
-				ast_node_resolve_names(ctx, env, native_mod,
+				err += ast_node_resolve_names(ctx, env, native_mod,
 						&params_scope, node->func.body);
 			}
 			break;
 
 		case AST_NODE_FUNC_NATIVE:
 			{
-				struct ast_scope templates_scope = {0};
-
-				ast_scope_push_func(&templates_scope, scope);
-
-				if (false) {
-					templates_scope.num_names = 0;
-					templates_scope.names = calloc(
-							templates_scope.num_names, sizeof(struct ast_scope_name));
-
-					for (size_t i = 0; i < templates_scope.num_names; i++) {
-						templates_scope.names[i].name = node->func.params[i].name;
-						templates_scope.names[i].slot = node->func.params[i].slot;
-					}
-				}
-
 				for (size_t i = 0; i < node->func.num_params; i++) {
-					ast_node_resolve_names(ctx, env, native_mod,
-							&templates_scope, node->func.params[i].type);
+					err += ast_node_resolve_names(ctx, env, native_mod,
+							scope, node->func.params[i].type);
 				}
 
-				ast_node_resolve_names(ctx, env, native_mod,
-						&templates_scope, node->func.return_type);
+				err += ast_node_resolve_names(ctx, env, native_mod,
+						scope, node->func.return_type);
 
 				if (!native_mod) {
 					stg_error(ctx->err, node->loc,
 							"This module does not have a native module.");
+						err += 1;
 				} else {
 					for (size_t i = 0; i < native_mod->num_funcs; i++) {
 						if (string_equal(
@@ -256,8 +169,9 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 					if (!node->func.native.func) {
 						stg_error(ctx->err, node->loc,
-								"This module does not contain a native function '%.*s'.",
+								"This module does not have a native function named '%.*s'.",
 								LIT(node->func.native.name));
+						err += 1;
 					}
 				}
 
@@ -266,10 +180,10 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
-			ast_node_resolve_names(ctx, env, native_mod,
+			err += ast_node_resolve_names(ctx, env, native_mod,
 					scope, node->call.func);
 			for (size_t i = 0; i < node->call.num_args; i++) {
-				ast_node_resolve_names(ctx, env, native_mod,
+				err += ast_node_resolve_names(ctx, env, native_mod,
 						scope, node->call.args[i].value);
 			}
 			break;
@@ -280,19 +194,19 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 				ast_scope_push_func(&templates_scope, scope);
 
-				if (node->templ.num_params > 0) {
-					templates_scope.num_names = node->templ.num_params;
-					templates_scope.names = calloc(
-							templates_scope.num_names, sizeof(struct ast_scope_name));
+				templates_scope.num_names = node->templ.num_params;
+				struct ast_scope_name template_scope_names[templates_scope.num_names];
+				templates_scope.names = template_scope_names;
 
-					for (size_t i = 0; i < templates_scope.num_names; i++) {
-						templates_scope.names[i].name =
-							node->templ.params[i].name;
-						templates_scope.names[i].slot =
-							node->templ.params[i].slot;
-					}
+				for (size_t i = 0; i < templates_scope.num_names; i++) {
+					templates_scope.names[i].name =
+						node->templ.params[i].name;
+					templates_scope.names[i].slot =
+						node->templ.params[i].slot;
 				}
 
+				err += ast_node_resolve_names(ctx, env, native_mod,
+						&templates_scope, node->templ.body);
 			}
 			break;
 
@@ -307,6 +221,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				if (!ast_resolve_node_lookup(ctx, env, scope, node)) {
 					stg_error(ctx->err, node->loc, "'%.*s' was not found.",
 							ALIT(name));
+					err += 1;
 				}
 			}
 			break;
@@ -315,7 +230,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			{
 				struct ast_scope member_scope = {0};
 
-				ast_scope_push_expr(&member_scope, scope);
+				ast_scope_push_composite(&member_scope, scope);
 
 				struct ast_scope_name names[node->composite.num_members];
 				for (size_t i = 0; i < node->composite.num_members; i++) {
@@ -329,19 +244,19 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				member_scope.num_names = node->composite.num_members;
 
 				for (size_t i = 0; i < node->composite.num_members; i++) {
-					ast_node_resolve_names(ctx, env, native_mod,
+					err += ast_node_resolve_names(ctx, env, native_mod,
 							&member_scope, node->composite.members[i].type);
 				}
 
 				for (size_t i = 0; i < node->composite.num_binds; i++) {
-					ast_node_resolve_names(ctx, env, native_mod,
+					err += ast_node_resolve_names(ctx, env, native_mod,
 							&member_scope, node->composite.binds[i].target);
-					ast_node_resolve_names(ctx, env, native_mod,
+					err += ast_node_resolve_names(ctx, env, native_mod,
 							&member_scope, node->composite.binds[i].value);
 				}
 
 				for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
-					ast_node_resolve_names(ctx, env, native_mod,
+					err += ast_node_resolve_names(ctx, env, native_mod,
 							&member_scope, node->composite.free_exprs[i]);
 				}
 			}
@@ -352,12 +267,6 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			// TODO: Do lookup.
 			break;
 	}
-}
 
-void
-ast_module_resolve_names(struct ast_context *ctx, struct ast_module *mod,
-		struct stg_native_module *native_mod)
-{
-	assert(mod->root->kind == AST_NODE_COMPOSITE);
-	ast_node_resolve_names(ctx, mod, native_mod, NULL, mod->root);
+	return err;
 }
