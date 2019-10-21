@@ -314,7 +314,7 @@ ast_node_composite_add_member(
 
 	value_slot =
 		ast_bind_slot_member(ctx, env,
-				value_slot, NULL, name,
+				value_slot, NULL,
 				ast_env_slot(ctx, env, value_slot).type);
 
 	if (!new_member.type) {

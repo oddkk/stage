@@ -547,6 +547,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				data->stg_mod = vm_register_module(ctx->vm,
 						ctx->ast_ctx, data->mod, &modinfo);
 				data->mod = &data->stg_mod->mod;
+				data->stg_mod->native_mod = data->native_mod;
 
 				memset(&data->_tmp_module, 0, sizeof(struct ast_module));
 			}
@@ -555,40 +556,40 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			// fallthrough
 
 		case JOB_LOAD_MODULE_RESOLVE_LOOKUPS:
-			ast_module_resolve_names(ctx->ast_ctx, data->mod,
-					data->native_mod);
+			// ast_module_resolve_names(ctx->ast_ctx, data->mod,
+			// 		data->native_mod);
 
 			data->state = JOB_LOAD_MODULE_TYPECHECK;
 			// fallthrough
 
 		case JOB_LOAD_MODULE_TYPECHECK:
-			{
-				enum ast_node_dependencies_state dep_state;
-				dep_state = ast_node_dependencies_fulfilled(
-						ctx->ast_ctx, &data->mod->env, data->mod->root);
-				if (dep_state == AST_NODE_DEPS_NOT_READY) {
-					panic("The dependencies were not ready.");
-					return JOB_ERROR;
-				} else if (dep_state == AST_NODE_DEPS_NOT_OK) {
-					return JOB_ERROR;
-				}
-				assert(dep_state == AST_NODE_DEPS_OK);
-			}
-			if (!ast_node_resolve_slots(ctx->ast_ctx, data->mod,
-					&data->mod->env, data->mod->root)) {
-				printf("Failed to resolve nodes.\n");
-			}
+			// {
+			// 	enum ast_node_dependencies_state dep_state;
+			// 	dep_state = ast_node_dependencies_fulfilled(
+			// 			ctx->ast_ctx, &data->mod->env, data->mod->root);
+			// 	if (dep_state == AST_NODE_DEPS_NOT_READY) {
+			// 		panic("The dependencies were not ready.");
+			// 		return JOB_ERROR;
+			// 	} else if (dep_state == AST_NODE_DEPS_NOT_OK) {
+			// 		return JOB_ERROR;
+			// 	}
+			// 	assert(dep_state == AST_NODE_DEPS_OK);
+			// }
+			// if (!ast_node_resolve_slots(ctx->ast_ctx, data->mod,
+			// 		&data->mod->env, data->mod->root)) {
+			// 	printf("Failed to resolve nodes.\n");
+			// }
 
-			if (!ast_node_is_typed(ctx->ast_ctx, &data->mod->env, data->mod->root)) {
-				printf("Failed type module.\n");
+			// if (!ast_node_is_typed(ctx->ast_ctx, &data->mod->env, data->mod->root)) {
+			// 	printf("Failed type module.\n");
 #if 0
-				ast_print(ctx->ast_ctx, &data->mod->env, data->mod->root);
+			// 	ast_print(ctx->ast_ctx, &data->mod->env, data->mod->root);
 
-				printf("\n");
-				ast_env_print(ctx->vm, &data->mod->env);
+			// 	printf("\n");
+			// 	ast_env_print(ctx->vm, &data->mod->env);
 #endif
-				return JOB_ERROR;
-			}
+			// 	return JOB_ERROR;
+			// }
 
 			data->state = JOB_LOAD_MODULE_DONE;
 			// fallthrough

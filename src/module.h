@@ -48,6 +48,7 @@ struct stg_module {
 	struct vm *vm;
 
 	struct ast_module mod;
+	struct stg_native_module *native_mod;
 
 	void *data;
 };

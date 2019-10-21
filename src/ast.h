@@ -94,13 +94,13 @@ typedef int ast_member_id;
 struct ast_env_slot {
 	struct atom *name;
 	ast_slot_id type;
+	ast_member_id member_id;
 
 	enum ast_slot_kind kind;
 	union {
 		type_id const_type;
 		struct object const_object;
 		int64_t param_index;
-		struct atom *member_name;
 		struct ast_object cons;
 		struct ast_array cons_array;
 
@@ -180,7 +180,7 @@ ast_bind_slot_templ(struct ast_context *ctx,
 ast_slot_id
 ast_bind_slot_member(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
-		struct atom *name, struct atom *member_name, ast_slot_id type);
+		struct atom *name, ast_slot_id type);
 
 ast_slot_id
 ast_bind_slot_cons(struct ast_context *,
@@ -230,7 +230,9 @@ struct ast_object_def_param {
 };
 
 struct ast_object_bind {
-	struct ast_node *target;
+	ast_slot_id target;
+	ast_slot_id *value_params;
+	size_t num_value_params;
 	func_id value;
 };
 
@@ -522,6 +524,15 @@ enum ast_node_dependencies_state {
 enum ast_node_dependencies_state
 ast_node_dependencies_fulfilled(struct ast_context *ctx,
 		struct ast_env *env, struct ast_node *node);
+
+enum ast_node_flags {
+	AST_NODE_FLAG_OK           = 0x0,
+	AST_NODE_FLAG_ERROR        = 0x1,
+	AST_NODE_FLAG_NOT_TYPED    = 0x2,
+	AST_NODE_FLAG_NOT_NAMED    = 0x4,
+	AST_NODE_FLAG_NOT_RESOLVED = 0x8,
+	AST_NODE_FLAG_NOT_CONST    = 0x10,
+};
 
 struct stg_native_module;
 

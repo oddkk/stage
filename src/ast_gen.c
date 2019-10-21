@@ -177,12 +177,15 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 							int member_i = -1;
 
+							/*
+							 * TODO: Lookup based on member id
 							for (size_t i = 0; i < info->num_member_names; i++) {
 								if (slot.member_name == info->member_names[i]) {
 									member_i = i;
 									break;
 								}
 							}
+							*/
 
 							assert(member_i > -1);
 

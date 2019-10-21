@@ -1,10 +1,8 @@
-use mod channel;
+Foo := Struct {
+	foo: int;
+	bar: int ~= 2;
+	baz: int  = 3;
+	sum: int  = foo + bar + baz;
 
-asdf := 2 * 4;
-foo := (a: int) => a * a + 2;
-
-print(asdf);
-print(foo(10));
-print(foo(20));
-
-intcnl := Channel(int);
+	bar = 5;
+};

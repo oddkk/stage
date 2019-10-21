@@ -38,7 +38,7 @@ ast_print_slot_internal(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_SLOT_MEMBER:
-			printf("member[%.*s]", ALIT(slot.member_name));
+			printf("member[%i]", slot.member_id);
 			break;
 
 
@@ -92,8 +92,8 @@ ast_print_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot_id
 void
 ast_env_print(struct vm *vm, struct ast_env *env)
 {
-	printf("|#  |name      |type |kind      |\n");
-	printf("|---|----------|-----|----------|\n");
+	printf("|#  |name      |type |kind      |mbr|\n");
+	printf("|---|----------|-----|----------|---|\n");
 
 	for (size_t i = 0; i < env->num_slots; i++) {
 		struct ast_env_slot *slot;
@@ -104,7 +104,8 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 
 		kind_name = ast_slot_name(slot->kind);
 
-		printf("|%3zu|%-10.*s|%5i|%-10s|", i, ALIT(slot->name), slot->type, kind_name);
+		printf("|%3zu|%-10.*s|%5i|%-10s|%3i|", i,
+				ALIT(slot->name), slot->type, kind_name, slot->member_id);
 
 		switch (slot->kind) {
 			case AST_SLOT_ERROR:
@@ -130,7 +131,7 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 				break;
 
 			case AST_SLOT_MEMBER:
-				printf("%.*s", ALIT(slot->member_name));
+				printf("%i", slot->member_id);
 				break;
 
 			case AST_SLOT_CONS:

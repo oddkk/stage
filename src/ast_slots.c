@@ -95,6 +95,7 @@ ast_alloc_slot(struct ast_env *ctx,
 	ctx->slots[res].name = name;
 	ctx->slots[res].type = type;
 	ctx->slots[res].kind = kind;
+	ctx->slots[res].member_id = -1;
 
 	assert(
 			type >= 0 ||
@@ -496,7 +497,7 @@ ast_bind_slot_templ(struct ast_context *ctx,
 ast_slot_id
 ast_bind_slot_member(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
-		struct atom *name, struct atom *member_name, ast_slot_id type)
+		struct atom *name, ast_slot_id type)
 {
 	if (target == AST_BIND_NEW) {
 		target = ast_alloc_slot(env, name, type, AST_SLOT_MEMBER);
@@ -521,10 +522,8 @@ ast_bind_slot_member(struct ast_context *ctx,
 		}
 	}
 
-	env->slots[target].member_name = member_name;
-
 #if AST_DEBUG_BINDS
-	printf("bind %i=member(%.*s) ", target);
+	printf("bind %i=member ", target);
 	ast_print_slot(ctx, env, target);
 	printf("\n");
 #endif
@@ -1135,9 +1134,10 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 
 		case AST_SLOT_MEMBER:
 			result = ast_bind_slot_member(
-					ctx->ctx, dest, target, slot.name, slot.member_name,
+					ctx->ctx, dest, target, slot.name,
 					ast_union_slot_internal(
 						ctx, dest, type_target, src, slot.type));
+			dest->slots[result].member_id = slot.member_id;
 			break;
 
 
@@ -1238,6 +1238,10 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 	ast_substitute(ctx->ctx, dest, result, target);
 
 	if (src == dest && !ctx->copy_mode) {
+		if (slot.member_id >= 0) {
+			assert(dest->slots[result].member_id < 0);
+			dest->slots[result].member_id = slot.member_id;
+		}
 		ast_substitute(ctx->ctx, dest, result, src_slot);
 	}
 
@@ -1402,12 +1406,14 @@ ast_env_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot)
 			.type = AST_SLOT_TYPE,
 			.kind = AST_SLOT_CONST_TYPE,
 			.const_type = ctx->types.type,
+			.member_id = -1,
 		};
 	} else {
 		return (struct ast_env_slot) {
 			.name = NULL,
 			.type = AST_BIND_FAILED,
 			.kind = AST_SLOT_ERROR,
+			.member_id = -1,
 		};
 	}
 }

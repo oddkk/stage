@@ -158,7 +158,7 @@ ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
 	target = ast_init_node_slot(ctx, &mod->env,
 			AST_NODE_NEW, STG_NO_LOC,
 			ast_bind_slot_member(ctx, &mod->env,
-				AST_BIND_NEW, NULL, name, type_slot));
+				AST_BIND_NEW, NULL, type_slot));
 
 	ast_node_composite_bind(ctx, &mod->env, ns,
 			target, expr, false);
@@ -403,6 +403,15 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 
 	return ast_slot_pack(ctx, mod, &mod->env, root, &mod->instance);
 	*/
-	panic("TODO: Implement module finalize.\n");
+
+	type_id type;
+	type = ast_dt_finalize_composite(ctx, mod,
+			&mod->env, mod->root);
+
+	printf("Final type for %.*s: ", LIT(mod->stg_mod->info.name));
+	print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
+	printf("\n");
+
+	// panic("TODO: Implement module finalize.\n");
 	return -1;
 }
