@@ -1569,6 +1569,9 @@ ast_node_deep_copy_internal(
 		DCP_SLOT(slot);
 		break;
 
+	case AST_NODE_LIT:
+		DCP_LIT(lit);
+
 	case AST_NODE_LOOKUP:
 		DCP_LIT(lookup.name);
 		DCP_SLOT(lookup.slot);

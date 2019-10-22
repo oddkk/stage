@@ -510,11 +510,9 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 		obj.data = &node->NUM_LIT;
 		obj.type = ctx->types.integer;
 
-		return ast_init_node_slot(
+		return ast_init_node_lit(
 				ctx, env, AST_NODE_NEW, node->loc,
-				ast_bind_slot_const(
-					ctx, env, AST_BIND_NEW, NULL,
-					register_object(ctx->vm, env->store, obj)));
+				register_object(ctx->vm, env->store, obj));
 	} break;
 
 	case ST_NODE_STR_LIT:

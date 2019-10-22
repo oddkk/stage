@@ -324,6 +324,17 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("\n");
 			break;
 
+		case AST_NODE_LIT:
+			print_indent(depth);
+			printf("lit ");
+			print_slot(env, node->lit.slot);
+			printf(": ");
+			print_slot(env, ast_node_type(ctx, env, node));
+			printf(" = ");
+			print_obj_repr(ctx->vm, node->lit.obj);
+			printf("\n");
+			break;
+
 		case AST_NODE_LOOKUP:
 			print_indent(depth);
 			printf("lookup '%.*s' ", ALIT(node->lookup.name));

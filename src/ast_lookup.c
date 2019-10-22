@@ -213,6 +213,9 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		case AST_NODE_SLOT:
 			break;
 
+		case AST_NODE_LIT:
+			break;
+
 		case AST_NODE_LOOKUP:
 			{
 				struct atom *name = node->lookup.name;

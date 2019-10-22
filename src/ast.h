@@ -294,6 +294,7 @@ enum ast_node_kind {
 	AST_NODE_CONS,
 	AST_NODE_TEMPL,
 	AST_NODE_SLOT,
+	AST_NODE_LIT,
 	AST_NODE_LOOKUP,
 
 	// Datatype declarations
@@ -402,6 +403,11 @@ struct ast_node {
 		ast_slot_id slot;
 
 		struct {
+			struct object obj;
+			ast_slot_id slot;
+		} lit;
+
+		struct {
 			struct atom *name;
 			ast_slot_id slot;
 			ast_slot_id value;
@@ -473,6 +479,12 @@ ast_init_node_slot(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location,
 		ast_slot_id slot);
+
+struct ast_node *
+ast_init_node_lit(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location,
+		struct object);
 
 struct ast_node *
 ast_init_node_lookup(

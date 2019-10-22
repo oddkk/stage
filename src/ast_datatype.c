@@ -258,6 +258,9 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 					ast_node_resolve_slot(ctx->ast_env, &node->slot));
 			break;
 
+		case AST_NODE_LIT:
+			break;
+
 		case AST_NODE_LOOKUP:
 			break;
 
@@ -438,6 +441,7 @@ ast_dt_find_member_refs(struct ast_dt_context *ctx,
 		case AST_NODE_FUNC_NATIVE:
 		case AST_NODE_FUNC_UNINIT:
 		case AST_NODE_TEMPL:
+		case AST_NODE_LIT:
 		case AST_NODE_COMPOSITE:
 		case AST_NODE_VARIANT:
 			break;
@@ -552,6 +556,7 @@ ast_dt_node_bind(struct ast_dt_context *ctx, struct ast_node *node)
 		case AST_NODE_CALL:
 		case AST_NODE_SLOT:
 		case AST_NODE_LOOKUP:
+		case AST_NODE_LIT:
 			break;
 
 		case AST_NODE_FUNC:

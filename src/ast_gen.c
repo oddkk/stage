@@ -204,6 +204,17 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			}
 			break;
 
+		case AST_NODE_LIT:
+			{
+				struct bc_instr *lit_instr;
+				lit_instr = bc_gen_load(bc_env, BC_VAR_NEW, node->lit.obj);
+
+				append_bc_instr(&result, lit_instr);
+
+				result.out_var = lit_instr->load.target;
+			}
+			break;
+
 		case AST_NODE_COMPOSITE:
 		case AST_NODE_VARIANT:
 			break;

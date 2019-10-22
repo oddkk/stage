@@ -199,6 +199,29 @@ ast_init_node_slot(
 }
 
 struct ast_node *
+ast_init_node_lit(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, struct stg_location loc,
+		struct object lit)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(node);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_LIT;
+	node->loc = loc;
+
+	node->lit.obj = lit;
+	node->lit.slot = ast_bind_slot_const(ctx, env,
+			AST_BIND_NEW, NULL, lit);
+
+	return node;
+}
+
+struct ast_node *
 ast_init_node_lookup(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node, struct stg_location loc,
@@ -391,6 +414,10 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->slot)).type;
 
+		case AST_NODE_LIT:
+			return ast_env_slot(ctx, env,
+					ast_node_resolve_slot(env, &node->lit.slot)).type;
+
 		case AST_NODE_LOOKUP:
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->lookup.slot)).type;
@@ -412,6 +439,9 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 	switch (node->kind) {
 		case AST_NODE_SLOT:
 			return ast_node_resolve_slot(env, &node->slot);
+
+		case AST_NODE_LIT:
+			return ast_node_resolve_slot(env, &node->lit.slot);
 
 		case AST_NODE_LOOKUP:
 			return ast_node_resolve_slot(env, &node->lookup.slot);
@@ -486,6 +516,10 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 
 		case AST_NODE_SLOT:
 			break;
+
+		case AST_NODE_LIT:
+			break;
+
 
 		case AST_NODE_LOOKUP:
 			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
@@ -677,6 +711,9 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 				stg_error(ctx->err, node->loc,
 						"Failed to resolve expression.");
 			}
+			break;
+
+		case AST_NODE_LIT:
 			break;
 
 		case AST_NODE_COMPOSITE:
@@ -1107,6 +1144,9 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 		case AST_NODE_SLOT:
 			break;
 
+		case AST_NODE_LIT:
+			break;
+
 		case AST_NODE_LOOKUP:
 			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
 				result = false;
@@ -1467,6 +1507,10 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 
 		case AST_NODE_SLOT:
 			return ast_slot_pack(ctx, mod, env, node->slot, out);
+
+		case AST_NODE_LIT:
+			*out = node->lit.obj;
+			return 0;
 
 		case AST_NODE_LOOKUP:
 			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
