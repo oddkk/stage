@@ -269,141 +269,9 @@ ast_module_resolve_dependencies(struct ast_context *ctx,
 	}
 }
 
-/*
-static struct type_base namespace_type_base = {
-	.name = STR("namespace"),
-	// TODO: Make repr functions.
-	// TODO: Make unpack function.
-};
-*/
-
-/*
-static ast_slot_id
-ast_namespace_finalize(struct ast_context *ctx,
-		struct ast_module *mod, struct ast_namespace *ns)
-{
-	for (size_t i = 0; i < ns->num_names; i++) {
-		if (ns->names[i].kind == AST_MODULE_NAME_NAMESPACE) {
-			ast_namespace_finalize(ctx, mod,
-					ns->names[i].ns);
-		}
-	}
-
-	struct object_decons decons = {0};
-	decons.num_members = ns->num_names;
-	decons.members = calloc(decons.num_members,
-			sizeof(struct object_decons_member));
-
-	size_t offset = 0;
-	for (size_t i = 0; i < decons.num_members; i++) {
-		decons.members[i].name = ns->names[i].name;
-
-		ast_slot_id slot;
-
-		switch (ns->names[i].kind) {
-			case AST_MODULE_NAME_DECL:
-				slot = ast_node_resolve_slot(
-						&mod->env, &ns->names[i].decl.value);
-				break;
-
-			case AST_MODULE_NAME_NAMESPACE:
-				slot = ast_node_resolve_slot(
-						&mod->env, &ns->names[i].ns->instance);
-				break;
-
-			case AST_MODULE_NAME_IMPORT:
-				slot = ast_node_resolve_slot(
-					&mod->env, &ns->names[i].import.value);
-				break;
-		}
-
-		ast_slot_id type_slot;
-		type_slot = ast_env_slot(ctx, &mod->env, slot).type;
-
-		struct object type_obj;
-		int err;
-		err = ast_slot_pack(ctx, mod, &mod->env, type_slot, &type_obj);
-		if (err) {
-			printf("Finalize failed on %.*s: ", ALIT(ns->names[i].name));
-			ast_print_slot(ctx, &mod->env, slot);
-			printf("\n");
-			return AST_BIND_FAILED;
-		}
-
-		assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
-
-		decons.members[i].type = *(type_id *)type_obj.data;
-		decons.members[i].ref = false;
-		decons.members[i].offset = offset;
-
-		struct type *member_type = vm_get_type(ctx->vm, decons.members[i].type);
-
-		offset += member_type->size;
-	}
-
-	struct type ns_type_def = {0};
-
-	ns_type_def.name = ns->name;
-	ns_type_def.base = &namespace_type_base;
-	ns_type_def.size = offset;
-	ns_type_def.obj_def = &ns->def;
-
-	type_id ns_type;
-	ns_type = stg_register_type(mod->stg_mod, ns_type_def);
-
-	decons.target_type = ns_type;
-
-	stg_create_simple_object_def(ctx, mod,
-			&ns->def, decons);
-
-	ns->instance = ast_bind_slot_cons(
-			ctx, &mod->env, ns->instance, NULL,
-			&ns->def);
-
-	for (size_t i = 0; i < ns->num_names; i++) {
-		ast_slot_id arg;
-
-		arg = ast_unpack_arg_named(ctx, &mod->env,
-				ns->instance, AST_BIND_NEW,
-				ns->names[i].name);
-
-		ast_slot_id *name_value = NULL;
-
-		switch (ns->names[i].kind) {
-			case AST_MODULE_NAME_DECL:
-				name_value = &ns->names[i].decl.value;
-				break;
-
-			case AST_MODULE_NAME_NAMESPACE:
-				name_value = &ns->names[i].ns->instance;
-				break;
-
-			case AST_MODULE_NAME_IMPORT:
-				name_value = &ns->names[i].import.value;
-				break;
-		}
-
-		assert(name_value);
-
-		// TODO: Ensure the value is evaluated.
-		// TODO: Avoid having to alloc duplicate slots and join them.
-		*name_value = ast_union_slot(ctx, &mod->env, *name_value, arg);
-	}
-
-	return ns->instance;
-}
-*/
-
 int
 ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 {
-	/*
-	ast_slot_id root;
-	root = ast_namespace_finalize(ctx, mod, &mod->root);
-
-	return ast_slot_pack(ctx, mod, &mod->env, root, &mod->instance);
-	*/
-
 	type_id type;
 	type = ast_dt_finalize_composite(ctx, mod,
 			&mod->env, mod->root);
@@ -412,6 +280,5 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 	print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
 	printf("\n");
 
-	// panic("TODO: Implement module finalize.\n");
 	return -1;
 }
