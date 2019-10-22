@@ -41,6 +41,10 @@ ast_print_slot_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("member[%i]", slot.member_id);
 			break;
 
+		case AST_SLOT_CLOSURE:
+			printf("closure");
+			break;
+
 
 		case AST_SLOT_CONS:
 			printf("%p{", (void *)slot.cons.def);
@@ -132,6 +136,9 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 
 			case AST_SLOT_MEMBER:
 				printf("%i", slot->member_id);
+				break;
+
+			case AST_SLOT_CLOSURE:
 				break;
 
 			case AST_SLOT_CONS:

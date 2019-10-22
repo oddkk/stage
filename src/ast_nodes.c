@@ -638,6 +638,9 @@ ast_slot_is_resolved(struct ast_context *ctx, struct ast_env *env,
 	case AST_SLOT_MEMBER:
 		return ast_slot_is_resolved(ctx, env, slot.type);
 
+	case AST_SLOT_CLOSURE:
+		return ast_slot_is_resolved(ctx, env, slot.type);
+
 	case AST_SLOT_CONS:
 		result &= !!slot.cons.def;
 		result &= ast_slot_is_resolved(ctx, env, slot.type);
@@ -1129,13 +1132,14 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 				if (slot.kind == AST_SLOT_CONST ||
 						slot.kind == AST_SLOT_CONST_TYPE ||
-						slot.kind == AST_SLOT_MEMBER) {
+						slot.kind == AST_SLOT_MEMBER ||
+						slot.kind == AST_SLOT_CLOSURE) {
 					node->kind = AST_NODE_SLOT;
 					node->slot =
 						ast_union_slot(ctx, env,
 								node->lookup.value, node->lookup.slot);
 				} else {
-					printf("Lookup not of valid type.\n");
+					printf("Lookup not of valid kind.\n");
 					result = false;
 				}
 			}
@@ -1480,8 +1484,22 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 			return ast_slot_pack(ctx, mod, env, node->lookup.value, out);
 
 		case AST_NODE_COMPOSITE:
-			printf("Composite not implemented.\n");
-			return -1;
+			{
+				type_id type;
+				type = ast_dt_finalize_composite(ctx, mod, env, node);
+
+				if (type == TYPE_UNSET) {
+					printf("Failed to initialize composite type.");
+					return -1;
+				}
+
+				struct object res = {0};
+				res.type = ctx->types.type;
+				res.data = &type;
+
+				*out = register_object(ctx->vm, env->store, res);
+			}
+			return 0;
 
 		case AST_NODE_VARIANT:
 			printf("Variant not implemented.\n");

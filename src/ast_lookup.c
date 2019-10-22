@@ -1,5 +1,6 @@
 #include "ast.h"
 #include "native.h"
+#include "dlist.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,7 +10,7 @@ ast_scope_push_composite(struct ast_scope *target, struct ast_scope *parent)
 	memset(target, 0, sizeof(struct ast_scope));
 
 	target->parent = parent;
-	target->parent_kind = AST_SCOPE_PARENT_LOCAL;
+	target->parent_kind = AST_SCOPE_PARENT_CLOSURE;
 }
 
 void
@@ -28,6 +29,22 @@ ast_scope_push_func(struct ast_scope *target, struct ast_scope *parent)
 
 	target->parent = parent;
 	target->parent_kind = AST_SCOPE_PARENT_CLOSURE;
+}
+
+static struct ast_closure_target *
+ast_node_get_closure_target(struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_FUNC:
+			return &node->func.closure;
+
+		case AST_NODE_COMPOSITE:
+			return &node->composite.closure;
+
+		default:
+			panic("Attempted to get closure target off a node that does not allow closures (%s).");
+			return NULL;
+	}
 }
 
 static void
@@ -50,12 +67,64 @@ ast_bind_lookup_node(struct ast_context *ctx, struct ast_env *env,
 }
 
 static ast_slot_id
-ast_try_resolve_node_lookup_in_scope(struct ast_context *ctx, struct ast_env *env,
-		struct ast_scope *scope, struct ast_node *node)
+ast_try_lookup_in_scope(struct ast_context *ctx, struct ast_env *env,
+		struct ast_scope *scope, struct atom *name)
 {
 	for (size_t i = 0; i < scope->num_names; i++) {
-		if (scope->names[i].name == node->lookup.name) {
+		if (scope->names[i].name == name) {
 			return scope->names[i].slot;
+		}
+	}
+
+	return AST_BIND_FAILED;
+}
+
+static ast_slot_id
+ast_resolve_lookup(struct ast_context *ctx, struct ast_env *env,
+		struct ast_scope *root_scope, struct atom *name)
+{
+	for (struct ast_scope *scope = root_scope;
+			scope != NULL;
+			scope = scope->parent) {
+		ast_slot_id slot =
+			ast_try_lookup_in_scope(
+				ctx, env, scope, name);
+
+		if (slot != AST_BIND_FAILED) {
+			return slot;
+		}
+
+		if (scope->parent_kind == AST_SCOPE_PARENT_CLOSURE) {
+			assert(scope->closure_target);
+			struct ast_closure_target *closure;
+			closure = ast_node_get_closure_target(scope->closure_target);
+
+			for (size_t i = 0; i < closure->num_members; i++) {
+				if (closure->members[i].name == name) {
+					return closure->members[i].slot;
+				}
+			}
+
+			ast_slot_id outer_slot;
+			outer_slot = ast_resolve_lookup(ctx, env,
+					scope->parent, name);
+
+			if (outer_slot != AST_BIND_FAILED) {
+				struct ast_closure_member mbr = {0};
+				mbr.name = name;
+				mbr.outer_slot = outer_slot;
+				mbr.slot = ast_bind_slot_closure(ctx, env,
+						AST_BIND_NEW, name, AST_BIND_NEW);
+
+				dlist_append(
+						closure->members,
+						closure->num_members,
+						&mbr);
+
+				return mbr.slot;
+			}
+
+			break;
 		}
 	}
 
@@ -68,22 +137,12 @@ ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
 {
 	assert(node->kind == AST_NODE_LOOKUP);
 
-	for (struct ast_scope *scope = root_scope;
-			scope != NULL;
-			scope = scope->parent) {
-		ast_slot_id slot =
-			ast_try_resolve_node_lookup_in_scope(
-				ctx, env, scope, node);
+	ast_slot_id slot;
+	slot = ast_resolve_lookup(ctx, env, root_scope, node->lookup.name);
 
-		if (slot != AST_BIND_FAILED) {
-			ast_bind_lookup_node(ctx, env, node, slot);
-			return true;
-		}
-
-		if (scope->parent_kind == AST_SCOPE_PARENT_CLOSURE) {
-			// TODO: Closures.
-			break;
-		}
+	if (slot != AST_BIND_FAILED) {
+		ast_bind_lookup_node(ctx, env, node, slot);
+		return true;
 	}
 
 	return false;
@@ -105,8 +164,9 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			{
 				struct ast_scope params_scope = {0};
 
-
 				ast_scope_push_func(&params_scope, scope);
+
+				params_scope.closure_target = node;
 
 				params_scope.num_names = node->func.num_params;
 				struct ast_scope_name params_scope_names[params_scope.num_names];
@@ -178,7 +238,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			{
 				struct ast_scope templates_scope = {0};
 
-				ast_scope_push_func(&templates_scope, scope);
+				ast_scope_push_expr(&templates_scope, scope);
 
 				templates_scope.num_names = node->templ.num_params;
 				struct ast_scope_name template_scope_names[templates_scope.num_names];
@@ -221,6 +281,8 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 				ast_scope_push_composite(&member_scope, scope);
 
+				member_scope.closure_target = node;
+
 				struct ast_scope_name names[node->composite.num_members];
 				for (size_t i = 0; i < node->composite.num_members; i++) {
 					names[i].name = node->composite.members[i].name;
@@ -252,7 +314,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_NODE_VARIANT:
-			// TODO: Popuplate scope.
+			// TODO: Populate scope.
 			// TODO: Do lookup.
 			break;
 	}

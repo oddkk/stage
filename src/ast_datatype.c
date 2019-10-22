@@ -233,6 +233,10 @@ ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
 			}
 			break;
 
+		case AST_SLOT_CLOSURE:
+			result |= AST_NODE_FLAG_NOT_CONST;
+			break;
+
 		case AST_SLOT_TEMPL:
 			break;
 
@@ -262,12 +266,28 @@ ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
 }
 
 enum ast_node_flags
+ast_node_analyze_closure(struct ast_dt_context *ctx, struct ast_closure_target *closure)
+{
+	enum ast_node_flags result = AST_NODE_FLAG_OK;
+
+	for (size_t i = 0; i < closure->num_members; i++) {
+		result |= ast_slot_analyze(ctx, closure->members[i].outer_slot);
+	}
+
+	return result;
+}
+
+enum ast_node_flags
 ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 {
 	enum ast_node_flags result = AST_NODE_FLAG_OK;
 
 	switch (node->kind) {
 		case AST_NODE_FUNC:
+			result |= ast_node_analyze_closure(ctx,
+					&node->func.closure);
+			// fallthrough
+
 		case AST_NODE_FUNC_NATIVE:
 			for (size_t i = 0; i < node->func.num_params; i++) {
 				result |= ast_node_analyze(ctx, node->func.params[i].type);
@@ -306,6 +326,8 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 			break;
 
 		case AST_NODE_COMPOSITE:
+			result |= ast_node_analyze_closure(ctx,
+					&node->composite.closure);
 			break;
 
 		case AST_NODE_VARIANT:
@@ -443,6 +465,43 @@ struct ast_dt_find_member_ref_res {
 };
 
 static int
+ast_dt_find_member_refs_for_slot(struct ast_dt_context *ctx,
+		ast_slot_id slot, struct ast_dt_find_member_ref_res *res)
+{
+	struct ast_env_slot slt;
+	slt = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot);
+	if (slt.kind == AST_SLOT_MEMBER) {
+		if (slt.member_id >= 0) {
+			dlist_append(
+					res->nodes,
+					res->num_nodes,
+					&slt.member_id);
+			return 0;
+		} else {
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+static int
+ast_dt_find_member_refs_closure(struct ast_dt_context *ctx,
+		struct ast_closure_target *closure,
+		struct ast_dt_find_member_ref_res *res)
+{
+	int missing = 0;
+
+	for (size_t i = 0; i < closure->num_members; i++) {
+		missing +=
+			ast_dt_find_member_refs_for_slot(
+					ctx, closure->members[i].outer_slot, res);
+	}
+
+	return missing;
+}
+
+static int
 ast_dt_find_member_refs(struct ast_dt_context *ctx,
 		struct ast_node *node, struct ast_dt_find_member_ref_res *res)
 {
@@ -451,12 +510,10 @@ ast_dt_find_member_refs(struct ast_dt_context *ctx,
 	assert(res);
 
 	switch (node->kind) {
-		case AST_NODE_FUNC:
 		case AST_NODE_FUNC_NATIVE:
 		case AST_NODE_FUNC_UNINIT:
 		case AST_NODE_TEMPL:
 		case AST_NODE_LIT:
-		case AST_NODE_COMPOSITE:
 		case AST_NODE_VARIANT:
 			break;
 
@@ -469,37 +526,25 @@ ast_dt_find_member_refs(struct ast_dt_context *ctx,
 			break;
 
 		case AST_NODE_SLOT:
-			{
-				struct ast_env_slot slt;
-				slt = ast_env_slot(ctx->ast_ctx, ctx->ast_env, node->slot);
-				if (slt.kind == AST_SLOT_MEMBER) {
-					if (slt.member_id >= 0) {
-						dlist_append(
-								res->nodes,
-								res->num_nodes,
-								&slt.member_id);
-					} else {
-						missing += 1;
-					}
-				}
-			}
+			ast_dt_find_member_refs_for_slot(ctx, node->slot, res);
 			break;
 
 		case AST_NODE_LOOKUP:
 			if (node->lookup.value != AST_SLOT_NOT_FOUND) {
-				struct ast_env_slot slt;
-				slt = ast_env_slot(ctx->ast_ctx, ctx->ast_env, node->lookup.value);
-				if (slt.kind == AST_SLOT_MEMBER) {
-					if (slt.member_id >= 0) {
-						dlist_append(
-								res->nodes,
-								res->num_nodes,
-								&slt.member_id);
-					} else {
-						missing += 1;
-					}
-				}
+				ast_dt_find_member_refs_for_slot(ctx, node->lookup.value, res);
 			}
+			break;
+
+		case AST_NODE_FUNC:
+			missing +=
+				ast_dt_find_member_refs_closure(
+						ctx, &node->func.closure, res);
+			break;
+
+		case AST_NODE_COMPOSITE:
+			missing +=
+				ast_dt_find_member_refs_closure(
+						ctx, &node->composite.closure, res);
 			break;
 	}
 
@@ -849,6 +894,20 @@ ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 	}
 }
 
+static void
+ast_dt_env_recalculate_persistant_member_ids(struct ast_dt_context *ctx, struct ast_env *env)
+{
+	for (size_t i = 0; i < env->num_slots; i++) {
+		if (env->slots[i].member_id >= 0) {
+			ast_member_id old_id, new_id;
+			old_id = env->slots[i].member_id;
+			new_id = ast_dt_calculate_persistant_id(ctx, old_id);
+
+			env->slots[i].member_id = new_id;
+		}
+	}
+}
+
 struct ast_dt_local_member {
 	struct atom *name;
 	type_id type;
@@ -881,26 +940,37 @@ ast_dt_composite_repr(struct vm *vm, struct arena *mem, struct type *type)
 	return res;
 }
 
-static void
-ast_dt_env_recalculate_persistant_member_ids(struct ast_dt_context *ctx, struct ast_env *env)
+static struct string
+ast_dt_composite_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
-	for (size_t i = 0; i < env->num_slots; i++) {
-		if (env->slots[i].member_id >= 0) {
-			ast_member_id old_id, new_id;
-			old_id = env->slots[i].member_id;
-			new_id = ast_dt_calculate_persistant_id(ctx, old_id);
+	struct type *type = vm_get_type(vm, obj->type);
+	struct ast_dt_composite_info *info = type->data;
+	struct string res = arena_string_init(mem);
 
-			env->slots[i].member_id = new_id;
-		}
+	arena_string_append(mem, &res, STR("{ "));
+
+	for (size_t i = 0; i < info->num_members; i++) {
+		struct object mbr = {0};
+		mbr.type = info->members[i].type;
+		mbr.data = (void *)((uint8_t *)obj->data + info->members[i].location);
+
+		arena_string_append_sprintf(mem, &res, "%.*s = ", ALIT(info->members[i].name));
+
+		arena_string_append_obj_repr(&res, vm, mem, &mbr);
+		arena_string_append(mem, &res, STR(";"));
 	}
+
+	arena_string_append(mem, &res, STR("}"));
+
+	return res;
 }
 
 struct type_base ast_dt_composite_base = {
-	.name = STR("Struct"),
-	.repr = ast_dt_composite_repr,
+	.name     = STR("Struct"),
+	.repr     = ast_dt_composite_repr,
+	.obj_repr = ast_dt_composite_obj_repr,
 
 	// TODO: Implement
-	// .obj_repr = ...,
 	// .free = ...,
 };
 
@@ -908,6 +978,10 @@ type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *comp)
 {
+	if (comp->composite.type != TYPE_UNSET) {
+		return comp->composite.type;
+	}
+
 	struct ast_dt_context dt_ctx = {0};
 	dt_ctx.ast_ctx = ctx;
 	dt_ctx.ast_env = env;
@@ -940,7 +1014,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_object_def *def;
 		def = ast_object_def_register(mod->env.store);
 
-		struct ast_dt_local_member *local_members; //[comp->composite.num_members];
+		struct ast_dt_local_member *local_members;
 		local_members = calloc(comp->composite.num_members,
 				sizeof(struct ast_dt_local_member));
 
@@ -985,7 +1059,6 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 				ast_bind_slot_member(ctx, &def->env, AST_BIND_NEW, NULL,
 						ast_bind_slot_const_type(ctx, &def->env, AST_BIND_NEW,
 							NULL, mbr->type));
-			// def->env.slots[params[i].slot].member_id = cumulative_persistant_id;
 
 			// NOTE: We keep the old member_id here so that we can replace all
 			// slot member ids after the binds have been added.
@@ -1116,5 +1189,6 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		free(this_bind);
 	}
 
+	comp->composite.type = result;
 	return result;
 }

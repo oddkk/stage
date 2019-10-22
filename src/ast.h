@@ -54,6 +54,8 @@ struct ast_scope {
 	struct ast_scope *parent;
 	enum ast_scope_parent_kind parent_kind;
 
+	struct ast_node *closure_target;
+
 	struct ast_scope_name *names;
 	size_t num_names;
 };
@@ -79,6 +81,7 @@ enum ast_slot_kind {
 	AST_SLOT_CONST,
 	AST_SLOT_PARAM,
 	AST_SLOT_MEMBER,
+	AST_SLOT_CLOSURE,
 	AST_SLOT_TEMPL,
 	AST_SLOT_CONS,
 	AST_SLOT_CONS_ARRAY,
@@ -179,6 +182,11 @@ ast_bind_slot_templ(struct ast_context *ctx,
 
 ast_slot_id
 ast_bind_slot_member(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, ast_slot_id type);
+
+ast_slot_id
+ast_bind_slot_closure(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
 		struct atom *name, ast_slot_id type);
 
@@ -350,6 +358,17 @@ struct ast_datatype_bind {
 	bool overridable;
 };
 
+struct ast_closure_member {
+	struct atom *name;
+	ast_slot_id slot;
+	ast_slot_id outer_slot;
+};
+
+struct ast_closure_target {
+	struct ast_closure_member *members;
+	size_t num_members;
+};
+
 // defined in ast_nodes.c
 struct ast_templ_node_data;
 
@@ -378,6 +397,8 @@ struct ast_node {
 			ast_slot_id type;
 
 			func_id instance;
+
+			struct ast_closure_target closure;
 		} func;
 
 		// Used for both call and cons.
@@ -432,6 +453,10 @@ struct ast_node {
 			ast_slot_id cons;
 
 			ast_slot_id ret_value;
+
+			struct ast_closure_target closure;
+
+			type_id type;
 		} composite;
 
 		struct {
