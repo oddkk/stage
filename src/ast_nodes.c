@@ -812,96 +812,37 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 	switch (node->kind) {
 		case AST_NODE_FUNC_NATIVE:
-			if (node->func.num_template_params != 0) {
-				stg_error(ctx->err, node->loc,
-						"Native functions can not take template parameters.");
-				return false;
-			}
-			// fallthrough.
-
 		case AST_NODE_FUNC:
-			if (node->func.num_template_params == 0) {
-				node->func.type =
-					ast_bind_slot_cons(ctx, env,
-							ast_node_resolve_slot(env, &node->func.type),
-							NULL, ctx->cons.func);
+			node->func.type =
+				ast_bind_slot_cons(ctx, env,
+						ast_node_resolve_slot(env, &node->func.type),
+						NULL, ctx->cons.func);
 
-				node->func.return_type_slot =
-					ast_union_slot(ctx, env,
-							ast_unpack_arg_named(ctx, env,
-								node->func.type,
-								AST_BIND_NEW,
-								ctx->atoms.func_cons_arg_ret),
-							node->func.return_type_slot);
+			node->func.return_type_slot =
+				ast_union_slot(ctx, env,
+						ast_unpack_arg_named(ctx, env,
+							node->func.type,
+							AST_BIND_NEW,
+							ctx->atoms.func_cons_arg_ret),
+						node->func.return_type_slot);
 
-				node->func.param_types_slot =
-					ast_union_slot(ctx, env,
-							ast_unpack_arg_named(ctx, env,
-								node->func.type,
-								AST_BIND_NEW,
-								ctx->atoms.func_cons_arg_params),
-							node->func.param_types_slot);
+			node->func.param_types_slot =
+				ast_union_slot(ctx, env,
+						ast_unpack_arg_named(ctx, env,
+							node->func.type,
+							AST_BIND_NEW,
+							ctx->atoms.func_cons_arg_params),
+						node->func.param_types_slot);
 
+			ast_node_resolve_slots(ctx, mod, env, node->func.return_type);
 
+			for (size_t i = 0; i < node->func.num_params; i++) {
+				ast_node_resolve_slots(ctx, mod, env,
+						node->func.params[i].type);
+			}
 
-				ast_node_resolve_slots(ctx, mod, env, node->func.return_type);
-
-				for (size_t i = 0; i < node->func.num_params; i++) {
-					ast_node_resolve_slots(ctx, mod, env,
-							node->func.params[i].type);
-				}
-
-				if (node->kind == AST_NODE_FUNC) {
-					ast_node_resolve_slots(ctx, mod, env, node->func.body);
-				}
-			} else {
-				struct ast_node *func = calloc(1, sizeof(struct ast_node));
-
-				// Replace the current node with a (templ -> func) node pair to
-				// represent the template parameters.
-				*func = *node;
-				memset(node, 0, sizeof(struct ast_node));
-				node->kind = AST_NODE_TEMPL;
-				node->loc = func->loc;
-				node->templ.body = func;
-				node->templ.params = func->func.template_params;
-				node->templ.num_params = func->func.num_template_params;
-				func->func.template_params = NULL;
-				func->func.num_template_params = 0;
-
-				// Keep the same output slot to preserve the relationship with
-				// node's parent.
-				ast_slot_id slot_type = func->func.type;
-				slot_type =
-					ast_bind_slot_const_type(ctx, env,
-						slot_type, NULL, ctx->types.cons);
-				node->templ.slot =
-					ast_bind_slot_wildcard(ctx, env,
-							AST_BIND_NEW, NULL, slot_type);
-
-				func->func.type =
-					ast_bind_slot_wildcard(ctx, env,
-							AST_BIND_NEW, NULL, AST_SLOT_TYPE);
-
-				node->templ.cons =
-					ast_bind_slot_cons(ctx, env,
-							AST_BIND_NEW, NULL, NULL);
-
-				for (size_t i = 0; i < node->templ.num_params; i++) {
-					node->templ.params[i].slot =
-						ast_unpack_arg_named(ctx, env, node->templ.cons,
-								ast_node_resolve_slot(env, &node->templ.params[i].slot),
-								node->templ.params[i].name);
-				}
-
-				ast_slot_id cons_type;
-				cons_type = ast_env_slot(ctx, env, node->templ.cons).type;
-
-				cons_type = ast_union_slot(ctx, env,
-						cons_type,
-						ast_node_type(ctx, env, node->templ.body));
-
-				ast_node_resolve_slots(ctx, mod, env, node->templ.body);
+			if (node->kind == AST_NODE_FUNC) {
+				ast_node_resolve_slots(ctx, mod, env, node->func.body);
 			}
 			break;
 
@@ -1157,6 +1098,8 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 			break;
 
 		case AST_NODE_TEMPL:
+			ast_node_resolve_slots(ctx, mod, env,
+					node->templ.body);
 			break;
 
 		case AST_NODE_SLOT:

@@ -103,24 +103,10 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 		case AST_NODE_FUNC:
 			{
-				struct ast_scope templates_scope = {0};
 				struct ast_scope params_scope = {0};
 
-				ast_scope_push_expr(&templates_scope, scope);
 
-				templates_scope.num_names = node->func.num_template_params;
-				struct ast_scope_name template_scope_names[templates_scope.num_names];
-				templates_scope.names = template_scope_names;
-
-				for (size_t i = 0; i < templates_scope.num_names; i++) {
-					templates_scope.names[i].name =
-						node->func.template_params[i].name;
-					templates_scope.names[i].slot =
-						node->func.template_params[i].slot;
-				}
-
-
-				ast_scope_push_func(&params_scope, &templates_scope);
+				ast_scope_push_func(&params_scope, scope);
 
 				params_scope.num_names = node->func.num_params;
 				struct ast_scope_name params_scope_names[params_scope.num_names];
@@ -133,11 +119,11 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 				for (size_t i = 0; i < params_scope.num_names; i++) {
 					err += ast_node_resolve_names(ctx, env, native_mod,
-							&templates_scope, node->func.params[i].type);
+							scope, node->func.params[i].type);
 				}
 
 				err += ast_node_resolve_names(ctx, env, native_mod,
-						&templates_scope, node->func.return_type);
+						scope, node->func.return_type);
 
 				err += ast_node_resolve_names(ctx, env, native_mod,
 						&params_scope, node->func.body);

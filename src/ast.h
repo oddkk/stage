@@ -361,9 +361,6 @@ struct ast_node {
 			struct ast_func_param *params;
 			size_t num_params;
 
-			struct ast_template_param *template_params;
-			size_t num_template_params;
-
 			struct ast_node *return_type;
 			ast_slot_id return_type_slot;
 

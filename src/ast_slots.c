@@ -1519,13 +1519,6 @@ ast_node_deep_copy_internal(
 			DCP_SLOT(func.params[i].slot);
 		}
 
-		DCP_DLIST(func.template_params, func.num_template_params);
-		for (size_t i = 0; i < result->func.num_template_params; i++) {
-			DCP_LIT(func.template_params[i].name);
-			DCP_SLOT(func.template_params[i].slot);
-			DCP_LIT(func.template_params[i].loc);
-		}
-
 		DCP_NODE(func.return_type);
 		DCP_SLOT(func.return_type_slot);
 		DCP_SLOT(func.param_types_slot);
