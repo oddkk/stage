@@ -127,16 +127,13 @@ ast_dt_dependency(struct ast_dt_context *ctx,
 static ast_member_id
 ast_dt_register_member(struct ast_dt_context *ctx,
 		struct atom *name, ast_slot_id slot,
-		type_id type, struct stg_location decl_loc)
+		struct stg_location decl_loc)
 {
 	struct ast_dt_member new_mbr = {0};
-
-	assert(type != TYPE_UNSET);
 
 	new_mbr.name = name;
 	new_mbr.slot = ast_node_resolve_slot(ctx->ast_env, &slot);
 	new_mbr.decl_loc = decl_loc;
-	new_mbr.type = type;
 	new_mbr.next = ctx->terminal_nodes;
 
 	ast_member_id old_id = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot).member_id;
@@ -156,6 +153,15 @@ ast_dt_register_member(struct ast_dt_context *ctx,
 
 	return mbr_id;
 }
+
+enum ast_node_flags {
+	AST_NODE_FLAG_OK           = 0x00,
+	AST_NODE_FLAG_ERROR        = 0x01,
+	AST_NODE_FLAG_NOT_TYPED    = 0x02,
+	AST_NODE_FLAG_NOT_BOUND    = 0x04,
+	AST_NODE_FLAG_NOT_CONST    = 0x08,
+	AST_NODE_FLAG_NOT_RESOLVED = 0x10,
+};
 
 enum ast_node_flags
 ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
@@ -197,9 +203,19 @@ ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
 				struct ast_dt_member *mbr;
 				mbr = get_member(ctx, slot.member_id);
 
-				assert(mbr->type != TYPE_UNSET);
+				if (mbr->type == TYPE_UNSET) {
+					result |= AST_NODE_FLAG_NOT_TYPED;
+				}
+
+				if (!mbr->bound) {
+					result |= AST_NODE_FLAG_NOT_CONST;
+				}
+
+				// TODO: Apply not_const flag if the member is not trivial or
+				// dependent only on trivial members.
+				result |= AST_NODE_FLAG_NOT_CONST;
 			} else {
-				result |= AST_NODE_FLAG_NOT_NAMED;
+				result |= AST_NODE_FLAG_NOT_BOUND;
 			}
 			break;
 
@@ -207,7 +223,11 @@ ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
 			break;
 
 		case AST_SLOT_CONS:
+			if (!slot.cons.def) {
+				result |= AST_NODE_FLAG_NOT_RESOLVED;
+			}
 			for (size_t i = 0; i < slot.cons.num_present_args; i++) {
+				result |= ast_slot_analyze(ctx, slot.cons.args[i].slot);
 			}
 			break;
 
@@ -219,10 +239,10 @@ ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
 			break;
 
 		case AST_SLOT_SUBST:
-			panic("Got invalid slot %s in analyze node.",
-					ast_slot_name(slot.kind));
-			break;
+			return ast_slot_analyze(ctx, slot.subst);
 	}
+
+	// printf("Analyze slot %s: 0x%x\n", ast_slot_name(slot.kind), result);
 
 	return result;
 }
@@ -259,9 +279,16 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 			break;
 
 		case AST_NODE_LIT:
+			result |= ast_slot_analyze(ctx,
+					ast_node_resolve_slot(ctx->ast_env, &node->lit.slot));
 			break;
 
 		case AST_NODE_LOOKUP:
+			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
+				result |= AST_NODE_FLAG_ERROR;
+			}
+			result |= ast_slot_analyze(ctx,
+					ast_node_resolve_slot(ctx->ast_env, &node->lookup.value));
 			break;
 
 		case AST_NODE_COMPOSITE:
@@ -279,17 +306,69 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 }
 
 static void
-ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mod,
-		struct atom *name, type_id type, ast_slot_id slot, struct stg_location loc)
+ast_dt_node_try_bind_const_member(struct ast_dt_context *ctx,
+		struct ast_module *mod, struct ast_node *node)
 {
-	ast_dt_register_member(ctx, name, slot, type, loc);
+	assert(node->kind == AST_NODE_COMPOSITE);
+	for (size_t i = 0; i < node->composite.num_members; i++) {
+		struct ast_datatype_member *mbr_def;
+		mbr_def = &node->composite.members[i];
 
-	struct type *mbr_type = vm_get_type(ctx->ast_ctx->vm, type);
+		ast_slot_id slot_id;
+		slot_id = ast_unpack_arg_named(ctx->ast_ctx, ctx->ast_env,
+				node->composite.cons, AST_BIND_NEW, mbr_def->name);
+
+		struct ast_env_slot slot;
+		slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot_id);
+
+		if (slot.kind == AST_SLOT_MEMBER) {
+			ast_member_id mbr_id;
+			mbr_id = slot.member_id;
+			assert(mbr_id >= 0);
+
+			struct ast_dt_member *mbr;
+			mbr = get_member(ctx, mbr_id);
+
+			if (mbr->bound && !mbr->bound->overridable) {
+				enum ast_node_flags flags;
+				flags = ast_node_analyze(ctx, mbr->bound->value);
+
+				if (flags == AST_NODE_FLAG_OK) {
+					int err;
+					struct object obj;
+					err = ast_node_eval(ctx->ast_ctx, mod,
+							ctx->ast_env, mbr->bound->value, &obj);
+					if (err) {
+						printf("Failed to evaluate value.\n");
+						continue;
+					}
+
+					// TODO: Hack. There should probably be a better way of
+					// overriding a member value.
+					assert(ctx->ast_env->slots[slot_id].kind == AST_SLOT_MEMBER);
+					ctx->ast_env->slots[slot_id].kind = AST_SLOT_WILDCARD;
+
+					ast_bind_slot_const(ctx->ast_ctx, ctx->ast_env,
+							slot_id, NULL, obj);
+				}
+			}
+		}
+	}
+}
+
+static void
+ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mod,
+		ast_member_id member)
+{
+	struct ast_dt_member *mbr = get_member(ctx, member);
+	assert(mbr->type != TYPE_UNSET);
+
+	struct type *mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
 
 	if (mbr_type->obj_def) {
 		ast_slot_id cons_slot;
 		cons_slot = ast_bind_slot_cons(ctx->ast_ctx, ctx->ast_env,
-				slot, NULL, mbr_type->obj_def);
+				mbr->slot, NULL, mbr_type->obj_def);
 
 		for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
 			struct ast_object_def_param *param;
@@ -312,111 +391,16 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 			assert_type_equals(ctx->ast_ctx->vm, tid_obj.type, ctx->ast_ctx->types.type);
 			tid = *(type_id *)tid_obj.data;
 
-			ast_dt_composite_populate_type(ctx, mod,
-					param->name, tid, mbr_slot, STG_NO_LOC);
+			ast_member_id mbr_id;
+			mbr_id = ast_dt_register_member(ctx, param->name,
+					mbr_slot, STG_NO_LOC);
+			ast_dt_composite_populate_type(ctx, mod, mbr_id);
 		}
 	} else {
 		ast_bind_slot_const_type(ctx->ast_ctx, ctx->ast_env,
-				ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot).type,
-				NULL, type);
+				ast_env_slot(ctx->ast_ctx, ctx->ast_env, mbr->slot).type,
+				NULL, mbr->type);
 	}
-}
-
-static int
-ast_dt_composite_populate(struct ast_dt_context *ctx,
-		struct ast_module *mod, struct ast_node *node)
-{
-	assert(node->kind == AST_NODE_COMPOSITE);
-
-	int err;
-	err = ast_node_resolve_names(ctx->ast_ctx, ctx->ast_env,
-			mod->stg_mod->native_mod, NULL, node);
-	if (err) {
-		printf("Could not resolve names.\n");
-		return err;
-	}
-
-
-	bool made_progress = true;
-	bool error = false;
-	bool wait = true;
-
-	while (made_progress && wait) {
-		made_progress = false;
-		wait = false;
-
-		printf("\niter\n");
-		for (size_t i = 0; i < node->composite.num_members; i++) {
-			ast_slot_id slot;
-			struct ast_datatype_member *mbr;
-			mbr = &node->composite.members[i];
-
-			slot = ast_unpack_arg_named(
-					ctx->ast_ctx, ctx->ast_env,
-					node->composite.cons, AST_BIND_NEW,
-					mbr->name);
-
-			if (ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot).member_id < 0) {
-				// The member has not been registered yet.
-
-				enum ast_node_flags flags;
-				flags = ast_node_analyze(ctx, mbr->type);
-				printf("%.*s: 0x%x\n", ALIT(mbr->name), flags);
-
-				if ((flags & AST_NODE_FLAG_ERROR) != 0) {
-					error = true;
-					continue;
-				} else if (flags != AST_NODE_FLAG_OK) {
-					wait = true;
-					continue;
-				}
-
-				type_id type;
-
-				int err;
-				err = ast_node_eval_type(ctx->ast_ctx,
-						mod, ctx->ast_env, mbr->type, &type);
-				if (err) {
-					printf("Failed to evaluate type.\n");
-					error = true;
-					continue;
-				}
-
-				ast_dt_composite_populate_type(ctx, mod,
-						node->composite.members[i].name,
-						type, slot, node->loc);
-
-				made_progress = true;
-			}
-		}
-	}
-
-	if (wait) {
-		// We could not resolve the type of one or more members, so go through
-		// and figure out which ones failed and give an error message.
-		printf("Could not evaluate type of ");
-		for (size_t i = 0; i < node->composite.num_members; i++) {
-			ast_slot_id slot;
-			struct ast_datatype_member *mbr;
-			mbr = &node->composite.members[i];
-
-			slot = ast_unpack_arg_named(
-					ctx->ast_ctx, ctx->ast_env,
-					node->composite.cons, AST_BIND_NEW,
-					mbr->name);
-
-			if (ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot).member_id < 0) {
-				if (i > 0) {
-					printf(", ");
-				}
-				printf("%.*s", ALIT(mbr->name));
-			}
-		}
-
-		printf(".\n");
-	}
-
-	return error || wait;
 }
 
 static ast_member_id
@@ -430,10 +414,12 @@ struct ast_dt_find_member_ref_res {
 	size_t num_nodes;
 };
 
-static void
+static int
 ast_dt_find_member_refs(struct ast_dt_context *ctx,
 		struct ast_node *node, struct ast_dt_find_member_ref_res *res)
 {
+	int missing = 0;
+
 	assert(res);
 
 	switch (node->kind) {
@@ -448,40 +434,48 @@ ast_dt_find_member_refs(struct ast_dt_context *ctx,
 
 		case AST_NODE_CONS:
 		case AST_NODE_CALL:
-			ast_dt_find_member_refs(ctx, node->call.func, res);
+			missing += ast_dt_find_member_refs(ctx, node->call.func, res);
 			for (size_t i = 0; i < node->call.num_args; i++) {
-				ast_dt_find_member_refs(ctx, node->call.args[i].value, res);
+				missing += ast_dt_find_member_refs(ctx, node->call.args[i].value, res);
 			}
 			break;
 
 		case AST_NODE_SLOT:
 			{
-				ast_member_id member;
-				member = ast_dt_find_member_by_slot(
-						ctx, node->slot);
-				if (member >= 0) {
-					dlist_append(
-							res->nodes,
-							res->num_nodes,
-							&member);
+				struct ast_env_slot slt;
+				slt = ast_env_slot(ctx->ast_ctx, ctx->ast_env, node->slot);
+				if (slt.kind == AST_SLOT_MEMBER) {
+					if (slt.member_id >= 0) {
+						dlist_append(
+								res->nodes,
+								res->num_nodes,
+								&slt.member_id);
+					} else {
+						missing += 1;
+					}
 				}
 			}
 			break;
 
 		case AST_NODE_LOOKUP:
 			if (node->lookup.value != AST_SLOT_NOT_FOUND) {
-				ast_member_id member;
-				member = ast_dt_find_member_by_slot(
-						ctx, node->lookup.value);
-				if (member >= 0) {
-					dlist_append(
-							res->nodes,
-							res->num_nodes,
-							&member);
+				struct ast_env_slot slt;
+				slt = ast_env_slot(ctx->ast_ctx, ctx->ast_env, node->lookup.value);
+				if (slt.kind == AST_SLOT_MEMBER) {
+					if (slt.member_id >= 0) {
+						dlist_append(
+								res->nodes,
+								res->num_nodes,
+								&slt.member_id);
+					} else {
+						missing += 1;
+					}
 				}
 			}
 			break;
 	}
+
+	return missing;
 }
 
 static void
@@ -542,47 +536,6 @@ ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node
 	bind->deps = value_members.nodes;
 	bind->num_deps = value_members.num_nodes;
 	free(target_members.nodes);
-}
-
-static void
-ast_dt_node_bind(struct ast_dt_context *ctx, struct ast_node *node)
-{
-	switch (node->kind) {
-		case AST_NODE_FUNC_NATIVE:
-		case AST_NODE_FUNC_UNINIT:
-		case AST_NODE_TEMPL:
-		case AST_NODE_COMPOSITE:
-		case AST_NODE_VARIANT:
-		case AST_NODE_CALL:
-		case AST_NODE_SLOT:
-		case AST_NODE_LOOKUP:
-		case AST_NODE_LIT:
-			break;
-
-		case AST_NODE_FUNC:
-			// TODO: Implement unpacking functions that return partially
-			// initialized objects.
-			break;
-
-		case AST_NODE_CONS:
-			// TODO: Add cons binds.
-			// for (size_t i = 0; i < node->call.num_args; i++) {
-			// }
-			break;
-	}
-}
-
-static void
-ast_dt_composite_bind(struct ast_dt_context *ctx, struct ast_node *node)
-{
-	for (size_t i = 0; i < node->composite.num_binds; i++) {
-		ast_dt_bind(ctx,
-				node->composite.binds[i].target,
-				node->composite.binds[i].value,
-				node->composite.binds[i].overridable);
-
-		ast_dt_node_bind(ctx, node->composite.binds[i].value);
-	}
 }
 
 static bool
@@ -686,6 +639,130 @@ ast_dt_composite_order_binds(struct ast_dt_context *ctx)
 	return result;
 }
 
+static void
+ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
+{
+	assert(node->kind == AST_NODE_COMPOSITE);
+
+	for (size_t i = 0; i < node->composite.num_members; i++) {
+		ast_slot_id slot;
+		struct ast_datatype_member *mbr;
+		mbr = &node->composite.members[i];
+
+		slot = ast_unpack_arg_named(
+				ctx->ast_ctx, ctx->ast_env,
+				node->composite.cons, AST_BIND_NEW,
+				mbr->name);
+
+		// TODO: Better location.
+		ast_dt_register_member(ctx, mbr->name, slot,
+				node->composite.members[i].type->loc);
+	}
+
+	for (size_t i = 0; i < node->composite.num_binds; i++) {
+		ast_dt_bind(ctx,
+				node->composite.binds[i].target,
+				node->composite.binds[i].value,
+				node->composite.binds[i].overridable);
+	}
+}
+
+static int
+ast_dt_composite_resolve_types(struct ast_dt_context *ctx,
+		struct ast_module *mod, struct ast_node *node)
+{
+	bool made_progress = true;
+	bool error = false;
+	bool wait = true;
+
+	while (made_progress && wait) {
+		made_progress = false;
+		wait = false;
+
+		ast_dt_node_try_bind_const_member(ctx, mod, node);
+
+		for (size_t i = 0; i < node->composite.num_members; i++) {
+
+			ast_slot_id slot;
+			struct ast_datatype_member *mbr_def;
+			mbr_def = &node->composite.members[i];
+
+			slot = ast_unpack_arg_named(
+					ctx->ast_ctx, ctx->ast_env,
+					node->composite.cons, AST_BIND_NEW,
+					mbr_def->name);
+
+			ast_member_id mbr_id = ast_env_slot(
+						ctx->ast_ctx, ctx->ast_env, slot).member_id;
+			assert(mbr_id >= 0);
+			struct ast_dt_member *mbr;
+			mbr = get_member(ctx, mbr_id);
+
+			if (mbr->type == TYPE_UNSET) {
+				// The member has not been registered yet.
+				enum ast_node_flags flags;
+				flags = ast_node_analyze(ctx, mbr_def->type);
+
+				if ((flags & AST_NODE_FLAG_ERROR) != 0) {
+					error = true;
+					continue;
+				} else if (flags != AST_NODE_FLAG_OK) {
+					wait = true;
+					continue;
+				}
+
+				type_id type;
+
+				int err;
+				err = ast_node_eval_type(ctx->ast_ctx,
+						mod, ctx->ast_env, mbr_def->type, &type);
+				if (err) {
+					printf("Failed to evaluate type.\n");
+					error = true;
+					continue;
+				}
+
+				mbr->type = type;
+
+				ast_dt_composite_populate_type(ctx, mod, mbr_id);
+
+				made_progress = true;
+			}
+		}
+	}
+
+	if (wait) {
+		// We could not resolve the type of one or more members, so go through
+		// and figure out which ones failed and give an error message.
+		printf("Could not evaluate type of ");
+		for (size_t i = 0; i < node->composite.num_members; i++) {
+			ast_slot_id slot;
+			struct ast_datatype_member *mbr_def;
+			mbr_def = &node->composite.members[i];
+
+			slot = ast_unpack_arg_named(
+					ctx->ast_ctx, ctx->ast_env,
+					node->composite.cons, AST_BIND_NEW,
+					mbr_def->name);
+
+			struct ast_dt_member *mbr = get_member(ctx,
+					ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot).member_id);
+
+			if (mbr->type == TYPE_UNSET) {
+				if (i > 0) {
+					printf(", ");
+				}
+				printf("%.*s", ALIT(mbr_def->name));
+			}
+		}
+
+		printf(".\n");
+	}
+
+	return error || wait;
+}
+
+
 struct ast_dt_local_member {
 	struct atom *name;
 	type_id type;
@@ -727,15 +804,6 @@ struct type_base ast_dt_composite_base = {
 	// .free = ...,
 };
 
-int
-ast_dt_try_resolve_types(struct ast_dt_context *ctx, struct ast_module *mod,
-		struct ast_env *env)
-{
-	for (size_t i = 0; i < ctx->num_members; i++) {
-	}
-	return -1;
-}
-
 type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *comp)
@@ -745,9 +813,10 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	dt_ctx.ast_env = env;
 	dt_ctx.terminal_nodes = -1;
 
-	int err;
+	ast_dt_composite_populate(&dt_ctx, comp);
 
-	err = ast_dt_composite_populate(&dt_ctx, mod, comp);
+	int err;
+	err = ast_dt_composite_resolve_types(&dt_ctx, mod, comp);
 
 	for (size_t i = 0; i < dt_ctx.num_members; i++) {
 		printf("%.*s (%i): ", ALIT(dt_ctx.members[i].name), dt_ctx.members[i].slot);
@@ -759,8 +828,6 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		printf("Failed to popluate members.\n");
 		return TYPE_UNSET;
 	}
-
-	ast_dt_composite_bind(&dt_ctx, comp);
 
 	ast_member_id bind_order;
 	bind_order = ast_dt_composite_order_binds(&dt_ctx);

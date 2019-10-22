@@ -328,7 +328,7 @@ ast_init_node_composite(
 	return target;
 }
 
-ast_slot_id
+int
 ast_node_composite_add_member(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct atom *name,
@@ -374,6 +374,15 @@ ast_node_composite_add_member(
 			&new_member);
 
 	return 0;
+}
+
+ast_slot_id
+ast_node_composite_get_member(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct atom *name)
+{
+	return ast_unpack_arg_named(ctx, env,
+			target->composite.cons, AST_BIND_NEW, name);
 }
 
 void
@@ -834,23 +843,23 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 							ctx->atoms.func_cons_arg_params),
 						node->func.param_types_slot);
 
-			ast_node_resolve_slots(ctx, mod, env, node->func.return_type);
+			result &= ast_node_resolve_slots(ctx, mod, env, node->func.return_type);
 
 			for (size_t i = 0; i < node->func.num_params; i++) {
-				ast_node_resolve_slots(ctx, mod, env,
+				result &= ast_node_resolve_slots(ctx, mod, env,
 						node->func.params[i].type);
 			}
 
 			if (node->kind == AST_NODE_FUNC) {
-				ast_node_resolve_slots(ctx, mod, env, node->func.body);
+				result &= ast_node_resolve_slots(ctx, mod, env, node->func.body);
 			}
 			break;
 
 		case AST_NODE_CALL:
-			ast_node_resolve_slots(ctx, mod, env, node->call.func);
+			result &= ast_node_resolve_slots(ctx, mod, env, node->call.func);
 
 			for (size_t i = 0; i < node->call.num_args; i++) {
-				ast_node_resolve_slots(ctx, mod, env,
+				result &= ast_node_resolve_slots(ctx, mod, env,
 						node->call.args[i].value);
 			}
 
@@ -943,10 +952,10 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					}
 				}
 
-				ast_node_resolve_slots(ctx, mod, env, node->call.func);
+				result &= ast_node_resolve_slots(ctx, mod, env, node->call.func);
 
 				for (size_t i = 0; i < node->call.num_args; i++) {
-					ast_node_resolve_slots(ctx, mod, env,
+					result &= ast_node_resolve_slots(ctx, mod, env,
 							node->call.args[i].value);
 				}
 
@@ -993,10 +1002,10 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 							arg_type_ids, node->call.num_args,
 							AST_SLOT_TYPE);
 
-					ast_node_resolve_slots(ctx, mod, env, node->call.func);
+					result &= ast_node_resolve_slots(ctx, mod, env, node->call.func);
 
 					for (size_t i = 0; i < node->call.num_args; i++) {
-						ast_node_resolve_slots(ctx, mod, env,
+						result &= ast_node_resolve_slots(ctx, mod, env,
 								node->call.args[i].value);
 					}
 
@@ -1088,17 +1097,17 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 			}
 
-			ast_node_resolve_slots(ctx, mod, env, node->call.func);
+			result &= ast_node_resolve_slots(ctx, mod, env, node->call.func);
 
 			for (size_t i = 0; i < node->call.num_args; i++) {
-				ast_node_resolve_slots(ctx, mod, env,
+				result &= ast_node_resolve_slots(ctx, mod, env,
 						node->call.args[i].value);
 			}
 
 			break;
 
 		case AST_NODE_TEMPL:
-			ast_node_resolve_slots(ctx, mod, env,
+			result &= ast_node_resolve_slots(ctx, mod, env,
 					node->templ.body);
 			break;
 
@@ -1106,22 +1115,27 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 			break;
 
 		case AST_NODE_LIT:
+			node->kind = AST_NODE_SLOT;
+			node->slot = node->lit.slot;
 			break;
 
 		case AST_NODE_LOOKUP:
 			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
+				printf("Name not found.\n");
 				result = false;
 			} else {
 				struct ast_env_slot slot =
 					ast_env_slot(ctx, env, node->lookup.value);
 
 				if (slot.kind == AST_SLOT_CONST ||
-						slot.kind == AST_SLOT_CONST_TYPE) {
+						slot.kind == AST_SLOT_CONST_TYPE ||
+						slot.kind == AST_SLOT_MEMBER) {
 					node->kind = AST_NODE_SLOT;
 					node->slot =
 						ast_union_slot(ctx, env,
 								node->lookup.value, node->lookup.slot);
 				} else {
+					printf("Lookup not of valid type.\n");
 					result = false;
 				}
 			}
@@ -1143,21 +1157,6 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 			for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
 				result &= ast_node_resolve_slots(ctx, mod, env,
 						node->composite.free_exprs[i]);
-			}
-
-			{
-				type_id type;
-				type = ast_dt_finalize_composite(ctx, mod, env, node);
-
-				if (type != TYPE_UNSET) {
-					node->composite.ret_value =
-						ast_bind_slot_const_type(ctx, env,
-								node->composite.ret_value, NULL, type);
-				} else {
-					node->composite.ret_value =
-						ast_bind_slot_error(ctx, env,
-								node->composite.ret_value);
-				}
 			}
 			break;
 
@@ -1481,9 +1480,11 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 			return ast_slot_pack(ctx, mod, env, node->lookup.value, out);
 
 		case AST_NODE_COMPOSITE:
+			printf("Composite not implemented.\n");
 			return -1;
 
 		case AST_NODE_VARIANT:
+			printf("Variant not implemented.\n");
 			return -1;
 
 		case AST_NODE_FUNC_UNINIT:

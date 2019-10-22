@@ -138,8 +138,7 @@ ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
 
 int
 ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_node *ns,
-		struct atom *name, struct ast_node *expr)
+		struct ast_node *ns, struct atom *name, struct ast_node *expr)
 {
 	ast_slot_id type_slot = ast_node_type(ctx, &mod->env, expr);
 	struct ast_node *type;
@@ -157,8 +156,8 @@ ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
 	struct ast_node *target;
 	target = ast_init_node_slot(ctx, &mod->env,
 			AST_NODE_NEW, STG_NO_LOC,
-			ast_bind_slot_member(ctx, &mod->env,
-				AST_BIND_NEW, NULL, type_slot));
+			ast_node_composite_get_member(
+				ctx, &mod->env, ns, name));
 
 	ast_node_composite_bind(ctx, &mod->env, ns,
 			target, expr, false);

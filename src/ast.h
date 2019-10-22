@@ -512,6 +512,11 @@ ast_node_composite_add_member(
 		struct ast_node *target, struct atom *name,
 		struct ast_node *type);
 
+ast_slot_id
+ast_node_composite_get_member(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct atom *name);
+
 void
 ast_node_composite_bind(
 		struct ast_context *ctx, struct ast_env *env,
@@ -539,15 +544,6 @@ enum ast_node_dependencies_state {
 enum ast_node_dependencies_state
 ast_node_dependencies_fulfilled(struct ast_context *ctx,
 		struct ast_env *env, struct ast_node *node);
-
-enum ast_node_flags {
-	AST_NODE_FLAG_OK           = 0x0,
-	AST_NODE_FLAG_ERROR        = 0x1,
-	AST_NODE_FLAG_NOT_TYPED    = 0x2,
-	AST_NODE_FLAG_NOT_NAMED    = 0x4,
-	AST_NODE_FLAG_NOT_RESOLVED = 0x8,
-	AST_NODE_FLAG_NOT_CONST    = 0x10,
-};
 
 struct stg_native_module;
 

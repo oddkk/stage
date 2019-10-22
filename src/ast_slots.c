@@ -1314,6 +1314,7 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 
 	memset(&env->slots[target], 0, sizeof(struct ast_env_slot));
 	env->slots[target].kind = AST_SLOT_SUBST;
+	env->slots[target].member_id = -1;
 	env->slots[target].subst = new_slot;
 	env->slots[target].type = AST_BIND_FAILED;
 
