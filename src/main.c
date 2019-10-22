@@ -129,7 +129,10 @@ int main(int argc, char *argv[])
 #if 0
 	for (size_t i = 0; i < vm.num_modules; i++) {
 		printf("Module %.*s:\n", LIT(vm.modules[i]->info.name));
-		ast_print_module(&ctx, &vm.modules[i]->mod);
+		if (vm.modules[i]->mod.root) {
+			ast_print(&ctx, &vm.modules[i]->mod.env,
+					vm.modules[i]->mod.root);
+		}
 
 		printf("\n");
 		ast_env_print(&vm, &vm.modules[i]->mod.env);
