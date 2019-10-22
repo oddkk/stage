@@ -205,6 +205,11 @@ ast_copy_slot(struct ast_context *,
 		struct ast_env *dest, ast_slot_id target,
 		struct ast_env *src,  ast_slot_id src_slot);
 
+ast_slot_id
+ast_copy_slot_with_member_id(struct ast_context *ctx,
+		struct ast_env *dest, ast_slot_id target,
+		struct ast_env *src,  ast_slot_id src_slot);
+
 void
 ast_substitute(struct ast_context *, struct ast_env *,
 		ast_slot_id new_slot, ast_slot_id target);
@@ -286,6 +291,10 @@ struct ast_array_def {
 int
 ast_slot_pack(struct ast_context *, struct ast_module *,
 		struct ast_env *, ast_slot_id obj, struct object *out);
+
+int
+ast_slot_pack_type(struct ast_context *, struct ast_module *,
+		struct ast_env *, ast_slot_id obj, type_id *out);
 
 enum ast_node_kind {
 	AST_NODE_FUNC,

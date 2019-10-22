@@ -137,6 +137,24 @@ ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
 }
 
 int
+ast_slot_pack_type(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, ast_slot_id obj, type_id *out)
+{
+	int err;
+	struct object type_obj;
+	err = ast_slot_pack(ctx, mod, env, obj, &type_obj);
+	if (err) {
+		return err;
+	}
+
+	assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
+
+	*out = *(type_id *)type_obj.data;
+
+	return 0;
+}
+
+int
 ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_node *ns, struct atom *name, struct ast_node *expr)
 {
@@ -275,9 +293,11 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 	type = ast_dt_finalize_composite(ctx, mod,
 			&mod->env, mod->root);
 
+	mod->type = type;
+
 	printf("Final type for %.*s: ", LIT(mod->stg_mod->info.name));
 	print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
 	printf("\n");
 
-	return -1;
+	return 0;
 }

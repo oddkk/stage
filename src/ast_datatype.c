@@ -32,6 +32,17 @@ struct ast_dt_member {
 
 	size_t num_incoming_edges;
 
+	bool is_local_member;
+	union {
+		// If is_local_member is true.
+		ast_member_id first_child;
+
+		// If is_local_member is false.
+		ast_member_id anscestor_local_member;
+	};
+
+	ast_member_id persistant_id;
+
 	// Used as part of the terminal_nodes linked list until after the member
 	// has been sorted. Then next becomes the id of the next member in the
 	// topological order. The index of another member.
@@ -135,6 +146,9 @@ ast_dt_register_member(struct ast_dt_context *ctx,
 	new_mbr.slot = ast_node_resolve_slot(ctx->ast_env, &slot);
 	new_mbr.decl_loc = decl_loc;
 	new_mbr.next = ctx->terminal_nodes;
+	new_mbr.first_child = -1;
+	new_mbr.anscestor_local_member = -1;
+	new_mbr.persistant_id = -1;
 
 	ast_member_id old_id = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot).member_id;
 	if (old_id >= 0) {
@@ -358,7 +372,7 @@ ast_dt_node_try_bind_const_member(struct ast_dt_context *ctx,
 
 static void
 ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mod,
-		ast_member_id member)
+		ast_member_id anscestor, ast_member_id member)
 {
 	struct ast_dt_member *mbr = get_member(ctx, member);
 	assert(mbr->type != TYPE_UNSET);
@@ -394,7 +408,21 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 			ast_member_id mbr_id;
 			mbr_id = ast_dt_register_member(ctx, param->name,
 					mbr_slot, STG_NO_LOC);
-			ast_dt_composite_populate_type(ctx, mod, mbr_id);
+
+			struct ast_dt_member *new_mbr;
+			new_mbr = get_member(ctx, mbr_id);
+			new_mbr->is_local_member = false;
+			new_mbr->anscestor_local_member = anscestor;
+
+			struct ast_dt_member *anscestor_mbr;
+			anscestor_mbr = get_member(ctx, anscestor);
+			if (anscestor_mbr->first_child == -1) {
+				anscestor_mbr->first_child = mbr_id;
+			} else {
+				assert(anscestor_mbr->first_child < mbr_id);
+			}
+
+			ast_dt_composite_populate_type(ctx, mod, anscestor, mbr_id);
 		}
 	} else {
 		ast_bind_slot_const_type(ctx->ast_ctx, ctx->ast_env,
@@ -655,8 +683,15 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 				mbr->name);
 
 		// TODO: Better location.
-		ast_dt_register_member(ctx, mbr->name, slot,
+		ast_member_id mbr_id;
+		mbr_id = ast_dt_register_member(ctx, mbr->name, slot,
 				node->composite.members[i].type->loc);
+
+		struct ast_dt_member *new_mbr;
+		new_mbr = get_member(ctx, mbr_id);
+
+		new_mbr->is_local_member = true;
+		new_mbr->first_child = -1;
 	}
 
 	for (size_t i = 0; i < node->composite.num_binds; i++) {
@@ -724,7 +759,7 @@ ast_dt_composite_resolve_types(struct ast_dt_context *ctx,
 
 				mbr->type = type;
 
-				ast_dt_composite_populate_type(ctx, mod, mbr_id);
+				ast_dt_composite_populate_type(ctx, mod, mbr_id, mbr_id);
 
 				made_progress = true;
 			}
@@ -762,6 +797,57 @@ ast_dt_composite_resolve_types(struct ast_dt_context *ctx,
 	return error || wait;
 }
 
+static ast_member_id
+ast_dt_num_descendant_members(struct ast_dt_context *ctx,
+		struct ast_module *mod, type_id type)
+{
+	struct type *member_type;
+	member_type = vm_get_type(ctx->ast_ctx->vm, type);
+
+	ast_member_id count = 0;
+
+	if (member_type->obj_def) {
+		count += member_type->obj_def->num_params;
+
+		for (size_t i = 0; i < member_type->obj_def->num_params; i++) {
+			int err;
+			type_id mbr_type;
+
+			ast_slot_id type_slot;
+			type_slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env,
+					member_type->obj_def->params[i].slot).type;
+
+			err = ast_slot_pack_type(ctx->ast_ctx, mod,
+					ctx->ast_env, type_slot, &mbr_type);
+			if (err) {
+				printf("Failed to pack cons param type.\n");
+				continue;
+			}
+
+			count += ast_dt_num_descendant_members(ctx, mod, mbr_type);
+		}
+	}
+
+	return count;
+}
+
+static ast_member_id
+ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr = get_member(ctx, mbr_id);
+
+	if (mbr->is_local_member) {
+		assert(mbr->persistant_id >= 0);
+		return mbr->persistant_id;
+	} else {
+		struct ast_dt_member *local_anscestor;
+		local_anscestor = get_member(ctx, mbr->anscestor_local_member);
+		assert(local_anscestor->is_local_member &&
+				local_anscestor->first_child >= 0 &&
+				local_anscestor->first_child < mbr_id);
+		return mbr_id - local_anscestor->first_child;
+	}
+}
 
 struct ast_dt_local_member {
 	struct atom *name;
@@ -793,6 +879,20 @@ ast_dt_composite_repr(struct vm *vm, struct arena *mem, struct type *type)
 	arena_string_append(mem, &res, STR("}"));
 
 	return res;
+}
+
+static void
+ast_dt_env_recalculate_persistant_member_ids(struct ast_dt_context *ctx, struct ast_env *env)
+{
+	for (size_t i = 0; i < env->num_slots; i++) {
+		if (env->slots[i].member_id >= 0) {
+			ast_member_id old_id, new_id;
+			old_id = env->slots[i].member_id;
+			new_id = ast_dt_calculate_persistant_id(ctx, old_id);
+
+			env->slots[i].member_id = new_id;
+		}
+	}
 }
 
 struct type_base ast_dt_composite_base = {
@@ -859,6 +959,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 				sizeof(struct ast_object_bind));
 
 		size_t offset = 0;
+		ast_member_id cumulative_persistant_id = 0;
 		for (size_t i = 0; i < comp->composite.num_members; i++) {
 			printf("finalizing %.*s  (type flags=%i):\n",
 					ALIT(comp->composite.members[i].name),
@@ -874,13 +975,25 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 			mbr_slot = ast_unpack_arg_named(ctx, env, comp->composite.cons,
 					AST_BIND_NEW, comp->composite.members[i].name);
 
+			ast_member_id mbr_id;
+			mbr_id = ast_dt_find_member_by_slot(&dt_ctx, mbr_slot);
+
 			struct ast_dt_member *mbr;
-			mbr = get_member(&dt_ctx, ast_dt_find_member_by_slot(&dt_ctx, mbr_slot));
+			mbr = get_member(&dt_ctx, mbr_id);
 
 			params[i].slot =
 				ast_bind_slot_member(ctx, &def->env, AST_BIND_NEW, NULL,
 						ast_bind_slot_const_type(ctx, &def->env, AST_BIND_NEW,
 							NULL, mbr->type));
+			// def->env.slots[params[i].slot].member_id = cumulative_persistant_id;
+
+			// NOTE: We keep the old member_id here so that we can replace all
+			// slot member ids after the binds have been added.
+			def->env.slots[params[i].slot].member_id = mbr_id;
+
+			cumulative_persistant_id += 1 +
+				ast_dt_num_descendant_members(&dt_ctx, mod, mbr->type);
+			mbr->persistant_id = cumulative_persistant_id;
 
 			struct type *member_type;
 			member_type = vm_get_type(ctx->vm, mbr->type);
@@ -889,6 +1002,10 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 			offset += member_type->size;
 		}
+
+		// NOTE: ast_dt_calculate_persistant_id can only be used after this
+		// point because it is dependent on persistant_id being set for local
+		// members.
 
 		def->params = params;
 		def->num_params = comp->composite.num_members;
@@ -944,12 +1061,10 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 			func.bytecode = ast_composite_bind_gen_bytecode(ctx, mod, env,
 					dep_names, dep_types, num_deps, mbr->bound->value);
 
-			// TODO: Get slot object representing the target object.
-			// TODO: Calculate persistant member id as pre-order traversal index.
-			binds[bind_i].target = AST_BIND_FAILED;
-			// binds[bind_i].target =
-			// 	ast_node_deep_copy(ctx, &def->env, env,
-			// 			mbr->bound->target);
+			binds[bind_i].target = ast_copy_slot_with_member_id(ctx,
+					&def->env, AST_BIND_NEW,
+					env,       ast_node_value(ctx, env, mbr->bound->target));
+
 			binds[bind_i].num_value_params = mbr->bound->num_deps;
 			binds[bind_i].value_params = calloc(mbr->bound->num_deps,
 					sizeof(ast_slot_id));
@@ -967,6 +1082,8 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 		def->binds = binds;
 		def->num_binds = num_bound_members;
+
+		ast_dt_env_recalculate_persistant_member_ids(&dt_ctx, &def->env);
 
 		struct ast_dt_composite_info *info;
 		info = calloc(1, sizeof(struct ast_dt_composite_info));

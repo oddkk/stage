@@ -538,6 +538,7 @@ struct ast_union_context {
 	bool slot_map_freeable;
 
 	bool copy_mode;
+	bool copy_member_id;
 };
 
 static ast_slot_id
@@ -1137,7 +1138,6 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 					ctx->ctx, dest, target, slot.name,
 					ast_union_slot_internal(
 						ctx, dest, type_target, src, slot.type));
-			dest->slots[result].member_id = slot.member_id;
 			break;
 
 
@@ -1237,11 +1237,14 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 
 	ast_substitute(ctx->ctx, dest, result, target);
 
-	if (src == dest && !ctx->copy_mode) {
+	if ((src == dest && !ctx->copy_mode) || ctx->copy_member_id) {
 		if (slot.member_id >= 0) {
 			assert(dest->slots[result].member_id < 0);
 			dest->slots[result].member_id = slot.member_id;
 		}
+	}
+
+	if (src == dest && !ctx->copy_mode) {
 		ast_substitute(ctx->ctx, dest, result, src_slot);
 	}
 
@@ -1294,6 +1297,29 @@ ast_copy_slot(struct ast_context *ctx,
 	return ast_union_slot_internal(
 			&cpy_ctx, dest, target, src, src_slot);
 }
+
+ast_slot_id
+ast_copy_slot_with_member_id(struct ast_context *ctx,
+		struct ast_env *dest, ast_slot_id target,
+		struct ast_env *src,  ast_slot_id src_slot)
+{
+	ast_slot_id slot_map[src->num_slots];
+
+	for (size_t i = 0; i < src->num_slots; i++) {
+		slot_map[i] = AST_SLOT_NOT_FOUND;
+	}
+
+	struct ast_union_context cpy_ctx = {0};
+	cpy_ctx.ctx = ctx;
+	cpy_ctx.slot_map = slot_map;
+	cpy_ctx.slot_map_len = src->num_slots;
+	cpy_ctx.copy_mode = true;
+	cpy_ctx.copy_member_id = true;
+
+	return ast_union_slot_internal(
+			&cpy_ctx, dest, target, src, src_slot);
+}
+
 
 void
 ast_substitute(struct ast_context *ctx, struct ast_env *env,
