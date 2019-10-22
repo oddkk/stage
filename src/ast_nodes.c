@@ -145,6 +145,27 @@ ast_finalize_node_func_native(struct ast_context *ctx, struct ast_env *env,
 }
 
 struct ast_node *
+ast_init_node_templ(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, struct stg_location loc,
+		struct ast_node *body)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(node);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_TEMPL;
+	node->loc = loc;
+
+	node->templ.body = body;
+
+	return node;
+}
+
+struct ast_node *
 ast_init_node_call(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node, struct stg_location loc,
@@ -245,26 +266,25 @@ ast_init_node_lookup(
 	return node;
 }
 
-ast_slot_id
-ast_node_func_register_templ_param(
+void
+ast_node_templ_register_param(
 		struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *func, struct atom *name,
-		struct stg_location loc, ast_slot_id type_slot)
+		struct ast_node *templ, struct atom *name,
+		struct stg_location loc)
 {
-	if (!func) {
+	if (!templ) {
 		stg_error(ctx->err, loc,
 				"Template parameters can only be declared inside functions.");
-		return AST_BIND_FAILED;
+		return;
 	}
-	assert(func->kind == AST_NODE_FUNC ||
-			func->kind == AST_NODE_FUNC_UNINIT);
-	for (size_t i = 0; i < func->func.num_template_params; i++) {
-		if (func->func.template_params[i].name == name) {
+	assert(templ->kind == AST_NODE_TEMPL);
+	for (size_t i = 0; i < templ->templ.num_params; i++) {
+		if (templ->templ.params[i].name == name) {
 			stg_error(ctx->err, loc,
 					"Template parameter '%.*s' has already been declared.",
 					ALIT(name));
-			stg_appendage(ctx->err, func->func.template_params[i].loc, "Here.");
-			return func->func.template_params[i].slot;
+			stg_appendage(ctx->err, templ->templ.params[i].loc, "Here.");
+			return;
 		}
 	}
 
@@ -275,15 +295,13 @@ ast_node_func_register_templ_param(
 	tmpl_param.slot =
 		ast_bind_slot_templ(ctx, env, AST_BIND_NEW, name,
 				ast_bind_slot_wildcard(
-					ctx, env, type_slot,
+					ctx, env, AST_BIND_NEW,
 					NULL, AST_SLOT_TYPE));
 
 	dlist_append(
-			func->func.template_params,
-			func->func.num_template_params,
+			templ->templ.params,
+			templ->templ.num_params,
 			&tmpl_param);
-
-	return tmpl_param.slot;
 }
 
 struct ast_node *

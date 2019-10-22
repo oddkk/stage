@@ -468,6 +468,12 @@ ast_finalize_node_func_native(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *return_type, struct string native_func_name);
 
 struct ast_node *
+ast_init_node_templ(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location,
+		struct ast_node *body);
+
+struct ast_node *
 ast_init_node_call(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location,
@@ -492,11 +498,11 @@ ast_init_node_lookup(
 		struct ast_node *target, struct stg_location,
 		struct atom *name, ast_slot_id slot);
 
-ast_slot_id
-ast_node_func_register_templ_param(
+void
+ast_node_templ_register_param(
 		struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *func, struct atom *name,
-		struct stg_location loc, ast_slot_id type_slot);
+		struct ast_node *templ, struct atom *name,
+		struct stg_location loc);
 
 struct ast_node *
 ast_init_node_composite(
