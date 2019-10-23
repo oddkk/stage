@@ -44,9 +44,9 @@ struct string string_duplicate_cstr(char *str)
 
 	if (!result.text) {
 		result.length = 0;
+	} else {
+		memcpy(result.text, str, result.length);
 	}
-
-	memcpy(result.text, str, result.length);
 
 	return result;
 }

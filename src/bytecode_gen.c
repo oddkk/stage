@@ -18,7 +18,7 @@ bc_instr_alloc(struct bc_instr_store *store, struct bc_instr instr)
 			store->last_page_num_used >= store->instr_per_page) {
 		size_t new_num_pages = store->num_pages + 1;
 		struct bc_instr **new_pages = realloc(
-				store->pages, new_num_pages * sizeof(struct instr *));
+				store->pages, new_num_pages * sizeof(struct bc_instr *));
 		if (!new_pages) {
 			perror("realloc");
 			return NULL;

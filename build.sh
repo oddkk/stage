@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CC=clang
+CC=${CC:-clang}
 
 bison ./src/parser.y -t --report=all -o ./src/parser.y.re2c || exit
 re2c ./src/parser.y.re2c -o ./src/parser.y.c || exit

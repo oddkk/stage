@@ -306,7 +306,7 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 					dir_ns_head += 1;
 					dir_ns_stack[dir_ns_head] =
 						ast_namespace_add_ns(ctx->ast_ctx, &mod->env,
-								dir_ns_stack[dir_ns_head], atom);
+								dir_ns_stack[dir_ns_head-1], atom);
 				}
 			}
 			break;

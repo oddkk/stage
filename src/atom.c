@@ -88,6 +88,7 @@ struct atom *atom_create(struct atom_table *table, struct string name)
 
 		if (!new_page) {
 			fprintf(stderr, "Could not allocate new atom page.\n");
+			return NULL;
 		}
 
 		if (table->last_page) {
