@@ -403,6 +403,11 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 
 	if (mbr_type->obj_def) {
 		ast_slot_id cons_slot;
+
+		if (ctx->ast_env->slots[mbr->slot].kind == AST_SLOT_MEMBER) {
+			ctx->ast_env->slots[mbr->slot].kind = AST_SLOT_WILDCARD;
+		}
+
 		cons_slot = ast_bind_slot_cons(ctx->ast_ctx, ctx->ast_env,
 				mbr->slot, NULL, mbr_type->obj_def);
 
@@ -435,6 +440,7 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 			new_mbr = get_member(ctx, mbr_id);
 			new_mbr->is_local_member = false;
 			new_mbr->anscestor_local_member = anscestor;
+			new_mbr->type = tid;
 
 			struct ast_dt_member *anscestor_mbr;
 			anscestor_mbr = get_member(ctx, anscestor);
@@ -638,8 +644,8 @@ ast_dt_output_cycle_errors(struct ast_dt_context *ctx,
 	return found;
 }
 
-static ast_member_id
-ast_dt_composite_order_binds(struct ast_dt_context *ctx)
+static int
+ast_dt_composite_order_binds(struct ast_dt_context *ctx, ast_member_id *out)
 {
 	ast_member_id result = -1;
 	ast_member_id result_tail = -1;
@@ -709,7 +715,8 @@ ast_dt_composite_order_binds(struct ast_dt_context *ctx)
 		return -1;
 	}
 
-	return result;
+	*out = result;
+	return 0;
 }
 
 static void
@@ -991,26 +998,21 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 	int err;
 	err = ast_dt_composite_resolve_types(&dt_ctx, mod, comp);
-
-	for (size_t i = 0; i < dt_ctx.num_members; i++) {
-		printf("%.*s (%i): ", ALIT(dt_ctx.members[i].name), dt_ctx.members[i].slot);
-		print_type_repr(ctx->vm, vm_get_type(ctx->vm, dt_ctx.members[i].type));
-		printf("\n");
-	}
-
 	if (err) {
 		printf("Failed to popluate members.\n");
 		return TYPE_UNSET;
 	}
 
 	ast_member_id bind_order;
-	bind_order = ast_dt_composite_order_binds(&dt_ctx);
+	err = ast_dt_composite_order_binds(&dt_ctx, &bind_order);
+	if (err) {
+		printf("Failed to order bind operations.\n");
+		return TYPE_UNSET;
+	}
 
 	type_id result = TYPE_UNSET;
 
 	if (dt_ctx.num_errors == 0) {
-		assert(bind_order);
-
 		struct ast_object_def *def;
 		def = ast_object_def_register(mod->env.store);
 
@@ -1035,11 +1037,6 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		size_t offset = 0;
 		ast_member_id cumulative_persistant_id = 0;
 		for (size_t i = 0; i < comp->composite.num_members; i++) {
-			printf("finalizing %.*s  (type flags=%i):\n",
-					ALIT(comp->composite.members[i].name),
-					ast_node_analyze(&dt_ctx, comp->composite.members[i].type));
-			ast_print(ctx, env, comp->composite.members[i].type);
-
 			params[i].param_id = i;
 			params[i].name = comp->composite.members[i].name;
 			local_members[i].name = comp->composite.members[i].name;
@@ -1101,7 +1098,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 			err = ast_node_eval_type_of(ctx, mod, env,
 					mbr->bound->value, &value_type);
 			if (err) {
-				printf("Failed to eval bind value  type.\n");
+				printf("Failed to eval bind value type.\n");
 				continue;
 			}
 

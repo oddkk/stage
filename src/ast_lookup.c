@@ -81,7 +81,7 @@ ast_try_lookup_in_scope(struct ast_context *ctx, struct ast_env *env,
 
 static ast_slot_id
 ast_resolve_lookup(struct ast_context *ctx, struct ast_env *env,
-		struct ast_scope *root_scope, struct atom *name)
+		struct ast_scope *root_scope, bool require_const, struct atom *name)
 {
 	for (struct ast_scope *scope = root_scope;
 			scope != NULL;
@@ -101,13 +101,26 @@ ast_resolve_lookup(struct ast_context *ctx, struct ast_env *env,
 
 			for (size_t i = 0; i < closure->num_members; i++) {
 				if (closure->members[i].name == name) {
+					if (!closure->members[i].require_const && require_const) {
+						ast_slot_id new_slot;
+						// Reevaluate the lookup to ensure that all closures we
+						// depend on are marked as const.
+						new_slot = ast_resolve_lookup(ctx, env,
+								scope->parent, true, name);
+						assert(new_slot == closure->members[i].slot);
+						closure->members[i].require_const = true;
+
+						ast_union_slot(ctx, env,
+								closure->members[i].outer_slot,
+								closure->members[i].slot);
+					}
 					return closure->members[i].slot;
 				}
 			}
 
 			ast_slot_id outer_slot;
 			outer_slot = ast_resolve_lookup(ctx, env,
-					scope->parent, name);
+					scope->parent, require_const, name);
 
 			if (outer_slot != AST_BIND_FAILED) {
 				struct ast_closure_member mbr = {0};
@@ -116,10 +129,22 @@ ast_resolve_lookup(struct ast_context *ctx, struct ast_env *env,
 				mbr.slot = ast_bind_slot_closure(ctx, env,
 						AST_BIND_NEW, name, AST_BIND_NEW);
 
+				mbr.require_const = require_const;
+
 				dlist_append(
 						closure->members,
 						closure->num_members,
 						&mbr);
+
+				if (require_const) {
+					// TODO: This is a hack. We should have a better place to
+					// handle required constant closures, and we should also
+					// handle closures of members that are constant, but that
+					// are not required to be constant.
+					ast_union_slot(ctx, env,
+							mbr.outer_slot,
+							mbr.slot);
+				}
 
 				return mbr.slot;
 			}
@@ -133,12 +158,12 @@ ast_resolve_lookup(struct ast_context *ctx, struct ast_env *env,
 
 static bool
 ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
-		struct ast_scope *root_scope, struct ast_node *node)
+		struct ast_scope *root_scope, bool require_const, struct ast_node *node)
 {
 	assert(node->kind == AST_NODE_LOOKUP);
 
 	ast_slot_id slot;
-	slot = ast_resolve_lookup(ctx, env, root_scope, node->lookup.name);
+	slot = ast_resolve_lookup(ctx, env, root_scope, require_const, node->lookup.name);
 
 	if (slot != AST_BIND_FAILED) {
 		ast_bind_lookup_node(ctx, env, node, slot);
@@ -150,8 +175,8 @@ ast_resolve_node_lookup(struct ast_context *ctx, struct ast_env *env,
 
 int
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
-		struct stg_native_module *native_mod,
-		struct ast_scope *scope, struct ast_node *node)
+		struct stg_native_module *native_mod, struct ast_scope *scope,
+		bool require_const, struct ast_node *node)
 {
 	int err = 0;
 
@@ -179,14 +204,14 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 				for (size_t i = 0; i < params_scope.num_names; i++) {
 					err += ast_node_resolve_names(ctx, env, native_mod,
-							scope, node->func.params[i].type);
+							scope, true, node->func.params[i].type);
 				}
 
 				err += ast_node_resolve_names(ctx, env, native_mod,
-						scope, node->func.return_type);
+						scope, true, node->func.return_type);
 
 				err += ast_node_resolve_names(ctx, env, native_mod,
-						&params_scope, node->func.body);
+						&params_scope, false, node->func.body);
 			}
 			break;
 
@@ -194,11 +219,11 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			{
 				for (size_t i = 0; i < node->func.num_params; i++) {
 					err += ast_node_resolve_names(ctx, env, native_mod,
-							scope, node->func.params[i].type);
+							scope, true, node->func.params[i].type);
 				}
 
 				err += ast_node_resolve_names(ctx, env, native_mod,
-						scope, node->func.return_type);
+						scope, true, node->func.return_type);
 
 				if (!native_mod) {
 					stg_error(ctx->err, node->loc,
@@ -227,10 +252,10 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
 			err += ast_node_resolve_names(ctx, env, native_mod,
-					scope, node->call.func);
+					scope, require_const, node->call.func);
 			for (size_t i = 0; i < node->call.num_args; i++) {
 				err += ast_node_resolve_names(ctx, env, native_mod,
-						scope, node->call.args[i].value);
+						scope, require_const, node->call.args[i].value);
 			}
 			break;
 
@@ -252,7 +277,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				}
 
 				err += ast_node_resolve_names(ctx, env, native_mod,
-						&templates_scope, node->templ.body);
+						&templates_scope, require_const, node->templ.body);
 			}
 			break;
 
@@ -267,7 +292,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				struct atom *name = node->lookup.name;
 				// NOTE: If the name is found, node will be replaced by a node
 				// of kind slot.
-				if (!ast_resolve_node_lookup(ctx, env, scope, node)) {
+				if (!ast_resolve_node_lookup(ctx, env, scope, require_const, node)) {
 					stg_error(ctx->err, node->loc, "'%.*s' was not found.",
 							ALIT(name));
 					err += 1;
@@ -296,19 +321,19 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 				for (size_t i = 0; i < node->composite.num_members; i++) {
 					err += ast_node_resolve_names(ctx, env, native_mod,
-							&member_scope, node->composite.members[i].type);
+							&member_scope, true, node->composite.members[i].type);
 				}
 
 				for (size_t i = 0; i < node->composite.num_binds; i++) {
 					err += ast_node_resolve_names(ctx, env, native_mod,
-							&member_scope, node->composite.binds[i].target);
+							&member_scope, false, node->composite.binds[i].target);
 					err += ast_node_resolve_names(ctx, env, native_mod,
-							&member_scope, node->composite.binds[i].value);
+							&member_scope, false, node->composite.binds[i].value);
 				}
 
 				for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
 					err += ast_node_resolve_names(ctx, env, native_mod,
-							&member_scope, node->composite.free_exprs[i]);
+							&member_scope, false, node->composite.free_exprs[i]);
 				}
 			}
 			break;

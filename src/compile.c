@@ -557,7 +557,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			{
 				int err;
 				err = ast_node_resolve_names(ctx->ast_ctx, &data->mod->env,
-						data->stg_mod->native_mod, NULL, data->mod->root);
+						data->stg_mod->native_mod, NULL, false, data->mod->root);
 				if (err) {
 					printf("Failed to resolve names.\n");
 					return JOB_ERROR;

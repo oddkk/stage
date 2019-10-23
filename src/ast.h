@@ -362,6 +362,8 @@ struct ast_closure_member {
 	struct atom *name;
 	ast_slot_id slot;
 	ast_slot_id outer_slot;
+
+	bool require_const;
 };
 
 struct ast_closure_target {
@@ -583,8 +585,8 @@ struct stg_native_module;
 
 int
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
-		struct stg_native_module *native_module,
-		struct ast_scope *scope, struct ast_node *node);
+		struct stg_native_module *native_module, struct ast_scope *scope,
+		bool require_conxt, struct ast_node *node);
 
 bool
 ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,

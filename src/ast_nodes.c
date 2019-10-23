@@ -1128,7 +1128,8 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 				result = false;
 			} else {
 				struct ast_env_slot slot =
-					ast_env_slot(ctx, env, node->lookup.value);
+					ast_env_slot(ctx, env,
+							ast_node_resolve_slot(env, &node->lookup.value));
 
 				if (slot.kind == AST_SLOT_CONST ||
 						slot.kind == AST_SLOT_CONST_TYPE ||

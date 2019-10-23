@@ -212,7 +212,6 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				append_bc_instr(&result, lit_instr);
 
 				result.out_var = lit_instr->load.target;
-
 			}
 			return result;
 
@@ -223,7 +222,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				type = ast_dt_finalize_composite(ctx, mod, env, node);
 
 				if (type == TYPE_UNSET) {
-					printf("Failed to initialize composite type.");
+					printf("Failed to initialize composite type.\n");
 					return (struct ast_gen_bc_result){0};
 				}
 
@@ -238,7 +237,6 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				append_bc_instr(&result, lit_instr);
 
 				result.out_var = lit_instr->load.target;
-
 			}
 			return result;
 
