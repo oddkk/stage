@@ -866,11 +866,11 @@ ast_dt_num_descendant_members(struct ast_dt_context *ctx,
 			type_id mbr_type;
 
 			ast_slot_id type_slot;
-			type_slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env,
+			type_slot = ast_env_slot(ctx->ast_ctx, &member_type->obj_def->env,
 					member_type->obj_def->params[i].slot).type;
 
 			err = ast_slot_pack_type(ctx->ast_ctx, mod,
-					ctx->ast_env, type_slot, &mbr_type);
+					&member_type->obj_def->env, type_slot, &mbr_type);
 			if (err) {
 				printf("Failed to pack cons param type.\n");
 				continue;
@@ -1171,7 +1171,8 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 		result = stg_register_type(mod->stg_mod, dt_type);
 
-		def->ret_type = result;
+		def->ret_type = ast_bind_slot_const_type(
+				ctx, &def->env, AST_BIND_NEW, NULL, result);
 	}
 
 	for (size_t i = 0; i < dt_ctx.num_members; i++) {
