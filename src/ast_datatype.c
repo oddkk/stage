@@ -19,6 +19,10 @@ struct ast_dt_bind {
 
 struct ast_dt_dependency;
 
+enum ast_dt_member_flags {
+	AST_DT_MEMBER_IS_LOCAL = 0x1,
+};
+
 struct ast_dt_member {
 	struct atom *name;
 	ast_slot_id slot;
@@ -32,12 +36,12 @@ struct ast_dt_member {
 
 	size_t num_incoming_edges;
 
-	bool is_local_member;
+	enum ast_dt_member_flags flags;
 	union {
-		// If is_local_member is true.
+		// If flags IS_LOCAL is true.
 		ast_member_id first_child;
 
-		// If is_local_member is false.
+		// If flags IS_LOCAL is false.
 		ast_member_id anscestor_local_member;
 	};
 
@@ -438,7 +442,6 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 
 			struct ast_dt_member *new_mbr;
 			new_mbr = get_member(ctx, mbr_id);
-			new_mbr->is_local_member = false;
 			new_mbr->anscestor_local_member = anscestor;
 			new_mbr->type = tid;
 
@@ -742,7 +745,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		struct ast_dt_member *new_mbr;
 		new_mbr = get_member(ctx, mbr_id);
 
-		new_mbr->is_local_member = true;
+		new_mbr->flags |= AST_DT_MEMBER_IS_LOCAL;
 		new_mbr->first_child = -1;
 	}
 
@@ -888,13 +891,13 @@ ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 {
 	struct ast_dt_member *mbr = get_member(ctx, mbr_id);
 
-	if (mbr->is_local_member) {
+	if ((mbr->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
 		assert(mbr->persistant_id >= 0);
 		return mbr->persistant_id;
 	} else {
 		struct ast_dt_member *local_anscestor;
 		local_anscestor = get_member(ctx, mbr->anscestor_local_member);
-		assert(local_anscestor->is_local_member &&
+		assert((local_anscestor->flags & AST_DT_MEMBER_IS_LOCAL) != 0 &&
 				local_anscestor->first_child >= 0 &&
 				local_anscestor->first_child < mbr_id);
 		return mbr_id - local_anscestor->first_child;
