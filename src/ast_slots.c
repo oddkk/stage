@@ -1419,56 +1419,6 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 						slot->cons.args[arg_i].slot = new_slot;
 					}
 				}
-
-				if (slot->cons.def) {
-					struct ast_object_def *def = slot->cons.def;
-					struct ast_object_bind *def_binds = slot->cons.def_binds;
-					size_t def_bind_i = 0;
-
-					assert(def->num_binds == 0 || def_binds);
-
-					for (size_t bind_i = 0;
-							bind_i < def->num_binds; bind_i++) {
-						printf("num value params %zu\n",
-								def->binds[bind_i].num_value_params);
-						for (size_t val_i = 0;
-								val_i < def->binds[bind_i].num_value_params; val_i++) {
-							if (def_binds[def_bind_i].target == target) {
-#if AST_DEBUG_SUBST
-								printf("  (cons def bind target [%zu,%zu]=%zu) %i -> %i\n",
-										bind_i, val_i, def_bind_i,
-										def_binds[def_bind_i].target, new_slot);
-#endif
-								def_binds[def_bind_i].target = new_slot;
-							}
-
-							if (def_binds[def_bind_i].value != AST_SLOT_NOT_FOUND &&
-									def_binds[def_bind_i].value == target) {
-#if AST_DEBUG_SUBST
-								printf("  (cons def bind value [%zu,%zu]=%zu) %i -> %i\n",
-										bind_i, val_i, def_bind_i,
-										def_binds[def_bind_i].value, new_slot);
-#endif
-								def_binds[def_bind_i].value = new_slot;
-							}
-
-							def_bind_i += 1;
-						}
-						if (def->binds[bind_i].num_value_params == 0) {
-							if (def_binds[def_bind_i].target == target) {
-#if AST_DEBUG_SUBST
-								printf("  (cons def bind target [%zu,%zu]=%zu) %i -> %i\n",
-										bind_i, val_i, def_bind_i,
-										def_binds[def_bind_i].target, new_slot);
-#endif
-								def_binds[def_bind_i].target = new_slot;
-							}
-
-							assert(def_binds[def_bind_i].value == AST_SLOT_NOT_FOUND);
-							def_bind_i += 1;
-						}
-					}
-				}
 				break;
 
 			case AST_SLOT_CONS_ARRAY:
