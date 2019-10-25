@@ -829,55 +829,6 @@ ast_bind_slot_cons(struct ast_context *ctx,
 		}
 
 		assert(env->slots[target].cons.num_present_args == def->num_params);
-
-		size_t num_bind_values = 0;
-		for (size_t i = 0; i < def->num_binds; i++) {
-			if (def->binds[i].num_value_params != 0) {
-				num_bind_values += def->binds[i].num_value_params;
-			} else {
-				num_bind_values += 1;
-			}
-		}
-
-		struct ast_object_bind *def_binds = NULL;
-		if (!env->slots[target].cons.def_binds && num_bind_values > 0) {
-			def_binds = calloc(num_bind_values, sizeof(struct ast_object_bind));
-			for (size_t i = 0; i < num_bind_values; i++) {
-				def_binds[i].target = AST_BIND_NEW;
-				def_binds[i].value = AST_BIND_NEW;
-			}
-		} else {
-			def_binds = env->slots[target].cons.def_binds;
-		}
-
-		size_t def_bind_i = 0;
-		for (size_t bind_i = 0; bind_i < def->num_binds; bind_i++) {
-			ast_slot_id new_target;
-			new_target =
-				ast_union_slot_internal(&cpy_ctx,
-						env, def_binds[def_bind_i].target,
-						&def->env, def->binds[bind_i].target);
-
-			if (def->binds[bind_i].num_value_params > 0) {
-				for (size_t val_i = 0; val_i < def->binds[bind_i].num_value_params; val_i++) {
-					def_binds[def_bind_i].target = new_target;
-					def_binds[def_bind_i].value =
-						ast_union_slot_internal(&cpy_ctx,
-								env, def_binds[def_bind_i].value,
-								&def->env, def->binds[bind_i].value_params[val_i]);
-
-					def_bind_i += 1;
-				}
-			} else {
-				def_binds[def_bind_i].target = new_target;
-				def_binds[def_bind_i].value = AST_SLOT_NOT_FOUND;
-				def_bind_i += 1;
-			}
-		}
-
-		assert(def_bind_i == num_bind_values);
-
-		env->slots[target].cons.def_binds = def_binds;
 	}
 
 #if AST_DEBUG_BINDS

@@ -253,8 +253,8 @@ struct ast_object_def_param {
 };
 
 struct ast_object_def_bind {
-	ast_slot_id target;
-	ast_slot_id *value_params;
+	ast_member_id target;
+	ast_member_id *value_params;
 	size_t num_value_params;
 	bool overridable;
 	func_id value;

@@ -7,12 +7,18 @@
 #include <string.h>
 
 struct ast_dt_bind {
-	struct ast_node *target;
+	ast_member_id target;
 	struct ast_node *value;
+	func_id value_func;
+
 	bool overridable;
 
 	ast_member_id *deps;
 	size_t num_deps;
+
+	bool finalized;
+
+	struct stg_location loc;
 
 	struct ast_dt_bind *next_alloced;
 };
@@ -87,18 +93,42 @@ get_member(struct ast_dt_context *ctx, ast_member_id id)
 
 static struct ast_dt_bind *
 ast_dt_register_bind(struct ast_dt_context *ctx,
-		struct ast_node *target, struct ast_node *value, bool overridable)
+		ast_member_id target, struct ast_node *value, bool overridable)
 {
 	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
 	new_bind->target = target;
 	new_bind->value = value;
 	new_bind->overridable = overridable;
 
+	new_bind->loc = STG_NO_LOC;
+
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
 
 	return new_bind;
 }
+
+static struct ast_dt_bind *
+ast_dt_register_bind_func(struct ast_dt_context *ctx,
+		ast_member_id target, func_id func,
+		ast_member_id *value_params, size_t num_value_params,
+		bool overridable)
+{
+	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
+	new_bind->target = target;
+	new_bind->value_func = func;
+	new_bind->overridable = overridable;
+	new_bind->deps = value_params;
+	new_bind->num_deps = num_value_params;
+
+	new_bind->loc = STG_NO_LOC;
+
+	new_bind->next_alloced = ctx->alloced_binds;
+	ctx->alloced_binds = new_bind;
+
+	return new_bind;
+}
+
 
 static void
 ast_dt_remove_terminal_member(struct ast_dt_context *ctx,
@@ -397,23 +427,89 @@ ast_dt_node_try_bind_const_member(struct ast_dt_context *ctx,
 			assert(mbr->slot == slot_id);
 
 			if (mbr->bound && !mbr->bound->overridable) {
-				enum ast_node_flags flags;
-				flags = ast_node_analyze(ctx, mbr->bound->value);
-
-				if (flags == AST_NODE_FLAG_OK) {
-					int err;
-					struct object obj;
-					err = ast_node_eval(ctx->ast_ctx, mod,
-							ctx->ast_env, mbr->bound->value, &obj);
-					if (err) {
-						printf("Failed to evaluate value.\n");
-						continue;
+				if (mbr->bound->value_func != FUNC_UNSET) {
+					bool is_const = true;
+					for (size_t i = 0; i < mbr->bound->num_deps; i++) {
+						struct ast_dt_member *dep = get_member(ctx, mbr->bound->deps[i]);
+						if ((dep->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+							is_const = false;
+							break;
+						}
 					}
 
-					ast_dt_tag_member_const(ctx, mbr_id, obj);
+					if (is_const) {
+						mbr->flags |= AST_DT_MEMBER_IS_CONST;
+
+						assert(mbr->type != TYPE_UNSET);
+
+						struct type *mbr_type;
+						mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
+
+						uint8_t obj_buffer[mbr_type->size];
+						struct object obj = {0};
+						obj.type = mbr->type;
+						obj.data = obj_buffer;
+
+						obj = register_object(
+								ctx->ast_ctx->vm, mod->env.store, obj);
+
+						ast_dt_tag_member_const(ctx, mbr_id, obj);
+					}
+				} else {
+					enum ast_node_flags flags;
+					flags = ast_node_analyze(ctx, mbr->bound->value);
+
+					if (flags == AST_NODE_FLAG_OK) {
+						int err;
+						struct object obj;
+						err = ast_node_eval(ctx->ast_ctx, mod,
+								ctx->ast_env, mbr->bound->value, &obj);
+						if (err) {
+							printf("Failed to evaluate value.\n");
+							continue;
+						}
+
+						ast_dt_tag_member_const(ctx, mbr_id, obj);
+					}
 				}
 			}
 		}
+	}
+}
+
+static void
+ast_dt_composite_populate_cons_binds(struct ast_dt_context *ctx,
+		ast_member_id id_offset, struct ast_object_def *def)
+{
+	for (size_t i = 0; i < def->num_binds; i++) {
+		ast_member_id *value_params;
+		size_t num_value_params;
+
+		num_value_params = def->binds[i].num_value_params;
+		value_params = calloc(sizeof(ast_member_id),
+				num_value_params);
+
+		for (size_t val_i = 0; val_i < num_value_params; val_i++) {
+			value_params[val_i] = id_offset + def->binds[i].value_params[val_i];
+		}
+
+		ast_member_id target_id;
+		target_id = id_offset + def->binds[i].target;
+
+		struct ast_dt_bind *bind;
+		bind = ast_dt_register_bind_func(
+				ctx, target_id, def->binds[i].value,
+				value_params, num_value_params, def->binds[i].overridable);
+
+		struct ast_dt_member *target;
+		target = get_member(ctx, target_id);
+
+		assert(target->bound == NULL);
+		target->bound = bind;
+
+		printf("Binding target %.*s %i (%i + %i)\n",
+				ALIT(target->name),
+				target_id, id_offset, def->binds[i].target);
 	}
 }
 
@@ -435,6 +531,8 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 
 		cons_slot = ast_bind_slot_cons(ctx->ast_ctx, ctx->ast_env,
 				mbr->slot, NULL, mbr_type->obj_def);
+
+		ast_member_id first_member = -1;
 
 		for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
 			struct ast_object_def_param *param;
@@ -461,6 +559,10 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 			mbr_id = ast_dt_register_member(ctx, param->name,
 					mbr_slot, STG_NO_LOC);
 
+			if (first_member == -1) {
+				first_member = mbr_id;
+			}
+
 			struct ast_dt_member *new_mbr;
 			new_mbr = get_member(ctx, mbr_id);
 			new_mbr->anscestor_local_member = anscestor;
@@ -475,7 +577,12 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 			}
 
 			ast_dt_composite_populate_type(ctx, mod, anscestor, mbr_id);
+			printf("Populating member %.*s %i\n",
+					ALIT(param->name), mbr_id);
 		}
+
+		ast_dt_composite_populate_cons_binds(
+				ctx, first_member, mbr_type->obj_def);
 	} else {
 		ast_bind_slot_const_type(ctx->ast_ctx, ctx->ast_env,
 				ast_env_slot(ctx->ast_ctx, ctx->ast_env, mbr->slot).type,
@@ -596,10 +703,6 @@ ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node
 	struct ast_dt_find_member_ref_res target_members = {0};
 	ast_dt_find_member_refs(ctx, target, &target_members);
 
-	struct ast_dt_bind *bind;
-	bind = ast_dt_register_bind(
-			ctx, target, value, overridable);
-
 	for (size_t target_i = 0; target_i < target_members.num_nodes; target_i++) {
 		ast_member_id member_id;
 		member_id = target_members.nodes[target_i];
@@ -611,7 +714,8 @@ ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node
 			if (!member->bound->overridable && !overridable) {
 				stg_error(ctx->ast_ctx->err, target->loc,
 						"'%.*s' is bound multiple times.", ALIT(member->name));
-				stg_appendage(ctx->ast_ctx->err, member->bound->target->loc, "Also bound here.");
+				stg_appendage(ctx->ast_ctx->err,
+						member->bound->loc, "Also bound here.");
 				ctx->num_errors += 1;
 				return;
 			}
@@ -619,7 +723,8 @@ ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node
 			if (member->bound->overridable && overridable) {
 				stg_error(ctx->ast_ctx->err, target->loc,
 						"'%.*s' has multiple default binds.", ALIT(member->name));
-				stg_appendage(ctx->ast_ctx->err, member->bound->target->loc, "Also bound here.");
+				stg_appendage(ctx->ast_ctx->err,
+						member->bound->loc, "Also bound here.");
 				ctx->num_errors += 1;
 				return;
 			}
@@ -629,6 +734,14 @@ ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node
 			}
 		}
 
+		struct ast_dt_bind *bind;
+		bind = ast_dt_register_bind(
+				ctx, member_id, value, overridable);
+
+		bind->deps = value_members.nodes;
+		bind->num_deps = value_members.num_nodes;
+
+
 		member->bound = bind;
 
 		for (size_t val_i = 0; val_i < value_members.num_nodes; val_i++) {
@@ -636,8 +749,6 @@ ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node
 		}
 	}
 
-	bind->deps = value_members.nodes;
-	bind->num_deps = value_members.num_nodes;
 	free(target_members.nodes);
 }
 
@@ -659,7 +770,7 @@ ast_dt_output_cycle_errors(struct ast_dt_context *ctx,
 				found = true;
 
 				stg_appendage(ctx->ast_ctx->err,
-						get_member(ctx, edge->from)->bound->target->loc,
+						get_member(ctx, edge->from)->bound->loc,
 						"Through");
 			}
 		}
@@ -728,7 +839,7 @@ ast_dt_composite_order_binds(struct ast_dt_context *ctx, ast_member_id *out)
 				edge = &member->outgoing_edges[edge_i];
 				if (!edge->visited) {
 					edge->visited = true;
-					stg_error(ctx->ast_ctx->err, member->bound->target->loc,
+					stg_error(ctx->ast_ctx->err, member->bound->loc,
 							"'%.*s' can not be dependent on itself.",
 							ALIT(member->name));
 					ast_dt_output_cycle_errors(ctx, member_i, edge->to);
@@ -939,6 +1050,122 @@ ast_dt_env_recalculate_persistant_member_ids(struct ast_dt_context *ctx, struct 
 	}
 }
 
+static int
+ast_dt_make_bind_func(struct ast_dt_context *dt_ctx, struct ast_module *mod,
+		struct ast_dt_bind *bind)
+{
+	struct ast_context *ctx = dt_ctx->ast_ctx;
+	struct ast_env *env = dt_ctx->ast_env;
+
+	assert(bind->value || bind->value_func);
+
+	if (bind->value_func != FUNC_UNSET) {
+		// The function is already generated.
+		return 0;
+	}
+
+	struct func func = {0};
+
+	type_id value_type;
+
+	int err;
+	err = ast_node_eval_type_of(ctx, mod, env,
+			bind->value, &value_type);
+	if (err) {
+		printf("Failed to eval bind value type.\n");
+		return -1;
+	}
+
+	size_t num_deps = bind->num_deps;
+	struct atom *dep_names[num_deps];
+	type_id dep_types[num_deps];
+
+	for (size_t i = 0; i < num_deps; i++) {
+		ast_member_id dep_i = bind->deps[i];
+		struct ast_dt_member *dep = get_member(dt_ctx, dep_i);
+		dep_names[i] = dep->name;
+
+		struct object dep_type_obj;
+		err = ast_slot_pack(ctx, mod, env,
+				ast_env_slot(ctx, env, dep->slot).type, &dep_type_obj);
+		if (err) {
+			printf("Failed to pack member type.\n");
+			return -1;
+		}
+
+		assert_type_equals(ctx->vm, dep_type_obj.type, ctx->types.type);
+
+		dep_types[i] = *(type_id *)dep_type_obj.data;
+	}
+
+	func.type = stg_register_func_type(mod->stg_mod,
+			value_type, dep_types, num_deps);
+
+	func.kind = FUNC_BYTECODE;
+	func.bytecode = ast_composite_bind_gen_bytecode(ctx, mod, env,
+			dep_names, dep_types, num_deps, bind->value);
+
+	func_id func_id;
+	func_id = stg_register_func(mod->stg_mod, func);
+
+	bind->value_func = func_id;
+
+	return 0;
+}
+
+/*
+static int
+ast_dt_gen_bind(struct ast_dt_context *dt_ctx, struct ast_module *mod,
+		struct ast_dt_bind *bind, struct ast_object_def_bind *binds,
+		size_t *bind_i, ast_member_id target)
+{
+	struct ast_context *ctx = dt_ctx->ast_ctx;
+	struct ast_env *env = dt_ctx->ast_env;
+
+	struct ast_dt_member *mbr;
+	mbr = get_member(dt_ctx, target);
+
+	binds[*bind_i].target = target;
+
+	binds[*bind_i].num_value_params = mbr->bound->num_deps;
+	binds[*bind_i].value_params = calloc(mbr->bound->num_deps,
+			sizeof(ast_slot_id));
+
+	for (size_t dep_i = 0; dep_i < mbr->bound->num_deps; dep_i++) {
+		binds[*bind_i].value_params[dep_i] = mbr->bound->deps[dep_i];
+	}
+
+	binds[*bind_i].value =
+
+	binds[*bind_i].overridable = mbr->bound->overridable;
+	(*bind_i) += 1;
+
+	return 0;
+}
+
+static void
+ast_dt_gen_binds_for_target(struct ast_dt_context *ctx, struct ast_module *mod,
+		struct ast_dt_bind *bind, struct ast_object_def_bind *binds,
+		size_t *bind_i, struct ast_node *target)
+{
+	switch (target->kind) {
+		case AST_NODE_SLOT:
+			{
+				struct ast_env_slot slot;
+				slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env, target->slot);
+				assert(slot.member_id >= 0);
+
+				ast_dt_gen_bind(ctx, mod, bind, binds, bind_i, slot.member_id);
+			}
+			break;
+
+		default:
+			panic("TODO: Implement support for more complex bind targets.");
+			break;
+	}
+}
+*/
+
 struct ast_dt_local_member {
 	struct atom *name;
 	type_id type;
@@ -1119,98 +1346,52 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 				continue;
 			}
 
-			enum ast_node_flags flags;
-			flags = ast_node_analyze(&dt_ctx, mbr->bound->value);
+			if (mbr->bound->value) {
+				enum ast_node_flags flags;
+				flags = ast_node_analyze(&dt_ctx, mbr->bound->value);
 
-			if (flags != AST_NODE_FLAG_OK) {
-				assert((flags & (AST_NODE_FLAG_ERROR
-								|AST_NODE_FLAG_NOT_TYPED
-								|AST_NODE_FLAG_NOT_BOUND
-								|AST_NODE_FLAG_NOT_RESOLVED)) == 0);
-				continue;
+				if (flags != AST_NODE_FLAG_OK) {
+					assert((flags & (AST_NODE_FLAG_ERROR
+									|AST_NODE_FLAG_NOT_TYPED
+									|AST_NODE_FLAG_NOT_BOUND
+									|AST_NODE_FLAG_NOT_RESOLVED)) == 0);
+					continue;
+				}
+
+				// TODO: Tag member as constant.
+				// ast_dt_tag_member_const(&dt_ctx, mbr_i, );
 			}
 		}
 
 		size_t bind_i = 0;
 		for (ast_member_id mbr_i = bind_order;
 				mbr_i >= 0; mbr_i = get_member(&dt_ctx, mbr_i)->next) {
-			struct ast_dt_member *mbr;
-			mbr = get_member(&dt_ctx, mbr_i);
+			struct ast_dt_member *mbr = get_member(&dt_ctx, mbr_i);
 
 			printf("%.*s ", ALIT(mbr->name));
 
 			if (!mbr->bound) {
-				printf("(not bound)\n");
-				continue;
-			}
-
-			if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
+				printf("(not bound)");
+			} else if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
 				printf("(const) ");
 				print_obj_repr(ctx->vm, mbr->const_value);
 			}
 			printf("\n");
 
-			struct func func = {0};
 
-			type_id value_type;
-
-			int err;
-			err = ast_node_eval_type_of(ctx, mod, env,
-					mbr->bound->value, &value_type);
-			if (err) {
-				printf("Failed to eval bind value type.\n");
+			if (!mbr->bound) {
 				continue;
 			}
 
-			size_t num_deps = mbr->bound->num_deps;
-			struct atom *dep_names[num_deps];
-			type_id dep_types[num_deps];
+			int err;
+			err = ast_dt_make_bind_func(&dt_ctx, mod, mbr->bound);
 
-			for (size_t i = 0; i < num_deps; i++) {
-				ast_member_id dep_i = mbr->bound->deps[i];
-				struct ast_dt_member *dep = get_member(&dt_ctx, dep_i);
-				dep_names[i] = dep->name;
-
-				struct object dep_type_obj;
-				err = ast_slot_pack(ctx, mod, env,
-						ast_env_slot(ctx, env, dep->slot).type, &dep_type_obj);
-				if (err) {
-					printf("Failed to pack member type.\n");
-					continue;
-				}
-
-				assert_type_equals(ctx->vm, dep_type_obj.type, ctx->types.type);
-
-				dep_types[i] = *(type_id *)dep_type_obj.data;
-			}
-
-			func.type = stg_register_func_type(mod->stg_mod,
-					value_type, dep_types, num_deps);
-
-			func.kind = FUNC_BYTECODE;
-			func.bytecode = ast_composite_bind_gen_bytecode(ctx, mod, env,
-					dep_names, dep_types, num_deps, mbr->bound->value);
-
-			binds[bind_i].target = ast_copy_slot_with_member_id(ctx,
-					&def->env, AST_BIND_NEW,
-					env,       ast_node_value(ctx, env, mbr->bound->target));
-
+			assert(mbr->bound->value_func != FUNC_UNSET);
+			binds[bind_i].value            = mbr->bound->value_func;
+			binds[bind_i].value_params     = mbr->bound->deps;
 			binds[bind_i].num_value_params = mbr->bound->num_deps;
-			binds[bind_i].value_params = calloc(mbr->bound->num_deps,
-					sizeof(ast_slot_id));
-
-			for (size_t dep_i = 0; dep_i < mbr->bound->num_deps; dep_i++) {
-				struct ast_dt_member *dep = get_member(&dt_ctx, mbr->bound->deps[dep_i]);
-				binds[bind_i].value_params[dep_i] =
-					ast_copy_slot_with_member_id(ctx,
-							&def->env, AST_BIND_NEW,
-							env,       dep->slot);
-			}
-
-			binds[bind_i].value =
-				stg_register_func(mod->stg_mod, func);
-
-			binds[bind_i].overridable = mbr->bound->overridable;
+			binds[bind_i].overridable      = mbr->bound->overridable;
+			binds[bind_i].target           = mbr->bound->target;
 
 			bind_i += 1;
 		}
