@@ -400,8 +400,79 @@ ast_dt_tag_member_const(struct ast_dt_context *ctx,
 			mbr->slot, NULL, obj);
 }
 
+static bool
+ast_dt_try_bind_const_member(struct ast_dt_context *ctx,
+		struct ast_module *mod, ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	if (mbr->bound->value_func != FUNC_UNSET) {
+		bool is_const = true;
+		for (size_t i = 0; i < mbr->bound->num_deps; i++) {
+			struct ast_dt_member *dep = get_member(ctx, mbr->bound->deps[i]);
+			if ((dep->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+				is_const = false;
+				break;
+			}
+		}
+
+		if (is_const) {
+			mbr->flags |= AST_DT_MEMBER_IS_CONST;
+
+			assert(mbr->type != TYPE_UNSET);
+
+			struct type *mbr_type;
+			mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
+
+			uint8_t obj_buffer[mbr_type->size];
+			struct object obj = {0};
+			obj.type = mbr->type;
+			obj.data = obj_buffer;
+
+			struct object args[mbr->bound->num_deps];
+			for (size_t i = 0; i < mbr->bound->num_deps; i++) {
+				struct ast_dt_member *dep = get_member(ctx, mbr->bound->deps[i]);
+				args[i] = dep->const_value;
+			}
+
+			int err;
+
+			err = vm_call_func(ctx->ast_ctx->vm,
+					mbr->bound->value_func, args,
+					mbr->bound->num_deps, &obj);
+
+			obj = register_object(
+					ctx->ast_ctx->vm, mod->env.store, obj);
+
+			ast_dt_tag_member_const(ctx, mbr_id, obj);
+			return true;
+		}
+	} else {
+		enum ast_node_flags flags;
+		flags = ast_node_analyze(ctx, mbr->bound->value);
+
+		if (flags == AST_NODE_FLAG_OK) {
+			int err;
+			struct object obj;
+			err = ast_node_eval(ctx->ast_ctx, mod,
+					ctx->ast_env, mbr->bound->value, &obj);
+			if (err) {
+				printf("Failed to evaluate value.\n");
+				return false;
+			}
+
+			ast_dt_tag_member_const(ctx, mbr_id, obj);
+
+			return true;
+		}
+	}
+
+	return false;
+}
+
 static void
-ast_dt_node_try_bind_const_member(struct ast_dt_context *ctx,
+ast_dt_node_try_bind_const_members(struct ast_dt_context *ctx,
 		struct ast_module *mod, struct ast_node *node)
 {
 	assert(node->kind == AST_NODE_COMPOSITE);
@@ -427,51 +498,7 @@ ast_dt_node_try_bind_const_member(struct ast_dt_context *ctx,
 			assert(mbr->slot == slot_id);
 
 			if (mbr->bound && !mbr->bound->overridable) {
-				if (mbr->bound->value_func != FUNC_UNSET) {
-					bool is_const = true;
-					for (size_t i = 0; i < mbr->bound->num_deps; i++) {
-						struct ast_dt_member *dep = get_member(ctx, mbr->bound->deps[i]);
-						if ((dep->flags & AST_DT_MEMBER_IS_CONST) == 0) {
-							is_const = false;
-							break;
-						}
-					}
-
-					if (is_const) {
-						mbr->flags |= AST_DT_MEMBER_IS_CONST;
-
-						assert(mbr->type != TYPE_UNSET);
-
-						struct type *mbr_type;
-						mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
-
-						uint8_t obj_buffer[mbr_type->size];
-						struct object obj = {0};
-						obj.type = mbr->type;
-						obj.data = obj_buffer;
-
-						obj = register_object(
-								ctx->ast_ctx->vm, mod->env.store, obj);
-
-						ast_dt_tag_member_const(ctx, mbr_id, obj);
-					}
-				} else {
-					enum ast_node_flags flags;
-					flags = ast_node_analyze(ctx, mbr->bound->value);
-
-					if (flags == AST_NODE_FLAG_OK) {
-						int err;
-						struct object obj;
-						err = ast_node_eval(ctx->ast_ctx, mod,
-								ctx->ast_env, mbr->bound->value, &obj);
-						if (err) {
-							printf("Failed to evaluate value.\n");
-							continue;
-						}
-
-						ast_dt_tag_member_const(ctx, mbr_id, obj);
-					}
-				}
+				ast_dt_try_bind_const_member(ctx, mod, mbr_id);
 			}
 		}
 	}
@@ -901,7 +928,7 @@ ast_dt_composite_resolve_types(struct ast_dt_context *ctx,
 		made_progress = false;
 		wait = false;
 
-		ast_dt_node_try_bind_const_member(ctx, mod, node);
+		ast_dt_node_try_bind_const_members(ctx, mod, node);
 
 		for (size_t i = 0; i < node->composite.num_members; i++) {
 
@@ -1346,21 +1373,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 				continue;
 			}
 
-			if (mbr->bound->value) {
-				enum ast_node_flags flags;
-				flags = ast_node_analyze(&dt_ctx, mbr->bound->value);
-
-				if (flags != AST_NODE_FLAG_OK) {
-					assert((flags & (AST_NODE_FLAG_ERROR
-									|AST_NODE_FLAG_NOT_TYPED
-									|AST_NODE_FLAG_NOT_BOUND
-									|AST_NODE_FLAG_NOT_RESOLVED)) == 0);
-					continue;
-				}
-
-				// TODO: Tag member as constant.
-				// ast_dt_tag_member_const(&dt_ctx, mbr_i, );
-			}
+			ast_dt_try_bind_const_member(&dt_ctx, mod, mbr_i);
 		}
 
 		size_t bind_i = 0;
