@@ -22,10 +22,21 @@ struct ast_object_arg {
 	ast_slot_id slot;
 };
 
+struct ast_object_bind {
+	ast_slot_id target;
+	ast_slot_id value;
+};
+
 struct ast_object {
 	struct ast_object_def *def;
 	struct ast_object_arg *args;
 	size_t num_present_args;
+
+	// def_bind is a list of (target, value)-pairs. The list an unrolled
+	// version of the value params of the binds of the def. That means each
+	// target in def will appear num_value_params consecutive times, once for
+	// each value_param, in the same order as in def.
+	struct ast_object_bind *def_binds;
 };
 
 struct ast_array {
@@ -235,17 +246,17 @@ ast_env_print(struct vm *vm, struct ast_env *);
 void
 ast_print_slot(struct ast_context *, struct ast_env *, ast_slot_id);
 
-
 struct ast_object_def_param {
 	int param_id;
 	struct atom *name;
 	ast_slot_id slot;
 };
 
-struct ast_object_bind {
+struct ast_object_def_bind {
 	ast_slot_id target;
 	ast_slot_id *value_params;
 	size_t num_value_params;
+	bool overridable;
 	func_id value;
 };
 
@@ -262,7 +273,7 @@ struct ast_object_def {
 	size_t num_params;
 	struct ast_env env;
 
-	struct ast_object_bind *binds;
+	struct ast_object_def_bind *binds;
 	size_t num_binds;
 
 	ast_slot_id ret_type;
@@ -508,6 +519,13 @@ ast_init_node_templ(
 
 struct ast_node *
 ast_init_node_call(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location,
+		struct ast_node *func,
+		struct ast_func_arg *args, size_t num_args);
+
+struct ast_node *
+ast_init_node_cons(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location,
 		struct ast_node *func,

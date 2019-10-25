@@ -830,9 +830,12 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 	assert(!ctx.ast_ctx->err);
 	ctx.ast_ctx->err = &ctx.err;
 
+	struct ast_module *main_mod;
+
 	DISPATCH_JOB(&ctx, load_module, COMPILE_PHASE_DISCOVER,
 			.module_name = vm_atoms(vm, "main"),
-			.module_src_dir = initial_module_src_dir);
+			.module_src_dir = initial_module_src_dir,
+			.out_module = &main_mod);
 
 	for (; ctx.current_phase < COMPILE_NUM_PHASES; ctx.current_phase += 1) {
 		struct compile_phase *phase = &ctx.phases[ctx.current_phase];
@@ -860,7 +863,54 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		printf(TERM_COLOR_RED("Compilation failed! "
 					"(%zu jobs failed, %zu errors)") "\n",
 			   ctx.num_jobs_failed, ctx.err.num_errors);
+
+	ctx.ast_ctx->err = NULL;
+		return -1;
 	}
+
+	assert(main_mod);
+
+	/*
+	{
+		struct ast_node *main_mod_init_func;
+		struct ast_node *main_mod_cons;
+		struct ast_node *main_mod_cons_obj;
+		struct ast_node *main_mod_ret;
+
+		struct type *main_mod_type;
+		main_mod_type = vm_get_type(ast_ctx->vm, main_mod->type);
+
+		assert(main_mod_type->obj_def);
+
+		struct object mod_cons_obj = {0};
+		mod_cons_obj.type = ast_ctx->types.cons;
+		mod_cons_obj.data = &main_mod_type->obj_def;
+
+		struct object mod_type_obj = {0};
+		mod_type_obj.type = ast_ctx->types.type;
+		mod_type_obj.data = &main_mod->type;
+
+		main_mod_init_func = ast_init_node_func(ast_ctx, &main_mod->env,
+				AST_NODE_NEW, STG_NO_LOC, NULL, 0);
+
+		main_mod_ret = ast_init_node_lit(ast_ctx, &main_mod->env,
+				AST_NODE_NEW, STG_NO_LOC, mod_type_obj);
+
+		main_mod_cons_obj = ast_init_node_lit(ast_ctx, &main_mod->env,
+				AST_NODE_NEW, STG_NO_LOC, mod_cons_obj);
+
+		main_mod_cons = ast_init_node_cons(ast_ctx, &main_mod->env,
+				AST_NODE_NEW, STG_NO_LOC, main_mod_cons_obj, NULL, 0);
+
+		ast_finalize_node_func(ast_ctx, &main_mod->env,
+				main_mod_init_func, NULL, 0,
+				main_mod_ret, main_mod_cons);
+
+		struct bc_env *bc_env;
+		bc_env = ast_func_gen_bytecode(ast_ctx, main_mod,
+				&main_mod->env, main_mod_init_func);
+	}
+	*/
 
 	ctx.ast_ctx->err = NULL;
 	return 0;

@@ -21,6 +21,7 @@ struct ast_dt_dependency;
 
 enum ast_dt_member_flags {
 	AST_DT_MEMBER_IS_LOCAL = 0x1,
+	AST_DT_MEMBER_IS_CONST = 0x2,
 };
 
 struct ast_dt_member {
@@ -44,6 +45,8 @@ struct ast_dt_member {
 		// If flags IS_LOCAL is false.
 		ast_member_id anscestor_local_member;
 	};
+
+	struct object const_value;
 
 	ast_member_id persistant_id;
 
@@ -225,13 +228,16 @@ ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
 					result |= AST_NODE_FLAG_NOT_TYPED;
 				}
 
-				if (!mbr->bound) {
+				if (!mbr->bound || mbr->bound->overridable) {
 					result |= AST_NODE_FLAG_NOT_CONST;
 				}
 
-				// TODO: Apply not_const flag if the member is not trivial or
-				// dependent only on trivial members.
-				result |= AST_NODE_FLAG_NOT_CONST;
+				// TODO: We might want to do a recursive check on each member
+				// dependency to determine if they are constant as they might
+				// not have been visited yet.
+				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+					result |= AST_NODE_FLAG_NOT_CONST;
+				}
 			} else {
 				result |= AST_NODE_FLAG_NOT_BOUND;
 			}
@@ -346,6 +352,25 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 }
 
 static void
+ast_dt_tag_member_const(struct ast_dt_context *ctx,
+		ast_member_id mbr_id, struct object obj)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	mbr->flags |= AST_DT_MEMBER_IS_CONST;
+	mbr->const_value = obj;
+
+	// TODO: Hack. There should probably be a better way of
+	// overriding a member value.
+	assert(ctx->ast_env->slots[mbr->slot].kind == AST_SLOT_MEMBER);
+	ctx->ast_env->slots[mbr->slot].kind = AST_SLOT_WILDCARD;
+
+	ast_bind_slot_const(ctx->ast_ctx, ctx->ast_env,
+			mbr->slot, NULL, obj);
+}
+
+static void
 ast_dt_node_try_bind_const_member(struct ast_dt_context *ctx,
 		struct ast_module *mod, struct ast_node *node)
 {
@@ -369,6 +394,8 @@ ast_dt_node_try_bind_const_member(struct ast_dt_context *ctx,
 			struct ast_dt_member *mbr;
 			mbr = get_member(ctx, mbr_id);
 
+			assert(mbr->slot == slot_id);
+
 			if (mbr->bound && !mbr->bound->overridable) {
 				enum ast_node_flags flags;
 				flags = ast_node_analyze(ctx, mbr->bound->value);
@@ -383,13 +410,7 @@ ast_dt_node_try_bind_const_member(struct ast_dt_context *ctx,
 						continue;
 					}
 
-					// TODO: Hack. There should probably be a better way of
-					// overriding a member value.
-					assert(ctx->ast_env->slots[slot_id].kind == AST_SLOT_MEMBER);
-					ctx->ast_env->slots[slot_id].kind = AST_SLOT_WILDCARD;
-
-					ast_bind_slot_const(ctx->ast_ctx, ctx->ast_env,
-							slot_id, NULL, obj);
+					ast_dt_tag_member_const(ctx, mbr_id, obj);
 				}
 			}
 		}
@@ -1033,9 +1054,9 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 			num_bound_members += 1;
 		}
 
-		struct ast_object_bind *binds;
+		struct ast_object_def_bind *binds;
 		binds = calloc(num_bound_members,
-				sizeof(struct ast_object_bind));
+				sizeof(struct ast_object_def_bind));
 
 		size_t offset = 0;
 		ast_member_id cumulative_persistant_id = 0;
@@ -1083,15 +1104,51 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		def->params = params;
 		def->num_params = comp->composite.num_members;
 
+		// Tag members that are constant.
+		for (ast_member_id mbr_i = bind_order;
+				mbr_i >= 0; mbr_i = get_member(&dt_ctx, mbr_i)->next) {
+			struct ast_dt_member *mbr;
+			mbr = get_member(&dt_ctx, mbr_i);
+
+			if (!mbr->bound || mbr->bound->overridable) {
+				continue;
+			}
+
+			if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
+				// If the member is already const we do not have to retag that.
+				continue;
+			}
+
+			enum ast_node_flags flags;
+			flags = ast_node_analyze(&dt_ctx, mbr->bound->value);
+
+			if (flags != AST_NODE_FLAG_OK) {
+				assert((flags & (AST_NODE_FLAG_ERROR
+								|AST_NODE_FLAG_NOT_TYPED
+								|AST_NODE_FLAG_NOT_BOUND
+								|AST_NODE_FLAG_NOT_RESOLVED)) == 0);
+				continue;
+			}
+		}
+
 		size_t bind_i = 0;
 		for (ast_member_id mbr_i = bind_order;
 				mbr_i >= 0; mbr_i = get_member(&dt_ctx, mbr_i)->next) {
 			struct ast_dt_member *mbr;
 			mbr = get_member(&dt_ctx, mbr_i);
 
+			printf("%.*s ", ALIT(mbr->name));
+
 			if (!mbr->bound) {
+				printf("(not bound)\n");
 				continue;
 			}
+
+			if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
+				printf("(const) ");
+				print_obj_repr(ctx->vm, mbr->const_value);
+			}
+			printf("\n");
 
 			struct func func = {0};
 
@@ -1144,11 +1201,16 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 			for (size_t dep_i = 0; dep_i < mbr->bound->num_deps; dep_i++) {
 				struct ast_dt_member *dep = get_member(&dt_ctx, mbr->bound->deps[dep_i]);
-				binds[bind_i].value_params[dep_i] = dep->slot;
+				binds[bind_i].value_params[dep_i] =
+					ast_copy_slot_with_member_id(ctx,
+							&def->env, AST_BIND_NEW,
+							env,       dep->slot);
 			}
 
 			binds[bind_i].value =
 				stg_register_func(mod->stg_mod, func);
+
+			binds[bind_i].overridable = mbr->bound->overridable;
 
 			bind_i += 1;
 		}
