@@ -1018,31 +1018,12 @@ ast_dt_num_descendant_members(struct ast_dt_context *ctx,
 	struct type *member_type;
 	member_type = vm_get_type(ctx->ast_ctx->vm, type);
 
-	ast_member_id count = 0;
-
 	if (member_type->obj_def) {
-		count += member_type->obj_def->num_params;
-
-		for (size_t i = 0; i < member_type->obj_def->num_params; i++) {
-			int err;
-			type_id mbr_type;
-
-			ast_slot_id type_slot;
-			type_slot = ast_env_slot(ctx->ast_ctx, &member_type->obj_def->env,
-					member_type->obj_def->params[i].slot).type;
-
-			err = ast_slot_pack_type(ctx->ast_ctx, mod,
-					&member_type->obj_def->env, type_slot, &mbr_type);
-			if (err) {
-				printf("Failed to pack cons param type.\n");
-				continue;
-			}
-
-			count += ast_dt_num_descendant_members(ctx, mod, mbr_type);
-		}
+		return ast_object_def_num_descendant_members(
+				ctx->ast_ctx, mod, member_type->obj_def);
+	} else {
+		return 0;
 	}
-
-	return count;
 }
 
 static ast_member_id

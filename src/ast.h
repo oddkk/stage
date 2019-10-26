@@ -292,6 +292,11 @@ ast_object_def_finalize(struct ast_object_def *,
 		struct ast_object_def_param *params, size_t num_params,
 		ast_slot_id ret_type);
 
+size_t
+ast_object_def_num_descendant_members(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_object_def *def);
+
 typedef struct object (*ast_array_unpack)(
 		struct ast_context *, struct ast_env *,
 		struct ast_array_def *, size_t member_id, struct object);

@@ -58,6 +58,41 @@ ast_object_def_finalize(struct ast_object_def *obj,
 	obj->ret_type = ret_type;
 }
 
+size_t
+ast_object_def_num_descendant_members(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_object_def *def)
+{
+	size_t count = 0;
+	count += def->num_params;
+
+	for (size_t i = 0; i < def->num_params; i++) {
+		int err;
+		type_id mbr_type;
+
+		ast_slot_id type_slot;
+		type_slot = ast_env_slot(ctx, &def->env,
+				def->params[i].slot).type;
+
+		err = ast_slot_pack_type(ctx, mod,
+				&def->env, type_slot, &mbr_type);
+		if (err) {
+			printf("Failed to pack cons param type.\n");
+			continue;
+		}
+
+		struct type *member_type;
+		member_type = vm_get_type(ctx->vm, mbr_type);
+
+		if (member_type->obj_def) {
+			count += ast_object_def_num_descendant_members(
+					ctx, mod, member_type->obj_def);
+		}
+	}
+
+	return count;
+}
+
 int
 ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, ast_slot_id obj, struct object *out)
