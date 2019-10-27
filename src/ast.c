@@ -331,9 +331,11 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 
 	mod->type = type;
 
+	/*
 	printf("Final type for %.*s: ", LIT(mod->stg_mod->info.name));
 	print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
 	printf("\n");
+	*/
 
 	return 0;
 }

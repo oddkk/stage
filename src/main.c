@@ -126,6 +126,20 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	struct type *program_obj_type;
+	program_obj_type = vm_get_type(&vm, vm.program_object_type);
+
+	uint8_t program_obj_buffer[program_obj_type->size];
+	struct object program_obj = {0};
+
+	program_obj.data = program_obj_buffer;
+	program_obj.type = vm.program_object_type;
+
+	vm_call_func(&vm, vm.init_func, NULL, 0, &program_obj);
+
+	print_obj_repr(&vm, program_obj);
+	printf("\n");
+
 #if 0
 	for (size_t i = 0; i < vm.num_modules; i++) {
 		printf("Module %.*s:\n", LIT(vm.modules[i]->info.name));

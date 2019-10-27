@@ -46,6 +46,9 @@ struct vm {
 		struct ast_object_def *func;
 		struct ast_object_def *array;
 	} default_cons;
+
+	func_id init_func;
+	type_id program_object_type;
 };
 
 struct exec_stack {

@@ -265,6 +265,8 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 				ip->pack.func(vm, ip->pack.data,
 						&stack[ip->pack.target],
 						args, num_args);
+				num_args = 0;
+				break;
 
 			case NBC_RET:
 				memcpy(ret, &stack[ip->ret.var], ip->ret.size);

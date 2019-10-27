@@ -1368,10 +1368,10 @@ ast_dt_composite_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
 		mbr.type = info->members[i].type;
 		mbr.data = (void *)((uint8_t *)obj->data + info->members[i].location);
 
-		arena_string_append_sprintf(mem, &res, "%.*s = ", ALIT(info->members[i].name));
+		arena_string_append_sprintf(mem, &res, "%.*s=", ALIT(info->members[i].name));
 
 		arena_string_append_obj_repr(&res, vm, mem, &mbr);
-		arena_string_append(mem, &res, STR(";"));
+		arena_string_append(mem, &res, STR("; "));
 	}
 
 	arena_string_append(mem, &res, STR("}"));

@@ -7,6 +7,7 @@
 #include "objstore.h"
 #include "errors.h"
 #include "term_color.h"
+#include "base/mod.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -870,6 +871,8 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 
 	assert(main_mod);
 
+	func_id init_func = FUNC_UNSET;
+
 	{
 		struct ast_node *main_mod_init_func;
 		struct ast_node *main_mod_cons;
@@ -908,7 +911,21 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		struct bc_env *bc_env;
 		bc_env = ast_func_gen_bytecode(ast_ctx, main_mod,
 				&main_mod->env, main_mod_init_func);
+
+		struct func func = {0};
+
+		func.type = stg_register_func_type(
+				main_mod->stg_mod, main_mod->type, NULL, 0);
+
+		func.kind = FUNC_BYTECODE;
+		func.bytecode = bc_env;
+
+		init_func = 
+			stg_register_func(main_mod->stg_mod, func);
 	}
+
+	vm->init_func = init_func;
+	vm->program_object_type = main_mod->type;
 
 	ctx.ast_ctx->err = NULL;
 	return 0;
