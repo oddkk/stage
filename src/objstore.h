@@ -160,6 +160,9 @@ static inline struct func *store_get_func(struct objstore *store, func_id id) {
 	return func;
 }
 
+typedef void (*object_pack_func)(struct vm *, void *data, void *out,
+		void **params, size_t num_params);
+
 void free_objstore(struct objstore *store);
 
 void

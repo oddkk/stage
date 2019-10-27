@@ -25,6 +25,9 @@ enum bc_op {
 	// Call var function.
 	BC_VCALL,
 
+	// Call the pack func on the given arguments.
+	BC_PACK,
+
 	// Passes a var and returns execution to the caller.
 	BC_RET,
 };
@@ -50,6 +53,13 @@ struct bc_instr {
 			bc_var func;
 			bc_var target;
 		} vcall;
+
+		struct {
+			// TODO: Reduce the size of this instruction.
+			object_pack_func func;
+			void *data;
+			bc_var target;
+		} pack;
 
 		struct {
 			bc_var var;
@@ -113,6 +123,10 @@ bc_gen_lcall(struct bc_env *, bc_var target, func_id);
 
 struct bc_instr *
 bc_gen_vcall(struct bc_env *, bc_var target, bc_var func);
+
+struct bc_instr *
+bc_gen_pack(struct bc_env *, bc_var target,
+		object_pack_func, void *data, type_id ret_type);
 
 struct bc_instr *
 bc_gen_ret(struct bc_env *, bc_var var);

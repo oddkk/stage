@@ -870,7 +870,6 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 
 	assert(main_mod);
 
-	/*
 	{
 		struct ast_node *main_mod_init_func;
 		struct ast_node *main_mod_cons;
@@ -910,7 +909,6 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		bc_env = ast_func_gen_bytecode(ast_ctx, main_mod,
 				&main_mod->env, main_mod_init_func);
 	}
-	*/
 
 	ctx.ast_ctx->err = NULL;
 	return 0;

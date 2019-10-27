@@ -60,6 +60,14 @@ bc_print(struct bc_env *env, struct bc_instr *instr)
 				printf("\n");
 				break;
 
+			case BC_PACK:
+				printf("PACK ");
+				bc_print_var(env, instr->pack.target);
+				printf(" = %p(%p)\n",
+						(void *)instr->pack.func,
+						instr->pack.data);
+				break;
+
 			case BC_RET:
 				printf("RET ");
 				bc_print_var(env, instr->ret.var);

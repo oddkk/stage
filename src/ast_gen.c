@@ -30,6 +30,47 @@ append_bc_instrs(struct ast_gen_bc_result *res, struct ast_gen_bc_result instrs)
 	res->last = instrs.last;
 }
 
+static void
+ast_object_def_alloc_vars(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct bc_env *bc_env, struct ast_object_def *def,
+		bc_var *vars, size_t *var_i, bc_var *locals, bool is_local)
+{
+	for (size_t i = 0; i < def->num_params; i++) {
+		int err;
+		type_id mbr_type;
+
+		ast_slot_id type_slot;
+		type_slot = ast_env_slot(ctx, &def->env,
+				def->params[i].slot).type;
+
+		err = ast_slot_pack_type(ctx, mod,
+				&def->env, type_slot, &mbr_type);
+		if (err) {
+			printf("Failed to pack cons param type.\n");
+			continue;
+		}
+
+		vars[*var_i] = bc_alloc_var(bc_env, mbr_type);
+
+		if (is_local) {
+			locals[i] = vars[*var_i];
+		}
+
+		(*var_i) += 1;
+
+		struct type *member_type;
+		member_type = vm_get_type(ctx->vm, mbr_type);
+
+		if (member_type->obj_def) {
+			ast_object_def_alloc_vars(
+					ctx, mod, bc_env,
+					member_type->obj_def,
+					vars, var_i, NULL, false);
+		}
+	}
+}
+
 struct ast_gen_bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_gen_info *info,
@@ -92,17 +133,94 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 		case AST_NODE_CONS:
 			{
-				struct object obj;
+				struct object cons_obj;
 				int err;
-				err = ast_node_eval(ctx, mod, env, node, &obj);
+
+				err = ast_node_eval(ctx, mod, env, node->call.func, &cons_obj);
 				if (err) {
 					panic("Failed to evaluate cons.");
 					return (struct ast_gen_bc_result){0};
 				}
+				assert_type_equals(ctx->vm, cons_obj.type, ctx->types.cons);
+				struct ast_object_def *def;
+				def = *(struct ast_object_def **)cons_obj.data;
+				assert(def);
 
-				result.first = result.last =
-					bc_gen_load(bc_env, BC_VAR_NEW, obj);
-				result.out_var = result.first->load.target;
+				type_id ret_type;
+				err = ast_slot_pack_type(ctx, mod, env,
+						ast_node_type(ctx, env, node), &ret_type);
+				if (err) {
+					panic("Failed to pack cons type.");
+					return (struct ast_gen_bc_result){0};
+				}
+
+				if (def->pack_func != FUNC_UNSET) {
+					size_t num_desc_members;
+					num_desc_members =
+						ast_object_def_num_descendant_members(ctx, mod, def);
+					bc_var local_mbrs[def->num_params];
+					bc_var object_mbrs[num_desc_members];
+
+					size_t var_i = 0;
+					ast_object_def_alloc_vars(ctx, mod, bc_env,
+							def, object_mbrs, &var_i, local_mbrs, true);
+
+					// TODO: Resort the def's binds together whith the cons' binds.
+
+					for (size_t bind_i = 0; bind_i < def->num_binds; bind_i++) {
+						for (size_t val_i = 0;
+								val_i < def->binds[bind_i].num_value_params; val_i++) {
+							ast_member_id dep;
+							dep = def->binds[bind_i].value_params[val_i];
+							assert(dep < num_desc_members);
+
+							append_bc_instr(&result,
+									bc_gen_push_arg(bc_env, object_mbrs[dep]));
+						}
+
+						ast_member_id target;
+						target = def->binds[bind_i].target;
+						assert(target < num_desc_members);
+
+						switch (def->binds[bind_i].kind) {
+							case AST_OBJECT_DEF_BIND_VALUE:
+								append_bc_instr(&result,
+										bc_gen_lcall(bc_env, object_mbrs[target],
+											def->binds[bind_i].value.func));
+								break;
+
+							case AST_OBJECT_DEF_BIND_PACK:
+								append_bc_instr(&result,
+										bc_gen_pack(bc_env, object_mbrs[target],
+											def->binds[bind_i].pack->pack_func,
+											def->binds[bind_i].pack->data,
+											bc_get_var_type(bc_env, object_mbrs[target])));
+								break;
+						}
+					}
+
+					for (size_t i = 0; i < def->num_params; i++) {
+						append_bc_instr(&result,
+								bc_gen_push_arg(bc_env, local_mbrs[i])); }
+
+					append_bc_instr(&result,
+							bc_gen_pack(bc_env, BC_VAR_NEW,
+								def->pack_func, def->data, ret_type));
+					result.out_var = result.last->pack.target;
+				} else {
+					struct object obj;
+
+					// TODO: Remove old pack interface.
+
+					assert(def->pack);
+
+					obj = def->pack(ctx, mod, env,
+							def, node->call.cons);
+
+					result.first = result.last =
+						bc_gen_load(bc_env, BC_VAR_NEW, obj);
+					result.out_var = result.first->load.target;
+				}
 			}
 			return result;
 

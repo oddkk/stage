@@ -139,6 +139,23 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 				}
 				break;
 
+			case BC_PACK:
+				{
+					struct nbc_instr instr = {0};
+
+					assert(ip->pack.target >= 0);
+
+					instr.op = NBC_PACK;
+					instr.pack.func = ip->pack.func;
+					instr.pack.data = ip->pack.data;
+					instr.pack.target = vars[ip->pack.target].offset;
+
+					nbc_append_instr(out_func, instr);
+
+					num_pushed_args = 0;
+				}
+				break;
+
 			case BC_RET:
 				{
 					struct nbc_instr instr = {0};
@@ -244,6 +261,11 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 				num_args = 0;
 				break;
 
+			case NBC_PACK:
+				ip->pack.func(vm, ip->pack.data,
+						&stack[ip->pack.target],
+						args, num_args);
+
 			case NBC_RET:
 				memcpy(ret, &stack[ip->ret.var], ip->ret.size);
 				break;
@@ -306,6 +328,13 @@ nbc_print(struct nbc_func *func)
 						ip->call.target,
 						ip->call.func.native.fp,
 						ip->call.func.native.cif);
+				break;
+
+			case NBC_PACK:
+				printf("sp+0x%zx = PACK %p (%p)\n",
+						ip->pack.target,
+						(void *)ip->pack.func,
+						ip->pack.data);
 				break;
 
 			case NBC_RET:

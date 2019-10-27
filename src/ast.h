@@ -252,12 +252,25 @@ struct ast_object_def_param {
 	ast_slot_id slot;
 };
 
+enum ast_object_def_bind_kind {
+	AST_OBJECT_DEF_BIND_VALUE,
+	AST_OBJECT_DEF_BIND_PACK,
+};
+
 struct ast_object_def_bind {
+	enum ast_object_def_bind_kind kind;
+
 	ast_member_id target;
 	ast_member_id *value_params;
 	size_t num_value_params;
-	bool overridable;
-	func_id value;
+
+	union {
+		struct {
+			bool overridable;
+			func_id func;
+		} value;
+		struct ast_object_def *pack;
+	};
 };
 
 typedef struct object (*ast_object_unpack)(
@@ -280,6 +293,8 @@ struct ast_object_def {
 
 	ast_object_unpack unpack;
 	ast_object_pack pack;
+
+	object_pack_func pack_func;
 
 	void *data;
 };

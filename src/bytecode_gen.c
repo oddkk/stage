@@ -197,6 +197,20 @@ bc_gen_vcall(struct bc_env *env, bc_var target, bc_var func)
 }
 
 struct bc_instr *
+bc_gen_pack(struct bc_env *env, bc_var target,
+		object_pack_func func, void *data, type_id ret_type)
+{
+	struct bc_instr instr = {0};
+	instr.op = BC_PACK;
+	instr.pack.target = bc_use_or_alloc_var(
+			env, target, ret_type);
+	instr.pack.func = func;
+	instr.pack.data = data;
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
 bc_gen_ret(struct bc_env *env, bc_var var)
 {
 	struct bc_instr instr = {0};
