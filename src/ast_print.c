@@ -322,6 +322,20 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			}
 			break;
 
+		case AST_NODE_ACCESS:
+			print_indent(depth);
+			printf("access '%.*s' ", ALIT(node->access.name));
+			print_slot(env, node->access.slot);
+			printf(": ");
+			print_slot(env, ast_node_type(ctx, env, node));
+			printf("\n");
+
+			print_indent(depth + 1);
+			printf("target\n");
+			ast_print_internal(ctx, env,
+					node->access.target, depth + 2);
+			break;
+
 		case AST_NODE_SLOT:
 			print_indent(depth);
 			printf("slot ");

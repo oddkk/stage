@@ -1634,6 +1634,12 @@ ast_node_deep_copy_internal(
 		DCP_LIT(templ.def);
 		break;
 
+	case AST_NODE_ACCESS:
+		DCP_LIT(access.name);
+		DCP_NODE(access.target);
+		DCP_SLOT(access.slot);
+		break;
+
 	case AST_NODE_SLOT:
 		DCP_SLOT(slot);
 		break;

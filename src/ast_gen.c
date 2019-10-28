@@ -228,6 +228,55 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			panic("TODO: Implement generating bytecode for templ.");
 			break;
 
+		case AST_NODE_ACCESS:
+			{
+				struct ast_gen_bc_result target = {0};
+
+				ast_node_gen_bytecode(
+						ctx, mod, env, info, bc_env,
+						node->access.target);
+
+				append_bc_instrs(&result, target);
+				append_bc_instr(&result,
+						bc_gen_push_arg(bc_env, target.out_var));
+
+				type_id target_type_id = bc_get_var_type(bc_env, target.out_var);
+				struct type *type = vm_get_type(ctx->vm, target_type_id);
+
+				// TODO: Support deconstruction using non-default constructors
+				// from pattern matching.
+				assert(type->obj_def);
+
+				struct ast_object_def *cons;
+				cons = type->obj_def;
+
+				bool found = false;
+				bool param_id = -1;
+				for (size_t i = 0; i < cons->num_params; i++) {
+					 if (cons->params[i].name == node->access.name) {
+						 found = true;
+						 param_id = cons->params[i].param_id;
+					 }
+				}
+
+				assert(found);
+
+				type_id param_type = TYPE_UNSET;
+				int err;
+
+				ast_node_resolve_slot(env, &node->access.slot);
+				err = ast_slot_pack_type(ctx, mod, env,
+						ast_env_slot(ctx, env, node->access.slot).type,
+						&param_type);
+				assert(!err);
+
+				append_bc_instr(&result,
+						bc_gen_unpack(bc_env, BC_VAR_NEW,
+							cons->unpack_func, cons->data, param_id, param_type));
+				result.out_var = result.last->unpack.target;
+			}
+			break;
+
 		case AST_NODE_SLOT:
 			{
 				struct ast_env_slot slot;

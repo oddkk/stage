@@ -295,6 +295,7 @@ struct ast_object_def {
 	ast_object_pack pack;
 
 	object_pack_func pack_func;
+	object_unpack_func unpack_func;
 
 	void *data;
 };
@@ -340,6 +341,7 @@ enum ast_node_kind {
 	AST_NODE_FUNC_NATIVE,
 	AST_NODE_CALL,
 	AST_NODE_CONS,
+	AST_NODE_ACCESS,
 	AST_NODE_TEMPL,
 	AST_NODE_SLOT,
 	AST_NODE_LIT,
@@ -446,6 +448,12 @@ struct ast_node {
 			// Used only for cons.
 			ast_slot_id cons;
 		} call;
+
+		struct {
+			struct atom *name;
+			struct ast_node *target;
+			ast_slot_id slot;
+		} access;
 
 		struct {
 			struct ast_node *body;
@@ -556,6 +564,12 @@ ast_init_node_slot(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location,
 		ast_slot_id slot);
+
+struct ast_node *
+ast_init_node_access(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location,
+		struct ast_node *lhs, struct atom *name);
 
 struct ast_node *
 ast_init_node_lit(

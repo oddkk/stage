@@ -253,6 +253,35 @@ ast_init_node_slot(
 }
 
 struct ast_node *
+ast_init_node_access(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, struct stg_location loc,
+		struct ast_node *target, struct atom *name)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(node);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_ACCESS;
+	node->loc = loc;
+
+	node->access.target = target;
+	node->access.name = name;
+	node->access.slot =
+		ast_bind_slot_wildcard(ctx, env,
+				AST_BIND_NEW, NULL, AST_BIND_NEW);
+	// 	ast_unpack_arg_named(ctx, env,
+	// 			ast_node_value(ctx, env, target),
+	// 			AST_BIND_NEW, name);
+
+	return node;
+}
+
+
+struct ast_node *
 ast_init_node_lit(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node, struct stg_location loc,
@@ -470,6 +499,10 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->templ.slot)).type;
 
+		case AST_NODE_ACCESS:
+			return ast_env_slot(ctx, env,
+					ast_node_resolve_slot(env, &node->access.slot)).type;
+
 		case AST_NODE_SLOT:
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->slot)).type;
@@ -505,6 +538,9 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 
 		case AST_NODE_LOOKUP:
 			return ast_node_resolve_slot(env, &node->lookup.slot);
+
+		case AST_NODE_ACCESS:
+			return ast_node_resolve_slot(env, &node->access.slot);
 
 		case AST_NODE_FUNC_NATIVE:
 		case AST_NODE_FUNC:
@@ -575,6 +611,11 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 			break;
 
 		case AST_NODE_SLOT:
+			break;
+
+		case AST_NODE_ACCESS:
+			result &= ast_node_dependencies_fulfilled(
+					ctx, env, node->access.target);
 			break;
 
 		case AST_NODE_LIT:
@@ -765,6 +806,36 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 				}
 
 				result &= res;
+			}
+			break;
+
+		case AST_NODE_ACCESS:
+			result &= ast_node_is_typed(ctx, env,
+					node->access.target);
+			{
+				ast_slot_id target_value;
+				target_value =
+					ast_node_value(ctx, env, node->access.target);
+
+				struct ast_env_slot slot = ast_env_slot(ctx, env, target_value);
+
+				if (slot.kind != AST_SLOT_CONS) {
+					stg_error(ctx->err, node->loc,
+							"Object does not have any members.");
+				} else if (!slot.cons.def) {
+					printf("Access target is missing a def.\n");
+					result = false;
+				} else {
+					ast_slot_id val;
+					val = ast_unpack_arg_named(ctx, env,
+							target_value, AST_BIND_NEW, node->access.name);
+
+					if (val == AST_BIND_FAILED) {
+						result = false;
+					} else {
+						result &= ast_slot_is_resolved(ctx, env, val);
+					}
+				}
 			}
 			break;
 
@@ -1147,6 +1218,39 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 					node->templ.body);
 			break;
 
+		case AST_NODE_ACCESS:
+			{
+				result &= ast_node_resolve_slots(ctx, mod, env,
+						node->access.target);
+
+				/*
+				ast_slot_id target_value;
+				target_value =
+					ast_node_value(ctx, env, node->access.target);
+
+				ast_slot_id val;
+				val = ast_unpack_arg_named(ctx, env,
+						target_value, AST_BIND_NEW, node->access.name);
+
+				ast_union_slot(ctx, env, val, node->access.slot);
+				*/
+
+				ast_slot_id target_value;
+				target_value =
+					ast_node_value(ctx, env, node->access.target);
+
+				struct ast_env_slot slot = ast_env_slot(ctx, env, target_value);
+				if (slot.kind == AST_SLOT_CONS && slot.cons.def) {
+					ast_slot_id val;
+					val = ast_unpack_arg_named(ctx, env,
+							target_value, AST_BIND_NEW, node->access.name);
+					assert(val != AST_BIND_FAILED);
+
+					ast_union_slot(ctx, env, val, node->access.slot);
+				}
+			}
+			break;
+
 		case AST_NODE_SLOT:
 			break;
 
@@ -1502,6 +1606,41 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 				*out = register_object(ctx->vm, env->store, res);
 			}
 			return 0;
+
+		case AST_NODE_ACCESS:
+			{
+				struct ast_env_slot target_slot;
+				target_slot = ast_env_slot(ctx, env,
+						ast_node_value(ctx, env, node->access.target));
+				assert(target_slot.kind == AST_SLOT_CONS);
+				assert(target_slot.cons.def);
+
+				struct object target_obj;
+				int err;
+
+				err = ast_node_eval(ctx, mod, env, node->access.target, &target_obj);
+				if (err) {
+					printf("Failed to eval access target.\n");
+					return -1;
+				}
+
+				if (false /* TODO: target_slot.cons.def->unpack_func */) {
+				} else {
+					struct ast_object_def *def;
+					def = target_slot.cons.def;
+
+					for (size_t i = 0; i < def->num_params; i++) {
+						if (def->params[i].name == node->access.name) {
+							*out = def->unpack(ctx, env, def,
+									def->params[i].param_id, target_obj);
+							return 0;
+						}
+					}
+
+					return -1;
+				}
+			}
+			break;
 
 		case AST_NODE_SLOT:
 			return ast_slot_pack(ctx, mod, env, node->slot, out);

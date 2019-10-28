@@ -378,6 +378,14 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 		case AST_NODE_TEMPL:
 			break;
 
+		case AST_NODE_ACCESS:
+			result |= ast_node_analyze(ctx, node->access.target);
+			if ((result & AST_NODE_FLAG_NOT_TYPED) == 0) {
+				asdf
+				asdf
+			}
+			break;
+
 		case AST_NODE_SLOT:
 			result |= ast_slot_analyze(ctx,
 					ast_node_resolve_slot(ctx->ast_env, &node->slot));
@@ -807,6 +815,10 @@ ast_dt_find_member_refs(struct ast_dt_context *ctx,
 			for (size_t i = 0; i < node->call.num_args; i++) {
 				missing += ast_dt_find_member_refs(ctx, node->call.args[i].value, res);
 			}
+			break;
+
+		case AST_NODE_ACCESS:
+			missing += ast_dt_find_member_refs(ctx, node->access.target, res);
 			break;
 
 		case AST_NODE_SLOT:

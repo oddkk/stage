@@ -142,8 +142,8 @@ ast_resolve_lookup(struct ast_context *ctx, struct ast_env *env,
 					// handle closures of members that are constant, but that
 					// are not required to be constant.
 					ast_union_slot(ctx, env,
-							mbr.outer_slot,
-							mbr.slot);
+							ast_node_resolve_slot(env, &mbr.outer_slot),
+							ast_node_resolve_slot(env, &mbr.slot));
 				}
 
 				return mbr.slot;
@@ -279,6 +279,13 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				err += ast_node_resolve_names(ctx, env, native_mod,
 						&templates_scope, require_const, node->templ.body);
 			}
+			break;
+
+		case AST_NODE_ACCESS:
+			err += ast_node_resolve_names(ctx, env, native_mod,
+					scope, true, node->access.target);
+			// At this point we do not have type information, and thus can not
+			// resolve accesses.
 			break;
 
 		case AST_NODE_SLOT:
