@@ -42,7 +42,7 @@ ST_NODE(MOD_STMT, struct {
 })
 
 ST_NODE(USE_ALL, struct {
-	int _dc;
+	struct st_node *target;
 })
 
 ST_NODE(ASSERT_STMT, struct {
@@ -77,8 +77,8 @@ ST_NODE(TEMPLATE_VAR, struct {
 })
 
 ST_NODE(ACCESS, struct {
-	struct st_node *lhs;
-	struct st_node *rhs;
+	struct st_node *target;
+	struct atom *name;
 })
 
 ST_NODE(BIN_OP, struct {

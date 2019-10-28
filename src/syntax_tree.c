@@ -236,18 +236,20 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 {
 	switch (node->type) {
 
-	case ST_NODE_ACCESS: {
-		/*
-		struct expr_node *lhs, *rhs;
+		case ST_NODE_ACCESS:
+			{
+				struct ast_node *target;
+				target = st_node_visit_expr(
+						ctx, env, templ_node, func_node,
+						node->ACCESS.target);
+				struct ast_node *access;
+				access = ast_init_node_access(
+						ctx, env, AST_NODE_NEW, node->loc,
+						target, node->ACCESS.name);
 
-		lhs = st_node_visit_expr(ctx, expr, scope, lookup_scope,
-								  func_scope, node->ACCESS.lhs);
-		rhs = st_node_visit_expr(ctx, expr, scope, lhs,
-								  func_scope, node->ACCESS.rhs);
-
-		return rhs;
-		*/
-	} break;
+				return access;
+			}
+			break;
 
 	case ST_NODE_BIN_OP: {
 		struct ast_func_arg func_args[] = {

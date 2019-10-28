@@ -112,6 +112,7 @@ extern struct string st_node_names[ST_NODES_LEN];
 		break;											\
 														\
 	case ST_NODE_USE_ALL:								\
+		TREE_VISIT_NODE((node), USE_ALL, target);		\
 		break;											\
 														\
 	case ST_NODE_ASSERT_STMT:							\
@@ -144,8 +145,8 @@ extern struct string st_node_names[ST_NODES_LEN];
 		break;											\
 														\
 	case ST_NODE_ACCESS:								\
-		TREE_VISIT_NODE((node), ACCESS, lhs);			\
-		TREE_VISIT_NODE((node), ACCESS, rhs);			\
+		TREE_VISIT_NODE((node), ACCESS, target);		\
+		TREE_VISIT_ATOM((node), ACCESS, name);			\
 		break;											\
 														\
 	case ST_NODE_BIN_OP:								\
