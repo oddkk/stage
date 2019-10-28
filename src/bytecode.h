@@ -28,6 +28,9 @@ enum bc_op {
 	// Call the pack func on the given arguments.
 	BC_PACK,
 
+	// Unpack a member from the given member.
+	BC_UNPACK,
+
 	// Passes a var and returns execution to the caller.
 	BC_RET,
 };
@@ -60,6 +63,13 @@ struct bc_instr {
 			void *data;
 			bc_var target;
 		} pack;
+
+		struct {
+			object_unpack_func func;
+			void *data;
+			int param_id;
+			bc_var target;
+		} unpack;
 
 		struct {
 			bc_var var;
@@ -127,6 +137,10 @@ bc_gen_vcall(struct bc_env *, bc_var target, bc_var func);
 struct bc_instr *
 bc_gen_pack(struct bc_env *, bc_var target,
 		object_pack_func, void *data, type_id ret_type);
+
+struct bc_instr *
+bc_gen_unpack(struct bc_env *, bc_var target,
+		object_unpack_func, void *data, int param_id, type_id ret_type);
 
 struct bc_instr *
 bc_gen_ret(struct bc_env *, bc_var var);

@@ -68,6 +68,15 @@ bc_print(struct bc_env *env, struct bc_instr *instr)
 						instr->pack.data);
 				break;
 
+			case BC_UNPACK:
+				printf("UNPACK ");
+				bc_print_var(env, instr->unpack.target);
+				printf(" = %p(%p, %i)\n",
+						(void *)instr->unpack.func,
+						instr->unpack.data,
+						instr->unpack.param_id);
+				break;
+
 			case BC_RET:
 				printf("RET ");
 				bc_print_var(env, instr->ret.var);

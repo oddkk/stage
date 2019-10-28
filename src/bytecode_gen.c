@@ -211,6 +211,22 @@ bc_gen_pack(struct bc_env *env, bc_var target,
 }
 
 struct bc_instr *
+bc_gen_unpack(struct bc_env *env, bc_var target,
+		object_unpack_func func, void *data,
+		int param_id, type_id ret_type)
+{
+	struct bc_instr instr = {0};
+	instr.op = BC_UNPACK;
+	instr.unpack.target = bc_use_or_alloc_var(
+			env, target, ret_type);
+	instr.unpack.func = func;
+	instr.unpack.data = data;
+	instr.unpack.param_id = param_id;
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
 bc_gen_ret(struct bc_env *env, bc_var var)
 {
 	struct bc_instr instr = {0};

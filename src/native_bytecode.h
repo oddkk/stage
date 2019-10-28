@@ -13,6 +13,7 @@ enum nbc_op {
 	NBC_CALL_NBC,
 	NBC_CALL_NATIVE,
 	NBC_PACK,
+	NBC_UNPACK,
 	NBC_RET,
 	NBC_RET_PARAM,
 };
@@ -49,6 +50,13 @@ struct nbc_instr {
 			object_pack_func func;
 			void *data;
 		} pack;
+
+		struct {
+			size_t target;
+			object_unpack_func func;
+			void *data;
+			int param_id;
+		} unpack;
 
 		struct {
 			size_t size;

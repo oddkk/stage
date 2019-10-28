@@ -156,6 +156,25 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 				}
 				break;
 
+			case BC_UNPACK:
+				{
+					struct nbc_instr instr = {0};
+
+					assert(ip->unpack.target >= 0);
+
+					instr.op = NBC_UNPACK;
+					instr.unpack.func = ip->unpack.func;
+					instr.unpack.data = ip->unpack.data;
+					instr.unpack.target = vars[ip->unpack.target].offset;
+					instr.unpack.param_id = ip->unpack.param_id;
+
+					nbc_append_instr(out_func, instr);
+					assert(num_pushed_args == 1);
+					num_pushed_args = 0;
+				}
+				break;
+
+
 			case BC_RET:
 				{
 					struct nbc_instr instr = {0};
@@ -268,6 +287,14 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 				num_args = 0;
 				break;
 
+			case NBC_UNPACK:
+				ip->unpack.func(vm, ip->unpack.data,
+						&stack[ip->unpack.target],
+						args[0], ip->unpack.param_id);
+				num_args = 0;
+				break;
+
+
 			case NBC_RET:
 				memcpy(ret, &stack[ip->ret.var], ip->ret.size);
 				break;
@@ -338,6 +365,15 @@ nbc_print(struct nbc_func *func)
 						(void *)ip->pack.func,
 						ip->pack.data);
 				break;
+
+			case NBC_UNPACK:
+				printf("sp+0x%zx = PACK %p (%p, %i)\n",
+						ip->unpack.target,
+						(void *)ip->unpack.func,
+						ip->unpack.data,
+						ip->unpack.param_id);
+				break;
+
 
 			case NBC_RET:
 				printf("RET sp+0x%zx\n",
