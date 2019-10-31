@@ -638,7 +638,7 @@ struct stg_native_module;
 int
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		struct stg_native_module *native_module, struct ast_scope *scope,
-		bool require_conxt, struct ast_node *node);
+		bool require_const, struct ast_node *node);
 
 bool
 ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,

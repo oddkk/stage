@@ -6,6 +6,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+// For sysconf
+#include <unistd.h>
+
+// For mmap
+#include <sys/mman.h>
+
+typedef int ast_dt_job_id;
+
+struct ast_dt_expr_jobs {
+	ast_dt_job_id resolve_names;
+	ast_dt_job_id resolve_types;
+	ast_dt_job_id codegen;
+};
+
 struct ast_dt_bind {
 	ast_member_id target;
 
@@ -28,6 +42,8 @@ struct ast_dt_bind {
 
 	struct stg_location loc;
 
+	struct ast_dt_expr_jobs value_jobs;
+
 	struct ast_dt_bind *next_alloced;
 };
 
@@ -42,6 +58,7 @@ struct ast_dt_member {
 	struct atom *name;
 	ast_slot_id slot;
 	type_id type;
+	struct ast_node *type_node;
 
 	struct stg_location decl_loc;
 	struct ast_dt_bind *bound;
@@ -60,6 +77,8 @@ struct ast_dt_member {
 		ast_member_id anscestor_local_member;
 	};
 
+	struct ast_dt_expr_jobs type_jobs;
+
 	struct object const_value;
 
 	ast_member_id persistant_id;
@@ -75,6 +94,47 @@ struct ast_dt_dependency {
 	bool visited;
 };
 
+enum ast_dt_job_kind {
+	AST_DT_JOB_FREE = 0,
+	AST_DT_JOB_RESOLVE_NAMES,
+	AST_DT_JOB_RESOLVE_TYPES,
+	AST_DT_JOB_CODEGEN,
+};
+
+enum ast_dt_job_expr {
+	AST_DT_JOB_EXPR_TARGET,
+	AST_DT_JOB_EXPR_BIND,
+	AST_DT_JOB_EXPR_TYPE,
+};
+
+struct ast_dt_job_dep {
+	bool visited;
+	ast_dt_job_id to;
+};
+
+struct ast_dt_job {
+	enum ast_dt_job_kind kind;
+	enum ast_dt_job_expr expr;
+
+	size_t num_incoming_deps;
+	size_t num_outgoing_deps;
+	struct ast_dt_job_dep *outgoing_deps;
+
+	// Used for the linked list terminal_jobs in ast_dt_context.
+	ast_dt_job_id terminal_jobs;
+
+	union {
+		// For AST_DT_JOB_EXPR_TYPE
+		ast_member_id member;
+
+		// For AST_DT_JOB_EXPR_BIND and AST_DT_JOB_EXPR_TARGET
+		struct ast_dt_bind *bind;
+
+		// Used when the job is not allocated.
+		ast_dt_job_id free_list;
+	};
+};
+
 struct ast_dt_context {
 	struct ast_dt_member *members;
 	size_t num_members;
@@ -86,17 +146,255 @@ struct ast_dt_context {
 	ast_member_id terminal_nodes;
 	size_t unvisited_edges;
 
+	struct ast_dt_job **job_pages;
+	size_t num_job_pages;
+	size_t page_size;
+	ast_dt_job_id free_list;
+	// A linked list of nodes that have no incoming edges.
+	ast_dt_job_id terminal_jobs;
+	size_t unvisited_job_deps;
+
 	struct ast_context *ast_ctx;
 	struct ast_env *ast_env;
 
 	size_t num_errors;
 };
 
+static inline struct ast_dt_job *
+get_job(struct ast_dt_context *ctx, ast_dt_job_id id)
+{
+	assert(ctx->page_size > 0);
+	size_t jobs_per_page = ctx->page_size / sizeof(struct ast_dt_job);
+	assert(id < jobs_per_page * ctx->num_job_pages);
+
+	return &ctx->job_pages[id / jobs_per_page][id % jobs_per_page];
+}
+
 static inline struct ast_dt_member *
 get_member(struct ast_dt_context *ctx, ast_member_id id)
 {
 	assert(id < ctx->num_members);
 	return &ctx->members[id];
+}
+
+static inline void
+ast_dt_free_job(struct ast_dt_context *ctx, ast_dt_job_id id)
+{
+	struct ast_dt_job *job;
+	job = get_job(ctx, id);
+	assert(job->kind != AST_DT_JOB_FREE);
+	memset(job, 0, sizeof(struct ast_dt_job));
+	job->kind = AST_DT_JOB_FREE;
+
+	job->free_list = ctx->free_list;
+	ctx->free_list = id;
+}
+
+static ast_dt_job_id
+ast_dt_alloc_job(struct ast_dt_context *ctx)
+{
+	if (ctx->page_size == 0) {
+		ctx->page_size = sysconf(_SC_PAGESIZE);
+	}
+
+	size_t jobs_per_page = ctx->page_size / sizeof(struct ast_dt_job);
+
+	if (ctx->job_pages == NULL || ctx->free_list == -1) {
+		size_t new_size = (ctx->num_job_pages + 1) * sizeof(struct ast_dt_job *);
+		struct ast_dt_job **new_pages = realloc(ctx->job_pages, new_size);
+
+		if (!new_pages) {
+			perror("realloc");
+			return -1;
+		}
+
+		ctx->job_pages = new_pages;
+
+		struct ast_dt_job *new_jobs;
+		new_jobs = mmap(
+				NULL, ctx->page_size,
+				PROT_READ|PROT_WRITE,
+				MAP_PRIVATE|MAP_ANONYMOUS,
+				-1, 0);
+
+		new_pages[ctx->num_job_pages] = new_jobs;
+
+		if (new_pages[ctx->num_job_pages] == MAP_FAILED) {
+			perror("mmap");
+			return -1;
+		}
+
+		ctx->num_job_pages += 1;
+
+		for (size_t i = 0; i < jobs_per_page-1; i++) {
+			new_jobs[i].free_list = i+1;
+		}
+
+		new_jobs[jobs_per_page-1].free_list = -1;
+		ctx->free_list = jobs_per_page * (ctx->num_job_pages-1);
+	}
+
+	assert(ctx->free_list >= 0);
+
+	ast_dt_job_id res;
+	res = ctx->free_list;
+
+	struct ast_dt_job *job;
+	job = get_job(ctx, res);
+
+	ctx->free_list = job->free_list;
+	job->free_list = -1;
+
+	job->terminal_jobs = ctx->terminal_jobs;
+	ctx->terminal_jobs = res;
+
+	return res;
+}
+
+static ast_dt_job_id
+ast_dt_job_type(struct ast_dt_context *ctx,
+		ast_member_id mbr_id, enum ast_dt_job_kind kind)
+{
+	ast_dt_job_id job_id;
+	job_id = ast_dt_alloc_job(ctx);
+
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+	job->kind = kind;
+
+	job->expr = AST_DT_JOB_EXPR_TYPE;
+	job->member = mbr_id;
+
+	return job_id;
+}
+
+static ast_dt_job_id
+ast_dt_job_bind(struct ast_dt_context *ctx,
+		struct ast_dt_bind *bind, enum ast_dt_job_kind kind)
+{
+	ast_dt_job_id job_id;
+	job_id = ast_dt_alloc_job(ctx);
+
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+	job->kind = kind;
+
+	job->expr = AST_DT_JOB_EXPR_BIND;
+	job->bind = bind;
+
+	return job_id;
+}
+
+static void
+ast_dt_job_remove_from_terminal_jobs(struct ast_dt_context *ctx,
+		ast_dt_job_id target_id)
+{
+	struct ast_dt_job *target;
+	target = get_job(ctx, target_id);
+
+	for (ast_dt_job_id *job_id = &ctx->terminal_jobs;
+			(*job_id) >= 0;
+			job_id = &get_job(ctx, *job_id)->terminal_jobs) {
+		if ((*job_id) == target_id) {
+			(*job_id) = target->terminal_jobs;
+			target->terminal_jobs = -1;
+			return;
+		}
+	}
+}
+
+static const char *
+ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
+	switch (kind) {
+		case AST_DT_JOB_RESOLVE_NAMES:
+			return "RESOLVE_NAMES";
+
+		case AST_DT_JOB_RESOLVE_TYPES:
+			return "RESOLVE_TYPES";
+
+		case AST_DT_JOB_CODEGEN:
+			return "CODEGEN";
+
+		case AST_DT_JOB_FREE:
+			return "FREE";
+	}
+	return "(unknown)";
+}
+
+static const char *
+ast_dt_job_expr_name(enum ast_dt_job_expr expr) {
+	switch (expr) {
+		case AST_DT_JOB_EXPR_TARGET:
+			return "TARGET";
+
+		case AST_DT_JOB_EXPR_BIND:
+			return "BIND";
+
+		case AST_DT_JOB_EXPR_TYPE:
+			return "TYPE";
+	}
+	return "(unknown)";
+}
+
+static void
+ast_dt_print_job_desc(struct ast_dt_context *ctx,
+		ast_dt_job_id job_id)
+{
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+	printf("0x%03x (%13s, %s: ", job_id,
+			ast_dt_job_kind_name(job->kind),
+			ast_dt_job_expr_name(job->expr));
+
+	ast_member_id mbr_id = -1;
+	switch (job->expr) {
+		case AST_DT_JOB_EXPR_TARGET:
+		case AST_DT_JOB_EXPR_BIND:
+			mbr_id = job->bind->target;
+			break;
+
+		case AST_DT_JOB_EXPR_TYPE:
+			mbr_id = job->member;
+			break;
+	}
+
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+	printf("mbr 0x%03x[%-10.*s])", mbr_id, ALIT(mbr->name));
+}
+
+// Requests that from must be evaluated before to.
+static void
+ast_dt_job_depndency(struct ast_dt_context *ctx,
+		ast_dt_job_id from_id, ast_dt_job_id to_id)
+{
+	struct ast_dt_job *from, *to;
+	from = get_job(ctx, from_id);
+	to = get_job(ctx, to_id);
+
+	printf("job dep ");
+	ast_dt_print_job_desc(ctx, from_id);
+	printf(" -> ");
+	ast_dt_print_job_desc(ctx, to_id);
+	printf("\n");
+
+	struct ast_dt_job_dep dep = {0};
+	dep.visited = false;
+	dep.to = to_id;
+
+	dlist_append(
+			from->outgoing_deps,
+			from->num_outgoing_deps,
+			&dep);
+
+	if (to->num_incoming_deps == 0) {
+		ast_dt_job_remove_from_terminal_jobs(ctx, to_id);
+	}
+
+	assert(to->terminal_jobs < 0);
+
+	to->num_incoming_deps += 1;
+	ctx->unvisited_job_deps += 1;
 }
 
 static struct ast_dt_bind *
@@ -108,6 +406,27 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 	new_bind->kind = AST_OBJECT_DEF_BIND_VALUE;
 	new_bind->value.node = value;
 	new_bind->overridable = overridable;
+
+	new_bind->value_jobs.resolve_names =
+		ast_dt_job_bind(ctx, new_bind,
+				AST_DT_JOB_RESOLVE_NAMES);
+
+	new_bind->value_jobs.resolve_types =
+		ast_dt_job_bind(ctx, new_bind,
+				AST_DT_JOB_RESOLVE_TYPES);
+
+	new_bind->value_jobs.codegen =
+		ast_dt_job_bind(ctx, new_bind,
+				AST_DT_JOB_CODEGEN);
+
+	ast_dt_job_depndency(ctx,
+			new_bind->value_jobs.resolve_names,
+			new_bind->value_jobs.resolve_types);
+
+	ast_dt_job_depndency(ctx,
+			new_bind->value_jobs.resolve_types,
+			new_bind->value_jobs.codegen);
+
 
 	new_bind->loc = STG_NO_LOC;
 
@@ -131,6 +450,11 @@ ast_dt_register_bind_func(struct ast_dt_context *ctx,
 	new_bind->deps = value_params;
 	new_bind->num_deps = num_value_params;
 
+	new_bind->value_jobs.resolve_names = -1;
+	new_bind->value_jobs.resolve_types = -1;
+	new_bind->value_jobs.codegen = -1;
+
+
 	new_bind->loc = STG_NO_LOC;
 
 	new_bind->next_alloced = ctx->alloced_binds;
@@ -151,6 +475,10 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 	new_bind->overridable = false;
 	new_bind->deps = value_params;
 	new_bind->num_deps = num_value_params;
+
+	new_bind->value_jobs.resolve_names = -1;
+	new_bind->value_jobs.resolve_types = -1;
+	new_bind->value_jobs.codegen = -1;
 
 	new_bind->loc = STG_NO_LOC;
 
@@ -232,6 +560,30 @@ ast_dt_register_member(struct ast_dt_context *ctx,
 	ctx->ast_env->slots[slot].member_id = mbr_id;
 
 	ctx->terminal_nodes = mbr_id;
+
+	struct ast_dt_member *mbr_ptr;
+	mbr_ptr = get_member(ctx, mbr_id);
+
+	mbr_ptr->type_jobs.resolve_names =
+		ast_dt_job_type(ctx, mbr_id,
+				AST_DT_JOB_RESOLVE_NAMES);
+
+	mbr_ptr->type_jobs.resolve_types =
+		ast_dt_job_type(ctx, mbr_id,
+				AST_DT_JOB_RESOLVE_TYPES);
+
+	mbr_ptr->type_jobs.codegen =
+		ast_dt_job_type(ctx, mbr_id,
+				AST_DT_JOB_CODEGEN);
+
+	ast_dt_job_depndency(ctx,
+			mbr_ptr->type_jobs.resolve_names,
+			mbr_ptr->type_jobs.resolve_types);
+
+	ast_dt_job_depndency(ctx,
+			mbr_ptr->type_jobs.resolve_types,
+			mbr_ptr->type_jobs.codegen);
+
 
 	return mbr_id;
 }
@@ -381,8 +733,6 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 		case AST_NODE_ACCESS:
 			result |= ast_node_analyze(ctx, node->access.target);
 			if ((result & AST_NODE_FLAG_NOT_TYPED) == 0) {
-				asdf
-				asdf
 			}
 			break;
 
@@ -554,6 +904,7 @@ ast_dt_try_bind_const_member(struct ast_dt_context *ctx,
 	return false;
 }
 
+/*
 static void
 ast_dt_node_try_bind_const_members(struct ast_dt_context *ctx,
 		struct ast_module *mod, struct ast_node *node)
@@ -725,18 +1076,16 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 			assert(!mbr->bound);
 			mbr->bound = pack_bind;
 
-			/*
-			printf("binding member %i %.*s as pack (%p). Depending on ",
-					member, ALIT(mbr->name), (void *)mbr->bound);
+			// printf("binding member %i %.*s as pack (%p). Depending on ",
+			// 		member, ALIT(mbr->name), (void *)mbr->bound);
 
-			for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
-				ast_dt_dependency(ctx,
-						direct_members[i], member);
-				printf("%i, ", direct_members[i]);
-			}
+			// for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
+			// 	ast_dt_dependency(ctx,
+			// 			direct_members[i], member);
+			// 	printf("%i, ", direct_members[i]);
+			// }
 
-			printf("\n");
-			*/
+			// printf("\n");
 		}
 	} else {
 		ast_bind_slot_const_type(ctx->ast_ctx, ctx->ast_env,
@@ -744,6 +1093,7 @@ ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mo
 				NULL, mbr->type);
 	}
 }
+*/
 
 static ast_member_id
 ast_dt_find_member_by_slot(struct ast_dt_context *ctx, ast_slot_id target_slot)
@@ -1047,8 +1397,293 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 				node->composite.binds[i].value,
 				node->composite.binds[i].overridable);
 	}
+
+	for (size_t i = 0; i < node->composite.num_members; i++) {
+		ast_slot_id slot;
+		struct ast_datatype_member *node_mbr;
+		node_mbr = &node->composite.members[i];
+
+		slot = ast_unpack_arg_named(
+				ctx->ast_ctx, ctx->ast_env,
+				node->composite.cons, AST_BIND_NEW,
+				node_mbr->name);
+
+		ast_member_id mbr_id;
+		mbr_id = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot).member_id;
+
+		struct ast_dt_member *mbr;
+		mbr = get_member(ctx, mbr_id);
+
+		if (mbr->bound) {
+			// TODO: We should evaluate the binds that is being overridden.
+
+			if (!mbr->type_node) {
+				ast_dt_job_depndency(ctx,
+						mbr->bound->value_jobs.resolve_types,
+						mbr->type_jobs.resolve_names);
+			}
+		} else {
+			assert(mbr->type_node);
+
+
+		}
+	}
 }
 
+enum ast_dt_dep_requirement {
+	AST_DT_DEP_REQUIRE_TYPE,
+	AST_DT_DEP_REQUIRE_VALUE,
+};
+
+static void
+ast_dt_add_dependency_on_slot(struct ast_dt_context *ctx,
+		ast_dt_job_id target_job, enum ast_dt_dep_requirement req,
+		ast_slot_id slot_id)
+{
+	struct ast_env_slot slot;
+	slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot_id);
+
+	if (slot.member_id >= 0) {
+		struct ast_dt_member *mbr;
+		mbr = get_member(ctx, slot.member_id);
+
+		switch (req) {
+			case AST_DT_DEP_REQUIRE_TYPE:
+				ast_dt_job_depndency(ctx,
+						mbr->type_jobs.codegen,
+						target_job);
+				break;
+
+			case AST_DT_DEP_REQUIRE_VALUE:
+				if (!mbr->bound) {
+					printf("Can not depend on the value of this"
+							"member as it is not bound.\n");
+					return;
+				}
+				if (mbr->bound->overridable) {
+					printf("Can not depend on the value of this"
+							"member as it is overridable.\n");
+					return;
+				}
+
+				ast_dt_job_depndency(ctx,
+						mbr->bound->value_jobs.codegen,
+						target_job);
+				break;
+		}
+	}
+}
+
+static void
+ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
+		ast_dt_job_id target_job, enum ast_dt_dep_requirement req,
+		struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_FUNC:
+			break;
+
+		case AST_NODE_FUNC_NATIVE:
+			for (size_t i = 0; i < node->func.num_params; i++) {
+				ast_dt_find_named_dependencies(
+						ctx, target_job, req, node->func.params[i].type);
+			}
+			ast_dt_find_named_dependencies(
+					ctx, target_job, req, node->func.return_type);
+
+			for (size_t i = 0; i < node->func.closure.num_members; i++) {
+				ast_dt_add_dependency_on_slot(
+						ctx, target_job, req, node->func.closure.members[i].outer_slot);
+			}
+			break;
+
+		case AST_NODE_CALL:
+		case AST_NODE_CONS:
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				ast_dt_find_named_dependencies(
+						ctx, target_job, req, node->call.args[i].value);
+			}
+			ast_dt_find_named_dependencies(
+					ctx, target_job, req, node->call.func);
+			break;
+
+		case AST_NODE_TEMPL:
+			// TODO: Templates
+			break;
+
+		case AST_NODE_ACCESS:
+			ast_dt_find_named_dependencies(
+					ctx, target_job, req, node->access.target);
+			break;
+
+		case AST_NODE_SLOT:
+			ast_dt_add_dependency_on_slot(
+					ctx, target_job, req, node->slot);
+			break;
+
+		case AST_NODE_LIT:
+			break;
+
+		case AST_NODE_LOOKUP:
+			ast_dt_add_dependency_on_slot(
+					ctx, target_job, req, node->lookup.value);
+			break;
+
+		case AST_NODE_COMPOSITE:
+			for (size_t i = 0; i < node->composite.closure.num_members; i++) {
+				ast_dt_add_dependency_on_slot(
+						ctx, target_job, req, node->composite.closure.members[i].outer_slot);
+			}
+			break;
+
+		case AST_NODE_VARIANT:
+			break;
+
+		case AST_NODE_FUNC_UNINIT:
+			panic("Got uninitialized function in find dependencies.");
+			break;
+	}
+}
+
+static inline int
+ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
+{
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+
+	printf("Dispatch job ");
+	ast_dt_print_job_desc(ctx, job_id);
+	printf("\n");
+
+	struct ast_node *node;
+
+	switch (job->expr) {
+		case AST_DT_JOB_EXPR_TARGET:
+			return 0;
+
+		case AST_DT_JOB_EXPR_BIND:
+			node = job->bind->value.node;
+			break;
+
+		case AST_DT_JOB_EXPR_TYPE:
+			{
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, job->member);
+				node = mbr->type_node;
+
+				if (!node) {
+					assert(mbr->type != TYPE_UNSET);
+					return 0;
+				}
+			}
+			break;
+	}
+
+	switch (job->kind) {
+		case AST_DT_JOB_RESOLVE_NAMES:
+			{
+				bool require_const = false;
+				ast_dt_job_id next_job = -1;
+				enum ast_dt_dep_requirement dep_req;
+				dep_req = AST_DT_DEP_REQUIRE_TYPE;
+
+				switch (job->expr) {
+					case AST_DT_JOB_EXPR_TARGET:
+						break;
+
+					case AST_DT_JOB_EXPR_BIND:
+						next_job = job->bind->value_jobs.resolve_types;
+						break;
+
+					case AST_DT_JOB_EXPR_TYPE:
+						{
+							struct ast_dt_member *mbr;
+							mbr = get_member(ctx, job->member);
+
+							next_job = mbr->type_jobs.resolve_types;
+
+							require_const = true;
+							dep_req = AST_DT_DEP_REQUIRE_VALUE;
+						}
+						break;
+				}
+
+
+				int err;
+				err = ast_node_resolve_names(ctx->ast_ctx, ctx->ast_env,
+						NULL, NULL, require_const, node);
+				if (err) {
+					printf("Failed to resolve names.\n");
+					break;
+				}
+
+				ast_dt_find_named_dependencies(
+						ctx, next_job, dep_req, node);
+			}
+			break;
+
+		case AST_DT_JOB_RESOLVE_TYPES:
+			break;
+
+		case AST_DT_JOB_CODEGEN:
+			break;
+
+		case AST_DT_JOB_FREE:
+			panic("Attempted to dispatch job that has been freed.");
+			break;
+	}
+
+	return -1;
+}
+
+static int
+ast_dt_run_jobs(struct ast_dt_context *ctx)
+{
+	// Dispatch the jobs in topological order. (Kahn's algorithm.)
+	while (ctx->terminal_jobs >= 0) {
+		ast_dt_job_id job_id;
+		struct ast_dt_job *job;
+
+		job_id = ctx->terminal_jobs;
+		job = get_job(ctx, job_id);
+		ctx->terminal_jobs = job->terminal_jobs;
+		job->terminal_jobs = -1;
+
+		ast_dt_dispatch_job(ctx, job_id);
+
+		for (size_t i = 0; i < job->num_outgoing_deps; i++) {
+			struct ast_dt_job_dep *dep;
+			dep = &job->outgoing_deps[i];
+
+			if (!dep->visited) {
+				dep->visited = true;
+
+				struct ast_dt_job *to;
+				to = get_job(ctx, dep->to);
+
+				assert(to->num_incoming_deps > 0);
+				to->num_incoming_deps -= 1;
+
+				assert(ctx->unvisited_job_deps > 0);
+				ctx->unvisited_job_deps -= 1;
+
+				if (to->num_incoming_deps == 0) {
+					to->terminal_jobs = ctx->terminal_jobs;
+					ctx->terminal_jobs = dep->to;
+				}
+			}
+		}
+	}
+
+	if (ctx->unvisited_job_deps > 0) {
+		printf("Failed to evalutate datatype becaouse we found one or more cycles.\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
 static int
 ast_dt_composite_resolve_types(struct ast_dt_context *ctx,
 		struct ast_module *mod, struct ast_node *node)
@@ -1143,6 +1778,7 @@ ast_dt_composite_resolve_types(struct ast_dt_context *ctx,
 
 	return error || wait;
 }
+*/
 
 static ast_member_id
 ast_dt_num_descendant_members(struct ast_dt_context *ctx,
@@ -1442,16 +2078,27 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	dt_ctx.ast_ctx = ctx;
 	dt_ctx.ast_env = env;
 	dt_ctx.terminal_nodes = -1;
+	dt_ctx.terminal_jobs  = -1;
+
+	int err;
 
 	ast_dt_composite_populate(&dt_ctx, comp);
 
-	int err;
+	err = ast_dt_run_jobs(&dt_ctx);
+	if (err) {
+		printf("One or more jobs failed when resolving datastructure.");
+	}
+
+	printf("done with datastructure for now.\n");
+	return -1;
+
+	/*
 	err = ast_dt_composite_resolve_types(&dt_ctx, mod, comp);
 	if (err) {
 		printf("Failed to popluate members.\n");
 		return TYPE_UNSET;
 	}
-
+	*/
 	ast_member_id bind_order = -1;
 	err = ast_dt_composite_order_binds(&dt_ctx, &bind_order);
 	if (err) {

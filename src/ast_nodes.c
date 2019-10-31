@@ -421,9 +421,9 @@ ast_node_composite_add_member(
 				ast_env_slot(ctx, env, value_slot).type);
 
 	if (!new_member.type) {
-		new_member.type = ast_init_node_slot(
-				ctx, env, AST_NODE_NEW, STG_NO_LOC,
-				ast_env_slot(ctx, env, value_slot).type);
+		// new_member.type = ast_init_node_slot(
+		// 		ctx, env, AST_NODE_NEW, STG_NO_LOC,
+		// 		ast_env_slot(ctx, env, value_slot).type);
 	} else {
 		ast_union_slot(ctx, env,
 				ast_env_slot(ctx, env, value_slot).type,
