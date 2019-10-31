@@ -67,17 +67,24 @@ static int
 stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 {
 	struct ast_node *int_type_expr;
-	int_type_expr = ast_init_node_slot(ctx, &mod->mod.env,
-			AST_NODE_NEW, STG_NO_LOC,
-			ast_bind_slot_const_type(ctx, &mod->mod.env,
-				AST_BIND_NEW, mod_atoms(mod, "int"),
-				mod->vm->default_types.integer));
+	struct object int_obj = {0};
+	int_obj.type = ctx->types.type;
+	int_obj.data = &ctx->types.integer;
+	int_obj = register_object(ctx->vm, &mod->store, int_obj);
+
+	int_type_expr = ast_init_node_lit(ctx, &mod->mod.env,
+			AST_NODE_NEW, STG_NO_LOC, int_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
 			mod->mod.root, mod_atoms(mod, "int"), int_type_expr);
 
 	struct ast_node *type_type_expr;
-	type_type_expr = ast_init_node_slot(ctx, &mod->mod.env,
-			AST_NODE_NEW, STG_NO_LOC, AST_SLOT_TYPE);
+	struct object type_obj = {0};
+	type_obj.type = ctx->types.type;
+	type_obj.data = &ctx->types.type;
+	type_obj = register_object(ctx->vm, &mod->store, type_obj);
+
+	type_type_expr = ast_init_node_lit(ctx, &mod->mod.env,
+			AST_NODE_NEW, STG_NO_LOC, type_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
 			mod->mod.root, mod_atoms(mod, "type"), type_type_expr);
 

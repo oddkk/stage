@@ -34,11 +34,8 @@ base_init_register_cons(struct ast_context *ctx, struct stg_module *mod)
 			mod->vm, mod->mod.env.store, array_type_cons_obj);
 
 	struct ast_node *array_type_cons;
-	array_type_cons = ast_init_node_slot(ctx, &mod->mod.env,
-			AST_NODE_NEW, STG_NO_LOC,
-			ast_bind_slot_const(ctx, &mod->mod.env,
-				AST_BIND_NEW, mod_atoms(mod, "Array"),
-				array_type_cons_obj));
+	array_type_cons = ast_init_node_lit(ctx, &mod->mod.env,
+			AST_NODE_NEW, STG_NO_LOC, array_type_cons_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
 			mod->mod.root, mod_atoms(mod, "Array"), array_type_cons);
 }

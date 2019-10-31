@@ -167,9 +167,6 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_env *env,
 								ctx, env, NULL, NULL, type_node);
 					} else {
 						assert(expr);
-						type = ast_init_node_slot(
-								ctx, env, AST_NODE_NEW, assign->loc,
-								ast_node_type(ctx, env, expr));
 					}
 
 					int err;
@@ -352,13 +349,6 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 		if (ret_type_decl) {
 			ret_type = st_node_visit_expr(ctx, env,
 					templ, func, ret_type_decl);
-		} else {
-			ret_type = ast_init_node_slot(
-					ctx, env,
-					AST_NODE_NEW, node->loc,
-					ast_bind_slot_wildcard(
-						ctx, env, AST_BIND_NEW, NULL,
-						AST_SLOT_TYPE));
 		}
 
 		struct st_node *body_decl;

@@ -327,8 +327,10 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				member_scope.num_names = node->composite.num_members;
 
 				for (size_t i = 0; i < node->composite.num_members; i++) {
-					err += ast_node_resolve_names(ctx, env, native_mod,
-							&member_scope, true, node->composite.members[i].type);
+					if (node->composite.members[i].type) {
+						err += ast_node_resolve_names(ctx, env, native_mod,
+								&member_scope, true, node->composite.members[i].type);
+					}
 				}
 
 				for (size_t i = 0; i < node->composite.num_binds; i++) {

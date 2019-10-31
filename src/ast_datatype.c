@@ -1382,7 +1382,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		// TODO: Better location.
 		ast_member_id mbr_id;
 		mbr_id = ast_dt_register_member(ctx, mbr->name, slot,
-				node->composite.members[i].type->loc);
+				node->composite.members[i].loc);
 
 		struct ast_dt_member *new_mbr;
 		new_mbr = get_member(ctx, mbr_id);
@@ -1651,6 +1651,14 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 
 		ast_dt_dispatch_job(ctx, job_id);
 
+		if (job->num_incoming_deps > 0) {
+			// If the node gave itself new dependencies we don't mark it as
+			// visited to allow it to pass through again.
+			continue;
+		}
+
+		ast_dt_free_job(ctx, job_id);
+
 		for (size_t i = 0; i < job->num_outgoing_deps; i++) {
 			struct ast_dt_job_dep *dep;
 			dep = &job->outgoing_deps[i];
@@ -1676,7 +1684,7 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 	}
 
 	if (ctx->unvisited_job_deps > 0) {
-		printf("Failed to evalutate datatype becaouse we found one or more cycles.\n");
+		printf("Failed to evalutate datatype because we found one or more cycles.\n");
 		return -1;
 	}
 
@@ -2086,7 +2094,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 	err = ast_dt_run_jobs(&dt_ctx);
 	if (err) {
-		printf("One or more jobs failed when resolving datastructure.");
+		printf("One or more jobs failed when resolving datastructure.\n");
 	}
 
 	printf("done with datastructure for now.\n");

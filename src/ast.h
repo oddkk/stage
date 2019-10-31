@@ -381,6 +381,7 @@ struct ast_datatype_variant {
 struct ast_datatype_member {
 	struct atom *name;
 	struct ast_node *type;
+	struct stg_location loc;
 	// TODO: Is this necessary? It was added to allow it to be printed.
 	ast_slot_id slot;
 };

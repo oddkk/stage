@@ -408,6 +408,7 @@ ast_node_composite_add_member(
 	struct ast_datatype_member new_member = {0};
 	new_member.name = name;
 	new_member.type = type;
+	new_member.loc = target->loc;
 
 	ast_slot_id value_slot;
 	value_slot = ast_unpack_arg_named(ctx, env,
@@ -1285,8 +1286,10 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 		case AST_NODE_COMPOSITE:
 			for (size_t i = 0; i < node->composite.num_members; i++) {
-				result &= ast_node_resolve_slots(ctx, mod, env,
-						node->composite.members[i].type);
+				if (node->composite.members[i].type) {
+					result &= ast_node_resolve_slots(ctx, mod, env,
+							node->composite.members[i].type);
+				}
 			}
 
 			for (size_t i = 0; i < node->composite.num_binds; i++) {
