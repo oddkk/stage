@@ -232,6 +232,6 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_env *env,
 
 struct ast_node *
 st_node_visit_expr(struct ast_context *, struct ast_env *,
-		struct ast_node *templ_node, struct ast_node *func_node, struct st_node *);
+		struct ast_node *templ_node, struct st_node *);
 
 #endif

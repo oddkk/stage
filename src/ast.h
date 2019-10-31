@@ -521,23 +521,16 @@ ast_node_value(struct ast_context *, struct ast_env *, struct ast_node *);
 
 #define AST_NODE_NEW ((struct ast_node *)1)
 
-// func nodes have to be initialized in two steps, init and finalize, because
-// the function's params, return type, and body depends on its env. Init
-// initializes the env, and finalize binds the params, return type, and body to
-// the function.
 struct ast_node *
 ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location,
-		struct atom **param_names, size_t num_params);
-
-struct ast_node *
-ast_finalize_node_func(struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *target, struct ast_node **params, size_t num_params,
+		struct atom **param_names, struct ast_node **param_types, size_t num_params,
 		struct ast_node *return_type, struct ast_node *body);
 
 struct ast_node *
-ast_finalize_node_func_native(struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *target, struct ast_node **params, size_t num_params,
+ast_init_node_func_native(struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location,
+		struct atom **param_names, struct ast_node **param_types, size_t num_params,
 		struct ast_node *return_type, struct string native_func_name);
 
 struct ast_node *
@@ -582,7 +575,7 @@ struct ast_node *
 ast_init_node_lookup(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location,
-		struct atom *name, ast_slot_id slot);
+		struct atom *name);
 
 void
 ast_node_templ_register_param(

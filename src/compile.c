@@ -892,9 +892,6 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		mod_type_obj.type = ast_ctx->types.type;
 		mod_type_obj.data = &main_mod->type;
 
-		main_mod_init_func = ast_init_node_func(ast_ctx, &main_mod->env,
-				AST_NODE_NEW, STG_NO_LOC, NULL, 0);
-
 		main_mod_ret = ast_init_node_lit(ast_ctx, &main_mod->env,
 				AST_NODE_NEW, STG_NO_LOC, mod_type_obj);
 
@@ -904,8 +901,9 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		main_mod_cons = ast_init_node_cons(ast_ctx, &main_mod->env,
 				AST_NODE_NEW, STG_NO_LOC, main_mod_cons_obj, NULL, 0);
 
-		ast_finalize_node_func(ast_ctx, &main_mod->env,
-				main_mod_init_func, NULL, 0,
+		main_mod_init_func = ast_init_node_func(ast_ctx, &main_mod->env,
+				AST_NODE_NEW, STG_NO_LOC,
+				NULL, NULL, 0,
 				main_mod_ret, main_mod_cons);
 
 		struct bc_env *bc_env;

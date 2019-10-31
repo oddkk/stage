@@ -194,24 +194,16 @@ int
 ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_node *ns, struct atom *name, struct ast_node *expr)
 {
-	ast_slot_id type_slot = ast_node_type(ctx, &mod->env, expr);
-	struct ast_node *type;
-	type = ast_init_node_slot(ctx, &mod->env,
-			AST_NODE_NEW, STG_NO_LOC,
-			type_slot);
-
 	int err;
 	err = ast_node_composite_add_member(ctx, &mod->env,
-			ns, name, type);
+			ns, name, NULL);
 	if (err) {
 		return err;
 	}
 
 	struct ast_node *target;
-	target = ast_init_node_slot(ctx, &mod->env,
-			AST_NODE_NEW, STG_NO_LOC,
-			ast_node_composite_get_member(
-				ctx, &mod->env, ns, name));
+	target = ast_init_node_lookup(ctx, &mod->env,
+			AST_NODE_NEW, STG_NO_LOC, name);
 
 	ast_node_composite_bind(ctx, &mod->env, ns,
 			target, expr, false);
