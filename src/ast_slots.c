@@ -1650,7 +1650,7 @@ ast_node_deep_copy_internal(
 	case AST_NODE_LOOKUP:
 		DCP_LIT(lookup.name);
 		DCP_SLOT(lookup.slot);
-		DCP_SLOT(lookup.value);
+		DCP_LIT(lookup.ref);
 		break;
 
 	case AST_NODE_COMPOSITE:

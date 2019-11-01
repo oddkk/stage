@@ -188,6 +188,42 @@ print_slot(struct ast_env *env, ast_slot_id slot)
 	printf("%i", slot);
 }
 
+static void
+print_name_ref(struct ast_name_ref ref)
+{
+	switch (ref.kind) {
+		case AST_NAME_REF_NOT_FOUND:
+			printf("not found");
+			break;
+
+		case AST_NAME_REF_MEMBER:
+			printf("member %i", ref.member);
+			break;
+
+		case AST_NAME_REF_PARAM:
+			printf("param %i", ref.param);
+			break;
+
+		case AST_NAME_REF_CLOSURE:
+			printf("closure %i", ref.closure);
+			break;
+	}
+}
+
+static void
+ast_print_internal_closure(struct ast_context *ctx, struct ast_env *env,
+		struct ast_closure_target *closure, unsigned int depth)
+{
+	print_indent(depth);
+	printf("closures:\n");
+	for (size_t i = 0; i < closure->num_members; i++) {
+		print_indent(depth + 1);
+		printf("%.*s: ", ALIT(closure->members[i].name));
+		print_name_ref(closure->members[i].ref);
+		printf("\n");
+	}
+}
+
 void
 ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node, unsigned int depth)
@@ -221,6 +257,8 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 				print_indent(depth + 1);
 				printf("body\n");
 				ast_print_internal(ctx, env, node->func.body, depth + 2);
+				ast_print_internal_closure(ctx, env,
+						&node->func.closure, depth + 1);
 			} else if (node->kind == AST_NODE_FUNC_NATIVE) {
 				print_indent(depth + 1);
 				printf("body native %.*s\n", LIT(node->func.native.name));
@@ -283,7 +321,12 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 				printf("):\n");
 				print_indent(depth + 2);
 				printf("type:\n");
-				ast_print_internal(ctx, env, node->composite.members[i].type, depth + 3);
+				if (node->composite.members[i].type) {
+					ast_print_internal(ctx, env, node->composite.members[i].type, depth + 3);
+				} else {
+					print_indent(depth + 3);
+					printf("(no type)\n");
+				}
 			}
 
 			print_indent(depth + 1);
@@ -307,6 +350,9 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 				ast_print_internal(ctx, env,
 						node->composite.free_exprs[i], depth + 3);
 			}
+
+			ast_print_internal_closure(ctx, env,
+					&node->composite.closure, depth + 1);
 			break;
 
 		case AST_NODE_VARIANT:
@@ -362,12 +408,9 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			print_slot(env, node->lookup.slot);
 			printf(": ");
 			print_slot(env, ast_node_type(ctx, env, node));
-			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
-				printf(" (not found)");
-			} else {
-				printf(" (found: %i)", node->lookup.value);
-			}
-			printf("\n");
+			printf(" (");
+			print_name_ref(node->lookup.ref);
+			printf(")\n");
 			break;
 	}
 }

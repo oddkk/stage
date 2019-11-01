@@ -251,7 +251,7 @@ ast_init_node_lookup(
 
 	node->lookup.name = name;
 	node->lookup.slot = AST_BIND_NEW;
-	node->lookup.value = AST_SLOT_NOT_FOUND;
+	node->lookup.ref.kind = AST_NAME_REF_NOT_FOUND;
 
 	return node;
 }
@@ -525,8 +525,9 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 
 
 		case AST_NODE_LOOKUP:
-			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
+			if (node->lookup.ref.kind == AST_NAME_REF_NOT_FOUND) {
 				result = AST_NODE_DEPS_NOT_OK;
+				/*
 			} else {
 				struct ast_env_slot slot =
 					ast_env_slot(ctx, env,
@@ -544,6 +545,7 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 				} else {
 					result = AST_NODE_DEPS_NOT_READY;
 				}
+				*/
 			}
 			break;
 
@@ -791,12 +793,13 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 	return result;
 }
 
+/*
 static bool
 is_slot_func_type(struct ast_context *ctx, struct ast_env *env,
 		ast_slot_id slot_id)
 {
 	struct ast_env_slot slot = ast_env_slot(ctx, env, slot_id);
-
+int
 	switch (slot.kind) {
 		case AST_SLOT_CONS:
 			if (slot.cons.def == ctx->cons.func) {
@@ -816,12 +819,14 @@ is_slot_func_type(struct ast_context *ctx, struct ast_env *env,
 
 	return false;
 }
+*/
 
 struct ast_templ_node_data {
 	struct ast_object_def def;
 	struct ast_node *node;
 };
 
+/*
 bool
 ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node)
@@ -1125,17 +1130,15 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 				result &= ast_node_resolve_slots(ctx, mod, env,
 						node->access.target);
 
-				/*
-				ast_slot_id target_value;
-				target_value =
-					ast_node_value(ctx, env, node->access.target);
+				// ast_slot_id target_value;
+				// target_value =
+				// 	ast_node_value(ctx, env, node->access.target);
 
-				ast_slot_id val;
-				val = ast_unpack_arg_named(ctx, env,
-						target_value, AST_BIND_NEW, node->access.name);
+				// ast_slot_id val;
+				// val = ast_unpack_arg_named(ctx, env,
+				// 		target_value, AST_BIND_NEW, node->access.name);
 
-				ast_union_slot(ctx, env, val, node->access.slot);
-				*/
+				// ast_union_slot(ctx, env, val, node->access.slot);
 
 				ast_slot_id target_value;
 				target_value =
@@ -1223,6 +1226,7 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 	return result;
 }
+*/
 
 int
 ast_node_eval_type(struct ast_context *ctx, struct ast_module *mod,
@@ -1306,7 +1310,7 @@ ast_templ_node_pack(struct ast_context *ctx, struct ast_module *mod,
 	free(new_node->templ.params);
 	free(new_node);
 
-	ast_node_resolve_slots(ctx, mod, env, result);
+	// ast_node_resolve_slots(ctx, mod, env, result);
 	if (!ast_node_is_typed(ctx, env, result)) {
 		printf("Failed to type expression. (templated)\n");
 		return OBJ_NONE;
@@ -1554,11 +1558,13 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 			return 0;
 
 		case AST_NODE_LOOKUP:
-			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
+			if (node->lookup.ref.kind == AST_NAME_REF_NOT_FOUND) {
 				printf("Lookup was not resolved.\n");
 				return -1;
 			}
-			return ast_slot_pack(ctx, mod, env, node->lookup.value, out);
+			// return ast_slot_pack(ctx, mod, env, node->lookup.value, out);
+			printf("TODO: Eval of lookup nodes.\n");
+			return -1;
 
 		case AST_NODE_COMPOSITE:
 			{

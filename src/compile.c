@@ -557,19 +557,6 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 		case JOB_LOAD_MODULE_DONE:
 			{
 				int err;
-				err = ast_node_resolve_names(ctx->ast_ctx, &data->mod->env,
-						data->stg_mod->native_mod, NULL, false, data->mod->root);
-				if (err) {
-					printf("Failed to resolve names.\n");
-					return JOB_ERROR;
-				}
-
-				if (!ast_node_resolve_slots(ctx->ast_ctx, data->mod,
-							&data->mod->env, data->mod->root)) {
-					printf("Failed to resolve slots.\n");
-					return JOB_ERROR;
-				}
-
 #if 0
 				printf("Module %.*s (%.*s)\n", ALIT(data->module_name), LIT(data->module_src_dir));
 				if (data->mod->root) {

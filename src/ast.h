@@ -12,6 +12,25 @@ typedef int32_t ast_slot_id;
 #define AST_BIND_NEW ((ast_slot_id)-4)
 #define AST_BIND_FAILED ((ast_slot_id)-5)
 
+typedef int ast_member_id;
+typedef int ast_param_id;
+typedef int ast_closure_id;
+
+enum ast_name_ref_kind {
+	AST_NAME_REF_NOT_FOUND = 0,
+	AST_NAME_REF_MEMBER,
+	AST_NAME_REF_PARAM,
+	AST_NAME_REF_CLOSURE,
+};
+
+struct ast_name_ref {
+	enum ast_name_ref_kind kind;
+	union {
+		ast_member_id  member;
+		ast_param_id   param;
+		ast_closure_id closure;
+	};
+};
 
 struct ast_node;
 struct ast_module;
@@ -51,7 +70,7 @@ ast_object_lookup_arg(struct ast_object *obj, struct atom *arg_name);
 
 struct ast_scope_name {
 	struct atom *name;
-	ast_slot_id slot;
+	struct ast_name_ref ref;
 };
 
 struct ast_env;
@@ -102,8 +121,6 @@ enum ast_slot_kind {
 
 const char *
 ast_slot_name(enum ast_slot_kind kind);
-
-typedef int ast_member_id;
 
 struct ast_env_slot {
 	struct atom *name;
@@ -394,8 +411,7 @@ struct ast_datatype_bind {
 
 struct ast_closure_member {
 	struct atom *name;
-	ast_slot_id slot;
-	ast_slot_id outer_slot;
+	struct ast_name_ref ref;
 
 	bool require_const;
 };
@@ -478,8 +494,9 @@ struct ast_node {
 
 		struct {
 			struct atom *name;
+			struct ast_name_ref ref;
+
 			ast_slot_id slot;
-			ast_slot_id value;
 		} lookup;
 
 		struct {
@@ -631,16 +648,20 @@ struct stg_native_module;
 
 int
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
-		struct stg_native_module *native_module, struct ast_scope *scope,
+		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *node);
+
+int
+ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *env,
+		struct ast_scope *scope, bool require_const, struct ast_node *node);
 
 bool
 ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node);
 
-bool
-ast_node_resolve_slots(struct ast_context *, struct ast_module *,
-		struct ast_env *, struct ast_node *);
+// bool
+// ast_node_resolve_slots(struct ast_context *, struct ast_module *,
+// 		struct ast_env *, struct ast_node *);
 
 int
 ast_node_eval(struct ast_context *ctx, struct ast_module *mod,

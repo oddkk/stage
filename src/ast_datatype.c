@@ -689,12 +689,38 @@ ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
 }
 
 enum ast_node_flags
+ast_node_analyze_name_ref(struct ast_dt_context *ctx, struct ast_name_ref ref)
+{
+	enum ast_node_flags result = AST_NODE_FLAG_OK;
+
+	switch (ref.kind) {
+		case AST_NAME_REF_NOT_FOUND:
+			result |= AST_NODE_FLAG_ERROR;
+			break;
+
+		case AST_NAME_REF_MEMBER:
+			// TODO: Get const and type information about member.
+			break;
+
+		case AST_NAME_REF_PARAM:
+			// TODO: Get const and type information about param.
+			break;
+
+		case AST_NAME_REF_CLOSURE:
+			// TODO: Get const and type information about closure.
+			break;
+	}
+
+	return result;
+}
+
+enum ast_node_flags
 ast_node_analyze_closure(struct ast_dt_context *ctx, struct ast_closure_target *closure)
 {
 	enum ast_node_flags result = AST_NODE_FLAG_OK;
 
 	for (size_t i = 0; i < closure->num_members; i++) {
-		result |= ast_slot_analyze(ctx, closure->members[i].outer_slot);
+		result |= ast_node_analyze_name_ref(ctx, closure->members[i].ref);
 	}
 
 	return result;
@@ -747,11 +773,7 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 			break;
 
 		case AST_NODE_LOOKUP:
-			if (node->lookup.value == AST_SLOT_NOT_FOUND) {
-				result |= AST_NODE_FLAG_ERROR;
-			}
-			result |= ast_slot_analyze(ctx,
-					ast_node_resolve_slot(ctx->ast_env, &node->lookup.value));
+			result |= ast_node_analyze_name_ref(ctx, node->lookup.ref);
 			break;
 
 		case AST_NODE_COMPOSITE:
@@ -1132,15 +1154,16 @@ ast_dt_find_member_refs_closure(struct ast_dt_context *ctx,
 		struct ast_closure_target *closure,
 		struct ast_dt_find_member_ref_res *res)
 {
-	int missing = 0;
-
 	for (size_t i = 0; i < closure->num_members; i++) {
-		missing +=
-			ast_dt_find_member_refs_for_slot(
-					ctx, closure->members[i].outer_slot, res);
+		if (closure->members[i].ref.kind == AST_NAME_REF_MEMBER) {
+			dlist_append(
+					res->nodes,
+					res->num_nodes,
+					&closure->members[i].ref.member);
+		}
 	}
 
-	return missing;
+	return 0;
 }
 
 static int
@@ -1176,8 +1199,11 @@ ast_dt_find_member_refs(struct ast_dt_context *ctx,
 			break;
 
 		case AST_NODE_LOOKUP:
-			if (node->lookup.value != AST_SLOT_NOT_FOUND) {
-				ast_dt_find_member_refs_for_slot(ctx, node->lookup.value, res);
+			if (node->lookup.ref.kind == AST_NAME_REF_MEMBER) {
+				dlist_append(
+						res->nodes,
+						res->num_nodes,
+						&node->lookup.ref.member);
 			}
 			break;
 
@@ -1436,6 +1462,40 @@ enum ast_dt_dep_requirement {
 };
 
 static void
+ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
+		ast_dt_job_id target_job, enum ast_dt_dep_requirement req,
+		ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	switch (req) {
+		case AST_DT_DEP_REQUIRE_TYPE:
+			ast_dt_job_depndency(ctx,
+					mbr->type_jobs.codegen,
+					target_job);
+			break;
+
+		case AST_DT_DEP_REQUIRE_VALUE:
+			if (!mbr->bound) {
+				printf("Can not depend on the value of this"
+						"member as it is not bound.\n");
+				return;
+			}
+			if (mbr->bound->overridable) {
+				printf("Can not depend on the value of this"
+						"member as it is overridable.\n");
+				return;
+			}
+
+			ast_dt_job_depndency(ctx,
+					mbr->bound->value_jobs.codegen,
+					target_job);
+			break;
+	}
+}
+
+static void
 ast_dt_add_dependency_on_slot(struct ast_dt_context *ctx,
 		ast_dt_job_id target_job, enum ast_dt_dep_requirement req,
 		ast_slot_id slot_id)
@@ -1444,32 +1504,20 @@ ast_dt_add_dependency_on_slot(struct ast_dt_context *ctx,
 	slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot_id);
 
 	if (slot.member_id >= 0) {
-		struct ast_dt_member *mbr;
-		mbr = get_member(ctx, slot.member_id);
+		ast_dt_add_dependency_on_member(
+				ctx, target_job, req, slot.member_id);
+	}
+}
 
-		switch (req) {
-			case AST_DT_DEP_REQUIRE_TYPE:
-				ast_dt_job_depndency(ctx,
-						mbr->type_jobs.codegen,
-						target_job);
-				break;
-
-			case AST_DT_DEP_REQUIRE_VALUE:
-				if (!mbr->bound) {
-					printf("Can not depend on the value of this"
-							"member as it is not bound.\n");
-					return;
-				}
-				if (mbr->bound->overridable) {
-					printf("Can not depend on the value of this"
-							"member as it is overridable.\n");
-					return;
-				}
-
-				ast_dt_job_depndency(ctx,
-						mbr->bound->value_jobs.codegen,
-						target_job);
-				break;
+	static void
+ast_dt_closure_find_named_dependencies(struct ast_dt_context *ctx,
+		ast_dt_job_id target_job, enum ast_dt_dep_requirement req,
+		struct ast_closure_target *closure)
+{
+	for (size_t i = 0; i < closure->num_members; i++) {
+		if (closure->members[i].ref.kind == AST_NAME_REF_MEMBER) {
+			ast_dt_add_dependency_on_member(
+					ctx, target_job, req, closure->members[i].ref.member);
 		}
 	}
 }
@@ -1491,10 +1539,8 @@ ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
 			ast_dt_find_named_dependencies(
 					ctx, target_job, req, node->func.return_type);
 
-			for (size_t i = 0; i < node->func.closure.num_members; i++) {
-				ast_dt_add_dependency_on_slot(
-						ctx, target_job, req, node->func.closure.members[i].outer_slot);
-			}
+			ast_dt_closure_find_named_dependencies(
+					ctx, target_job, req, &node->func.closure);
 			break;
 
 		case AST_NODE_CALL:
@@ -1525,15 +1571,15 @@ ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
 			break;
 
 		case AST_NODE_LOOKUP:
-			ast_dt_add_dependency_on_slot(
-					ctx, target_job, req, node->lookup.value);
+			if (node->lookup.ref.kind == AST_NAME_REF_MEMBER) {
+				ast_dt_add_dependency_on_member(
+						ctx, target_job, req, node->lookup.ref.member);
+			}
 			break;
 
 		case AST_NODE_COMPOSITE:
-			for (size_t i = 0; i < node->composite.closure.num_members; i++) {
-				ast_dt_add_dependency_on_slot(
-						ctx, target_job, req, node->composite.closure.members[i].outer_slot);
-			}
+			ast_dt_closure_find_named_dependencies(
+					ctx, target_job, req, &node->composite.closure);
 			break;
 
 		case AST_NODE_VARIANT:
@@ -1607,7 +1653,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						}
 						break;
 				}
-
 
 				int err;
 				err = ast_node_resolve_names(ctx->ast_ctx, ctx->ast_env,
