@@ -406,6 +406,7 @@ struct ast_datatype_member {
 struct ast_datatype_bind {
 	struct ast_node *target;
 	struct ast_node *value;
+	struct stg_location loc;
 	bool overridable;
 };
 
@@ -650,6 +651,12 @@ int
 ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *node);
+
+int
+ast_composite_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+		struct stg_native_module *native_mod, struct ast_scope *scope,
+		bool require_const, struct ast_node *comp, struct ast_node *node,
+		ast_member_id *local_members);
 
 int
 ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *env,

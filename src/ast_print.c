@@ -333,15 +333,15 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("binds:\n");
 			for (size_t i = 0; i < node->composite.num_binds; i++) {
 				print_indent(depth + 2);
-				printf("target:\n");
+				printf("- target:\n");
 				ast_print_internal(ctx, env,
-						node->composite.binds[i].target, depth + 3);
+						node->composite.binds[i].target, depth + 4);
 				print_indent(depth + 2);
-				printf("value%s:\n",
+				printf("  value%s:\n",
 						node->composite.binds[i].overridable
 						? " (overridable)" : "");
 				ast_print_internal(ctx, env,
-						node->composite.binds[i].value, depth + 3);
+						node->composite.binds[i].value, depth + 4);
 			}
 
 			print_indent(depth + 1);

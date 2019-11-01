@@ -56,12 +56,12 @@ enum ast_dt_member_flags {
 
 struct ast_dt_member {
 	struct atom *name;
-	ast_slot_id slot;
 	type_id type;
 	struct ast_node *type_node;
 
 	struct stg_location decl_loc;
 	struct ast_dt_bind *bound;
+	struct ast_dt_bind *overridden_bind;
 
 	struct ast_dt_dependency *outgoing_edges;
 	size_t num_outgoing_edges;
@@ -138,6 +138,11 @@ struct ast_dt_job {
 struct ast_dt_context {
 	struct ast_dt_member *members;
 	size_t num_members;
+
+	struct ast_node *root_node;
+	// An array of the ids of all local members, in the same order as
+	// root_node->composite.members. The lenght is root_node->composite.num_members.
+	ast_member_id *local_member_ids;
 
 	struct ast_dt_bind *alloced_binds;
 
@@ -399,13 +404,18 @@ ast_dt_job_depndency(struct ast_dt_context *ctx,
 
 static struct ast_dt_bind *
 ast_dt_register_bind(struct ast_dt_context *ctx,
-		ast_member_id target, struct ast_node *value, bool overridable)
+		struct stg_location loc, ast_member_id target,
+		struct ast_node *value, bool overridable)
 {
+	struct ast_dt_member *member;
+	member = get_member(ctx, target);
+
 	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
 	new_bind->target = target;
 	new_bind->kind = AST_OBJECT_DEF_BIND_VALUE;
 	new_bind->value.node = value;
 	new_bind->overridable = overridable;
+	new_bind->loc = loc;
 
 	new_bind->value_jobs.resolve_names =
 		ast_dt_job_bind(ctx, new_bind,
@@ -427,11 +437,37 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 			new_bind->value_jobs.resolve_types,
 			new_bind->value_jobs.codegen);
 
-
-	new_bind->loc = STG_NO_LOC;
-
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
+
+	if (member->bound) {
+		if (!member->bound->overridable && !overridable) {
+			stg_error(ctx->ast_ctx->err, loc,
+					"'%.*s' is bound multiple times.", ALIT(member->name));
+			stg_appendage(ctx->ast_ctx->err,
+					member->bound->loc, "Also bound here.");
+			ctx->num_errors += 1;
+			return new_bind;
+		}
+
+		if (member->bound->overridable && overridable) {
+			stg_error(ctx->ast_ctx->err, loc,
+					"'%.*s' has multiple default binds.", ALIT(member->name));
+			stg_appendage(ctx->ast_ctx->err,
+					member->bound->loc, "Also bound here.");
+			ctx->num_errors += 1;
+			return new_bind;
+		}
+
+		if (overridable) {
+			member->overridden_bind = new_bind;
+		} else {
+			member->overridden_bind = member->bound;
+			member->bound = new_bind;
+		}
+	} else {
+		member->bound = new_bind;
+	}
 
 	return new_bind;
 }
@@ -506,58 +542,24 @@ ast_dt_remove_terminal_member(struct ast_dt_context *ctx,
 	}
 }
 
-static void
-ast_dt_dependency(struct ast_dt_context *ctx,
-		ast_member_id from, ast_member_id to)
-{
-	struct ast_dt_dependency new_edge = {0};
-
-	new_edge.from = from;
-	new_edge.to = to;
-
-	struct ast_dt_member *from_mbr;
-	from_mbr = get_member(ctx, from);
-
-	dlist_append(
-			from_mbr->outgoing_edges,
-			from_mbr->num_outgoing_edges,
-			&new_edge);
-
-	get_member(ctx, to)->num_incoming_edges += 1;
-	ctx->unvisited_edges += 1;
-
-	if (get_member(ctx, to)->num_incoming_edges == 1) {
-		ast_dt_remove_terminal_member(ctx, to);
-	}
-}
-
 static ast_member_id
 ast_dt_register_member(struct ast_dt_context *ctx,
-		struct atom *name, ast_slot_id slot,
-		struct stg_location decl_loc)
+		struct atom *name, struct stg_location decl_loc)
 {
 	struct ast_dt_member new_mbr = {0};
 
 	new_mbr.name = name;
-	new_mbr.slot = ast_node_resolve_slot(ctx->ast_env, &slot);
 	new_mbr.decl_loc = decl_loc;
 	new_mbr.next = ctx->terminal_nodes;
 	new_mbr.first_child = -1;
 	new_mbr.anscestor_local_member = -1;
 	new_mbr.persistant_id = -1;
 
-	ast_member_id old_id = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot).member_id;
-	if (old_id >= 0) {
-		return old_id;
-	}
-
 	ast_member_id mbr_id;
 	mbr_id = dlist_append(
 			ctx->members,
 			ctx->num_members,
 			&new_mbr);
-
-	ctx->ast_env->slots[slot].member_id = mbr_id;
 
 	ctx->terminal_nodes = mbr_id;
 
@@ -801,20 +803,6 @@ ast_dt_tag_member_const(struct ast_dt_context *ctx,
 
 	mbr->flags |= AST_DT_MEMBER_IS_CONST;
 	mbr->const_value = obj;
-
-	// TODO: Hack. There should probably be a better way of
-	// overriding a member value.
-	//
-	// In case we are binding over a cons member we want to populate all
-	// children with their values. Because of this we keep the slot as CONS and
-	// use the default behaviour for binding over the a CONS with a CONST.
-	if (ctx->ast_env->slots[mbr->slot].kind != AST_SLOT_CONS) {
-		assert(ctx->ast_env->slots[mbr->slot].kind == AST_SLOT_MEMBER);
-		ctx->ast_env->slots[mbr->slot].kind = AST_SLOT_WILDCARD;
-	}
-
-	ast_bind_slot_const(ctx->ast_ctx, ctx->ast_env,
-			mbr->slot, NULL, obj);
 }
 
 static bool
@@ -926,197 +914,6 @@ ast_dt_try_bind_const_member(struct ast_dt_context *ctx,
 	return false;
 }
 
-/*
-static void
-ast_dt_node_try_bind_const_members(struct ast_dt_context *ctx,
-		struct ast_module *mod, struct ast_node *node)
-{
-	assert(node->kind == AST_NODE_COMPOSITE);
-	for (size_t i = 0; i < node->composite.num_members; i++) {
-		struct ast_datatype_member *mbr_def;
-		mbr_def = &node->composite.members[i];
-
-		ast_slot_id slot_id;
-		slot_id = ast_unpack_arg_named(ctx->ast_ctx, ctx->ast_env,
-				node->composite.cons, AST_BIND_NEW, mbr_def->name);
-
-		struct ast_env_slot slot;
-		slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot_id);
-
-		if (slot.kind == AST_SLOT_MEMBER) {
-			ast_member_id mbr_id;
-			mbr_id = slot.member_id;
-			assert(mbr_id >= 0);
-
-			struct ast_dt_member *mbr;
-			mbr = get_member(ctx, mbr_id);
-
-			assert(mbr->slot == slot_id);
-
-			if (mbr->bound && !mbr->bound->overridable) {
-				ast_dt_try_bind_const_member(ctx, mod, mbr_id);
-			}
-		}
-	}
-}
-
-static void
-ast_dt_composite_populate_cons_binds(struct ast_dt_context *ctx,
-		ast_member_id id_offset, struct ast_object_def *def)
-{
-	for (size_t i = 0; i < def->num_binds; i++) {
-		ast_member_id *value_params;
-		size_t num_value_params;
-
-		num_value_params = def->binds[i].num_value_params;
-		value_params = calloc(sizeof(ast_member_id),
-				num_value_params);
-
-		for (size_t val_i = 0; val_i < num_value_params; val_i++) {
-			value_params[val_i] = id_offset + def->binds[i].value_params[val_i];
-		}
-
-		ast_member_id target_id;
-		target_id = id_offset + def->binds[i].target;
-
-		struct ast_dt_bind *bind;
-		switch (def->binds[i].kind) {
-			case AST_OBJECT_DEF_BIND_VALUE:
-				bind = ast_dt_register_bind_func(
-						ctx, target_id, def->binds[i].value.func,
-						value_params, num_value_params,
-						def->binds[i].value.overridable);
-				break;
-
-			case AST_OBJECT_DEF_BIND_PACK:
-				bind = ast_dt_register_bind_pack(
-						ctx, target_id, def->binds[i].pack,
-						value_params, num_value_params);
-				break;
-		}
-
-		struct ast_dt_member *target;
-		target = get_member(ctx, target_id);
-
-		assert(target->bound == NULL);
-		target->bound = bind;
-
-		for (size_t val_i = 0; val_i < num_value_params; val_i++) {
-			ast_dt_dependency(ctx, value_params[val_i], target_id);
-		}
-	}
-}
-
-static void
-ast_dt_composite_populate_type(struct ast_dt_context *ctx, struct ast_module *mod,
-		ast_member_id anscestor, ast_member_id member)
-{
-	struct ast_dt_member *mbr = get_member(ctx, member);
-	assert(mbr->type != TYPE_UNSET);
-
-	struct type *mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
-
-	if (mbr_type->obj_def) {
-		ast_slot_id cons_slot;
-
-		if (ctx->ast_env->slots[mbr->slot].kind == AST_SLOT_MEMBER) {
-			ctx->ast_env->slots[mbr->slot].kind = AST_SLOT_WILDCARD;
-		}
-
-		cons_slot = ast_bind_slot_cons(ctx->ast_ctx, ctx->ast_env,
-				mbr->slot, NULL, mbr_type->obj_def);
-
-		ast_member_id first_member = -1;
-		ast_member_id direct_members[mbr_type->obj_def->num_params];
-
-		for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
-			struct ast_object_def_param *param;
-			param = &mbr_type->obj_def->params[i];
-
-			ast_slot_id mbr_slot =
-				ast_unpack_arg_named(ctx->ast_ctx, ctx->ast_env,
-					cons_slot, AST_BIND_NEW, param->name);
-
-			type_id tid;
-			struct object tid_obj;
-			int err;
-			err = ast_slot_pack(ctx->ast_ctx, mod, ctx->ast_env,
-					ast_env_slot(ctx->ast_ctx, ctx->ast_env, mbr_slot).type, &tid_obj);
-			if (err) {
-				printf("Failed to evaluate type of member.\n");
-				return;
-			}
-
-			assert_type_equals(ctx->ast_ctx->vm, tid_obj.type, ctx->ast_ctx->types.type);
-			tid = *(type_id *)tid_obj.data;
-
-			ast_member_id mbr_id;
-			mbr_id = ast_dt_register_member(ctx, param->name,
-					mbr_slot, STG_NO_LOC);
-
-			if (first_member == -1) {
-				first_member = mbr_id;
-			}
-
-			direct_members[i] = mbr_id;
-
-			struct ast_dt_member *new_mbr;
-			new_mbr = get_member(ctx, mbr_id);
-			new_mbr->anscestor_local_member = anscestor;
-			new_mbr->type = tid;
-
-			struct ast_dt_member *anscestor_mbr;
-			anscestor_mbr = get_member(ctx, anscestor);
-			if (anscestor_mbr->first_child == -1) {
-				anscestor_mbr->first_child = mbr_id;
-			} else {
-				assert(anscestor_mbr->first_child < mbr_id);
-			}
-
-			ast_dt_composite_populate_type(ctx, mod, anscestor, mbr_id);
-		}
-
-		ast_dt_composite_populate_cons_binds(
-				ctx, first_member, mbr_type->obj_def);
-
-		// NOTE: As the list of members can be realloced by
-		// ast_dt_composite_populate_cons_binds, we have to fetch mbr again
-		// here.
-		mbr = get_member(ctx, member);
-
-		if (anscestor == member) {
-			ast_member_id *direct_members_alloced;
-			direct_members_alloced = calloc(
-					mbr_type->obj_def->num_params, sizeof(ast_member_id));
-			memcpy(direct_members_alloced, direct_members,
-					mbr_type->obj_def->num_params * sizeof(ast_member_id));
-			struct ast_dt_bind *pack_bind;
-			pack_bind = ast_dt_register_bind_pack(
-					ctx, member, mbr_type->obj_def,
-					direct_members_alloced, mbr_type->obj_def->num_params);
-
-			assert(!mbr->bound);
-			mbr->bound = pack_bind;
-
-			// printf("binding member %i %.*s as pack (%p). Depending on ",
-			// 		member, ALIT(mbr->name), (void *)mbr->bound);
-
-			// for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
-			// 	ast_dt_dependency(ctx,
-			// 			direct_members[i], member);
-			// 	printf("%i, ", direct_members[i]);
-			// }
-
-			// printf("\n");
-		}
-	} else {
-		ast_bind_slot_const_type(ctx->ast_ctx, ctx->ast_env,
-				ast_env_slot(ctx->ast_ctx, ctx->ast_env, mbr->slot).type,
-				NULL, mbr->type);
-	}
-}
-*/
-
 static ast_member_id
 ast_dt_find_member_by_slot(struct ast_dt_context *ctx, ast_slot_id target_slot)
 {
@@ -1221,70 +1018,6 @@ ast_dt_find_member_refs(struct ast_dt_context *ctx,
 	}
 
 	return missing;
-}
-
-static void
-ast_dt_bind(struct ast_dt_context *ctx, struct ast_node *target, struct ast_node *value,
-		bool overridable)
-{
-	ast_slot_id target_slot;
-	target_slot = ast_node_value(ctx->ast_ctx, ctx->ast_env, target);
-
-	// TODO: Handle composite targets/value unpacking.
-
-	struct ast_dt_find_member_ref_res value_members = {0};
-	ast_dt_find_member_refs(ctx, value, &value_members);
-
-	struct ast_dt_find_member_ref_res target_members = {0};
-	ast_dt_find_member_refs(ctx, target, &target_members);
-
-	for (size_t target_i = 0; target_i < target_members.num_nodes; target_i++) {
-		ast_member_id member_id;
-		member_id = target_members.nodes[target_i];
-
-		struct ast_dt_member *member;
-		member = get_member(ctx, member_id);
-
-		if (member->bound) {
-			if (!member->bound->overridable && !overridable) {
-				stg_error(ctx->ast_ctx->err, target->loc,
-						"'%.*s' is bound multiple times.", ALIT(member->name));
-				stg_appendage(ctx->ast_ctx->err,
-						member->bound->loc, "Also bound here.");
-				ctx->num_errors += 1;
-				return;
-			}
-
-			if (member->bound->overridable && overridable) {
-				stg_error(ctx->ast_ctx->err, target->loc,
-						"'%.*s' has multiple default binds.", ALIT(member->name));
-				stg_appendage(ctx->ast_ctx->err,
-						member->bound->loc, "Also bound here.");
-				ctx->num_errors += 1;
-				return;
-			}
-
-			if (overridable) {
-				return;
-			}
-		}
-
-		struct ast_dt_bind *bind;
-		bind = ast_dt_register_bind(
-				ctx, member_id, value, overridable);
-
-		bind->deps = value_members.nodes;
-		bind->num_deps = value_members.num_nodes;
-
-
-		member->bound = bind;
-
-		for (size_t val_i = 0; val_i < value_members.num_nodes; val_i++) {
-			ast_dt_dependency(ctx, value_members.nodes[val_i], member_id);
-		}
-	}
-
-	free(target_members.nodes);
 }
 
 static bool
@@ -1395,20 +1128,20 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 {
 	assert(node->kind == AST_NODE_COMPOSITE);
 
+	ast_member_id *members;
+	members = calloc(node->composite.num_members, sizeof(ast_member_id));
+	ctx->local_member_ids = members;
+
 	for (size_t i = 0; i < node->composite.num_members; i++) {
-		ast_slot_id slot;
 		struct ast_datatype_member *mbr;
 		mbr = &node->composite.members[i];
 
-		slot = ast_unpack_arg_named(
-				ctx->ast_ctx, ctx->ast_env,
-				node->composite.cons, AST_BIND_NEW,
-				mbr->name);
-
 		// TODO: Better location.
 		ast_member_id mbr_id;
-		mbr_id = ast_dt_register_member(ctx, mbr->name, slot,
+		mbr_id = ast_dt_register_member(ctx, mbr->name,
 				node->composite.members[i].loc);
+
+		members[i] = mbr_id;
 
 		struct ast_dt_member *new_mbr;
 		new_mbr = get_member(ctx, mbr_id);
@@ -1418,24 +1151,31 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 	}
 
 	for (size_t i = 0; i < node->composite.num_binds; i++) {
-		ast_dt_bind(ctx,
-				node->composite.binds[i].target,
+		ast_composite_node_resolve_names(
+				ctx->ast_ctx, ctx->ast_env, NULL, NULL, false,
+				node, node->composite.binds[i].target, members);
+	}
+
+	for (size_t i = 0; i < node->composite.num_binds; i++) {
+		struct ast_node *target_node;
+		target_node = node->composite.binds[i].target;
+
+		// TODO: Support more complex bind targets.
+		assert(target_node->kind == AST_NODE_LOOKUP);
+		assert(target_node->lookup.ref.kind == AST_NAME_REF_MEMBER);
+
+		ast_dt_register_bind(ctx, node->composite.binds[i].loc,
+				target_node->lookup.ref.member,
 				node->composite.binds[i].value,
 				node->composite.binds[i].overridable);
 	}
 
 	for (size_t i = 0; i < node->composite.num_members; i++) {
-		ast_slot_id slot;
 		struct ast_datatype_member *node_mbr;
 		node_mbr = &node->composite.members[i];
 
-		slot = ast_unpack_arg_named(
-				ctx->ast_ctx, ctx->ast_env,
-				node->composite.cons, AST_BIND_NEW,
-				node_mbr->name);
-
 		ast_member_id mbr_id;
-		mbr_id = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot).member_id;
+		mbr_id = members[i];
 
 		struct ast_dt_member *mbr;
 		mbr = get_member(ctx, mbr_id);
@@ -1450,8 +1190,6 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 			}
 		} else {
 			assert(mbr->type_node);
-
-
 		}
 	}
 }
@@ -1655,8 +1393,9 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				}
 
 				int err;
-				err = ast_node_resolve_names(ctx->ast_ctx, ctx->ast_env,
-						NULL, NULL, require_const, node);
+				err = ast_composite_node_resolve_names(ctx->ast_ctx, ctx->ast_env,
+						NULL, NULL, require_const, ctx->root_node, node,
+						ctx->local_member_ids);
 				if (err) {
 					printf("Failed to resolve names.\n");
 					break;
@@ -1665,7 +1404,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				ast_dt_find_named_dependencies(
 						ctx, next_job, dep_req, node);
 			}
-			break;
+			return 0;
 
 		case AST_DT_JOB_RESOLVE_TYPES:
 			break;
@@ -1702,8 +1441,6 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 			continue;
 		}
 
-		ast_dt_free_job(ctx, job_id);
-
 		for (size_t i = 0; i < job->num_outgoing_deps; i++) {
 			struct ast_dt_job_dep *dep;
 			dep = &job->outgoing_deps[i];
@@ -1726,10 +1463,40 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 				}
 			}
 		}
+
+		ast_dt_free_job(ctx, job_id);
 	}
 
 	if (ctx->unvisited_job_deps > 0) {
 		printf("Failed to evalutate datatype because we found one or more cycles.\n");
+		printf("Problematic jobs: \n");
+		size_t jobs_per_page = ctx->page_size / sizeof(struct ast_dt_job);
+		size_t cap_jobs = ctx->num_job_pages * jobs_per_page;
+		for (ast_dt_job_id job_i = 0; job_i < cap_jobs; job_i++) {
+			struct ast_dt_job *job;
+			job = get_job(ctx, job_i);
+			if (job->kind != AST_DT_JOB_FREE) {
+				printf(" - 0x%03x (%zu):", job_i, job->num_incoming_deps);
+
+				// Find all refs to this job.
+				for (ast_dt_job_id job_j = 0; job_j < cap_jobs; job_j++) {
+					struct ast_dt_job *other;
+					other = get_job(ctx, job_j);
+					if (other->kind == AST_DT_JOB_FREE) {
+						continue;
+					}
+					for (size_t i = 0; i < other->num_outgoing_deps; i++) {
+						if (other->outgoing_deps[i].to == job_i) {
+							printf(" 0x%03x", job_j);
+						}
+					}
+				}
+
+				printf("\n");
+			}
+		}
+
+		printf("\n");
 		return -1;
 	}
 
@@ -1941,17 +1708,8 @@ ast_dt_make_bind_func(struct ast_dt_context *dt_ctx, struct ast_module *mod,
 		struct ast_dt_member *dep = get_member(dt_ctx, dep_i);
 		dep_names[i] = dep->name;
 
-		struct object dep_type_obj;
-		err = ast_slot_pack(ctx, mod, env,
-				ast_env_slot(ctx, env, dep->slot).type, &dep_type_obj);
-		if (err) {
-			printf("Failed to pack member type.\n");
-			return -1;
-		}
-
-		assert_type_equals(ctx->vm, dep_type_obj.type, ctx->types.type);
-
-		dep_types[i] = *(type_id *)dep_type_obj.data;
+		assert(dep->type != TYPE_UNSET);
+		dep_types[i] = dep->type;
 	}
 
 	func.type = stg_register_func_type(mod->stg_mod,
@@ -2130,6 +1888,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	struct ast_dt_context dt_ctx = {0};
 	dt_ctx.ast_ctx = ctx;
 	dt_ctx.ast_env = env;
+	dt_ctx.root_node = comp;
 	dt_ctx.terminal_nodes = -1;
 	dt_ctx.terminal_jobs  = -1;
 

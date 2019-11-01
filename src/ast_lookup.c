@@ -296,6 +296,62 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 	return err;
 }
 
+int
+ast_composite_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+		struct stg_native_module *native_mod, struct ast_scope *scope,
+		bool require_const, struct ast_node *comp, struct ast_node *node,
+		ast_member_id *local_members)
+{
+	assert(comp->kind == AST_NODE_COMPOSITE);
+
+	struct ast_scope member_scope = {0};
+	ast_scope_push_composite(&member_scope, scope);
+	member_scope.closure_target = comp;
+
+	struct ast_scope_name names[comp->composite.num_members];
+	for (size_t i = 0; i < comp->composite.num_members; i++) {
+		names[i].name = comp->composite.members[i].name;
+		names[i].ref.kind = AST_NAME_REF_MEMBER;
+		names[i].ref.member = local_members[i];
+	}
+
+	member_scope.names = names;
+	member_scope.num_names = comp->composite.num_members;
+
+	if (node == comp) {
+		int err = 0;
+
+		for (size_t i = 0; i < node->composite.num_members; i++) {
+			if (node->composite.members[i].type) {
+				err += ast_node_resolve_names(
+						ctx, env, native_mod, &member_scope, true,
+						node->composite.members[i].type);
+			}
+		}
+
+		for (size_t i = 0; i < node->composite.num_binds; i++) {
+			err += ast_node_resolve_names(
+					ctx, env, native_mod, &member_scope, false,
+					node->composite.binds[i].target);
+			err += ast_node_resolve_names(
+					ctx, env, native_mod, &member_scope, false,
+					node->composite.binds[i].value);
+		}
+
+		for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
+			err += ast_node_resolve_names(
+					ctx, env, native_mod, &member_scope, false,
+					node->composite.free_exprs[i]);
+		}
+
+		return err;
+	} else {
+		return ast_node_resolve_names(
+				ctx, env, native_mod, &member_scope,
+				require_const, node);
+	}
+}
+
 static void
 ast_closure_discover_potential_closures(struct ast_context *ctx, struct ast_env *env,
 		struct ast_scope *scope, bool require_const,
