@@ -5,6 +5,8 @@
 #include "str.h"
 #include <stdarg.h>
 
+#define STG_ERROR_IMMEDIATELY_PRINT 0
+
 typedef unsigned int file_id_t;
 #define STG_FILE_UNKNOWN ((file_id_t)UINT32_MAX)
 

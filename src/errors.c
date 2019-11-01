@@ -61,6 +61,26 @@ stg_msgv(struct stg_error_context *err, struct stg_location loc,
 		case STG_INFO: break;
 		case STG_APPENDAGE: break;
 	}
+
+#if STG_ERROR_IMMEDIATELY_PRINT
+	{
+		struct string file_name = STR("(unknown file)");
+
+		if (msg.loc.file_id - 1 < err->num_files && msg.loc.file_id > 0) {
+			file_name = err->file_names[msg.loc.file_id - 1];
+
+			char file_name_cstr[file_name.length + 1];
+			memcpy(file_name_cstr, file_name.text, file_name.length);
+			file_name_cstr[file_name.length] = 0;
+		}
+
+		fprintf(stderr, "%s%.*s\n",
+				level_prefix(msg.level),
+				LIT(file_name)
+			   );
+		fprintf(stderr, "%.*s\n\n", LIT(msg.msg));
+	}
+#endif
 }
 
 __attribute__((__format__ (__printf__, 3, 4))) void
