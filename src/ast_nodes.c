@@ -1329,6 +1329,90 @@ ast_templ_node_pack(struct ast_context *ctx, struct ast_module *mod,
 	return res;
 }
 
+// Appends the reference to the provided list if the reference is found. If the
+// reference is not found the function returns 1, otherwise it returns 0.
+static int
+ast_node_find_named_dependencies_add(
+		struct ast_name_ref ref, enum ast_name_dep_requirement req,
+		struct ast_name_dep **out_refs, size_t *out_num_refs)
+{
+	if (ref.kind != AST_NAME_REF_NOT_FOUND) {
+		struct ast_name_dep dep = {0};
+
+		dep.ref = ref;
+		dep.req = req;
+
+		if (out_refs) {
+			dlist_append(
+					*(out_refs),
+					*(out_num_refs),
+					&dep);
+		}
+
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
+// Attempts to append all references from a closure to the given list. Returns
+// the number of references that are not found.
+static int
+ast_node_closure_find_named_dependencies(
+		enum ast_name_dep_requirement req, struct ast_closure_target *closure,
+		struct ast_name_dep **out_refs, size_t *out_num_refs)
+{
+	int err = 0;
+
+	for (size_t i = 0; i < closure->num_members; i++) {
+		err += ast_node_find_named_dependencies_add(
+				closure->members[i].ref, req, out_refs, out_num_refs);
+	}
+
+	return err;
+}
+
+// Attempts to append all references from a node and its descendants to the
+// given list. Returns the number of references that are not found.
+int
+ast_node_find_named_dependencies(
+		struct ast_node *node, enum ast_name_dep_requirement req,
+		struct ast_name_dep **out_refs, size_t *out_num_refs)
+{
+	int err = 0;
+
+	switch (node->kind) {
+		case AST_NODE_LOOKUP:
+			err += ast_node_find_named_dependencies_add(
+					node->lookup.ref, req, out_refs, out_num_refs);
+			break;
+
+		case AST_NODE_FUNC:
+			err += ast_node_closure_find_named_dependencies(
+					req, &node->func.closure,
+					out_refs, out_num_refs);
+			req = AST_NAME_DEP_REQUIRE_VALUE;
+			break;
+
+		case AST_NODE_COMPOSITE:
+			err += ast_node_closure_find_named_dependencies(
+					req, &node->composite.closure,
+					out_refs, out_num_refs);
+			break;
+
+		default:
+			break;
+	}
+
+#define VISIT_NODE(node) \
+	err += ast_node_find_named_dependencies(\
+			(node), req, out_refs, out_num_refs);
+	AST_NODE_VISIT(node, false, false);
+#undef VISIT_NODE
+
+	return err;
+}
+
 int
 ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node, struct object *out)
