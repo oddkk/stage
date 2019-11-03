@@ -528,6 +528,65 @@ struct ast_node {
 	};
 };
 
+#define AST_NODE_VISIT(node, visit_composite_body, visit_func_body)				\
+	do { assert((node)); switch ((node)->kind) {								\
+		case AST_NODE_FUNC:														\
+			if (visit_func_body) {												\
+				VISIT_NODE((node)->func.body);									\
+			}																	\
+		case AST_NODE_FUNC_NATIVE:												\
+			for (size_t i = 0; i < (node)->func.num_params; i++) { 				\
+				if ((node)->func.params[i].type) { 								\
+					VISIT_NODE((node)->func.params[i].type); 					\
+				}																\
+			}																	\
+			if ((node)->func.return_type) {										\
+				VISIT_NODE((node)->func.return_type);							\
+			}																	\
+			break;																\
+		case AST_NODE_CALL:														\
+		case AST_NODE_CONS:														\
+			VISIT_NODE((node)->call.func);										\
+			for (size_t i = 0; i < (node)->call.num_args; i++) {				\
+				VISIT_NODE((node)->call.args[i].value);							\
+			}																	\
+			break;																\
+		case AST_NODE_ACCESS:													\
+			VISIT_NODE((node)->access.target);									\
+			break;																\
+		case AST_NODE_TEMPL:													\
+			printf("TODO: Visit template.\n");									\
+			break;																\
+		case AST_NODE_SLOT:														\
+			break;																\
+		case AST_NODE_LIT:														\
+			break;																\
+		case AST_NODE_LOOKUP:													\
+			break;																\
+		case AST_NODE_COMPOSITE:												\
+			if (visit_composite_body) {											\
+				for (size_t i = 0; i < (node)->composite.num_members; i++) {	\
+					if ((node)->composite.members[i].type) {					\
+						VISIT_NODE((node)->composite.members[i].type);			\
+					}															\
+				}																\
+				for (size_t i = 0; i < (node)->composite.num_binds; i++) {		\
+					VISIT_NODE((node)->composite.binds[i].target);				\
+					VISIT_NODE((node)->composite.binds[i].value);				\
+				}																\
+				for (size_t i = 0; i < (node)->composite.num_binds; i++) {		\
+					VISIT_NODE((node)->composite.free_exprs[i]);				\
+				}																\
+			}																	\
+			break;																\
+		case AST_NODE_VARIANT:													\
+			printf("TODO: Visit variant.\n");									\
+			break;																\
+		case AST_NODE_FUNC_UNINIT:												\
+			panic("Uninitialized func encountered.");							\
+			break;																\
+	}} while (0);
+
 ast_slot_id
 ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot);
 
@@ -682,6 +741,21 @@ ast_node_eval_type(struct ast_context *ctx, struct ast_module *mod,
 int
 ast_node_eval_type_of(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node, type_id *out);
+
+enum ast_name_dep_requirement {
+	AST_NAME_DEP_REQUIRE_TYPE,
+	AST_NAME_DEP_REQUIRE_VALUE,
+};
+
+struct ast_name_dep {
+	enum ast_name_dep_requirement req;
+	struct ast_name_ref ref;
+};
+
+int
+ast_node_find_named_dependencies(
+		struct ast_node *node, enum ast_name_dep_requirement req,
+		struct ast_name_dep **out_refs, size_t *out_num_refs);
 
 
 // Defined in ast_slots.c

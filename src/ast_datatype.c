@@ -1194,27 +1194,22 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 	}
 }
 
-enum ast_dt_dep_requirement {
-	AST_DT_DEP_REQUIRE_TYPE,
-	AST_DT_DEP_REQUIRE_VALUE,
-};
-
 static void
 ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
-		ast_dt_job_id target_job, enum ast_dt_dep_requirement req,
+		ast_dt_job_id target_job, enum ast_name_dep_requirement req,
 		ast_member_id mbr_id)
 {
 	struct ast_dt_member *mbr;
 	mbr = get_member(ctx, mbr_id);
 
 	switch (req) {
-		case AST_DT_DEP_REQUIRE_TYPE:
+		case AST_NAME_DEP_REQUIRE_TYPE:
 			ast_dt_job_depndency(ctx,
 					mbr->type_jobs.codegen,
 					target_job);
 			break;
 
-		case AST_DT_DEP_REQUIRE_VALUE:
+		case AST_NAME_DEP_REQUIRE_VALUE:
 			if (!mbr->bound) {
 				printf("Can not depend on the value of this"
 						"member as it is not bound.\n");
@@ -1234,99 +1229,24 @@ ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
 }
 
 static void
-ast_dt_add_dependency_on_slot(struct ast_dt_context *ctx,
-		ast_dt_job_id target_job, enum ast_dt_dep_requirement req,
-		ast_slot_id slot_id)
-{
-	struct ast_env_slot slot;
-	slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot_id);
-
-	if (slot.member_id >= 0) {
-		ast_dt_add_dependency_on_member(
-				ctx, target_job, req, slot.member_id);
-	}
-}
-
-	static void
-ast_dt_closure_find_named_dependencies(struct ast_dt_context *ctx,
-		ast_dt_job_id target_job, enum ast_dt_dep_requirement req,
-		struct ast_closure_target *closure)
-{
-	for (size_t i = 0; i < closure->num_members; i++) {
-		if (closure->members[i].ref.kind == AST_NAME_REF_MEMBER) {
-			ast_dt_add_dependency_on_member(
-					ctx, target_job, req, closure->members[i].ref.member);
-		}
-	}
-}
-
-static void
 ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
-		ast_dt_job_id target_job, enum ast_dt_dep_requirement req,
+		ast_dt_job_id target_job, enum ast_name_dep_requirement req,
 		struct ast_node *node)
 {
-	switch (node->kind) {
-		case AST_NODE_FUNC:
-			break;
+	struct ast_name_dep *deps = NULL;
+	size_t num_deps = 0;
 
-		case AST_NODE_FUNC_NATIVE:
-			for (size_t i = 0; i < node->func.num_params; i++) {
-				ast_dt_find_named_dependencies(
-						ctx, target_job, req, node->func.params[i].type);
-			}
-			ast_dt_find_named_dependencies(
-					ctx, target_job, req, node->func.return_type);
+	ast_node_find_named_dependencies(
+			node, req, &deps, &num_deps);
 
-			ast_dt_closure_find_named_dependencies(
-					ctx, target_job, req, &node->func.closure);
-			break;
-
-		case AST_NODE_CALL:
-		case AST_NODE_CONS:
-			for (size_t i = 0; i < node->call.num_args; i++) {
-				ast_dt_find_named_dependencies(
-						ctx, target_job, req, node->call.args[i].value);
-			}
-			ast_dt_find_named_dependencies(
-					ctx, target_job, req, node->call.func);
-			break;
-
-		case AST_NODE_TEMPL:
-			// TODO: Templates
-			break;
-
-		case AST_NODE_ACCESS:
-			ast_dt_find_named_dependencies(
-					ctx, target_job, req, node->access.target);
-			break;
-
-		case AST_NODE_SLOT:
-			ast_dt_add_dependency_on_slot(
-					ctx, target_job, req, node->slot);
-			break;
-
-		case AST_NODE_LIT:
-			break;
-
-		case AST_NODE_LOOKUP:
-			if (node->lookup.ref.kind == AST_NAME_REF_MEMBER) {
-				ast_dt_add_dependency_on_member(
-						ctx, target_job, req, node->lookup.ref.member);
-			}
-			break;
-
-		case AST_NODE_COMPOSITE:
-			ast_dt_closure_find_named_dependencies(
-					ctx, target_job, req, &node->composite.closure);
-			break;
-
-		case AST_NODE_VARIANT:
-			break;
-
-		case AST_NODE_FUNC_UNINIT:
-			panic("Got uninitialized function in find dependencies.");
-			break;
+	for (size_t i = 0; i < num_deps; i++) {
+		if (deps[i].ref.kind == AST_NAME_REF_MEMBER) {
+			ast_dt_add_dependency_on_member(
+					ctx, target_job, deps[i].req, deps[i].ref.member);
+		}
 	}
+
+	free(deps);
 }
 
 static inline int
@@ -1368,8 +1288,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			{
 				bool require_const = false;
 				ast_dt_job_id next_job = -1;
-				enum ast_dt_dep_requirement dep_req;
-				dep_req = AST_DT_DEP_REQUIRE_TYPE;
+				enum ast_name_dep_requirement dep_req;
+				dep_req = AST_NAME_DEP_REQUIRE_TYPE;
 
 				switch (job->expr) {
 					case AST_DT_JOB_EXPR_TARGET:
@@ -1387,7 +1307,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 							next_job = mbr->type_jobs.resolve_types;
 
 							require_const = true;
-							dep_req = AST_DT_DEP_REQUIRE_VALUE;
+							dep_req = AST_NAME_DEP_REQUIRE_VALUE;
 						}
 						break;
 				}
