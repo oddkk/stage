@@ -462,6 +462,7 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 	return new_bind;
 }
 
+/*
 static struct ast_dt_bind *
 ast_dt_register_bind_func(struct ast_dt_context *ctx,
 		ast_member_id target, func_id func,
@@ -513,24 +514,7 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 
 	return new_bind;
 }
-
-
-static void
-ast_dt_remove_terminal_member(struct ast_dt_context *ctx,
-		ast_member_id member)
-{
-	ast_member_id *node;
-	node = &ctx->terminal_nodes;
-
-	while (*node >= 0) {
-		if (*node == member) {
-			*node = get_member(ctx, member)->next;
-			get_member(ctx, member)->next = -1;
-			return;
-		}
-		node = &get_member(ctx, *node)->next;
-	}
-}
+*/
 
 static ast_member_id
 ast_dt_register_member(struct ast_dt_context *ctx,
@@ -784,6 +768,7 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 	return result;
 }
 
+/*
 static void
 ast_dt_tag_member_const(struct ast_dt_context *ctx,
 		ast_member_id mbr_id, struct object obj)
@@ -903,112 +888,7 @@ ast_dt_try_bind_const_member(struct ast_dt_context *ctx,
 
 	return false;
 }
-
-static ast_member_id
-ast_dt_find_member_by_slot(struct ast_dt_context *ctx, ast_slot_id target_slot)
-{
-	return ast_env_slot(ctx->ast_ctx, ctx->ast_env, target_slot).member_id;
-}
-
-struct ast_dt_find_member_ref_res {
-	ast_member_id *nodes;
-	size_t num_nodes;
-};
-
-static int
-ast_dt_find_member_refs_for_slot(struct ast_dt_context *ctx,
-		ast_slot_id slot, struct ast_dt_find_member_ref_res *res)
-{
-	struct ast_env_slot slt;
-	slt = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot);
-	if (slt.kind == AST_SLOT_MEMBER) {
-		if (slt.member_id >= 0) {
-			dlist_append(
-					res->nodes,
-					res->num_nodes,
-					&slt.member_id);
-			return 0;
-		} else {
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
-static int
-ast_dt_find_member_refs_closure(struct ast_dt_context *ctx,
-		struct ast_closure_target *closure,
-		struct ast_dt_find_member_ref_res *res)
-{
-	for (size_t i = 0; i < closure->num_members; i++) {
-		if (closure->members[i].ref.kind == AST_NAME_REF_MEMBER) {
-			dlist_append(
-					res->nodes,
-					res->num_nodes,
-					&closure->members[i].ref.member);
-		}
-	}
-
-	return 0;
-}
-
-static int
-ast_dt_find_member_refs(struct ast_dt_context *ctx,
-		struct ast_node *node, struct ast_dt_find_member_ref_res *res)
-{
-	int missing = 0;
-
-	assert(res);
-
-	switch (node->kind) {
-		case AST_NODE_FUNC_NATIVE:
-		case AST_NODE_FUNC_UNINIT:
-		case AST_NODE_TEMPL:
-		case AST_NODE_LIT:
-		case AST_NODE_VARIANT:
-			break;
-
-		case AST_NODE_CONS:
-		case AST_NODE_CALL:
-			missing += ast_dt_find_member_refs(ctx, node->call.func, res);
-			for (size_t i = 0; i < node->call.num_args; i++) {
-				missing += ast_dt_find_member_refs(ctx, node->call.args[i].value, res);
-			}
-			break;
-
-		case AST_NODE_ACCESS:
-			missing += ast_dt_find_member_refs(ctx, node->access.target, res);
-			break;
-
-		case AST_NODE_SLOT:
-			ast_dt_find_member_refs_for_slot(ctx, node->slot, res);
-			break;
-
-		case AST_NODE_LOOKUP:
-			if (node->lookup.ref.kind == AST_NAME_REF_MEMBER) {
-				dlist_append(
-						res->nodes,
-						res->num_nodes,
-						&node->lookup.ref.member);
-			}
-			break;
-
-		case AST_NODE_FUNC:
-			missing +=
-				ast_dt_find_member_refs_closure(
-						ctx, &node->func.closure, res);
-			break;
-
-		case AST_NODE_COMPOSITE:
-			missing +=
-				ast_dt_find_member_refs_closure(
-						ctx, &node->composite.closure, res);
-			break;
-	}
-
-	return missing;
-}
+*/
 
 static void
 ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
