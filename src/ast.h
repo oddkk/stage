@@ -425,6 +425,7 @@ struct ast_templ_node_data;
 
 struct ast_node {
 	enum ast_node_kind kind;
+	type_id type;
 	struct stg_location loc;
 
 	union {

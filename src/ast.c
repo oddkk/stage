@@ -321,9 +321,6 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 	err = ast_node_discover_potential_closures(ctx, &mod->env,
 			NULL, true, mod->root);
 
-	ast_print(ctx, &mod->env,
-			mod->root);
-
 	type_id type;
 	type = ast_dt_finalize_composite(ctx, mod,
 			&mod->env, mod->root);

@@ -432,16 +432,47 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 	return target;
 }
 
+static int
+ast_node_resolve_types(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node)
+{
+	int errors = 0;
+#define VISIT_NODE(child) errors += ast_node_resolve_types(ctx, mod, env, child);
+	AST_NODE_VISIT(node, false, true);
+#undef VISIT_NODE
+
+	assert(node->type == TYPE_UNSET);
+
+	ast_slot_id type_slot;
+	type_slot = ast_node_type(ctx, env, node);
+
+	int err;
+	err = ast_slot_pack_type(
+			ctx, mod, env, type_slot, &node->type);
+	if (err) {
+		errors += 1;
+	}
+
+	return errors;
+}
+
 int
 ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps)
 {
+	int err;
 	ast_node_bind_slots(ctx, mod, env, node, AST_BIND_NEW,
 			deps, num_deps);
+
+	err = ast_node_resolve_types(ctx, mod, env, node);
 
 	ast_print(ctx, env, node);
 	ast_env_print(ctx->vm, env);
 
-	return -1;
+	if (err) {
+		return -1;
+	}
+
+	return 0;
 }

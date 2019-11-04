@@ -1105,9 +1105,29 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					return -1;
 				}
 
-				// TODO: Fetch the resolved type.
+				struct ast_dt_member *mbr = NULL;
+				switch (job->expr) {
+					case AST_DT_JOB_EXPR_TARGET:
+						break;
+
+					case AST_DT_JOB_EXPR_BIND:
+						mbr = get_member(ctx, job->bind->target);
+						break;
+
+					case AST_DT_JOB_EXPR_TYPE:
+						mbr = get_member(ctx, job->member);
+						break;
+				}
+				assert(mbr);
+
+				if (mbr->type != TYPE_UNSET) {
+					assert_type_equals(ctx->ast_ctx->vm, node->type, mbr->type);
+				} else {
+					mbr->type = node->type;
+					assert(mbr->type != TYPE_UNSET);
+				}
 			}
-			break;
+			return 0;
 
 		case AST_DT_JOB_CODEGEN:
 			break;
