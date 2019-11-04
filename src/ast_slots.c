@@ -1579,8 +1579,6 @@ ast_node_deep_copy_internal(
 	DCP_LIT(loc);
 
 	switch (src->kind) {
-	case AST_NODE_FUNC_UNINIT:
-		panic("Got uninitialized function in copy slot.");
 	case AST_NODE_FUNC_NATIVE:
 	case AST_NODE_FUNC:
 		if (src->kind == AST_NODE_FUNC_NATIVE) {

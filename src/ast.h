@@ -367,8 +367,6 @@ enum ast_node_kind {
 	// Datatype declarations
 	AST_NODE_COMPOSITE,
 	AST_NODE_VARIANT,
-
-	AST_NODE_FUNC_UNINIT,
 };
 
 struct ast_node;
@@ -581,9 +579,6 @@ struct ast_node {
 			break;																\
 		case AST_NODE_VARIANT:													\
 			printf("TODO: Visit variant.\n");									\
-			break;																\
-		case AST_NODE_FUNC_UNINIT:												\
-			panic("Uninitialized func encountered.");							\
 			break;																\
 	}} while (0);
 

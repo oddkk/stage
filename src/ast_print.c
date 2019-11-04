@@ -230,14 +230,9 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 {
 	switch (node->kind) {
 		case AST_NODE_FUNC:
-		case AST_NODE_FUNC_UNINIT:
 		case AST_NODE_FUNC_NATIVE:
 			print_indent(depth);
-			if (node->kind == AST_NODE_FUNC_UNINIT) {
-				printf("func (uninit)");
-			} else {
-				printf("func");
-			}
+			printf("func");
 
 			printf(" %i\n", node->func.type);
 

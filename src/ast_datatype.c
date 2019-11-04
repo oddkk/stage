@@ -759,10 +759,6 @@ ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
 
 		case AST_NODE_VARIANT:
 			break;
-
-		case AST_NODE_FUNC_UNINIT:
-			panic("Got uninitialized function in analyze.");
-			break;
 	}
 
 	return result;

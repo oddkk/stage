@@ -143,10 +143,6 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 	int err = 0;
 
 	switch (node->kind) {
-		case AST_NODE_FUNC_UNINIT:
-			panic("Encountered uninitialized func node while resolving names.");
-			break;
-
 		case AST_NODE_FUNC:
 			{
 				struct ast_scope params_scope = {0};
@@ -370,10 +366,6 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 	int err = 0;
 
 	switch (node->kind) {
-		case AST_NODE_FUNC_UNINIT:
-			panic("Encountered uninitialized func node while resolving names.");
-			break;
-
 		case AST_NODE_FUNC:
 			{
 				struct ast_scope params_scope = {0};

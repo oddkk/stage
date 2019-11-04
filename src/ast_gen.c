@@ -413,10 +413,6 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 		case AST_NODE_LOOKUP:
 			panic("Got lookup node in gen_bytecode.");
 			break;
-
-		case AST_NODE_FUNC_UNINIT:
-			panic("Got uninitialized func node in gen_bytecode.");
-			break;
 	}
 
 	printf("Invalid ast node in gen byte code.\n");

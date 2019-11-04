@@ -388,7 +388,6 @@ ast_slot_id
 ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
 {
 	switch (node->kind) {
-		case AST_NODE_FUNC_UNINIT:
 		case AST_NODE_FUNC_NATIVE:
 		case AST_NODE_FUNC:
 			return ast_node_resolve_slot(env, &node->func.type);
@@ -461,10 +460,6 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 
 		case AST_NODE_VARIANT:
 			return ast_node_resolve_slot(env, &node->variant.ret_value);
-
-		case AST_NODE_FUNC_UNINIT:
-			panic("Attempted to resolve value of uninitialized func.");
-			break;
 	}
 
 	panic("Invalid ast node.");
@@ -574,10 +569,6 @@ ast_node_dependencies_fulfilled(struct ast_context *ctx,
 						ctx, env, node->variant.variants[i].type);
 			}
 			break;
-
-		case AST_NODE_FUNC_UNINIT:
-			panic("Encountered uninitialized func in dependency check.");
-			return AST_NODE_DEPS_NOT_OK;
 	}
 
 	return result;
@@ -784,10 +775,6 @@ ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 			result = false;
 			printf("Lookup node still found during is typed check.\n");
 			break;
-
-		case AST_NODE_FUNC_UNINIT:
-			panic("Encountered uninitialized func in dependency check.");
-			return false;
 	}
 
 	return result;
@@ -924,10 +911,6 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 					case AST_NODE_LOOKUP:
 						panic("Got lookup as target for call.");
-						break;
-
-					case AST_NODE_FUNC_UNINIT:
-						panic("Got uninitialized node as target for call.");
 						break;
 
 					default:
@@ -1218,10 +1201,6 @@ ast_node_resolve_slots(struct ast_context *ctx, struct ast_module *mod,
 
 			// TODO: Make the new type.
 			break;
-
-		case AST_NODE_FUNC_UNINIT:
-			panic("Encountered uninitialized func in dependency check.");
-			return false;
 	}
 
 	return result;
@@ -1671,10 +1650,6 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 		case AST_NODE_VARIANT:
 			printf("Variant not implemented.\n");
 			return -1;
-
-		case AST_NODE_FUNC_UNINIT:
-			break;
-
 	}
 
 	panic("Invalid node in ast_node_eval");
