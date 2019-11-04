@@ -150,7 +150,8 @@ struct ast_dt_context {
 	size_t unvisited_job_deps;
 
 	struct ast_context *ast_ctx;
-	struct ast_env *ast_env;
+	struct ast_env     *ast_env;
+	struct ast_module  *ast_mod;
 
 	size_t num_errors;
 };
@@ -1044,6 +1045,10 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				}
 			}
 			break;
+
+		default:
+			panic("Invalid job expr.");
+			return -1;
 	}
 
 	switch (job->kind) {
@@ -1090,6 +1095,18 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			return 0;
 
 		case AST_DT_JOB_RESOLVE_TYPES:
+			{
+				int err;
+				err = ast_node_typecheck(
+						ctx->ast_ctx, ctx->ast_mod, ctx->ast_env, node,
+						NULL, 0);
+				if (err) {
+					printf("Failed to typecheck.\n");
+					return -1;
+				}
+
+				// TODO: Fetch the resolved type.
+			}
 			break;
 
 		case AST_DT_JOB_CODEGEN:
@@ -1585,6 +1602,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	struct ast_dt_context dt_ctx = {0};
 	dt_ctx.ast_ctx = ctx;
 	dt_ctx.ast_env = env;
+	dt_ctx.ast_mod = mod;
 	dt_ctx.root_node = comp;
 	dt_ctx.terminal_nodes = -1;
 	dt_ctx.terminal_jobs  = -1;

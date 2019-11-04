@@ -447,6 +447,8 @@ struct ast_node {
 
 			ast_slot_id type;
 
+			ast_slot_id slot;
+
 			func_id instance;
 
 			struct ast_closure_target closure;
@@ -752,6 +754,26 @@ ast_node_find_named_dependencies(
 		struct ast_node *node, enum ast_name_dep_requirement req,
 		struct ast_name_dep **out_refs, size_t *out_num_refs);
 
+struct ast_typecheck_dep {
+	// Describes what type is available compile time.
+	enum ast_name_dep_requirement req;
+	struct ast_name_ref ref;
+
+	ast_slot_id value;
+
+	// If determined is true, type or val is set if req is require_type or
+	// require_value respectively.
+	bool determined;
+	union {
+		type_id type;
+		struct object val;
+	};
+};
+
+int
+ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node,
+		struct ast_typecheck_dep *deps, size_t num_deps);
 
 // Defined in ast_slots.c
 struct ast_node *
