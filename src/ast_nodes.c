@@ -1632,7 +1632,7 @@ ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
 		case AST_NODE_COMPOSITE:
 			{
 				type_id type;
-				type = ast_dt_finalize_composite(ctx, mod, env, node);
+				type = ast_dt_finalize_composite(ctx, mod, env, node, NULL, 0);
 
 				if (type == TYPE_UNSET) {
 					printf("Failed to initialize composite type.");

@@ -30,11 +30,9 @@ static struct ast_typecheck_dep *
 ast_find_dep(struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_name_ref ref)
 {
-	struct ast_typecheck_dep *in_dep = NULL;
-
 	for (size_t j = 0; j < num_deps; j++) {
 		if (ast_name_ref_equals(deps[j].ref, ref)) {
-			return in_dep;
+			return &deps[j];
 		}
 	}
 
@@ -407,16 +405,35 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 	case AST_NODE_COMPOSITE:
 		{
 			if (node->composite.type == TYPE_UNSET) {
-				size_t num_body_deps;
-				num_body_deps = node->composite.closure.num_members;
-				struct ast_typecheck_dep body_deps[num_body_deps];
+				struct ast_closure_target *closure;
+				closure = &node->composite.closure;
 
-				ast_fill_closure_deps(ctx, env, body_deps,
-						&node->composite.closure, deps, num_deps);
+				struct ast_typecheck_closure closure_values[closure->num_members];
 
-				// TODO: Pass closures.
+				for (size_t i = 0; i < closure->num_members; i++) {
+					struct ast_typecheck_dep *dep;
+					dep = ast_find_dep(deps, num_deps,
+							closure->members[i].ref);
+					assert(dep);
+
+					if (closure->members[i].require_const || (
+								dep->determined &&
+								dep->req == AST_NAME_DEP_REQUIRE_VALUE)) {
+						closure_values[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+
+						assert(dep->determined && dep->req == AST_NAME_DEP_REQUIRE_VALUE);
+						closure_values[i].value = dep->val;
+					} else {
+						assert(dep->determined && dep->req == AST_NAME_DEP_REQUIRE_TYPE);
+						closure_values[i].req = AST_NAME_DEP_REQUIRE_TYPE;
+						closure_values[i].type = dep->type;
+					}
+				}
+
 				node->composite.type =
-					ast_dt_finalize_composite(ctx, mod, env, node);
+					ast_dt_finalize_composite(
+							ctx, mod, env, node,
+							closure_values, closure->num_members);
 			}
 
 			target = ast_bind_slot_const_type(

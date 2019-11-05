@@ -130,6 +130,7 @@ ast_closure_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		struct ast_name_ref ref;
 		ref = ast_resolve_lookup(ctx, env, scope, require_const,
 					closure->members[i].name, false);
+		closure->members[i].ref = ref;
 	}
 
 	return 0;

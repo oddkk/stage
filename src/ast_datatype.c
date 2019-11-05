@@ -153,6 +153,9 @@ struct ast_dt_context {
 	struct ast_env     *ast_env;
 	struct ast_module  *ast_mod;
 
+	struct ast_typecheck_closure *closures;
+	size_t num_closures;
+
 	size_t num_errors;
 };
 
@@ -1013,6 +1016,35 @@ ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
 	free(deps);
 }
 
+static void
+ast_dt_bind_typecheck_dep(struct ast_dt_context *ctx,
+		struct ast_typecheck_dep *dep)
+{
+	if (!dep->determined) {
+		return;
+	}
+
+	switch (dep->req) {
+		case AST_NAME_DEP_REQUIRE_VALUE:
+			dep->value =
+				ast_bind_slot_const(
+						ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
+						NULL, dep->val);
+			break;
+
+		case AST_NAME_DEP_REQUIRE_TYPE:
+			dep->value =
+				ast_bind_slot_closure(
+						ctx->ast_ctx, ctx->ast_env,
+						AST_BIND_NEW, NULL,
+						ast_bind_slot_const_type(
+							ctx->ast_ctx, ctx->ast_env,
+							AST_BIND_NEW, NULL,
+							dep->type));
+			break;
+	}
+}
+
 static inline int
 ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 {
@@ -1024,6 +1056,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	printf("\n");
 
 	struct ast_node *node;
+	enum ast_name_dep_requirement dep_req;
+	dep_req = AST_NAME_DEP_REQUIRE_TYPE;
 
 	switch (job->expr) {
 		case AST_DT_JOB_EXPR_TARGET:
@@ -1043,6 +1077,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					assert(mbr->type != TYPE_UNSET);
 					return 0;
 				}
+
+				dep_req = AST_NAME_DEP_REQUIRE_VALUE;
 			}
 			break;
 
@@ -1056,8 +1092,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			{
 				bool require_const = false;
 				ast_dt_job_id next_job = -1;
-				enum ast_name_dep_requirement dep_req;
-				dep_req = AST_NAME_DEP_REQUIRE_TYPE;
 
 				switch (job->expr) {
 					case AST_DT_JOB_EXPR_TARGET:
@@ -1075,7 +1109,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 							next_job = mbr->type_jobs.resolve_types;
 
 							require_const = true;
-							dep_req = AST_NAME_DEP_REQUIRE_VALUE;
 						}
 						break;
 				}
@@ -1096,10 +1129,82 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 		case AST_DT_JOB_RESOLVE_TYPES:
 			{
+				struct ast_name_dep *deps = NULL;
+				size_t num_deps = 0;
+
+				ast_node_find_named_dependencies(
+						node, dep_req, &deps, &num_deps);
+
+				struct ast_typecheck_dep body_deps[num_deps];
+
+				for (size_t i = 0; i < num_deps; i++) {
+					switch (deps[i].ref.kind) {
+
+						case AST_NAME_REF_MEMBER:
+							{
+								struct ast_dt_member *dep_mbr;
+								dep_mbr = get_member(ctx, deps[i].ref.member);
+
+								body_deps[i].ref = deps[i].ref;
+								body_deps[i].req = deps[i].req;
+
+								if (deps[i].req == AST_NAME_DEP_REQUIRE_VALUE) {
+									assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
+
+									body_deps[i].determined = true;
+									body_deps[i].val = dep_mbr->const_value;
+								} else {
+									assert(dep_mbr->type != TYPE_UNSET);
+
+									body_deps[i].determined = true;
+									body_deps[i].type = dep_mbr->type;
+								}
+
+								ast_dt_bind_typecheck_dep(ctx, &body_deps[i]);
+							}
+							break;
+
+						case AST_NAME_REF_CLOSURE:
+							{
+								assert(deps[i].ref.closure >= 0 &&
+										deps[i].ref.closure < ctx->num_closures);
+								struct ast_typecheck_closure *cls;
+								cls = &ctx->closures[deps[i].ref.closure];
+								body_deps[i].ref = deps[i].ref;
+								body_deps[i].req = deps[i].req;
+								assert(body_deps[i].req == cls->req);
+
+								body_deps[i].determined = true;
+
+								switch (cls->req) {
+									case AST_NAME_DEP_REQUIRE_VALUE:
+										body_deps[i].val = cls->value;
+										break;
+
+									case AST_NAME_DEP_REQUIRE_TYPE:
+										body_deps[i].type = cls->type;
+										break;
+								}
+
+								ast_dt_bind_typecheck_dep(ctx, &body_deps[i]);
+							}
+							break;
+
+						default:
+						case AST_NAME_REF_NOT_FOUND:
+							panic("Invalid name reference.");
+							break;
+
+						case AST_NAME_REF_PARAM:
+							panic("Got unexpected reference to a param in composite.");
+							break;
+					}
+				}
+
 				int err;
 				err = ast_node_typecheck(
 						ctx->ast_ctx, ctx->ast_mod, ctx->ast_env, node,
-						NULL, 0);
+						body_deps, num_deps);
 				if (err) {
 					printf("Failed to typecheck.\n");
 					return -1;
@@ -1613,7 +1718,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 
 type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *comp)
+		struct ast_env *env, struct ast_node *comp,
+		struct ast_typecheck_closure *closures, size_t num_closures)
 {
 	if (comp->composite.type != TYPE_UNSET) {
 		return comp->composite.type;
@@ -1626,6 +1732,9 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	dt_ctx.root_node = comp;
 	dt_ctx.terminal_nodes = -1;
 	dt_ctx.terminal_jobs  = -1;
+
+	dt_ctx.closures = closures;
+	dt_ctx.num_closures  = num_closures;
 
 	int err;
 

@@ -883,8 +883,18 @@ bool
 ast_dt_is_valid(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *comp);
 
+struct ast_typecheck_closure {
+	enum ast_name_dep_requirement req;
+
+	union {
+		type_id type;
+		struct object value;
+	};
+};
+
 type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *comp);
+		struct ast_env *env, struct ast_node *comp,
+		struct ast_typecheck_closure *closures, size_t num_closures);
 
 #endif

@@ -386,7 +386,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			{
 				type_id type;
 
-				type = ast_dt_finalize_composite(ctx, mod, env, node);
+				type = node->composite.type;
 
 				if (type == TYPE_UNSET) {
 					printf("Failed to initialize composite type.\n");
