@@ -164,7 +164,7 @@ get_job(struct ast_dt_context *ctx, ast_dt_job_id id)
 {
 	assert(ctx->page_size > 0);
 	size_t jobs_per_page = ctx->page_size / sizeof(struct ast_dt_job);
-	assert(id < jobs_per_page * ctx->num_job_pages);
+	assert(id >= 0 && id < jobs_per_page * ctx->num_job_pages);
 
 	return &ctx->job_pages[id / jobs_per_page][id % jobs_per_page];
 }
@@ -345,6 +345,10 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 			ast_dt_job_kind_name(job->kind),
 			ast_dt_job_expr_name(job->expr));
 
+	if (job->kind == AST_DT_JOB_FREE) {
+		return;
+	}
+
 	ast_member_id mbr_id = -1;
 	switch (job->expr) {
 		case AST_DT_JOB_EXPR_TARGET:
@@ -364,9 +368,14 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 
 // Requests that from must be evaluated before to.
 static void
-ast_dt_job_depndency(struct ast_dt_context *ctx,
+ast_dt_job_dependency(struct ast_dt_context *ctx,
 		ast_dt_job_id from_id, ast_dt_job_id to_id)
 {
+	if (from_id < 0) {
+		// The dependecy was already completed.
+		return;
+	}
+
 	struct ast_dt_job *from, *to;
 	from = get_job(ctx, from_id);
 	to = get_job(ctx, to_id);
@@ -423,11 +432,11 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 		ast_dt_job_bind(ctx, new_bind,
 				AST_DT_JOB_CODEGEN);
 
-	ast_dt_job_depndency(ctx,
+	ast_dt_job_dependency(ctx,
 			new_bind->value_jobs.resolve_names,
 			new_bind->value_jobs.resolve_types);
 
-	ast_dt_job_depndency(ctx,
+	ast_dt_job_dependency(ctx,
 			new_bind->value_jobs.resolve_types,
 			new_bind->value_jobs.codegen);
 
@@ -556,11 +565,11 @@ ast_dt_register_member(struct ast_dt_context *ctx,
 		ast_dt_job_type(ctx, mbr_id,
 				AST_DT_JOB_CODEGEN);
 
-	ast_dt_job_depndency(ctx,
+	ast_dt_job_dependency(ctx,
 			mbr_ptr->type_jobs.resolve_names,
 			mbr_ptr->type_jobs.resolve_types);
 
-	ast_dt_job_depndency(ctx,
+	ast_dt_job_dependency(ctx,
 			mbr_ptr->type_jobs.resolve_types,
 			mbr_ptr->type_jobs.codegen);
 
@@ -951,7 +960,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 			// TODO: We should evaluate the binds that is being overridden.
 
 			if (!mbr->type_node) {
-				ast_dt_job_depndency(ctx,
+				ast_dt_job_dependency(ctx,
 						mbr->bound->value_jobs.resolve_types,
 						mbr->type_jobs.resolve_names);
 			}
@@ -971,7 +980,7 @@ ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
 
 	switch (req) {
 		case AST_NAME_DEP_REQUIRE_TYPE:
-			ast_dt_job_depndency(ctx,
+			ast_dt_job_dependency(ctx,
 					mbr->type_jobs.codegen,
 					target_job);
 			break;
@@ -988,7 +997,7 @@ ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
 				return;
 			}
 
-			ast_dt_job_depndency(ctx,
+			ast_dt_job_dependency(ctx,
 					mbr->bound->value_jobs.codegen,
 					target_job);
 			break;
@@ -1245,6 +1254,52 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	return -1;
 }
 
+static void
+ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
+{
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+
+	assert(job->kind != AST_DT_JOB_FREE);
+
+	struct ast_dt_expr_jobs *jobs = NULL;
+
+	switch (job->expr) {
+		case AST_DT_JOB_EXPR_TARGET:
+			return;
+
+		case AST_DT_JOB_EXPR_BIND:
+			jobs = &job->bind->value_jobs;
+			break;
+
+		case AST_DT_JOB_EXPR_TYPE:
+			jobs = &get_member(ctx, job->member)->type_jobs;
+			break;
+	}
+
+	assert(jobs);
+
+	switch (job->kind) {
+		case AST_DT_JOB_FREE:
+			return;
+
+		case AST_DT_JOB_RESOLVE_NAMES:
+			assert(jobs->resolve_names == job_id);
+			jobs->resolve_names = -1;
+			break;
+
+		case AST_DT_JOB_RESOLVE_TYPES:
+			assert(jobs->resolve_types == job_id);
+			jobs->resolve_types = -1;
+			break;
+
+		case AST_DT_JOB_CODEGEN:
+			assert(jobs->codegen == job_id);
+			jobs->codegen = -1;
+			break;
+	}
+}
+
 static int
 ast_dt_run_jobs(struct ast_dt_context *ctx)
 {
@@ -1289,6 +1344,7 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 			}
 		}
 
+		ast_dt_remove_job_from_target(ctx, job_id);
 		ast_dt_free_job(ctx, job_id);
 	}
 
