@@ -32,6 +32,13 @@ struct ast_name_ref {
 	};
 };
 
+// Defined in ast_typecheck.c
+bool
+ast_name_ref_equals(struct ast_name_ref lhs, struct ast_name_ref rhs);
+
+void
+ast_print_name_ref(struct ast_name_ref);
+
 struct ast_node;
 struct ast_module;
 struct ast_object_def;
@@ -528,6 +535,9 @@ struct ast_node {
 		} variant;
 	};
 };
+
+char *
+ast_node_name(enum ast_node_kind);
 
 #define AST_NODE_VISIT(node, visit_composite_body, visit_func_body)				\
 	do { assert((node)); switch ((node)->kind) {								\

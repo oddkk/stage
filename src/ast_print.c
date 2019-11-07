@@ -188,8 +188,8 @@ print_slot(struct ast_env *env, ast_slot_id slot)
 	printf("%i", slot);
 }
 
-static void
-print_name_ref(struct ast_name_ref ref)
+void
+ast_print_name_ref(struct ast_name_ref ref)
 {
 	switch (ref.kind) {
 		case AST_NAME_REF_NOT_FOUND:
@@ -219,7 +219,7 @@ ast_print_internal_closure(struct ast_context *ctx, struct ast_env *env,
 	for (size_t i = 0; i < closure->num_members; i++) {
 		print_indent(depth + 1);
 		printf("%.*s: ", ALIT(closure->members[i].name));
-		print_name_ref(closure->members[i].ref);
+		ast_print_name_ref(closure->members[i].ref);
 		printf("\n");
 	}
 }
@@ -245,7 +245,7 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			}
 
 			print_indent(depth + 1);
-			printf("return type\n");
+			printf("return type %i\n", node->func.return_type_slot);
 			ast_print_internal(ctx, env, node->func.return_type, depth + 2);
 
 			if (node->kind == AST_NODE_FUNC) {
@@ -404,7 +404,7 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			printf(": ");
 			print_slot(env, ast_node_type(ctx, env, node));
 			printf(" (");
-			print_name_ref(node->lookup.ref);
+			ast_print_name_ref(node->lookup.ref);
 			printf(")\n");
 			break;
 	}

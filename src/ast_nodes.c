@@ -6,6 +6,27 @@
 #include "base/mod.h"
 #include "dlist.h"
 
+char *
+ast_node_name(enum ast_node_kind kind)
+{
+	switch (kind) {
+		case AST_NODE_FUNC:			return "FUNC";
+		case AST_NODE_FUNC_NATIVE:	return "FUNC_NATIVE";
+		case AST_NODE_CALL:			return "CALL";
+		case AST_NODE_CONS:			return "CONS";
+		case AST_NODE_ACCESS:		return "ACCESS";
+		case AST_NODE_TEMPL:		return "TEMPL";
+		case AST_NODE_SLOT:			return "SLOT";
+		case AST_NODE_LIT:			return "LIT";
+		case AST_NODE_LOOKUP:		return "LOOKUP";
+
+		case AST_NODE_COMPOSITE:	return "COMPOSITE";
+		case AST_NODE_VARIANT:		return "VARIANT";
+	}
+
+	return "(invalid)";
+}
+
 ast_slot_id
 ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot)
 {
