@@ -371,6 +371,49 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			}
 			break;
 
+		case AST_NODE_LOOKUP:
+			switch (node->lookup.ref.kind) {
+				case AST_NAME_REF_MEMBER:
+					for (size_t i = 0; i < info->num_members; i++) {
+						if (info->members[i] == node->lookup.ref.member) {
+							result.first = result.last = NULL;
+							result.out_var = bc_alloc_param(
+									bc_env, i, node->type);
+							break;
+						}
+					}
+					break;
+
+				case AST_NAME_REF_PARAM:
+					result.first = result.last = NULL;
+					result.out_var = bc_alloc_param(
+							bc_env, node->lookup.ref.param, node->type);
+					break;
+
+				case AST_NAME_REF_CLOSURE:
+					assert(node->lookup.ref.closure < info->num_closures);
+					if (info->closures[node->lookup.ref.closure].req ==
+							AST_NAME_DEP_REQUIRE_VALUE) {
+						struct bc_instr *lit_instr;
+						lit_instr = bc_gen_load(bc_env, BC_VAR_NEW,
+								info->closures[node->lookup.ref.closure].value);
+
+						append_bc_instr(&result, lit_instr);
+
+						result.out_var = lit_instr->load.target;
+
+						return result;
+					} else {
+						panic("TODO: Closures");
+					}
+					break;
+
+				case AST_NAME_REF_NOT_FOUND:
+					panic("Got failed lookup in code gen.");
+					break;
+			}
+			break;
+
 		case AST_NODE_LIT:
 			{
 				struct bc_instr *lit_instr;
@@ -408,10 +451,6 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			return result;
 
 		case AST_NODE_VARIANT:
-			break;
-
-		case AST_NODE_LOOKUP:
-			panic("Got lookup node in gen_bytecode.");
 			break;
 	}
 
@@ -491,9 +530,10 @@ ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 }
 
 struct bc_env *
-ast_composite_bind_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct atom **value_names, type_id *value_types, size_t num_values,
-		struct ast_node *expr)
+ast_composite_bind_gen_bytecode(
+		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
+		ast_member_id *members, type_id *member_types, size_t num_members,
+		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr)
 {
 	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
 	bc_env->vm = ctx->vm;
@@ -505,11 +545,15 @@ ast_composite_bind_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 	*/
 
 	struct ast_gen_info info = {0};
-	info.member_names = value_names;
-	info.num_member_names = num_values;
+	info.members = members;
+	info.member_types = member_types;
+	info.num_members = num_members;
 
-	for (size_t i = 0; i < num_values; i++) {
-		bc_alloc_param(bc_env, i, value_types[i]);
+	info.closures = closures;
+	info.num_closures = num_closures;
+
+	for (size_t i = 0; i < num_members; i++) {
+		bc_alloc_param(bc_env, i, member_types[i]);
 	}
 
 	struct ast_gen_bc_result func_instr;

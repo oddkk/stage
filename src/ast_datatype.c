@@ -922,6 +922,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		struct ast_dt_member *new_mbr;
 		new_mbr = get_member(ctx, mbr_id);
 
+		new_mbr->type_node = node->composite.members[i].type;
 		new_mbr->flags |= AST_DT_MEMBER_IS_LOCAL;
 		new_mbr->first_child = -1;
 	}
@@ -1032,6 +1033,8 @@ ast_dt_bind_typecheck_dep(struct ast_dt_context *ctx,
 	if (!dep->determined) {
 		return;
 	}
+
+	dep->value = AST_BIND_FAILED;
 
 	switch (dep->req) {
 		case AST_NAME_DEP_REQUIRE_VALUE:
@@ -1246,7 +1249,171 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			return 0;
 
 		case AST_DT_JOB_CODEGEN:
-			break;
+			{
+				struct ast_name_dep *names = NULL;
+				size_t num_names = 0;
+
+				ast_node_find_named_dependencies(
+						node, dep_req, &names, &num_names);
+
+				size_t num_dep_members = 0;
+				for (size_t i = 0; i < num_names; i++) {
+					if (names[i].ref.kind == AST_NAME_REF_MEMBER) {
+						num_dep_members += 1;
+					}
+				}
+
+				ast_member_id dep_members[num_dep_members];
+				type_id dep_member_types[num_dep_members];
+
+				for (size_t i = 0; i < num_names; i++) {
+					if (names[i].ref.kind == AST_NAME_REF_MEMBER) {
+						dep_members[i] = names[i].ref.member;
+						struct ast_dt_member *mbr = get_member(ctx, dep_members[i]);
+						assert(mbr->type != TYPE_UNSET);
+						dep_member_types[i] = mbr->type;
+					}
+				}
+
+				num_names = 0;
+				free(names);
+				names = NULL;
+
+				struct bc_env *bc_env;
+				bc_env =
+					ast_composite_bind_gen_bytecode(
+							ctx->ast_ctx, ctx->ast_mod, ctx->ast_env,
+							dep_members, dep_member_types, num_dep_members,
+							ctx->closures, ctx->num_closures, node);
+
+				struct ast_dt_member *mbr;
+
+				switch (job->expr) {
+					case AST_DT_JOB_EXPR_TARGET:
+						panic("Invalid target job.");
+						return -1;
+
+					case AST_DT_JOB_EXPR_BIND:
+						mbr = get_member(ctx, job->bind->target);
+						break;
+
+					case AST_DT_JOB_EXPR_TYPE:
+						mbr = get_member(ctx, job->member);
+						break;
+				}
+
+
+				assert(mbr->type != TYPE_UNSET);
+
+				struct func func = {0};
+				func.type = stg_register_func_type(ctx->ast_mod->stg_mod,
+						mbr->type, dep_member_types, num_dep_members);
+
+				func.kind = FUNC_BYTECODE;
+				func.bytecode = bc_env;
+
+				func_id fid;
+				fid = stg_register_func(ctx->ast_mod->stg_mod, func);
+
+				switch (job->expr) {
+					case AST_DT_JOB_EXPR_TARGET:
+						panic("Tried to generate bytecode for target.");
+						break;
+
+					case AST_DT_JOB_EXPR_BIND:
+						{
+							job->bind->num_member_deps = num_dep_members;
+							job->bind->member_deps = calloc(
+									job->bind->num_member_deps, sizeof(ast_member_id));
+
+							bool is_const = true;
+
+							struct object dep_member_values[job->bind->num_member_deps];
+
+							for (size_t i = 0; i < job->bind->num_member_deps; i++) {
+								job->bind->member_deps[i] = dep_members[i];
+
+								struct ast_dt_member *dep_mbr;
+								dep_mbr = get_member(ctx, dep_members[i]);
+
+								if ((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+									is_const = false;
+								}
+
+								dep_member_values[i] = dep_mbr->const_value;
+							}
+
+							job->bind->value.func = fid;
+
+							printf("Type of %.*s: ", ALIT(mbr->name));
+							print_type_repr(ctx->ast_ctx->vm,
+									vm_get_type(ctx->ast_ctx->vm, mbr->type));
+
+							if (is_const && !job->bind->overridable) {
+								printf(" [const] ");
+								struct type *ret_type;
+								ret_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
+
+								uint8_t buffer[ret_type->size];
+								struct object obj = {0};
+								obj.type = mbr->type;
+								obj.data = buffer;
+
+								int err;
+								err = vm_call_func(ctx->ast_ctx->vm, fid, dep_member_values,
+										job->bind->num_member_deps, &obj);
+								if (err) {
+									printf("Failed to evaluate constant member.\n");
+									return -1;
+								}
+
+								mbr->const_value =
+									register_object(ctx->ast_ctx->vm, ctx->ast_env->store, obj);
+								mbr->flags |= AST_DT_MEMBER_IS_CONST;
+
+								print_obj_repr(ctx->ast_ctx->vm, mbr->const_value);
+							}
+
+							printf("\n");
+						}
+						break;
+
+					case AST_DT_JOB_EXPR_TYPE:
+						{
+							struct object const_member_values[num_dep_members];
+							for (size_t i = 0; i < num_dep_members; i++) {
+								struct ast_dt_member *dep_mbr;
+								dep_mbr = get_member(ctx, dep_members[i]);
+
+								assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
+
+								const_member_values[i] = dep_mbr->const_value;
+							}
+
+							type_id out_type = TYPE_UNSET;
+							struct object out = {0};
+							out.type = ctx->ast_ctx->types.type;
+							out.data = &out_type;
+
+							int err;
+							err = vm_call_func(ctx->ast_ctx->vm, fid,
+									const_member_values, num_dep_members,
+									&out);
+							if (err) {
+								printf("Failed to evaluate member type.\n");
+								return -1;
+							}
+
+							mbr->type = out_type;
+							printf("Type of %.*s: ", ALIT(mbr->name));
+							print_type_repr(ctx->ast_ctx->vm,
+									vm_get_type(ctx->ast_ctx->vm, mbr->type));
+							printf("\n");
+						}
+						break;
+				}
+			}
+			return 0;
 
 		case AST_DT_JOB_FREE:
 			panic("Attempted to dispatch job that has been freed.");
@@ -1315,7 +1482,11 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 		ctx->terminal_jobs = job->terminal_jobs;
 		job->terminal_jobs = -1;
 
-		ast_dt_dispatch_job(ctx, job_id);
+		int err;
+		err = ast_dt_dispatch_job(ctx, job_id);
+		if (err) {
+			printf("job failed!\n");
+		}
 
 		if (job->num_incoming_deps > 0) {
 			// If the node gave itself new dependencies we don't mark it as
@@ -1427,6 +1598,7 @@ ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 	}
 }
 
+/*
 static int
 ast_dt_make_bind_func(struct ast_dt_context *dt_ctx, struct ast_module *mod,
 		struct ast_dt_bind *bind)
@@ -1485,7 +1657,6 @@ ast_dt_make_bind_func(struct ast_dt_context *dt_ctx, struct ast_module *mod,
 	return 0;
 }
 
-/*
 static int
 ast_dt_gen_bind(struct ast_dt_context *dt_ctx, struct ast_module *mod,
 		struct ast_dt_bind *bind, struct ast_object_def_bind *binds,
@@ -1714,8 +1885,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 			continue;
 		}
 
-		int err;
-		err = ast_dt_make_bind_func(ctx, mod, mbr->bound);
+		// int err;
+		// err = ast_dt_make_bind_func(ctx, mod, mbr->bound);
 
 		binds[bind_i].kind = mbr->bound->kind;
 		switch (mbr->bound->kind) {
@@ -1802,9 +1973,6 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	if (err) {
 		printf("One or more jobs failed when resolving datastructure.\n");
 	}
-
-	printf("done with datastructure for now.\n");
-	return -1;
 
 	type_id result = TYPE_UNSET;
 

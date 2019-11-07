@@ -82,7 +82,7 @@ ast_init_node_func_native(struct ast_context *ctx, struct ast_env *env,
 	}
 
 	memset(node, 0, sizeof(struct ast_node));
-	node->kind = AST_NODE_FUNC;
+	node->kind = AST_NODE_FUNC_NATIVE;
 	node->loc = loc;
 
 	node->func.params = calloc(sizeof(struct ast_func_param), num_params);
@@ -1343,6 +1343,20 @@ ast_node_find_named_dependencies_add(
 		dep.req = req;
 
 		if (out_refs) {
+
+			// Check if the reference was already found.
+			for (size_t i = 0; i < *out_num_refs; i++) {
+				if (ast_name_ref_equals((*out_refs)->ref, ref)) {
+
+					// Make sure to keep the strictest requirement, in this
+					// case value.
+					if (req == AST_NAME_DEP_REQUIRE_VALUE) {
+						(*out_refs)->req = req;
+					}
+					return 0;
+				}
+			}
+
 			dlist_append(
 					*(out_refs),
 					*(out_num_refs),
@@ -1365,8 +1379,12 @@ ast_node_closure_find_named_dependencies(
 	int err = 0;
 
 	for (size_t i = 0; i < closure->num_members; i++) {
+		enum ast_name_dep_requirement mbr_req = req;
+		if (closure->members[i].require_const) {
+			mbr_req = AST_NAME_DEP_REQUIRE_VALUE;
+		}
 		err += ast_node_find_named_dependencies_add(
-				closure->members[i].ref, req, out_refs, out_num_refs);
+				closure->members[i].ref, mbr_req, out_refs, out_num_refs);
 	}
 
 	return err;
@@ -1391,6 +1409,13 @@ ast_node_find_named_dependencies(
 			err += ast_node_closure_find_named_dependencies(
 					req, &node->func.closure,
 					out_refs, out_num_refs);
+
+			// fallthrough
+
+		case AST_NODE_FUNC_NATIVE:
+			// We require the value in order to get all the type information
+			// from the function's parameters and return type. The function
+			// body will not be visited.
 			req = AST_NAME_DEP_REQUIRE_VALUE;
 			break;
 
@@ -1398,6 +1423,9 @@ ast_node_find_named_dependencies(
 			err += ast_node_closure_find_named_dependencies(
 					req, &node->composite.closure,
 					out_refs, out_num_refs);
+
+			// We will not visit the members, binds or free expressions from
+			// the composite.
 			break;
 
 		default:

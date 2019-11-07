@@ -802,8 +802,12 @@ struct ast_gen_bc_result {
 };
 
 struct ast_gen_info {
-	struct atom **member_names;
-	size_t num_member_names;
+	ast_member_id *members;
+	type_id *member_types;
+	size_t num_members;
+
+	struct ast_typecheck_closure *closures;
+	size_t num_closures;
 };
 
 struct ast_gen_bc_result
@@ -816,9 +820,10 @@ ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node);
 
 struct bc_env *
-ast_composite_bind_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct atom **value_names, type_id *value_types, size_t num_values,
-		struct ast_node *expr);
+ast_composite_bind_gen_bytecode(
+		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
+		ast_member_id *members, type_id *member_types, size_t num_members,
+		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr);
 
 void
 ast_print(struct ast_context *, struct ast_env *, struct ast_node *);

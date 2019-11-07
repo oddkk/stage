@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static bool
+bool
 ast_name_ref_equals(struct ast_name_ref lhs, struct ast_name_ref rhs)
 {
 	if (lhs.kind != rhs.kind) {
@@ -132,6 +132,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 					NULL, ctx->cons.func);
 			target = ast_bind_slot_wildcard(ctx, env, target,
 						NULL, node->func.type);
+			node->func.slot = target;
 
 			ast_slot_id param_types[node->func.num_params];
 
@@ -158,13 +159,12 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 				ast_unpack_arg_named(
 						ctx, env, node->func.type, AST_BIND_NEW,
 						ctx->atoms.func_cons_arg_ret);
+			printf("ret type slot %i\n", node->func.return_type_slot);
 
 			node->func.return_type_slot = ast_node_bind_slots(
 					ctx, mod, env, node->func.return_type,
 					node->func.return_type_slot,
 					deps, num_deps);
-
-			node->func.slot = target;
 
 			if (node->kind == AST_NODE_FUNC) {
 				ast_slot_id body_slot;
@@ -397,7 +397,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 			struct ast_typecheck_dep *res;
 			res = ast_find_dep(deps, num_deps, node->lookup.ref);
 			assert(res->value == AST_SLOT_TYPE || res->value >= 0);
-			target = res->value;
+			target = ast_union_slot(ctx, env, target, res->value);
 			node->lookup.slot = target;
 		}
 		break;
