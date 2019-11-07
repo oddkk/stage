@@ -893,6 +893,14 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 				NULL, NULL, 0,
 				main_mod_ret, main_mod_cons);
 
+		int err;
+		err = ast_node_typecheck(ast_ctx, main_mod, &main_mod->env,
+				main_mod_init_func, NULL, 0);
+		if (err) {
+			printf("Failed typechecking initialize function for main module.\n");
+			return -1;
+		}
+
 		struct bc_env *bc_env;
 		bc_env = ast_func_gen_bytecode(ast_ctx, main_mod,
 				&main_mod->env, main_mod_init_func);
