@@ -284,7 +284,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 
 			// bind all param types to func type
 			if (node->kind == AST_NODE_CALL) {
-				ast_slot_id ret_type_slot = ast_unpack_arg_named(
+				node->call.ret_type = ast_unpack_arg_named(
 						ctx, env, func_type_slot, AST_BIND_NEW,
 						ctx->atoms.func_cons_arg_ret);
 
@@ -293,7 +293,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 						ctx->atoms.func_cons_arg_params);
 
 				target = ast_bind_slot_wildcard(
-						ctx, env, target, NULL, ret_type_slot);
+						ctx, env, target, NULL, node->call.ret_type);
 
 				struct ast_env_slot param_types;
 				param_types = ast_env_slot(ctx, env, param_types_slot);
@@ -328,6 +328,9 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 					assert(i == 0 || is_named == this_is_named);
 					is_named = this_is_named;
 				}
+
+				node->call.ret_type =
+					ast_env_slot(ctx, env, node->call.cons).type;
 
 				struct ast_env_slot slot;
 				slot = ast_env_slot(ctx, env, node->call.cons);

@@ -990,11 +990,13 @@ ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
 			if (!mbr->bound) {
 				printf("Can not depend on the value of this "
 						"member as it is not bound.\n");
+				ctx->num_errors += 1;
 				return;
 			}
 			if (mbr->bound->overridable) {
 				printf("Can not depend on the value of this "
 						"member as it is overridable.\n");
+				ctx->num_errors += 1;
 				return;
 			}
 
