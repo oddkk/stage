@@ -35,8 +35,8 @@ struct ast_dt_bind {
 
 	struct stg_location loc;
 
-	ast_member_id *deps;
-	size_t num_deps;
+	ast_member_id *member_deps;
+	size_t num_member_deps;
 
 	struct ast_dt_expr_jobs value_jobs;
 	struct ast_dt_bind *next_alloced;
@@ -957,7 +957,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		mbr = get_member(ctx, mbr_id);
 
 		if (mbr->bound) {
-			// TODO: We should evaluate the binds that is being overridden.
+			// TODO: We should evaluate the binds that are being overridden.
 
 			if (!mbr->type_node) {
 				ast_dt_job_dependency(ctx,
@@ -1731,14 +1731,14 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 				break;
 		}
 
-		for (size_t i = 0; i < mbr->bound->num_deps; i++) {
-			mbr->bound->deps[i] =
+		for (size_t i = 0; i < mbr->bound->num_member_deps; i++) {
+			mbr->bound->member_deps[i] =
 				ast_dt_calculate_persistant_id(
-						ctx, mbr->bound->deps[i]);
+						ctx, mbr->bound->member_deps[i]);
 		}
 
-		binds[bind_i].value_params     = mbr->bound->deps;
-		binds[bind_i].num_value_params = mbr->bound->num_deps;
+		binds[bind_i].value_params     = mbr->bound->member_deps;
+		binds[bind_i].num_value_params = mbr->bound->num_member_deps;
 		binds[bind_i].target =
 			ast_dt_calculate_persistant_id(
 					ctx, mbr->bound->target);
