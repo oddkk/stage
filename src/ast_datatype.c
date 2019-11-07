@@ -485,7 +485,6 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 	return new_bind;
 }
 
-/*
 static struct ast_dt_bind *
 ast_dt_register_bind_func(struct ast_dt_context *ctx,
 		ast_member_id target, func_id func,
@@ -497,13 +496,12 @@ ast_dt_register_bind_func(struct ast_dt_context *ctx,
 	new_bind->kind = AST_OBJECT_DEF_BIND_VALUE;
 	new_bind->value.func = func;
 	new_bind->overridable = overridable;
-	new_bind->deps = value_params;
-	new_bind->num_deps = num_value_params;
+	new_bind->member_deps = value_params;
+	new_bind->num_member_deps = num_value_params;
 
 	new_bind->value_jobs.resolve_names = -1;
 	new_bind->value_jobs.resolve_types = -1;
 	new_bind->value_jobs.codegen = -1;
-
 
 	new_bind->loc = STG_NO_LOC;
 
@@ -523,8 +521,8 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 	new_bind->kind = AST_OBJECT_DEF_BIND_PACK;
 	new_bind->pack = pack;
 	new_bind->overridable = false;
-	new_bind->deps = value_params;
-	new_bind->num_deps = num_value_params;
+	new_bind->member_deps = value_params;
+	new_bind->num_member_deps = num_value_params;
 
 	new_bind->value_jobs.resolve_names = -1;
 	new_bind->value_jobs.resolve_types = -1;
@@ -537,7 +535,6 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 
 	return new_bind;
 }
-*/
 
 static ast_member_id
 ast_dt_register_member(struct ast_dt_context *ctx,
@@ -586,326 +583,6 @@ ast_dt_register_member(struct ast_dt_context *ctx,
 
 	return mbr_id;
 }
-
-enum ast_node_flags {
-	AST_NODE_FLAG_OK           = 0x00,
-	AST_NODE_FLAG_ERROR        = 0x01,
-	AST_NODE_FLAG_NOT_TYPED    = 0x02,
-	AST_NODE_FLAG_NOT_BOUND    = 0x04,
-	AST_NODE_FLAG_NOT_CONST    = 0x08,
-	AST_NODE_FLAG_NOT_RESOLVED = 0x10,
-};
-
-enum ast_node_flags
-ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
-{
-	enum ast_node_flags result = AST_NODE_FLAG_OK;
-
-	if (slot_id == AST_BIND_FAILED) {
-		result |= AST_NODE_FLAG_ERROR;
-		return result;
-	}
-
-	struct ast_env_slot slot;
-	slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env, slot_id);
-
-	if (slot.type != AST_SLOT_TYPE &&
-			ast_slot_analyze(ctx, slot.type) != AST_NODE_FLAG_OK) {
-		result |= AST_NODE_FLAG_NOT_TYPED;
-	}
-
-	switch (slot.kind) {
-		case AST_SLOT_WILDCARD:
-			result |= AST_NODE_FLAG_NOT_RESOLVED;
-			break;
-
-		case AST_SLOT_CONST_TYPE:
-			assert((result & AST_NODE_FLAG_NOT_TYPED) == 0);
-			break;
-
-		case AST_SLOT_CONST:
-			assert((result & AST_NODE_FLAG_NOT_TYPED) == 0);
-			break;
-
-		case AST_SLOT_PARAM:
-			result |= AST_NODE_FLAG_NOT_CONST;
-			break;
-
-		case AST_SLOT_MEMBER:
-			if (slot.member_id >= 0) {
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, slot.member_id);
-
-				if (mbr->type == TYPE_UNSET) {
-					result |= AST_NODE_FLAG_NOT_TYPED;
-				}
-
-				if (!mbr->bound || mbr->bound->overridable) {
-					result |= AST_NODE_FLAG_NOT_CONST;
-				}
-
-				// TODO: We might want to do a recursive check on each member
-				// dependency to determine if they are constant as they might
-				// not have been visited yet.
-				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
-					result |= AST_NODE_FLAG_NOT_CONST;
-				}
-			} else {
-				result |= AST_NODE_FLAG_NOT_BOUND;
-			}
-			break;
-
-		case AST_SLOT_CLOSURE:
-			result |= AST_NODE_FLAG_NOT_CONST;
-			break;
-
-		case AST_SLOT_TEMPL:
-			break;
-
-		case AST_SLOT_CONS:
-			if (!slot.cons.def) {
-				result |= AST_NODE_FLAG_NOT_RESOLVED;
-			}
-			for (size_t i = 0; i < slot.cons.num_present_args; i++) {
-				result |= ast_slot_analyze(ctx, slot.cons.args[i].slot);
-			}
-			break;
-
-		case AST_SLOT_CONS_ARRAY:
-			break;
-
-		case AST_SLOT_ERROR:
-			result |= AST_NODE_FLAG_ERROR;
-			break;
-
-		case AST_SLOT_SUBST:
-			return ast_slot_analyze(ctx, slot.subst);
-	}
-
-	return result;
-}
-
-enum ast_node_flags
-ast_node_analyze_name_ref(struct ast_dt_context *ctx, struct ast_name_ref ref)
-{
-	enum ast_node_flags result = AST_NODE_FLAG_OK;
-
-	switch (ref.kind) {
-		case AST_NAME_REF_NOT_FOUND:
-			result |= AST_NODE_FLAG_ERROR;
-			break;
-
-		case AST_NAME_REF_MEMBER:
-			// TODO: Get const and type information about member.
-			break;
-
-		case AST_NAME_REF_PARAM:
-			// TODO: Get const and type information about param.
-			break;
-
-		case AST_NAME_REF_CLOSURE:
-			// TODO: Get const and type information about closure.
-			break;
-	}
-
-	return result;
-}
-
-enum ast_node_flags
-ast_node_analyze_closure(struct ast_dt_context *ctx, struct ast_closure_target *closure)
-{
-	enum ast_node_flags result = AST_NODE_FLAG_OK;
-
-	for (size_t i = 0; i < closure->num_members; i++) {
-		result |= ast_node_analyze_name_ref(ctx, closure->members[i].ref);
-	}
-
-	return result;
-}
-
-enum ast_node_flags
-ast_node_analyze(struct ast_dt_context *ctx, struct ast_node *node)
-{
-	enum ast_node_flags result = AST_NODE_FLAG_OK;
-
-	switch (node->kind) {
-		case AST_NODE_FUNC:
-			result |= ast_node_analyze_closure(ctx,
-					&node->func.closure);
-			// fallthrough
-
-		case AST_NODE_FUNC_NATIVE:
-			for (size_t i = 0; i < node->func.num_params; i++) {
-				result |= ast_node_analyze(ctx, node->func.params[i].type);
-			}
-			break;
-
-		case AST_NODE_CALL:
-			// TODO: Check params.
-			// TODO: Check if function is pure or not.
-			break;
-
-		case AST_NODE_CONS:
-			// TODO: Check params.
-			// TODO: Check if cons is pure or not.
-			break;
-
-		case AST_NODE_TEMPL:
-			break;
-
-		case AST_NODE_ACCESS:
-			result |= ast_node_analyze(ctx, node->access.target);
-			if ((result & AST_NODE_FLAG_NOT_TYPED) == 0) {
-			}
-			break;
-
-		case AST_NODE_SLOT:
-			result |= ast_slot_analyze(ctx,
-					ast_node_resolve_slot(ctx->ast_env, &node->slot));
-			break;
-
-		case AST_NODE_LIT:
-			result |= ast_slot_analyze(ctx,
-					ast_node_resolve_slot(ctx->ast_env, &node->lit.slot));
-			break;
-
-		case AST_NODE_LOOKUP:
-			result |= ast_node_analyze_name_ref(ctx, node->lookup.ref);
-			break;
-
-		case AST_NODE_COMPOSITE:
-			result |= ast_node_analyze_closure(ctx,
-					&node->composite.closure);
-			break;
-
-		case AST_NODE_VARIANT:
-			break;
-	}
-
-	return result;
-}
-
-/*
-static void
-ast_dt_tag_member_const(struct ast_dt_context *ctx,
-		ast_member_id mbr_id, struct object obj)
-{
-	struct ast_dt_member *mbr;
-	mbr = get_member(ctx, mbr_id);
-
-	mbr->flags |= AST_DT_MEMBER_IS_CONST;
-	mbr->const_value = obj;
-}
-
-static bool
-ast_dt_try_bind_const_member(struct ast_dt_context *ctx,
-		struct ast_module *mod, ast_member_id mbr_id)
-{
-	struct ast_dt_member *mbr;
-	mbr = get_member(ctx, mbr_id);
-
-	switch (mbr->bound->kind) {
-		case AST_OBJECT_DEF_BIND_VALUE:
-			if (mbr->bound->value.func != FUNC_UNSET) {
-				bool is_const = true;
-				for (size_t i = 0; i < mbr->bound->num_deps; i++) {
-					struct ast_dt_member *dep = get_member(ctx, mbr->bound->deps[i]);
-					if ((dep->flags & AST_DT_MEMBER_IS_CONST) == 0) {
-						is_const = false;
-						break;
-					}
-				}
-
-				if (is_const) {
-					mbr->flags |= AST_DT_MEMBER_IS_CONST;
-
-					assert(mbr->type != TYPE_UNSET);
-
-					struct type *mbr_type;
-					mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
-
-					uint8_t obj_buffer[mbr_type->size];
-					struct object obj = {0};
-					obj.type = mbr->type;
-					obj.data = obj_buffer;
-
-					struct object args[mbr->bound->num_deps];
-					for (size_t i = 0; i < mbr->bound->num_deps; i++) {
-						struct ast_dt_member *dep = get_member(ctx, mbr->bound->deps[i]);
-						args[i] = dep->const_value;
-					}
-
-					int err;
-
-					err = vm_call_func(ctx->ast_ctx->vm,
-							mbr->bound->value.func, args,
-							mbr->bound->num_deps, &obj);
-
-					obj = register_object(
-							ctx->ast_ctx->vm, mod->env.store, obj);
-
-					ast_dt_tag_member_const(ctx, mbr_id, obj);
-					return true;
-				}
-			} else {
-				enum ast_node_flags flags;
-				flags = ast_node_analyze(ctx, mbr->bound->value.node);
-
-				if (flags == AST_NODE_FLAG_OK) {
-					int err;
-					struct object obj;
-					err = ast_node_eval(ctx->ast_ctx, mod,
-							ctx->ast_env, mbr->bound->value.node, &obj);
-					if (err) {
-						printf("Failed to evaluate value.\n");
-						return false;
-					}
-
-					ast_dt_tag_member_const(ctx, mbr_id, obj);
-
-					return true;
-				}
-			}
-			break;
-
-		case AST_OBJECT_DEF_BIND_PACK:
-			{
-				void *args[mbr->bound->num_deps];
-				for (size_t i = 0; i < mbr->bound->num_deps; i++) {
-					struct ast_dt_member *dep;
-					dep = get_member(ctx, mbr->bound->deps[i]);
-
-					if ((dep->flags & AST_DT_MEMBER_IS_CONST) == 0) {
-						return false;
-					}
-
-					args[i] = dep->const_value.data;
-				}
-
-				struct type *mbr_type;
-				mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
-
-				uint8_t buffer[mbr_type->size];
-
-				mbr->bound->pack->pack_func(ctx->ast_ctx->vm,
-						mbr->bound->pack->data, buffer,
-						args, mbr->bound->num_deps);
-
-				struct object obj = {0};
-				obj.data = buffer;
-				obj.type = mbr->type;
-
-				obj = register_object(ctx->ast_ctx->vm,
-						mod->env.store, obj);
-
-				ast_dt_tag_member_const(ctx, mbr_id, obj);
-			}
-			break;
-	}
-
-	return false;
-}
-*/
 
 static void
 ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
@@ -1598,117 +1275,6 @@ ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 		return result;
 	}
 }
-
-/*
-static int
-ast_dt_make_bind_func(struct ast_dt_context *dt_ctx, struct ast_module *mod,
-		struct ast_dt_bind *bind)
-{
-	struct ast_context *ctx = dt_ctx->ast_ctx;
-	struct ast_env *env = dt_ctx->ast_env;
-
-	if (bind->kind != AST_OBJECT_DEF_BIND_VALUE) {
-		return 0;
-	}
-
-	assert(bind->value.node || bind->value.func);
-
-	if (bind->value.func != FUNC_UNSET) {
-		// The function is already generated.
-		return 0;
-	}
-
-	struct func func = {0};
-
-	type_id value_type;
-
-	int err;
-	err = ast_node_eval_type_of(ctx, mod, env,
-			bind->value.node, &value_type);
-	if (err) {
-		printf("Failed to eval bind value type.\n");
-		return -1;
-	}
-
-	size_t num_deps = bind->num_deps;
-	struct atom *dep_names[num_deps];
-	type_id dep_types[num_deps];
-
-	for (size_t i = 0; i < num_deps; i++) {
-		ast_member_id dep_i = bind->deps[i];
-		struct ast_dt_member *dep = get_member(dt_ctx, dep_i);
-		dep_names[i] = dep->name;
-
-		assert(dep->type != TYPE_UNSET);
-		dep_types[i] = dep->type;
-	}
-
-	func.type = stg_register_func_type(mod->stg_mod,
-			value_type, dep_types, num_deps);
-
-	func.kind = FUNC_BYTECODE;
-	func.bytecode = ast_composite_bind_gen_bytecode(ctx, mod, env,
-			dep_names, dep_types, num_deps, bind->value.node);
-
-	func_id func_id;
-	func_id = stg_register_func(mod->stg_mod, func);
-
-	bind->value.func = func_id;
-
-	return 0;
-}
-
-static int
-ast_dt_gen_bind(struct ast_dt_context *dt_ctx, struct ast_module *mod,
-		struct ast_dt_bind *bind, struct ast_object_def_bind *binds,
-		size_t *bind_i, ast_member_id target)
-{
-	struct ast_context *ctx = dt_ctx->ast_ctx;
-	struct ast_env *env = dt_ctx->ast_env;
-
-	struct ast_dt_member *mbr;
-	mbr = get_member(dt_ctx, target);
-
-	binds[*bind_i].target = target;
-
-	binds[*bind_i].num_value_params = mbr->bound->num_deps;
-	binds[*bind_i].value_params = calloc(mbr->bound->num_deps,
-			sizeof(ast_slot_id));
-
-	for (size_t dep_i = 0; dep_i < mbr->bound->num_deps; dep_i++) {
-		binds[*bind_i].value_params[dep_i] = mbr->bound->deps[dep_i];
-	}
-
-	binds[*bind_i].value =
-
-	binds[*bind_i].overridable = mbr->bound->overridable;
-	(*bind_i) += 1;
-
-	return 0;
-}
-
-static void
-ast_dt_gen_binds_for_target(struct ast_dt_context *ctx, struct ast_module *mod,
-		struct ast_dt_bind *bind, struct ast_object_def_bind *binds,
-		size_t *bind_i, struct ast_node *target)
-{
-	switch (target->kind) {
-		case AST_NODE_SLOT:
-			{
-				struct ast_env_slot slot;
-				slot = ast_env_slot(ctx->ast_ctx, ctx->ast_env, target->slot);
-				assert(slot.member_id >= 0);
-
-				ast_dt_gen_bind(ctx, mod, bind, binds, bind_i, slot.member_id);
-			}
-			break;
-
-		default:
-			panic("TODO: Implement support for more complex bind targets.");
-			break;
-	}
-}
-*/
 
 struct ast_dt_local_member {
 	struct atom *name;
