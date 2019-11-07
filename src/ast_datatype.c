@@ -1123,8 +1123,10 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				}
 
 				int err;
-				err = ast_composite_node_resolve_names(ctx->ast_ctx, ctx->ast_env,
-						NULL, NULL, require_const, ctx->root_node, node,
+				err = ast_composite_node_resolve_names(
+						ctx->ast_ctx, ctx->ast_env,
+						ctx->ast_mod->stg_mod->native_mod,
+						NULL, require_const, ctx->root_node, node,
 						ctx->local_member_ids);
 				if (err) {
 					printf("Failed to resolve names.\n");
