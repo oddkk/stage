@@ -988,12 +988,12 @@ ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
 
 		case AST_NAME_DEP_REQUIRE_VALUE:
 			if (!mbr->bound) {
-				printf("Can not depend on the value of this"
+				printf("Can not depend on the value of this "
 						"member as it is not bound.\n");
 				return;
 			}
 			if (mbr->bound->overridable) {
-				printf("Can not depend on the value of this"
+				printf("Can not depend on the value of this "
 						"member as it is overridable.\n");
 				return;
 			}

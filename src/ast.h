@@ -733,23 +733,6 @@ bool
 ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *node);
 
-// bool
-// ast_node_resolve_slots(struct ast_context *, struct ast_module *,
-// 		struct ast_env *, struct ast_node *);
-
-int
-ast_node_eval(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *node,
-		struct object *out);
-
-int
-ast_node_eval_type(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *node, type_id *out);
-
-int
-ast_node_eval_type_of(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *node, type_id *out);
-
 enum ast_name_dep_requirement {
 	AST_NAME_DEP_REQUIRE_TYPE,
 	AST_NAME_DEP_REQUIRE_VALUE,
