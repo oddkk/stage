@@ -1,6 +1,7 @@
 #include "ast.h"
 #include "bytecode.h"
 #include "native_bytecode.h"
+#include "module.h"
 #include "vm.h"
 #include "base/mod.h"
 #include <stdlib.h>
@@ -79,16 +80,49 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 	struct ast_gen_bc_result result = {0};
 	switch (node->kind) {
 		case AST_NODE_FUNC:
+			{
+				struct bc_env *func_bc;
+				func_bc = ast_func_gen_bytecode(ctx, mod, env, node);
+
+				struct func new_func = {0};
+				new_func.kind = FUNC_BYTECODE;
+				assert(node->type != TYPE_UNSET);
+				new_func.type = node->type;
+				new_func.bytecode = func_bc;
+
+				func_id fid;
+				fid = stg_register_func(mod->stg_mod, new_func);
+
+				struct object func_obj = {0};
+				func_obj.type = new_func.type;
+				func_obj.data = &fid;
+				func_obj = register_object(ctx->vm, env->store, func_obj);
+
+				struct bc_instr *func_instr;
+				func_instr = bc_gen_load(bc_env, BC_VAR_NEW, func_obj);
+
+				append_bc_instr(&result, func_instr);
+
+				result.out_var = func_instr->load.target;
+			}
+			return result;
+
 		case AST_NODE_FUNC_NATIVE:
 			{
-				struct object func_obj = {0};
-				int err;
+				struct func new_func = {0};
+				new_func.kind = FUNC_NATIVE;
+				assert(node->type != TYPE_UNSET);
+				new_func.type = node->type;
+				assert(node->func.native.func != NULL);
+				new_func.native = node->func.native.func;
 
-				err = ast_node_eval(ctx, mod, env, node, &func_obj);
-				if (err) {
-					panic("Failed to eval func node in gen bytecode.");
-					return (struct ast_gen_bc_result){0};
-				}
+				func_id fid;
+				fid = stg_register_func(mod->stg_mod, new_func);
+
+				struct object func_obj = {0};
+				func_obj.type = new_func.type;
+				func_obj.data = &fid;
+				func_obj = register_object(ctx->vm, env->store, func_obj);
 
 				struct bc_instr *func_instr;
 				func_instr = bc_gen_load(bc_env, BC_VAR_NEW, func_obj);
@@ -133,26 +167,14 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 		case AST_NODE_CONS:
 			{
-				struct object cons_obj;
-				int err;
+				struct ast_env_slot cons_slot;
+				cons_slot = ast_env_slot(ctx, env,
+						ast_node_resolve_slot(env, &node->call.cons));
+				assert(cons_slot.kind == AST_SLOT_CONS);
 
-				err = ast_node_eval(ctx, mod, env, node->call.func, &cons_obj);
-				if (err) {
-					panic("Failed to evaluate cons.");
-					return (struct ast_gen_bc_result){0};
-				}
-				assert_type_equals(ctx->vm, cons_obj.type, ctx->types.cons);
 				struct ast_object_def *def;
-				def = *(struct ast_object_def **)cons_obj.data;
+				def = cons_slot.cons.def;
 				assert(def);
-
-				type_id ret_type;
-				err = ast_slot_pack_type(ctx, mod, env,
-						ast_node_type(ctx, env, node), &ret_type);
-				if (err) {
-					panic("Failed to pack cons type.");
-					return (struct ast_gen_bc_result){0};
-				}
 
 				if (def->pack_func != FUNC_UNSET) {
 					size_t num_desc_members;
@@ -205,7 +227,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 					append_bc_instr(&result,
 							bc_gen_pack(bc_env, BC_VAR_NEW,
-								def->pack_func, def->data, ret_type));
+								def->pack_func, def->data, node->type));
 					result.out_var = result.last->pack.target;
 				} else {
 					struct object obj;
@@ -467,37 +489,20 @@ ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
 	bc_env->vm = ctx->vm;
 	bc_env->store = ctx->vm->instr_store;
-	int err;
 
-	/*
-	 * TODO: Assert that the returned value in byte code has the same type we
-	 * expect.
-	struct object ret_type_obj;
+	assert(stg_type_is_func(ctx->vm, node->type));
 
-	err = ast_node_eval(ctx, mod, env,
-			node->func.return_type, &ret_type_obj);
-	if (err) {
-		free(bc_env);
-		panic("Failed to eval param type in gen bytecode");
-		return NULL;
-	}
+	struct type *target_func_type;
+	target_func_type = vm_get_type(ctx->vm, node->type);
 
-	assert_type_equals(ctx->vm, ret_type_obj.type, ctx->types.type);
-	type_id ret_tid = *(type_id *)ret_type_obj.data;
-	*/
+	struct stg_func_type *target_func_info;
+	target_func_info = target_func_type->data;
+
+	assert(target_func_info->num_params == node->func.num_params);
 
 	for (size_t i = 0; i < node->func.num_params; i++) {
-		struct object param_type_obj;
-		err = ast_node_eval(ctx, mod, env,
-				node->func.params[i].type, &param_type_obj);
-		if (err) {
-			free(bc_env);
-			panic("Failed to eval param type in gen bytecode");
-			return NULL;
-		}
-		assert_type_equals(ctx->vm, param_type_obj.type, ctx->types.type);
-
-		type_id param_tid = *(type_id *)param_type_obj.data;
+		type_id param_tid;
+		param_tid = target_func_info->params[i];
 
 		bc_alloc_param(bc_env, i, param_tid);
 	}
