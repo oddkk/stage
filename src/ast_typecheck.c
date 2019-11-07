@@ -159,7 +159,6 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 				ast_unpack_arg_named(
 						ctx, env, node->func.type, AST_BIND_NEW,
 						ctx->atoms.func_cons_arg_ret);
-			printf("ret type slot %i\n", node->func.return_type_slot);
 
 			node->func.return_type_slot = ast_node_bind_slots(
 					ctx, mod, env, node->func.return_type,
@@ -486,9 +485,6 @@ ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
 			deps, num_deps);
 
 	err = ast_node_resolve_types(ctx, mod, env, node);
-
-	ast_print(ctx, env, node);
-	ast_env_print(ctx->vm, env);
 
 	if (err) {
 		return -1;

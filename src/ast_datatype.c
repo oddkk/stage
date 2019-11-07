@@ -12,6 +12,8 @@
 // For mmap
 #include <sys/mman.h>
 
+#define AST_DT_DEBUG_JOBS 0
+
 typedef int ast_dt_job_id;
 
 struct ast_dt_expr_jobs {
@@ -302,6 +304,7 @@ ast_dt_job_remove_from_terminal_jobs(struct ast_dt_context *ctx,
 	}
 }
 
+#if AST_DT_DEBUG_JOBS
 static const char *
 ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
 	switch (kind) {
@@ -319,7 +322,9 @@ ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
 	}
 	return "(unknown)";
 }
+#endif
 
+#if AST_DT_DEBUG_JOBS
 static const char *
 ast_dt_job_expr_name(enum ast_dt_job_expr expr) {
 	switch (expr) {
@@ -334,7 +339,9 @@ ast_dt_job_expr_name(enum ast_dt_job_expr expr) {
 	}
 	return "(unknown)";
 }
+#endif
 
+#if AST_DT_DEBUG_JOBS
 static void
 ast_dt_print_job_desc(struct ast_dt_context *ctx,
 		ast_dt_job_id job_id)
@@ -365,6 +372,7 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 	mbr = get_member(ctx, mbr_id);
 	printf("mbr 0x%03x[%-10.*s])", mbr_id, ALIT(mbr->name));
 }
+#endif
 
 // Requests that from must be evaluated before to.
 static void
@@ -380,11 +388,13 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 	from = get_job(ctx, from_id);
 	to = get_job(ctx, to_id);
 
+#if AST_DT_DEBUG_JOBS
 	printf("job dep ");
 	ast_dt_print_job_desc(ctx, from_id);
 	printf(" -> ");
 	ast_dt_print_job_desc(ctx, to_id);
 	printf("\n");
+#endif
 
 	struct ast_dt_job_dep dep = {0};
 	dep.visited = false;
@@ -671,8 +681,6 @@ ast_slot_analyze(struct ast_dt_context *ctx, ast_slot_id slot_id)
 		case AST_SLOT_SUBST:
 			return ast_slot_analyze(ctx, slot.subst);
 	}
-
-	// printf("Analyze slot %s: 0x%x\n", ast_slot_name(slot.kind), result);
 
 	return result;
 }
@@ -1065,9 +1073,11 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	struct ast_dt_job *job;
 	job = get_job(ctx, job_id);
 
+#if AST_DT_DEBUG_JOBS
 	printf("Dispatch job ");
 	ast_dt_print_job_desc(ctx, job_id);
 	printf("\n");
+#endif
 
 	struct ast_node *node;
 	enum ast_name_dep_requirement dep_req;
@@ -1347,12 +1357,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 							job->bind->value.func = fid;
 
-							printf("Type of %.*s: ", ALIT(mbr->name));
-							print_type_repr(ctx->ast_ctx->vm,
-									vm_get_type(ctx->ast_ctx->vm, mbr->type));
-
 							if (is_const && !job->bind->overridable) {
-								printf(" [const] ");
 								struct type *ret_type;
 								ret_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
 
@@ -1372,11 +1377,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								mbr->const_value =
 									register_object(ctx->ast_ctx->vm, ctx->ast_env->store, obj);
 								mbr->flags |= AST_DT_MEMBER_IS_CONST;
-
-								print_obj_repr(ctx->ast_ctx->vm, mbr->const_value);
 							}
-
-							printf("\n");
 						}
 						break;
 
@@ -1407,10 +1408,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 							}
 
 							mbr->type = out_type;
-							printf("Type of %.*s: ", ALIT(mbr->name));
-							print_type_repr(ctx->ast_ctx->vm,
-									vm_get_type(ctx->ast_ctx->vm, mbr->type));
-							printf("\n");
 						}
 						break;
 				}
@@ -1525,6 +1522,7 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 
 	if (ctx->unvisited_job_deps > 0) {
 		printf("Failed to evalutate datatype because we found one or more cycles.\n");
+#if AST_DT_DEBUG_JOBS
 		printf("Problematic jobs: \n");
 		size_t jobs_per_page = ctx->page_size / sizeof(struct ast_dt_job);
 		size_t cap_jobs = ctx->num_job_pages * jobs_per_page;
@@ -1553,6 +1551,7 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 		}
 
 		printf("\n");
+#endif
 		return -1;
 	}
 
