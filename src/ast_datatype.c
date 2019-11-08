@@ -1062,26 +1062,41 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					return -1;
 				}
 
-				struct ast_dt_member *mbr = NULL;
-				switch (job->expr) {
-					case AST_DT_JOB_EXPR_TARGET:
-						break;
+				if (job->expr == AST_DT_JOB_EXPR_BIND) {
+					ast_member_id mbr_id;
+					mbr_id = job->bind->target;
 
-					case AST_DT_JOB_EXPR_BIND:
-						mbr = get_member(ctx, job->bind->target);
-						break;
+					struct ast_dt_member *mbr;
+					mbr = get_member(ctx, mbr_id);
 
-					case AST_DT_JOB_EXPR_TYPE:
-						mbr = get_member(ctx, job->member);
-						break;
-				}
-				assert(mbr);
+					if (mbr->type != TYPE_UNSET) {
+						assert_type_equals(ctx->ast_ctx->vm, node->type, mbr->type);
+					} else {
+						mbr->type = node->type;
+						assert(mbr->type != TYPE_UNSET);
 
-				if (mbr->type != TYPE_UNSET) {
-					assert_type_equals(ctx->ast_ctx->vm, node->type, mbr->type);
-				} else {
-					mbr->type = node->type;
-					assert(mbr->type != TYPE_UNSET);
+						struct type *mbr_type;
+						mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
+
+						if (mbr_type->obj_def) {
+							size_t num_children;
+							ast_member_id *children;
+
+							num_children = mbr_type->obj_def->num_params;
+							children = calloc(num_children, sizeof(ast_member_id));
+
+							for (size_t i = 0; i < num_children; i++) {
+								children[i] = mbr->first_child + i;
+							}
+
+							ast_dt_register_bind_pack(ctx,
+									mbr_id, mbr_type->obj_def,
+									children, num_children);
+						}
+
+						ast_dt_populate_descendants(ctx, mbr_id, mbr_id);
+						ast_dt_populate_descendant_binds(ctx, mbr_id);
+					}
 				}
 			}
 			return 0;
@@ -1126,6 +1141,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				struct ast_dt_member *mbr;
 
+				type_id expected_type;
+
 				switch (job->expr) {
 					case AST_DT_JOB_EXPR_TARGET:
 						panic("Invalid target job.");
@@ -1133,19 +1150,19 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 					case AST_DT_JOB_EXPR_BIND:
 						mbr = get_member(ctx, job->bind->target);
+						assert(mbr->type != TYPE_UNSET);
+						expected_type = mbr->type;
 						break;
 
 					case AST_DT_JOB_EXPR_TYPE:
 						mbr = get_member(ctx, job->member);
+						expected_type = ctx->ast_ctx->types.type;
 						break;
 				}
 
-
-				assert(mbr->type != TYPE_UNSET);
-
 				struct func func = {0};
 				func.type = stg_register_func_type(ctx->ast_mod->stg_mod,
-						mbr->type, dep_member_types, num_dep_members);
+						expected_type, dep_member_types, num_dep_members);
 
 				func.kind = FUNC_BYTECODE;
 				func.bytecode = bc_env;
@@ -1233,7 +1250,33 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								return -1;
 							}
 
-							mbr->type = out_type;
+							if (mbr->type != TYPE_UNSET) {
+								assert_type_equals(ctx->ast_ctx->vm, mbr->type, out_type);
+							} else {
+								mbr->type = out_type;
+
+								struct type *mbr_type;
+								mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
+
+								if (mbr_type->obj_def) {
+									size_t num_children;
+									ast_member_id *children;
+
+									num_children = mbr_type->obj_def->num_params;
+									children = calloc(num_children, sizeof(ast_member_id));
+
+									for (size_t i = 0; i < num_children; i++) {
+										children[i] = mbr->first_child + i;
+									}
+
+									ast_dt_register_bind_pack(ctx,
+											job->member, mbr_type->obj_def,
+											children, num_children);
+								}
+
+								ast_dt_populate_descendants(ctx, job->member, job->member);
+								ast_dt_populate_descendant_binds(ctx, job->member);
+							}
 						}
 						break;
 				}
