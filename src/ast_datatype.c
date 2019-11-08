@@ -704,6 +704,108 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 }
 
 static void
+ast_dt_populate_descendants(struct ast_dt_context *ctx, ast_member_id local_anscestor, ast_member_id parent_id)
+{
+	struct ast_dt_member *parent;
+	parent = get_member(ctx, parent_id);
+
+	assert(parent->type != TYPE_UNSET);
+
+	struct type *parent_type;
+	parent_type = vm_get_type(ctx->ast_ctx->vm, parent->type);
+
+	printf("pop desc %.*s ", ALIT(parent->name));
+	print_type_repr(ctx->ast_ctx->vm, parent_type);
+	printf("\n");
+	if (parent_type->obj_def) {
+		struct ast_object_def *def;
+		def = parent_type->obj_def;
+
+		ast_slot_id first_child = -1;
+
+		for (size_t i = 0; i < def->num_params; i++) {
+			// TODO: Better location.
+			ast_slot_id param_mbr_id;
+			param_mbr_id = ast_dt_register_member(
+					ctx, def->params[i].name, STG_NO_LOC);
+
+			if (first_child < 0) {
+				first_child = param_mbr_id;
+				if ((parent->flags & AST_DT_MEMBER_IS_LOCAL) != 0 && parent->first_child < 0) {
+					printf("set first child to %i\n", first_child);
+					parent->first_child = first_child;
+				}
+			}
+
+			struct ast_dt_member *child;
+			child = get_member(ctx, param_mbr_id);
+			child->anscestor_local_member = local_anscestor;
+
+			ast_slot_id param_type_slot;
+			param_type_slot = ast_env_slot(ctx->ast_ctx, &def->env, def->params[i].slot).type;
+
+			int err;
+			err = ast_slot_pack_type(ctx->ast_ctx, ctx->ast_mod, &def->env,
+					param_type_slot, &child->type);
+			if (err) {
+				printf("Failed to evaluate obj_def member type.");
+				return;
+			}
+			assert(child->type != TYPE_UNSET);
+
+			printf("pop      %.*s ", ALIT(def->params[i].name));
+			print_type_repr(ctx->ast_ctx->vm, vm_get_type(ctx->ast_ctx->vm, child->type));
+			printf("\n");
+
+			ast_dt_populate_descendants(ctx, local_anscestor, param_mbr_id);
+		}
+	}
+}
+
+static void
+ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id parent_id)
+{
+	struct ast_dt_member *parent;
+	parent = get_member(ctx, parent_id);
+
+	assert(parent->type != TYPE_UNSET);
+	assert((parent->flags & AST_DT_MEMBER_IS_LOCAL) != 0);
+
+	struct type *parent_type;
+	parent_type = vm_get_type(ctx->ast_ctx->vm, parent->type);
+
+	if (parent_type->obj_def) {
+		struct ast_object_def *def;
+		def = parent_type->obj_def;
+
+		for (size_t i = 0; i < def->num_binds; i++) {
+			ast_member_id *deps;
+			deps = calloc(def->binds[i].num_value_params, sizeof(ast_member_id));
+			for (size_t j = 0; j < def->binds[i].num_value_params; j++) {
+				deps[j] = parent->first_child + def->binds[i].value_params[j];
+			}
+
+			switch (def->binds[i].kind) {
+				case AST_OBJECT_DEF_BIND_VALUE:
+					ast_dt_register_bind_func(ctx,
+							parent->first_child + def->binds[i].target,
+							def->binds[i].value.func,
+							deps, def->binds[i].num_value_params,
+							def->binds[i].value.overridable);
+					break;
+
+				case AST_OBJECT_DEF_BIND_PACK:
+					ast_dt_register_bind_pack(ctx,
+							parent->first_child + def->binds[i].target,
+							def->binds[i].pack,
+							deps, def->binds[i].num_value_params);
+					break;
+			}
+		}
+	}
+}
+
+static void
 ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
 		ast_dt_job_id target_job, enum ast_name_dep_requirement req,
 		ast_member_id mbr_id)
