@@ -600,31 +600,34 @@ ast_dt_register_member(struct ast_dt_context *ctx,
 
 	ctx->terminal_nodes = mbr_id;
 
-	struct ast_dt_member *mbr_ptr;
-	mbr_ptr = get_member(ctx, mbr_id);
+	return mbr_id;
+}
 
-	mbr_ptr->type_jobs.resolve_names =
+static void
+ast_dt_member_type_jobs_init(struct ast_dt_context *ctx, ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	mbr->type_jobs.resolve_names =
 		ast_dt_job_type(ctx, mbr_id,
 				AST_DT_JOB_RESOLVE_NAMES);
 
-	mbr_ptr->type_jobs.resolve_types =
+	mbr->type_jobs.resolve_types =
 		ast_dt_job_type(ctx, mbr_id,
 				AST_DT_JOB_RESOLVE_TYPES);
 
-	mbr_ptr->type_jobs.codegen =
+	mbr->type_jobs.codegen =
 		ast_dt_job_type(ctx, mbr_id,
 				AST_DT_JOB_CODEGEN);
 
 	ast_dt_job_dependency(ctx,
-			mbr_ptr->type_jobs.resolve_names,
-			mbr_ptr->type_jobs.resolve_types);
+			mbr->type_jobs.resolve_names,
+			mbr->type_jobs.resolve_types);
 
 	ast_dt_job_dependency(ctx,
-			mbr_ptr->type_jobs.resolve_types,
-			mbr_ptr->type_jobs.codegen);
-
-
-	return mbr_id;
+			mbr->type_jobs.resolve_types,
+			mbr->type_jobs.codegen);
 }
 
 static void
@@ -644,6 +647,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		ast_member_id mbr_id;
 		mbr_id = ast_dt_register_member(ctx, mbr->name,
 				node->composite.members[i].loc);
+		ast_dt_member_type_jobs_init(ctx, mbr_id);
 
 		members[i] = mbr_id;
 
