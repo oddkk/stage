@@ -508,6 +508,39 @@ ast_dt_register_bind_func(struct ast_dt_context *ctx,
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
 
+	struct ast_dt_member *member;
+	member = get_member(ctx, target);
+
+	if (member->bound) {
+		if (!member->bound->overridable && !overridable) {
+			stg_error(ctx->ast_ctx->err, STG_NO_LOC,
+					"'%.*s' is bound multiple times.", ALIT(member->name));
+			stg_appendage(ctx->ast_ctx->err,
+					member->bound->loc, "Also bound here.");
+			ctx->num_errors += 1;
+			return new_bind;
+		}
+
+		if (member->bound->overridable && overridable) {
+			stg_error(ctx->ast_ctx->err, STG_NO_LOC,
+					"'%.*s' has multiple default binds.", ALIT(member->name));
+			stg_appendage(ctx->ast_ctx->err,
+					member->bound->loc, "Also bound here.");
+			ctx->num_errors += 1;
+			return new_bind;
+		}
+
+		if (overridable) {
+			member->overridden_bind = new_bind;
+		} else {
+			member->overridden_bind = member->bound;
+			member->bound = new_bind;
+		}
+	} else {
+		member->bound = new_bind;
+	}
+
+
 	return new_bind;
 }
 
@@ -532,6 +565,16 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
+
+	struct ast_dt_member *member;
+	member = get_member(ctx, target);
+
+	if (member->bound) {
+		panic("Object with obj_def was already bound.");
+	} else {
+		member->bound = new_bind;
+	}
+
 
 	return new_bind;
 }
