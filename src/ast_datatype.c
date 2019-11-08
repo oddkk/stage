@@ -499,6 +499,10 @@ ast_dt_register_bind_func(struct ast_dt_context *ctx,
 	new_bind->member_deps = value_params;
 	new_bind->num_member_deps = num_value_params;
 
+	for (size_t i = 0; i < num_value_params; i++) {
+		assert(value_params[i] >= 0);
+	}
+
 	new_bind->value_jobs.resolve_names = -1;
 	new_bind->value_jobs.resolve_types = -1;
 	new_bind->value_jobs.codegen = -1;
@@ -556,6 +560,10 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 	new_bind->overridable = false;
 	new_bind->member_deps = value_params;
 	new_bind->num_member_deps = num_value_params;
+
+	for (size_t i = 0; i < num_value_params; i++) {
+		assert(value_params[i] >= 0);
+	}
 
 	new_bind->value_jobs.resolve_names = -1;
 	new_bind->value_jobs.resolve_types = -1;
@@ -711,17 +719,20 @@ ast_dt_populate_descendants(struct ast_dt_context *ctx, ast_member_id local_ansc
 
 	assert(parent->type != TYPE_UNSET);
 
+	struct ast_dt_member *anscestor;
+	anscestor = get_member(ctx, local_anscestor);
+
 	struct type *parent_type;
 	parent_type = vm_get_type(ctx->ast_ctx->vm, parent->type);
 
-	printf("pop desc %.*s ", ALIT(parent->name));
-	print_type_repr(ctx->ast_ctx->vm, parent_type);
-	printf("\n");
 	if (parent_type->obj_def) {
 		struct ast_object_def *def;
 		def = parent_type->obj_def;
 
 		ast_slot_id first_child = -1;
+
+		// Be careful with parent and anscestor as ast_dt_register_member can
+		// invalidate those pointers.
 
 		for (size_t i = 0; i < def->num_params; i++) {
 			// TODO: Better location.
@@ -731,9 +742,11 @@ ast_dt_populate_descendants(struct ast_dt_context *ctx, ast_member_id local_ansc
 
 			if (first_child < 0) {
 				first_child = param_mbr_id;
-				if ((parent->flags & AST_DT_MEMBER_IS_LOCAL) != 0 && parent->first_child < 0) {
-					printf("set first child to %i\n", first_child);
-					parent->first_child = first_child;
+
+				anscestor = get_member(ctx, local_anscestor);
+				assert((anscestor->flags & AST_DT_MEMBER_IS_LOCAL) != 0);
+				if (anscestor->first_child < 0) {
+					anscestor->first_child = first_child;
 				}
 			}
 
@@ -752,10 +765,6 @@ ast_dt_populate_descendants(struct ast_dt_context *ctx, ast_member_id local_ansc
 				return;
 			}
 			assert(child->type != TYPE_UNSET);
-
-			printf("pop      %.*s ", ALIT(def->params[i].name));
-			print_type_repr(ctx->ast_ctx->vm, vm_get_type(ctx->ast_ctx->vm, child->type));
-			printf("\n");
 
 			ast_dt_populate_descendants(ctx, local_anscestor, param_mbr_id);
 		}
@@ -1187,6 +1196,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 							for (size_t i = 0; i < job->bind->num_member_deps; i++) {
 								job->bind->member_deps[i] = dep_members[i];
+								assert(dep_members[i] >= 0);
 
 								struct ast_dt_member *dep_mbr;
 								dep_mbr = get_member(ctx, dep_members[i]);
@@ -1258,6 +1268,13 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								struct type *mbr_type;
 								mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
 
+								ast_dt_populate_descendants(ctx, job->member, job->member);
+								ast_dt_populate_descendant_binds(ctx, job->member);
+
+								// We re-fetch mbr as it might have been
+								// invalidated by ast_dt_populate_descendant_binds.
+								mbr = get_member(ctx, job->member);
+
 								if (mbr_type->obj_def) {
 									size_t num_children;
 									ast_member_id *children;
@@ -1274,8 +1291,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 											children, num_children);
 								}
 
-								ast_dt_populate_descendants(ctx, job->member, job->member);
-								ast_dt_populate_descendant_binds(ctx, job->member);
 							}
 						}
 						break;
@@ -1637,7 +1652,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 	def->num_params = comp->composite.num_members;
 
 	size_t bind_i = 0;
-	for (size_t mbr_i = 0; mbr_i < comp->composite.num_members; mbr_i++) {
+	for (size_t mbr_i = 0; mbr_i < ctx->num_members; mbr_i++) {
 		struct ast_dt_member *mbr = get_member(ctx, mbr_i);
 
 		if (!mbr->bound) {
