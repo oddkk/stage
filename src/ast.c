@@ -93,6 +93,191 @@ ast_object_def_num_descendant_members(
 	return count;
 }
 
+struct ast_object_def_order_binds_context {
+	size_t total_num_binds;
+	struct ast_object_def_bind **binds;
+	int *num_incoming_edges;
+	int *num_outgoing_edges;
+	// A list of lists of the dependendt binds for each bind.
+	int **outgoing_edges;
+	size_t total_edges;
+	int first_terminal_bind;
+
+	size_t num_members;
+	int *members_bind;
+
+	size_t num_unvisited_deps;
+
+	int errors;
+};
+
+int
+ast_object_def_order_binds(
+		struct ast_context *ctx,
+		struct ast_module *mod,
+		struct ast_object_def *def,
+		struct ast_object_def_bind *extra_binds,
+		size_t num_extra_binds,
+		int *out_bind_order)
+{
+	struct ast_object_def_order_binds_context bctx = {0};
+	bctx.total_num_binds = def->num_binds + num_extra_binds;
+
+	if (bctx.total_num_binds == 0) {
+		return 0;
+	}
+
+	struct ast_object_def_bind *_tmp_binds[bctx.total_num_binds];
+	int _tmp_num_incoming_edges[bctx.total_num_binds];
+	int _tmp_num_outgoing_edges[bctx.total_num_binds];
+	int *_tmp_outgoing_edges[bctx.total_num_binds];
+
+	bctx.binds = _tmp_binds;
+	bctx.num_incoming_edges = _tmp_num_incoming_edges;
+	bctx.num_outgoing_edges = _tmp_num_outgoing_edges;
+	bctx.outgoing_edges = _tmp_outgoing_edges;
+
+	bctx.total_edges = 0;
+	bctx.first_terminal_bind = 0;
+
+	bctx.num_members = ast_object_def_num_descendant_members(
+			ctx, mod, def);
+
+	int _tmp_members_bind[bctx.num_members];
+	bctx.members_bind = _tmp_members_bind;
+
+	for (size_t i = 0; i < bctx.num_members; i++) {
+		bctx.members_bind[i] = -1;
+	}
+
+	for (size_t i = 0; i < def->num_binds; i++) {
+		bctx.binds[i] = &def->binds[i];
+		bctx.num_incoming_edges[i] = 0;
+		bctx.num_outgoing_edges[i] = 0;
+
+		ast_member_id target;
+		target = def->binds[i].target;
+		assert(target < bctx.num_members);
+		bctx.members_bind[target] = i;
+	}
+
+	for (size_t i = 0; i < num_extra_binds; i++) {
+		size_t bind_i = def->num_binds + i;
+		bctx.binds[bind_i] = &extra_binds[i];
+		bctx.num_incoming_edges[bind_i] = 0;
+		bctx.num_outgoing_edges[i] = 0;
+
+		ast_member_id target;
+		target = def->binds[bind_i].target;
+		assert(target < bctx.num_members);
+		bctx.members_bind[target] = bind_i;
+	}
+
+	for (size_t mbr_i = 0; mbr_i < bctx.num_members; mbr_i++) {
+		if (bctx.members_bind[mbr_i] < 0) {
+			stg_error(ctx->err, STG_NO_LOC,
+					"This member was not bound.");
+			bctx.errors += 1;
+		}
+	}
+
+	if (bctx.errors > 0) {
+		return -1;
+	}
+
+	// Count outgoing edges for each bind.
+	for (size_t bind_i = 0; bind_i < bctx.total_num_binds; bind_i++) {
+		for (size_t dep_i = 0; dep_i < bctx.binds[bind_i]->num_value_params; dep_i++) {
+			ast_member_id mbr = bctx.binds[bind_i]->value_params[dep_i];
+
+			assert(mbr < bctx.num_members && mbr >= 0);
+			int dep_bind = bctx.members_bind[mbr];
+
+			assert(dep_bind >= 0 && dep_bind < bctx.total_num_binds);
+			bctx.num_outgoing_edges[dep_bind] += 1;
+			bctx.total_edges += 1;
+		}
+	}
+
+	// Create a list (bctx.outgoing_edges) of outgoing edges for each bind.
+	int outgoing_edges_buffer[bctx.total_edges];
+	int num_outgoing_edges_buffer[bctx.total_num_binds];
+	memset(num_outgoing_edges_buffer, 0, sizeof(int) * bctx.total_num_binds);
+
+	size_t outgoing_edges_buffer_i = 0;
+	for (size_t bind_i = 0; bind_i < bctx.total_num_binds; bind_i++) {
+		bctx.outgoing_edges[bind_i] = &outgoing_edges_buffer[outgoing_edges_buffer_i];
+		outgoing_edges_buffer_i += bctx.num_outgoing_edges[bind_i];
+	}
+
+	for (size_t bind_i = 0; bind_i < bctx.total_num_binds; bind_i++) {
+		for (size_t dep_i = 0; dep_i < bctx.binds[bind_i]->num_value_params; dep_i++) {
+			ast_member_id mbr = bctx.binds[bind_i]->value_params[dep_i];
+
+			assert(mbr < bctx.num_members && mbr >= 0);
+			int dep_bind = bctx.members_bind[mbr];
+
+			assert(dep_bind >= 0 && dep_bind < bctx.total_num_binds);
+			bctx.num_incoming_edges[bind_i] += 1;
+			bctx.num_unvisited_deps += 1;
+
+			bctx.outgoing_edges[dep_bind][num_outgoing_edges_buffer[dep_bind]] = bind_i;
+			num_outgoing_edges_buffer[dep_bind] += 1;
+		}
+	}
+
+	size_t out_i = 0;
+
+	while (bctx.first_terminal_bind < bctx.total_num_binds) {
+		// If num_incoming_edges for first_terminal_bind is greater than 0,
+		// the bind has unresolved dependencies. If it it less than 0 this bind
+		// has already been resolved.
+		if (bctx.num_incoming_edges[bctx.first_terminal_bind] != 0) {
+			bctx.first_terminal_bind += 1;
+			continue;
+		}
+
+		int bind_i = bctx.first_terminal_bind;
+		bctx.first_terminal_bind += 1;
+
+		out_bind_order[out_i] = bind_i;
+		out_i += 1;
+
+		// Mark this bind as completed.
+		bctx.num_incoming_edges[bind_i] = -1;
+
+		for (size_t dep_i = 0; dep_i < bctx.num_outgoing_edges[bind_i]; dep_i++) {
+			int target_bind = bctx.outgoing_edges[bind_i][dep_i];
+			assert(target_bind >= 0 && target_bind < bctx.total_num_binds);
+
+			assert(bctx.num_incoming_edges[target_bind] > 0);
+			bctx.num_incoming_edges[target_bind] -= 1;
+
+			assert(bctx.num_unvisited_deps > 0);
+			bctx.num_unvisited_deps -= 1;
+			if (bctx.num_incoming_edges[target_bind] == 0 &&
+					target_bind < bctx.first_terminal_bind) {
+				bctx.first_terminal_bind = target_bind;
+			}
+		}
+	}
+
+	assert(out_i == bctx.total_num_binds);
+
+	if (bctx.num_unvisited_deps > 0) {
+		printf("One or more cycles was detected.\n");
+		for (size_t mbr_i = 0; mbr_i < bctx.num_members; mbr_i++) {
+			if (bctx.members_bind[mbr_i] < 0) {
+				stg_error(ctx->err, STG_NO_LOC,
+						"There was a cycle.");
+				bctx.errors += 1;
+			}
+		}
+	}
+
+	return bctx.errors != 0;
+}
+
 int
 ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, ast_slot_id obj, struct object *out)

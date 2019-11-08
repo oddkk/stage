@@ -337,6 +337,20 @@ ast_object_def_num_descendant_members(
 		struct ast_context *ctx, struct ast_module *mod,
 		struct ast_object_def *def);
 
+// out_bind_order should be an array of length (def->num_binds+num_extra_binds).
+// If the return value of this function is 0, the array out_bind_order will
+// contain the index of each bind in topological order. def's binds will have
+// index 0 to (excluding) def->num_binds, and extra_binds will have index
+// def->num_binds to (excluding) def->num_binds+num_extra_binds.
+int
+ast_object_def_order_binds(
+		struct ast_context *ctx,
+		struct ast_module *mod,
+		struct ast_object_def *def,
+		struct ast_object_def_bind *extra_binds,
+		size_t num_extra_binds,
+		int *out_bind_order);
+
 typedef struct object (*ast_array_unpack)(
 		struct ast_context *, struct ast_env *,
 		struct ast_array_def *, size_t member_id, struct object);

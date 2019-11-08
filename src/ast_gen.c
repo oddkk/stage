@@ -187,9 +187,16 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					ast_object_def_alloc_vars(ctx, mod, bc_env,
 							def, object_mbrs, &var_i, local_mbrs, true);
 
+					int bind_order[def->num_binds];
+
+					int err;
+					err = ast_object_def_order_binds(
+							ctx, mod, def, NULL, 0, bind_order);
 					// TODO: Resort the def's binds together whith the cons' binds.
 
-					for (size_t bind_i = 0; bind_i < def->num_binds; bind_i++) {
+					for (size_t i = 0; i < def->num_binds; i++) {
+						size_t bind_i = bind_order[i];
+
 						for (size_t val_i = 0;
 								val_i < def->binds[bind_i].num_value_params; val_i++) {
 							ast_member_id dep;
