@@ -385,6 +385,8 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 		return;
 	}
 
+	assert(from_id != to_id);
+
 	struct ast_dt_job *from, *to;
 	from = get_job(ctx, from_id);
 	to = get_job(ctx, to_id);
@@ -416,6 +418,39 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 	ctx->unvisited_job_deps += 1;
 }
 
+static void
+ast_dt_bind_value_jobs_init(struct ast_dt_context *ctx, struct ast_dt_bind *bind)
+{
+	bind->value_jobs.resolve_names =
+		ast_dt_job_bind(ctx, bind,
+				AST_DT_JOB_RESOLVE_NAMES);
+
+	bind->value_jobs.resolve_types =
+		ast_dt_job_bind(ctx, bind,
+				AST_DT_JOB_RESOLVE_TYPES);
+
+	bind->value_jobs.codegen =
+		ast_dt_job_bind(ctx, bind,
+				AST_DT_JOB_CODEGEN);
+
+	ast_dt_job_dependency(ctx,
+			bind->value_jobs.resolve_names,
+			bind->value_jobs.resolve_types);
+
+	ast_dt_job_dependency(ctx,
+			bind->value_jobs.resolve_types,
+			bind->value_jobs.codegen);
+
+	for (size_t i = 0; i < bind->num_member_deps; i++) {
+		struct ast_dt_member *dep;
+		dep = get_member(ctx, bind->member_deps[i]);
+
+		ast_dt_job_dependency(ctx,
+				dep->type_jobs.codegen,
+				bind->value_jobs.codegen);
+	}
+}
+
 static struct ast_dt_bind *
 ast_dt_register_bind(struct ast_dt_context *ctx,
 		struct stg_location loc, ast_member_id target,
@@ -430,26 +465,6 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 	new_bind->value.node = value;
 	new_bind->overridable = overridable;
 	new_bind->loc = loc;
-
-	new_bind->value_jobs.resolve_names =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_RESOLVE_NAMES);
-
-	new_bind->value_jobs.resolve_types =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_RESOLVE_TYPES);
-
-	new_bind->value_jobs.codegen =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_CODEGEN);
-
-	ast_dt_job_dependency(ctx,
-			new_bind->value_jobs.resolve_names,
-			new_bind->value_jobs.resolve_types);
-
-	ast_dt_job_dependency(ctx,
-			new_bind->value_jobs.resolve_types,
-			new_bind->value_jobs.codegen);
 
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
@@ -740,10 +755,12 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		assert(target_node->kind == AST_NODE_LOOKUP);
 		assert(target_node->lookup.ref.kind == AST_NAME_REF_MEMBER);
 
-		ast_dt_register_bind(ctx, node->composite.binds[i].loc,
+		struct ast_dt_bind *bind;
+		bind = ast_dt_register_bind(ctx, node->composite.binds[i].loc,
 				target_node->lookup.ref.member,
 				node->composite.binds[i].value,
 				node->composite.binds[i].overridable);
+		ast_dt_bind_value_jobs_init(ctx, bind);
 	}
 
 	for (size_t i = 0; i < node->composite.num_members; i++) {
@@ -1352,9 +1369,11 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 										children[i] = mbr->first_child + i;
 									}
 
-									ast_dt_register_bind_pack(ctx,
+									struct ast_dt_bind *bind;
+									bind = ast_dt_register_bind_pack(ctx,
 											job->member, mbr_type->obj_def,
 											children, num_children);
+									ast_dt_bind_value_jobs_init(ctx, bind);
 								}
 
 							}
