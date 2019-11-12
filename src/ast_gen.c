@@ -218,6 +218,12 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 											def->binds[bind_i].value.func));
 								break;
 
+							case AST_OBJECT_DEF_BIND_CONST:
+								append_bc_instr(&result,
+										bc_gen_load(bc_env, object_mbrs[target],
+											def->binds[bind_i].const_value));
+								break;
+
 							case AST_OBJECT_DEF_BIND_PACK:
 								append_bc_instr(&result,
 										bc_gen_pack(bc_env, object_mbrs[target],
@@ -304,7 +310,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 							cons->unpack_func, cons->data, param_id, param_type));
 				result.out_var = result.last->unpack.target;
 			}
-			break;
+			return result;
 
 		case AST_NODE_SLOT:
 			{
@@ -408,7 +414,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 							result.first = result.last = NULL;
 							result.out_var = bc_alloc_param(
 									bc_env, i, node->type);
-							break;
+							return result;
 						}
 					}
 					break;
@@ -417,7 +423,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					result.first = result.last = NULL;
 					result.out_var = bc_alloc_param(
 							bc_env, node->lookup.ref.param, node->type);
-					break;
+					return result;
 
 				case AST_NAME_REF_CLOSURE:
 					assert(node->lookup.ref.closure < info->num_closures);

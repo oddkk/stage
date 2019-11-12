@@ -33,6 +33,7 @@ struct ast_dt_bind {
 			func_id func;
 		} value;
 		struct ast_object_def *pack;
+		struct object const_value;
 	};
 
 	struct stg_location loc;
@@ -549,6 +550,65 @@ ast_dt_register_bind_func(struct ast_dt_context *ctx,
 }
 
 static struct ast_dt_bind *
+ast_dt_register_bind_const(struct ast_dt_context *ctx,
+		ast_member_id target, struct object value, bool overridable)
+{
+	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
+	new_bind->target = target;
+	new_bind->kind = AST_OBJECT_DEF_BIND_CONST;
+	new_bind->const_value = value;
+	new_bind->overridable = overridable;
+	new_bind->member_deps = NULL;
+	new_bind->num_member_deps = 0;
+
+	new_bind->value_jobs.resolve_names = -1;
+	new_bind->value_jobs.resolve_types = -1;
+	new_bind->value_jobs.codegen = -1;
+
+	new_bind->loc = STG_NO_LOC;
+
+	new_bind->next_alloced = ctx->alloced_binds;
+	ctx->alloced_binds = new_bind;
+
+	struct ast_dt_member *member;
+	member = get_member(ctx, target);
+
+	if (member->bound) {
+		if (!member->bound->overridable && !overridable) {
+			stg_error(ctx->ast_ctx->err, STG_NO_LOC,
+					"'%.*s' is bound multiple times.", ALIT(member->name));
+			stg_appendage(ctx->ast_ctx->err,
+					member->bound->loc, "Also bound here.");
+			ctx->num_errors += 1;
+			return new_bind;
+		}
+
+		if (member->bound->overridable && overridable) {
+			stg_error(ctx->ast_ctx->err, STG_NO_LOC,
+					"'%.*s' has multiple default binds.", ALIT(member->name));
+			stg_appendage(ctx->ast_ctx->err,
+					member->bound->loc, "Also bound here.");
+			ctx->num_errors += 1;
+			return new_bind;
+		}
+
+		if (overridable) {
+			member->overridden_bind = new_bind;
+		} else {
+			member->overridden_bind = member->bound;
+			member->bound = new_bind;
+		}
+	} else {
+		member->bound = new_bind;
+		member->const_value = new_bind->const_value;
+		member->flags |= AST_DT_MEMBER_IS_CONST;
+	}
+
+
+	return new_bind;
+}
+
+static struct ast_dt_bind *
 ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 		ast_member_id target, struct ast_object_def *pack,
 		ast_member_id *value_params, size_t num_value_params)
@@ -582,7 +642,6 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 	} else {
 		member->bound = new_bind;
 	}
-
 
 	return new_bind;
 }
@@ -794,19 +853,26 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 				deps[j] = parent->first_child + def->binds[i].value_params[j];
 			}
 
+			ast_member_id mbr_id;
+			mbr_id = parent->first_child + def->binds[i].target;
+
 			switch (def->binds[i].kind) {
 				case AST_OBJECT_DEF_BIND_VALUE:
 					ast_dt_register_bind_func(ctx,
-							parent->first_child + def->binds[i].target,
-							def->binds[i].value.func,
+							mbr_id, def->binds[i].value.func,
 							deps, def->binds[i].num_value_params,
+							def->binds[i].value.overridable);
+					break;
+
+				case AST_OBJECT_DEF_BIND_CONST:
+					ast_dt_register_bind_const(ctx,
+							mbr_id, def->binds[i].const_value,
 							def->binds[i].value.overridable);
 					break;
 
 				case AST_OBJECT_DEF_BIND_PACK:
 					ast_dt_register_bind_pack(ctx,
-							parent->first_child + def->binds[i].target,
-							def->binds[i].pack,
+							mbr_id, def->binds[i].pack,
 							deps, def->binds[i].num_value_params);
 					break;
 			}
@@ -1665,14 +1731,29 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 		binds[bind_i].kind = mbr->bound->kind;
 		switch (mbr->bound->kind) {
 			case AST_OBJECT_DEF_BIND_VALUE:
-				assert(mbr->bound->value.func  != FUNC_UNSET);
-				binds[bind_i].value.func        = mbr->bound->value.func;
-				binds[bind_i].value.overridable = mbr->bound->overridable;
+				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+					assert(mbr->bound->value.func  != FUNC_UNSET);
+					binds[bind_i].value.func        = mbr->bound->value.func;
+					binds[bind_i].value.overridable = mbr->bound->overridable;
+				} else {
+					binds[bind_i].kind = AST_OBJECT_DEF_BIND_CONST;
+					binds[bind_i].const_value = mbr->const_value;
+				}
+				break;
+
+			case AST_OBJECT_DEF_BIND_CONST:
+				binds[bind_i].const_value = mbr->const_value;
 				break;
 
 			case AST_OBJECT_DEF_BIND_PACK:
-				assert(mbr->bound->pack);
-				binds[bind_i].pack = mbr->bound->pack;
+				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+					assert(mbr->bound->pack);
+					binds[bind_i].pack = mbr->bound->pack;
+				} else {
+					binds[bind_i].kind = AST_OBJECT_DEF_BIND_CONST;
+					binds[bind_i].const_value = mbr->const_value;
+					printf("%.*s is const\n", ALIT(mbr->name));
+				}
 				break;
 		}
 

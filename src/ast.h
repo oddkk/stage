@@ -279,6 +279,7 @@ struct ast_object_def_param {
 enum ast_object_def_bind_kind {
 	AST_OBJECT_DEF_BIND_VALUE,
 	AST_OBJECT_DEF_BIND_PACK,
+	AST_OBJECT_DEF_BIND_CONST,
 };
 
 struct ast_object_def_bind {
@@ -294,6 +295,7 @@ struct ast_object_def_bind {
 			func_id func;
 		} value;
 		struct ast_object_def *pack;
+		struct object const_value;
 	};
 };
 
