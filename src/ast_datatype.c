@@ -1555,6 +1555,8 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 static int
 ast_dt_run_jobs(struct ast_dt_context *ctx)
 {
+	int failed_jobs = 0;
+
 	// Dispatch the jobs in topological order. (Kahn's algorithm.)
 	while (ctx->terminal_jobs >= 0) {
 		ast_dt_job_id job_id;
@@ -1569,6 +1571,11 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 		err = ast_dt_dispatch_job(ctx, job_id);
 		if (err) {
 			printf("job failed!\n");
+			failed_jobs += 1;
+
+			ast_dt_remove_job_from_target(ctx, job_id);
+			ast_dt_free_job(ctx, job_id);
+			continue;
 		}
 
 		if (job->num_incoming_deps > 0) {
@@ -1602,6 +1609,10 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 
 		ast_dt_remove_job_from_target(ctx, job_id);
 		ast_dt_free_job(ctx, job_id);
+	}
+
+	if (failed_jobs) {
+		return -1;
 	}
 
 	if (ctx->unvisited_job_deps > 0) {
@@ -1958,6 +1969,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	err = ast_dt_run_jobs(&dt_ctx);
 	if (err) {
 		printf("One or more jobs failed when resolving datastructure.\n");
+		return TYPE_UNSET;
 	}
 
 	type_id result = TYPE_UNSET;

@@ -147,7 +147,7 @@ is_slot_func_type(struct ast_context *ctx, struct ast_env *env,
 
 
 static ast_slot_id
-ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
+ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node,
 		ast_slot_id target, struct ast_typecheck_dep *deps, size_t num_deps)
 {
@@ -165,7 +165,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 
 			for (size_t i = 0 ; i < node->func.num_params; i++) {
 				param_types[i] = ast_node_bind_slots(
-						ctx, mod, env, node->func.params[i].type,
+						ctx, num_errors, mod, env, node->func.params[i].type,
 						AST_BIND_NEW, deps, num_deps);
 				node->func.params[i].slot =
 					ast_bind_slot_wildcard(ctx, env, AST_BIND_NEW,
@@ -188,7 +188,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 						ctx->atoms.func_cons_arg_ret);
 
 			node->func.return_type_slot = ast_node_bind_slots(
-					ctx, mod, env, node->func.return_type,
+					ctx, num_errors, mod, env, node->func.return_type,
 					node->func.return_type_slot,
 					deps, num_deps);
 
@@ -223,14 +223,8 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 				struct ast_closure_target *closure;
 				closure = &node->func.closure;
 
-				struct ast_typecheck_closure closure_values[closure->num_members];
-
-				ast_fill_closure(closure, closure_values,
-						deps, num_deps);
-
-
 				body_slot = ast_node_bind_slots(
-						ctx, mod, env, node->func.body,
+						ctx, num_errors, mod, env, node->func.body,
 						body_slot, body_deps, num_body_deps);
 			}
 		}
@@ -242,7 +236,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 			// Evaluate func type
 			ast_slot_id func_slot;
 			func_slot = ast_node_bind_slots(
-					ctx, mod, env, node->call.func,
+					ctx, num_errors, mod, env, node->call.func,
 					AST_BIND_NEW, deps, num_deps);
 
 			// Determine if func is cons or func
@@ -354,7 +348,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 						ast_bind_slot_wildcard(ctx, env,
 								AST_BIND_NEW, NULL, arg_type_slot);
 					ast_node_bind_slots(
-							ctx, mod, env, node->call.args[i].value,
+							ctx, num_errors, mod, env, node->call.args[i].value,
 							arg_slot, deps, num_deps);
 
 				}
@@ -395,7 +389,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 							ctx, env, node->call.cons,
 							AST_BIND_NEW, node->call.args[i].name);
 					ast_node_bind_slots(
-							ctx, mod, env, node->call.args[i].value,
+							ctx, num_errors, mod, env, node->call.args[i].value,
 							arg_slot, deps, num_deps);
 				}
 			} else {
@@ -409,7 +403,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 		{
 			ast_slot_id slot;
 			slot = ast_node_bind_slots(
-					ctx, mod, env, node->access.target,
+					ctx, num_errors, mod, env, node->access.target,
 					AST_BIND_NEW, deps, num_deps);
 
 			target = ast_unpack_arg_named(ctx, env,
@@ -458,6 +452,10 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 					ast_dt_finalize_composite(
 							ctx, mod, env, node,
 							closure_values, closure->num_members);
+
+				if (node->composite.type == TYPE_UNSET) {
+					*num_errors += 1;
+				}
 			}
 
 			target = ast_bind_slot_const_type(
@@ -502,9 +500,14 @@ ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps)
 {
+	size_t num_errors = 0;
 	int err;
-	ast_node_bind_slots(ctx, mod, env, node, AST_BIND_NEW,
+	ast_node_bind_slots(ctx, &num_errors, mod, env, node, AST_BIND_NEW,
 			deps, num_deps);
+
+	if (num_errors > 0) {
+		return -1;
+	}
 
 	err = ast_node_resolve_types(ctx, mod, env, node);
 
