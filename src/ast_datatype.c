@@ -1073,6 +1073,43 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 		case AST_DT_JOB_RESOLVE_TYPES:
 			{
+				if (job->expr == AST_DT_JOB_EXPR_BIND) {
+					struct ast_dt_member *target;
+					target = get_member(ctx, job->bind->target);
+					if (job->bind->kind == AST_OBJECT_DEF_BIND_PACK) {
+						struct ast_object_def *def;
+						def = job->bind->pack;
+						assert(def);
+
+						type_id type;
+						int err;
+						err = ast_slot_pack_type(
+								ctx->ast_ctx, ctx->ast_mod, &def->env,
+								def->ret_type, &type);
+						if (err) {
+							printf("Failed to pack return type for pack bind.\n");
+							return -1;
+						}
+
+						if (target->type == TYPE_UNSET) {
+							target->type = type;
+						} else {
+							assert_type_equals(ctx->ast_ctx->vm,
+									target->type, type);
+						}
+
+						return 0;
+					} else if (job->bind->kind == AST_OBJECT_DEF_BIND_CONST) {
+						if (target->type == TYPE_UNSET) {
+							target->type = job->bind->const_value.type;
+						} else {
+							assert_type_equals(ctx->ast_ctx->vm,
+									target->type, job->bind->const_value.type);
+						}
+
+						return 0;
+					}
+				}
 				struct ast_name_dep *deps = NULL;
 				size_t num_deps = 0;
 
@@ -1115,17 +1152,22 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								struct ast_typecheck_closure *cls;
 								cls = &ctx->closures[deps[i].ref.closure];
 								body_deps[i].ref = deps[i].ref;
-								body_deps[i].req = deps[i].req;
-								assert(body_deps[i].req == cls->req);
+								body_deps[i].req = cls->req;
 
 								body_deps[i].determined = true;
 
 								switch (cls->req) {
 									case AST_NAME_DEP_REQUIRE_VALUE:
+										// The closure provided a value. It
+										// does not matter if we asked for a
+										// type instead.
 										body_deps[i].val = cls->value;
 										break;
 
 									case AST_NAME_DEP_REQUIRE_TYPE:
+										// The closure provided only a type.
+										// Make sure that is all we asked for.
+										assert(deps[i].req == AST_NAME_DEP_REQUIRE_TYPE);
 										body_deps[i].type = cls->type;
 										break;
 								}
@@ -1195,6 +1237,76 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 		case AST_DT_JOB_CODEGEN:
 			{
+				if (job->expr == AST_DT_JOB_EXPR_BIND) {
+					struct ast_dt_member *target;
+					target = get_member(ctx, job->bind->target);
+					if (job->bind->kind == AST_OBJECT_DEF_BIND_PACK) {
+						struct ast_object_def *def;
+						def = job->bind->pack;
+						assert(def);
+
+						printf("pack\n");
+
+						ast_member_id first_child;
+						if ((target->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
+							first_child = target->first_child;
+						} else {
+							first_child = job->bind->target + 1;
+						}
+
+						assert(job->bind->num_member_deps == def->num_params);
+
+						bool is_const = true;
+						void *params[def->num_params];
+
+						for (size_t i = 0; i < def->num_params; i++) {
+							struct ast_dt_member *dep;
+							dep = get_member(ctx, first_child+i);
+
+							if ((dep->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+								printf("%10.*s is not const\n", ALIT(dep->name));
+								is_const = false;
+							} else {
+								printf("%10.*s is     const\n", ALIT(dep->name));
+							}
+
+							params[i] = dep->const_value.data;
+						}
+
+						printf("is const %i\n", is_const);
+						if (is_const) {
+							struct type *type;
+							type = vm_get_type(ctx->ast_ctx->vm, target->type);
+
+							uint8_t value_buffer[type->size];
+
+							def->pack_func(
+									ctx->ast_ctx->vm,
+									def->data, value_buffer,
+									params, def->num_params);
+
+							struct object val = {0};
+							val.type = target->type;
+							val.data = value_buffer;
+
+							target->const_value = register_object(
+									ctx->ast_ctx->vm, ctx->ast_env->store, val);
+
+							printf("const value:\n");
+							print_obj_repr(ctx->ast_ctx->vm, target->const_value);
+							printf("\n");
+
+							target->flags |= AST_DT_MEMBER_IS_CONST;
+						}
+
+						return 0;
+					} else if (job->bind->kind == AST_OBJECT_DEF_BIND_CONST) {
+						target->const_value = job->bind->const_value;
+						target->flags |= AST_DT_MEMBER_IS_CONST;
+
+						return 0;
+					}
+				}
 				struct ast_name_dep *names = NULL;
 				size_t num_names = 0;
 
