@@ -1249,8 +1249,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						def = job->bind->pack;
 						assert(def);
 
-						printf("pack\n");
-
 						ast_member_id first_child;
 						if ((target->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
 							first_child = target->first_child;
@@ -1268,16 +1266,12 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 							dep = get_member(ctx, first_child+i);
 
 							if ((dep->flags & AST_DT_MEMBER_IS_CONST) == 0) {
-								printf("%10.*s is not const\n", ALIT(dep->name));
 								is_const = false;
-							} else {
-								printf("%10.*s is     const\n", ALIT(dep->name));
 							}
 
 							params[i] = dep->const_value.data;
 						}
 
-						printf("is const %i\n", is_const);
 						if (is_const) {
 							struct type *type;
 							type = vm_get_type(ctx->ast_ctx->vm, target->type);
@@ -1295,10 +1289,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 							target->const_value = register_object(
 									ctx->ast_ctx->vm, ctx->ast_env->store, val);
-
-							printf("const value:\n");
-							print_obj_repr(ctx->ast_ctx->vm, target->const_value);
-							printf("\n");
 
 							target->flags |= AST_DT_MEMBER_IS_CONST;
 						}
@@ -1885,7 +1875,6 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 				} else {
 					binds[bind_i].kind = AST_OBJECT_DEF_BIND_CONST;
 					binds[bind_i].const_value = mbr->const_value;
-					printf("%.*s is const\n", ALIT(mbr->name));
 				}
 				break;
 		}
