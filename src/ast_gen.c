@@ -197,14 +197,16 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					for (size_t i = 0; i < def->num_binds; i++) {
 						size_t bind_i = bind_order[i];
 
-						for (size_t val_i = 0;
-								val_i < def->binds[bind_i].num_value_params; val_i++) {
-							ast_member_id dep;
-							dep = def->binds[bind_i].value_params[val_i];
-							assert(dep < num_desc_members);
+						if (def->binds[bind_i].kind != AST_OBJECT_DEF_BIND_CONST) {
+							for (size_t val_i = 0;
+									val_i < def->binds[bind_i].num_value_params; val_i++) {
+								ast_member_id dep;
+								dep = def->binds[bind_i].value_params[val_i];
+								assert(dep < num_desc_members);
 
-							append_bc_instr(&result,
-									bc_gen_push_arg(bc_env, object_mbrs[dep]));
+								append_bc_instr(&result,
+										bc_gen_push_arg(bc_env, object_mbrs[dep]));
+							}
 						}
 
 						ast_member_id target;
@@ -236,7 +238,8 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 					for (size_t i = 0; i < def->num_params; i++) {
 						append_bc_instr(&result,
-								bc_gen_push_arg(bc_env, local_mbrs[i])); }
+								bc_gen_push_arg(bc_env, local_mbrs[i]));
+					}
 
 					append_bc_instr(&result,
 							bc_gen_pack(bc_env, BC_VAR_NEW,
