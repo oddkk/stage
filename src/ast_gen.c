@@ -270,7 +270,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			{
 				struct ast_gen_bc_result target = {0};
 
-				ast_node_gen_bytecode(
+				target = ast_node_gen_bytecode(
 						ctx, mod, env, info, bc_env,
 						node->access.target);
 
@@ -289,7 +289,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				cons = type->obj_def;
 
 				bool found = false;
-				bool param_id = -1;
+				int param_id = -1;
 				for (size_t i = 0; i < cons->num_params; i++) {
 					 if (cons->params[i].name == node->access.name) {
 						 found = true;

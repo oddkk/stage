@@ -56,11 +56,6 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 					instr.load.data   = const_obj.data;
 
 					nbc_append_instr(out_func, instr);
-
-					num_pushed_args += 1;
-					if (num_pushed_args > out_func->max_callee_args) {
-						out_func->max_callee_args = num_pushed_args;
-					}
 				}
 				break;
 
@@ -367,7 +362,7 @@ nbc_print(struct nbc_func *func)
 				break;
 
 			case NBC_UNPACK:
-				printf("sp+0x%zx = PACK %p (%p, %i)\n",
+				printf("sp+0x%zx = UNPACK %p (%p, %i)\n",
 						ip->unpack.target,
 						(void *)ip->unpack.func,
 						ip->unpack.data,
