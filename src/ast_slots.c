@@ -230,9 +230,31 @@ ast_bind_slot_const(struct ast_context *ctx,
 					for (size_t i = 0; i < def->num_params; i++) {
 						struct object member;
 
-						member = def->unpack(ctx, env, def,
-								def->params[i].param_id, obj);
-						member = register_object(ctx->vm, env->store, member);
+						if (def->unpack_func) {
+							// NOTE: TYPE_NONE is used for the function cons
+							// params param to allow a parametric type
+							// (type[$N]). This kind of parameters have to be
+							// handled by the old def->unpack function and can
+							// not be compiled into bytecode.
+							assert(def->params[i].type != TYPE_NONE);
+
+							struct type *param_type;
+							param_type = vm_get_type(ctx->vm, def->params[i].type);
+
+							uint8_t buffer[param_type->size];
+
+							def->unpack_func(ctx->vm, def->data, buffer,
+									obj.data, def->params[i].param_id);
+
+							member.type = def->params[i].type;
+							member.data = buffer;
+							member = register_object(ctx->vm, env->store, member);
+						} else {
+							assert(def->unpack);
+							member = def->unpack(ctx, env, def,
+									def->params[i].param_id, obj);
+							member = register_object(ctx->vm, env->store, member);
+						}
 
 						ast_slot_id member_slot;
 						member_slot = ast_unpack_arg_named(ctx, env, target,

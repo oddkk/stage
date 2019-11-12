@@ -223,6 +223,8 @@ bc_gen_unpack(struct bc_env *env, bc_var target,
 	instr.unpack.data = data;
 	instr.unpack.param_id = param_id;
 
+	assert(instr.unpack.func);
+
 	return bc_instr_alloc(env->store, instr);
 }
 

@@ -1753,19 +1753,16 @@ ast_dt_pack_func(struct vm *vm, void *data, void *out,
 	}
 }
 
-static struct object
-ast_dt_unpack_func(struct ast_context *ctx, struct ast_env *env,
-		struct ast_object_def *def, int param_id, struct object obj)
+static void
+ast_dt_unpack_func(
+		struct vm *vm, void *data, void *out,
+		void *obj, int param_id)
 {
-	struct ast_dt_composite_info *info = def->data;
-
+	struct ast_dt_composite_info *info = data;
 	assert(param_id >= 0 && param_id < info->num_members);
 
-	struct object result = {0};
-	result.data = ((uint8_t *)obj.data) + info->members[param_id].location;
-	result.type = info->members[param_id].type;
-
-	return result;
+	struct ast_dt_local_member *mbr = &info->members[param_id];
+	memcpy(out, (uint8_t *)obj+mbr->location, mbr->size);
 }
 
 struct type_base ast_dt_composite_base = {
@@ -1784,8 +1781,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 
 	struct ast_object_def *def;
 	def = ast_object_def_register(mod->env.store);
-	def->pack_func = ast_dt_pack_func;
-	def->unpack    = ast_dt_unpack_func;
+	def->pack_func   = ast_dt_pack_func;
+	def->unpack_func = ast_dt_unpack_func;
 
 	struct ast_dt_local_member *local_members;
 	local_members = calloc(comp->composite.num_members,
@@ -1819,8 +1816,9 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 		struct ast_dt_member *mbr;
 		mbr = get_member(ctx, mbr_id);
 
+		params[i].type = mbr->type;
 		params[i].slot =
-			ast_bind_slot_member(ctx->ast_ctx, &def->env, AST_BIND_NEW, NULL,
+			ast_bind_slot_wildcard(ctx->ast_ctx, &def->env, AST_BIND_NEW, NULL,
 					ast_bind_slot_const_type(ctx->ast_ctx, &def->env, AST_BIND_NEW,
 						NULL, mbr->type));
 

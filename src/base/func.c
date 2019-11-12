@@ -159,9 +159,11 @@ base_bootstrap_register_func(struct ast_context *ctx, struct stg_module *mod)
 			ctx, &func_type_def->env, AST_BIND_NEW,
 			ctx->atoms.func_cons_arg_ret, AST_SLOT_TYPE);
 
+	// NOTE: Setting TYPE_NONE for the params type is a hack to allow this a
+	// parametric type for this parameter.
 	struct ast_object_def_param func_type_params[] = {
-		{FUNC_PARAM_RET,    ctx->atoms.func_cons_arg_ret,    func_ret},
-		{FUNC_PARAM_PARAMS, ctx->atoms.func_cons_arg_params, func_params},
+		{FUNC_PARAM_RET,    ctx->atoms.func_cons_arg_ret,    ctx->types.type, func_ret},
+		{FUNC_PARAM_PARAMS, ctx->atoms.func_cons_arg_params, TYPE_NONE, func_params},
 	};
 
 	ast_object_def_finalize(func_type_def,

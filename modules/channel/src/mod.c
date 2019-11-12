@@ -143,7 +143,7 @@ mod_channel_init(struct ast_context *ctx, struct stg_module *mod)
 
 
 		struct ast_object_def_param cnl_type_params[] = {
-			{CHANNEL_TYPE_PARAM_TYPE, vm_atoms(ctx->vm, "T"), arg_type},
+			{CHANNEL_TYPE_PARAM_TYPE, vm_atoms(ctx->vm, "T"), ctx->types.type, arg_type},
 		};
 
 		ast_object_def_finalize(cnl_type_def,

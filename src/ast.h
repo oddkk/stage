@@ -273,6 +273,7 @@ ast_print_slot(struct ast_context *, struct ast_env *, ast_slot_id);
 struct ast_object_def_param {
 	int param_id;
 	struct atom *name;
+	type_id type;
 	ast_slot_id slot;
 };
 
