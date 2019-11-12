@@ -291,6 +291,9 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 						ctx, env, func_type_slot, AST_BIND_NEW,
 						ctx->atoms.func_cons_arg_params);
 
+				param_types_slot = ast_bind_slot_cons_array(
+						ctx, env, param_types_slot, NULL, NULL, 0, AST_SLOT_TYPE);
+
 				target = ast_bind_slot_wildcard(
 						ctx, env, target, NULL, node->call.ret_type);
 

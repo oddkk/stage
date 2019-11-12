@@ -1031,7 +1031,8 @@ ast_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 {
 	struct ast_env_slot slot = ast_env_slot(ctx, env, obj);
 
-	if (slot.kind == AST_SLOT_CONST) {
+	if (slot.kind == AST_SLOT_CONST ||
+			slot.kind == AST_SLOT_CONST_TYPE) {
 		obj = ast_bind_slot_cons(ctx, env, obj, NULL, NULL);
 
 		slot = ast_env_slot(ctx, env, obj);
