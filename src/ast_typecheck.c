@@ -93,6 +93,33 @@ ast_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 	}
 }
 
+// closure_values is expected to be an array of length closure->num_members.
+static void
+ast_fill_closure(struct ast_closure_target *closure,
+		struct ast_typecheck_closure *closure_values,
+		struct ast_typecheck_dep *deps, size_t num_deps)
+{
+	for (size_t i = 0; i < closure->num_members; i++) {
+		struct ast_typecheck_dep *dep;
+		dep = ast_find_dep(deps, num_deps,
+				closure->members[i].ref);
+		assert(dep);
+
+		if (closure->members[i].require_const || (
+					dep->determined &&
+					dep->req == AST_NAME_DEP_REQUIRE_VALUE)) {
+			closure_values[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+
+			assert(dep->determined && dep->req == AST_NAME_DEP_REQUIRE_VALUE);
+			closure_values[i].value = dep->val;
+		} else {
+			assert(dep->determined && dep->req == AST_NAME_DEP_REQUIRE_TYPE);
+			closure_values[i].req = AST_NAME_DEP_REQUIRE_TYPE;
+			closure_values[i].type = dep->type;
+		}
+	}
+}
+
 static bool
 is_slot_func_type(struct ast_context *ctx, struct ast_env *env,
                 ast_slot_id slot_id)
@@ -192,6 +219,15 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 				ast_fill_closure_deps(ctx, env,
 						body_deps + node->func.num_params, &node->func.closure,
 						deps, num_deps);
+
+				struct ast_closure_target *closure;
+				closure = &node->func.closure;
+
+				struct ast_typecheck_closure closure_values[closure->num_members];
+
+				ast_fill_closure(closure, closure_values,
+						deps, num_deps);
+
 
 				body_slot = ast_node_bind_slots(
 						ctx, mod, env, node->func.body,
@@ -415,25 +451,8 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 
 				struct ast_typecheck_closure closure_values[closure->num_members];
 
-				for (size_t i = 0; i < closure->num_members; i++) {
-					struct ast_typecheck_dep *dep;
-					dep = ast_find_dep(deps, num_deps,
-							closure->members[i].ref);
-					assert(dep);
-
-					if (closure->members[i].require_const || (
-								dep->determined &&
-								dep->req == AST_NAME_DEP_REQUIRE_VALUE)) {
-						closure_values[i].req = AST_NAME_DEP_REQUIRE_VALUE;
-
-						assert(dep->determined && dep->req == AST_NAME_DEP_REQUIRE_VALUE);
-						closure_values[i].value = dep->val;
-					} else {
-						assert(dep->determined && dep->req == AST_NAME_DEP_REQUIRE_TYPE);
-						closure_values[i].req = AST_NAME_DEP_REQUIRE_TYPE;
-						closure_values[i].type = dep->type;
-					}
-				}
+				ast_fill_closure(closure, closure_values,
+						deps, num_deps);
 
 				node->composite.type =
 					ast_dt_finalize_composite(

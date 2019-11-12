@@ -72,6 +72,48 @@ ast_object_def_alloc_vars(
 	}
 }
 
+struct ast_typecheck_closure
+ast_gen_resolve_closure(struct bc_env *bc_env,
+		struct ast_gen_info *info, struct ast_name_ref ref)
+{
+	switch (ref.kind) {
+		case AST_NAME_REF_NOT_FOUND:
+			panic("Got unresolved name ref in code gen.");
+
+		case AST_NAME_REF_MEMBER:
+			for (size_t i = 0; i < info->num_members; i++) {
+				if (info->members[i] == ref.member) {
+					struct ast_typecheck_closure res = {0};
+
+					if (info->const_member_values[i].type != TYPE_UNSET) {
+						res.req = AST_NAME_DEP_REQUIRE_VALUE;
+						res.value = info->const_member_values[i];
+					} else {
+						res.req = AST_NAME_DEP_REQUIRE_TYPE;
+						res.type = info->member_types[i];
+					}
+
+					return res;
+				}
+			}
+
+			panic("Member not found when resolving closure.");
+			return (struct ast_typecheck_closure){0};
+
+		case AST_NAME_REF_PARAM:
+			{
+				struct ast_typecheck_closure res = {0};
+				res.req = AST_NAME_DEP_REQUIRE_TYPE;
+				res.type = bc_get_var_type(bc_env, -1 - ref.param);
+				return res;
+			}
+
+		case AST_NAME_REF_CLOSURE:
+			assert(ref.closure < info->num_closures);
+			return info->closures[ref.closure];
+	}
+}
+
 struct ast_gen_bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_gen_info *info,
@@ -81,8 +123,23 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 	switch (node->kind) {
 		case AST_NODE_FUNC:
 			{
+				size_t num_closures = node->func.closure.num_members;
+				struct ast_typecheck_closure closure[num_closures];
+
+				for (size_t i = 0; i < num_closures; i++) {
+					struct ast_closure_member *cls;
+					cls = &node->func.closure.members[i];
+					closure[i] = ast_gen_resolve_closure(
+							bc_env, info, cls->ref);
+
+					// Ensure we got a value if we require const.
+					assert(!cls->require_const ||
+							closure[i].req == AST_NAME_DEP_REQUIRE_VALUE);
+				}
+
 				struct bc_env *func_bc;
-				func_bc = ast_func_gen_bytecode(ctx, mod, env, node);
+				func_bc = ast_func_gen_bytecode(
+						ctx, mod, env, closure, num_closures, node);
 
 				struct func new_func = {0};
 				new_func.kind = FUNC_BYTECODE;
@@ -500,8 +557,9 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 }
 
 struct bc_env *
-ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *node)
+ast_func_gen_bytecode(
+		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
+		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *node)
 {
 	assert(node->kind == AST_NODE_FUNC);
 
@@ -527,6 +585,9 @@ ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 	}
 
 	struct ast_gen_info info = {0};
+
+	info.closures = closures;
+	info.num_closures = num_closures;
 
 	struct ast_gen_bc_result func_instr;
 	func_instr = ast_node_gen_bytecode(ctx, mod, env, &info,
@@ -556,7 +617,8 @@ ast_func_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 struct bc_env *
 ast_composite_bind_gen_bytecode(
 		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
-		ast_member_id *members, type_id *member_types, size_t num_members,
+		ast_member_id *members, type_id *member_types,
+		struct object *const_member_values, size_t num_members,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr)
 {
 	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
@@ -571,6 +633,7 @@ ast_composite_bind_gen_bytecode(
 	struct ast_gen_info info = {0};
 	info.members = members;
 	info.member_types = member_types;
+	info.const_member_values = const_member_values;
 	info.num_members = num_members;
 
 	info.closures = closures;

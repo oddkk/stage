@@ -1316,6 +1316,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				ast_member_id dep_members[num_dep_members];
 				type_id dep_member_types[num_dep_members];
+				struct object dep_member_const[num_dep_members];
 
 				for (size_t i = 0; i < num_names; i++) {
 					if (names[i].ref.kind == AST_NAME_REF_MEMBER) {
@@ -1323,6 +1324,13 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						struct ast_dt_member *mbr = get_member(ctx, dep_members[i]);
 						assert(mbr->type != TYPE_UNSET);
 						dep_member_types[i] = mbr->type;
+
+						if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
+							dep_member_const[i] = mbr->const_value;
+						} else {
+							dep_member_const[i].type = TYPE_UNSET;
+							dep_member_const[i].data = NULL;
+						}
 					}
 				}
 
@@ -1334,7 +1342,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				bc_env =
 					ast_composite_bind_gen_bytecode(
 							ctx->ast_ctx, ctx->ast_mod, ctx->ast_env,
-							dep_members, dep_member_types, num_dep_members,
+							dep_members, dep_member_types,
+							dep_member_const, num_dep_members,
 							ctx->closures, ctx->num_closures, node);
 
 				struct ast_dt_member *mbr;
