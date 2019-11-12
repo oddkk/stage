@@ -674,6 +674,10 @@ ast_dt_register_member(struct ast_dt_context *ctx,
 	new_mbr.anscestor_local_member = -1;
 	new_mbr.persistant_id = -1;
 
+	new_mbr.type_jobs.resolve_names = -1;
+	new_mbr.type_jobs.resolve_types = -1;
+	new_mbr.type_jobs.codegen = -1;
+
 	ast_member_id mbr_id;
 	mbr_id = dlist_append(
 			ctx->members,
