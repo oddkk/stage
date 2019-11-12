@@ -490,7 +490,10 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 				case AST_NAME_REF_CLOSURE:
 					assert(node->lookup.ref.closure < info->num_closures);
-					if (info->closures[node->lookup.ref.closure].req ==
+					if (info->closures[node->lookup.ref.closure].lookup_failed) {
+						stg_error(ctx->err, node->loc,
+								"Name not found.");
+					} else if (info->closures[node->lookup.ref.closure].req ==
 							AST_NAME_DEP_REQUIRE_VALUE) {
 						struct bc_instr *lit_instr;
 						lit_instr = bc_gen_load(bc_env, BC_VAR_NEW,

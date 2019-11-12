@@ -966,6 +966,15 @@ ast_dt_bind_typecheck_dep(struct ast_dt_context *ctx,
 		return;
 	}
 
+	if (dep->lookup_failed) {
+		dep->value = ast_bind_slot_wildcard(
+				ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
+				NULL, ast_bind_slot_wildcard(
+					ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
+					NULL, AST_SLOT_TYPE));
+		return;
+	}
+
 	dep->value = AST_BIND_FAILED;
 
 	switch (dep->req) {
@@ -1132,6 +1141,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 								body_deps[i].ref = deps[i].ref;
 								body_deps[i].req = deps[i].req;
+								body_deps[i].lookup_failed = false;
 
 								if (deps[i].req == AST_NAME_DEP_REQUIRE_VALUE) {
 									assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
@@ -1150,7 +1160,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 							break;
 
 						case AST_NAME_REF_CLOSURE:
-							{
+							if (ctx->closures) {
 								assert(deps[i].ref.closure >= 0 &&
 										deps[i].ref.closure < ctx->num_closures);
 								struct ast_typecheck_closure *cls;
@@ -1159,6 +1169,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								body_deps[i].req = cls->req;
 
 								body_deps[i].determined = true;
+								body_deps[i].lookup_failed = cls->lookup_failed;
 
 								switch (cls->req) {
 									case AST_NAME_DEP_REQUIRE_VALUE:
@@ -1177,6 +1188,12 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								}
 
 								ast_dt_bind_typecheck_dep(ctx, &body_deps[i]);
+							} else {
+								body_deps[i].ref = deps[i].ref;
+								body_deps[i].req = deps[i].req;
+								body_deps[i].value = AST_BIND_FAILED;
+								body_deps[i].lookup_failed = true;
+								body_deps[i].determined = false;
 							}
 							break;
 
@@ -1318,19 +1335,22 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				type_id dep_member_types[num_dep_members];
 				struct object dep_member_const[num_dep_members];
 
-				for (size_t i = 0; i < num_names; i++) {
-					if (names[i].ref.kind == AST_NAME_REF_MEMBER) {
-						dep_members[i] = names[i].ref.member;
-						struct ast_dt_member *mbr = get_member(ctx, dep_members[i]);
+				size_t dep_mbr_i = 0;
+				for (size_t name_i = 0; name_i < num_names; name_i++) {
+					if (names[name_i].ref.kind == AST_NAME_REF_MEMBER) {
+						dep_members[dep_mbr_i] = names[name_i].ref.member;
+						struct ast_dt_member *mbr = get_member(ctx, dep_members[dep_mbr_i]);
 						assert(mbr->type != TYPE_UNSET);
-						dep_member_types[i] = mbr->type;
+						dep_member_types[dep_mbr_i] = mbr->type;
 
 						if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
-							dep_member_const[i] = mbr->const_value;
+							dep_member_const[dep_mbr_i] = mbr->const_value;
 						} else {
-							dep_member_const[i].type = TYPE_UNSET;
-							dep_member_const[i].data = NULL;
+							dep_member_const[dep_mbr_i].type = TYPE_UNSET;
+							dep_member_const[dep_mbr_i].data = NULL;
 						}
+
+						dep_mbr_i += 1;
 					}
 				}
 

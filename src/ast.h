@@ -775,6 +775,7 @@ struct ast_typecheck_dep {
 	// If determined is true, type or val is set if req is require_type or
 	// require_value respectively.
 	bool determined;
+	bool lookup_failed;
 	union {
 		type_id type;
 		struct object val;
@@ -903,6 +904,7 @@ ast_dt_is_valid(struct ast_context *ctx, struct ast_env *env,
 
 struct ast_typecheck_closure {
 	enum ast_name_dep_requirement req;
+	bool lookup_failed;
 
 	union {
 		type_id type;

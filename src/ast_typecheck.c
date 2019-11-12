@@ -5,6 +5,7 @@
 #include "base/mod.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 bool
 ast_name_ref_equals(struct ast_name_ref lhs, struct ast_name_ref rhs)
@@ -105,7 +106,10 @@ ast_fill_closure(struct ast_closure_target *closure,
 				closure->members[i].ref);
 		assert(dep);
 
-		if (closure->members[i].require_const || (
+		if (dep->lookup_failed) {
+			closure_values[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+			closure_values[i].lookup_failed = true;
+		} else if (closure->members[i].require_const || (
 					dep->determined &&
 					dep->req == AST_NAME_DEP_REQUIRE_VALUE)) {
 			closure_values[i].req = AST_NAME_DEP_REQUIRE_VALUE;
@@ -205,11 +209,13 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					node->func.num_params;
 
 				struct ast_typecheck_dep body_deps[num_body_deps];
+				memset(body_deps, 0, sizeof(struct ast_typecheck_dep) * num_body_deps);
 
 				for (size_t i = 0; i < node->func.num_params; i++) {
 					body_deps[i].req = AST_NAME_DEP_REQUIRE_TYPE;
 					body_deps[i].ref.kind = AST_NAME_REF_PARAM;
 					body_deps[i].ref.param = i;
+					body_deps[i].lookup_failed = false;
 
 					body_deps[i].value =
 						ast_bind_slot_param(ctx, env, AST_BIND_NEW,
@@ -233,11 +239,25 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 	case AST_NODE_CONS:
 	case AST_NODE_CALL:
 		{
+			size_t local_errors = 0;
 			// Evaluate func type
 			ast_slot_id func_slot;
 			func_slot = ast_node_bind_slots(
-					ctx, num_errors, mod, env, node->call.func,
+					ctx, &local_errors, mod, env, node->call.func,
 					AST_BIND_NEW, deps, num_deps);
+
+			*num_errors += local_errors;
+
+			if (local_errors) {
+				// Go through the parameters to report errors.
+				for (size_t i = 0; i < node->call.num_args; i++) {
+					ast_node_bind_slots(
+							ctx, num_errors, mod, env,
+							node->call.args[i].value,
+							AST_BIND_NEW, deps, num_deps);
+				}
+				return AST_BIND_FAILED;
+			}
 
 			// Determine if func is cons or func
 			//  - if func_slot type is func-like or cons that returns func, this is a call
@@ -299,6 +319,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					// TODO: Add type name to error message.
 					stg_error(ctx->err, node->call.func->loc,
 							"This type can not be used as a constructor.");
+					*num_errors += 1;
 					return AST_BIND_FAILED;
 				}
 
@@ -308,6 +329,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				// TODO: Add type name to error message.
 				stg_error(ctx->err, node->call.func->loc,
 						"This object is not callable.");
+				*num_errors += 1;
 				return AST_BIND_FAILED;
 			}
 
@@ -336,6 +358,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 							"Expected %zu arguments, got %zu.",
 							param_types.cons_array.num_members,
 							node->call.num_args);
+					*num_errors += 1;
 					return AST_BIND_FAILED;
 				}
 
@@ -373,6 +396,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 							"Expected at most %zu arguments, got %zu.",
 							slot.cons.def->num_params,
 							node->call.num_args);
+					*num_errors += 1;
 					return AST_BIND_FAILED;
 				}
 
@@ -431,6 +455,11 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 		{
 			struct ast_typecheck_dep *res;
 			res = ast_find_dep(deps, num_deps, node->lookup.ref);
+			if (res->lookup_failed) {
+				stg_error(ctx->err, node->loc,
+						"Object not found.");
+				*num_errors += 1;
+			}
 			assert(res->value == AST_SLOT_TYPE || res->value >= 0);
 			target = ast_union_slot(ctx, env, target, res->value);
 			node->lookup.slot = target;
@@ -444,6 +473,8 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				closure = &node->composite.closure;
 
 				struct ast_typecheck_closure closure_values[closure->num_members];
+				memset(closure_values, 0,
+						sizeof(struct ast_typecheck_closure) * closure->num_members);
 
 				ast_fill_closure(closure, closure_values,
 						deps, num_deps);
