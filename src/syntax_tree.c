@@ -266,7 +266,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *func;
 
 		func = ast_init_node_lookup(ctx, env,
-				AST_NODE_NEW, node->loc, op_name);
+				AST_NODE_NEW, node->BIN_OP.loc, op_name);
 
 		struct ast_node *call;
 		call = ast_init_node_call(ctx, env,

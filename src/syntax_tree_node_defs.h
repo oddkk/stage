@@ -85,6 +85,7 @@ ST_NODE(BIN_OP, struct {
 	enum st_bin_op op;
 	struct st_node *lhs;
 	struct st_node *rhs;
+	struct stg_location loc;
 })
 
 ST_NODE(LAMBDA, struct {

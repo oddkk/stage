@@ -34,6 +34,9 @@ struct YYLTYPE
 # define YYLTYPE_IS_DECLARED 1
 # define YYLTYPE_IS_TRIVIAL 1
 
+static struct stg_location
+yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc);
+
 # define YYLLOC_DEFAULT(Current, Rhs, N)                         \
 do                                                              \
 	if (N) {                                                    \
@@ -141,6 +144,25 @@ while (0)
 #undef ST_NODE
 
 #define MKNODE(type, ...) _mknode##type(ctx, yylloc, (type##_t){__VA_ARGS__})
+
+static struct stg_location
+yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
+{
+	struct stg_location res = {0};
+	res.file_id     = ctx->file_id;
+	res.line_from   = loc.first_line;
+	res.col_from    = loc.first_column;
+
+	res.line_to     = loc.last_line;
+	res.col_to      = loc.last_column;
+
+	res.byte_from   = loc.byte_from;
+	res.byte_to     = loc.byte_to;
+
+	return res;
+}
+
+#define SLOC(loc) yylloc_to_stg_location(ctx, loc)
 }
 
 %token END 0
@@ -323,29 +345,29 @@ expr1:			l_expr                  { $$ = $1; }
 		|		special                 { $$ = $1; }
 		|		'$' IDENTIFIER          { $$ = MKNODE(TEMPLATE_VAR, .name=$2); }
 
-		|		expr1 '+'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_ADD); }
-		|		expr1 '-'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_SUB); }
-		|		expr1 '*'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_MUL); }
-		|		expr1 '/'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_DIV); }
-		|		expr1 "==" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_EQ);  }
-		|		expr1 "!=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_NEQ); }
-		|		expr1 "<=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LTE); }
-		|		expr1 ">=" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_GTE); }
-		|		expr1 '<'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LT);  }
-		|		expr1 '>'  expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_GT);  }
+		|		expr1 '+'  expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_ADD,  .loc=SLOC(@2)); }
+		|		expr1 '-'  expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_SUB,  .loc=SLOC(@2)); }
+		|		expr1 '*'  expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_MUL,  .loc=SLOC(@2)); }
+		|		expr1 '/'  expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_DIV,  .loc=SLOC(@2)); }
+		|		expr1 "==" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_EQ,   .loc=SLOC(@2)); }
+		|		expr1 "!=" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_NEQ,  .loc=SLOC(@2)); }
+		|		expr1 "<=" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LTE,  .loc=SLOC(@2)); }
+		|		expr1 ">=" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_GTE,  .loc=SLOC(@2)); }
+		|		expr1 '<'  expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LT,   .loc=SLOC(@2)); }
+		|		expr1 '>'  expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_GT,   .loc=SLOC(@2)); }
 
-		|		expr1 "&&" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LAND);}
-		|		expr1 "||" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LOR); }
+		|		expr1 "&&" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LAND, .loc=SLOC(@2)); }
+		|		expr1 "||" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LOR,  .loc=SLOC(@2)); }
 
-		|		expr1 '&' expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BAND);}
-		|		expr1 '|' expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BOR); }
-		|		expr1 '^' expr1         { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BXOR);}
-		|		expr1 ">>" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LSFT);}
-		|		expr1 "<<" expr1        { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_RSFT);}
+		|		expr1 '&' expr1  { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BAND, .loc=SLOC(@2));}
+		|		expr1 '|' expr1  { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BOR,  .loc=SLOC(@2)); }
+		|		expr1 '^' expr1  { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BXOR, .loc=SLOC(@2));}
+		|		expr1 ">>" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LSFT, .loc=SLOC(@2));}
+		|		expr1 "<<" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_RSFT, .loc=SLOC(@2));}
 
-		|		expr1 "->" expr1        { $$ = MKNODE(BIND, .src=$1, .drain=$3);  }
-		|		expr1 "<-" expr1        { $$ = MKNODE(BIND, .drain=$1, .src=$3);  }
-		|		'(' expr ')'            { $$ = $2;  }
+		|		expr1 "->" expr1 { $$ = MKNODE(BIND, .src=$1, .drain=$3);  }
+		|		expr1 "<-" expr1 { $$ = MKNODE(BIND, .drain=$1, .src=$3);  }
+		|		'(' expr ')'     { $$ = $2;  }
 		;
 
 subscript_expr:	expr                    { $$ = $1;  }
