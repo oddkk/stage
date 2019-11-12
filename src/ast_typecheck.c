@@ -375,7 +375,7 @@ ast_node_bind_slots(struct ast_context *ctx, struct ast_module *mod,
 
 			target = ast_unpack_arg_named(ctx, env,
 					slot, target, node->access.name);
-			node->slot = target;
+			node->access.slot = target;
 		}
 		break;
 
