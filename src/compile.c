@@ -842,8 +842,6 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		}
 	}
 
-	print_errors(&ctx.err);
-
 	if (ctx.num_jobs_failed > 0 || ctx.err.num_errors > 0) {
 #if COMPILE_DEBUG_JOBS
 		printf("\n");
@@ -852,7 +850,8 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 					"(%zu jobs failed, %zu errors)") "\n",
 			   ctx.num_jobs_failed, ctx.err.num_errors);
 
-	ctx.ast_ctx->err = NULL;
+		print_errors(&ctx.err);
+		ctx.ast_ctx->err = NULL;
 		return -1;
 	}
 
@@ -915,6 +914,13 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 
 		init_func = 
 			stg_register_func(main_mod->stg_mod, func);
+	}
+
+	print_errors(&ctx.err);
+
+	if (ctx.err.num_errors > 0) {
+		ctx.ast_ctx->err = NULL;
+		return -1;
 	}
 
 	vm->init_func = init_func;

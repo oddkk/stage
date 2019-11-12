@@ -192,6 +192,9 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					int err;
 					err = ast_object_def_order_binds(
 							ctx, mod, def, NULL, 0, bind_order);
+					if (err) {
+						return (struct ast_gen_bc_result){0};
+					}
 					// TODO: Resort the def's binds together whith the cons' binds.
 
 					for (size_t i = 0; i < def->num_binds; i++) {
