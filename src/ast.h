@@ -183,8 +183,105 @@ struct ast_context {
 	struct vm *vm;
 };
 
+enum ast_bind_result_code {
+	AST_BIND_OK = 0,
+	AST_BIND_TYPE_MISMATCH,
+	AST_BIND_VALUE_MISMATCH,
+
+	// A value mismatch with two types.
+	AST_BIND_TYPE_VALUE_MISMATCH,
+	AST_BIND_ARRAY_LENGTH_MISMATCH,
+	AST_BIND_OBJ_HAS_NO_MEMBERS,
+	AST_BIND_TYPE_HAS_NO_MEMBERS,
+	AST_BIND_COMPILER_ERROR,
+};
+
+struct ast_bind_result {
+	enum ast_bind_result_code code;
+
+	union {
+		struct {
+			ast_slot_id result;
+		} ok;
+
+		struct {
+			type_id old, new;
+		} type_mismatch;
+
+		struct {
+			struct object old, new;
+		} value_mismatch;
+
+		struct {
+			size_t old, new;
+		} array_length_mismatch;
+
+		struct {
+			type_id obj_type;
+		} obj_no_members;
+
+		struct {
+			type_id obj_type;
+		} type_no_members;
+	};
+};
+
 struct ast_context
 ast_init_context(struct stg_error_context *, struct atom_table *, struct vm *);
+
+struct ast_bind_result
+ast_try_bind_slot_error(struct ast_context *,
+		struct ast_env *, ast_slot_id target);
+
+struct ast_bind_result
+ast_try_bind_slot_wildcard(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, ast_slot_id type);
+
+struct ast_bind_result
+ast_try_bind_slot_const(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, struct object);
+
+struct ast_bind_result
+ast_try_bind_slot_const_type(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, type_id);
+
+struct ast_bind_result
+ast_try_bind_slot_param(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, int64_t param_index, ast_slot_id type);
+
+struct ast_bind_result
+ast_try_bind_slot_templ(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, ast_slot_id type);
+
+struct ast_bind_result
+ast_try_bind_slot_member(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, ast_slot_id type);
+
+struct ast_bind_result
+ast_try_bind_slot_closure(struct ast_context *ctx,
+		struct ast_env *env, ast_slot_id target,
+		struct atom *name, ast_slot_id type);
+
+struct ast_bind_result
+ast_try_bind_slot_cons(struct ast_context *,
+		struct ast_env *, ast_slot_id target,
+		struct atom *name, struct ast_object_def *);
+
+struct ast_bind_result
+ast_try_bind_slot_cons_array(struct ast_context *,
+		struct ast_env *, ast_slot_id target, struct atom *name,
+		ast_slot_id *members, size_t num_members, ast_slot_id member_type);
+
+struct ast_bind_result
+ast_try_union_slot(struct ast_context *, struct ast_env *,
+		ast_slot_id target, ast_slot_id src_slot);
+
 
 ast_slot_id
 ast_bind_slot_error(struct ast_context *,
@@ -242,6 +339,7 @@ ast_unpack_arg_named(struct ast_context *, struct ast_env *,
 ast_slot_id
 ast_union_slot(struct ast_context *, struct ast_env *,
 		ast_slot_id target, ast_slot_id src_slot);
+
 
 ast_slot_id
 ast_copy_slot(struct ast_context *,
