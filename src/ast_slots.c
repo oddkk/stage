@@ -900,7 +900,7 @@ ast_bind_slot_cons_array(struct ast_context *ctx,
 
 			case AST_SLOT_CONS_ARRAY:
 				if (old_slot.cons_array.num_members != num_members) {
-					printf("Warning: Attempted to bind CONS_ARRAY with length %zu"
+					printf("Warning: Attempted to bind CONS_ARRAY with length %zu "
 							"over CONS_ARRAY with length %zu. (bind %i)\n",
 							num_members, old_slot.cons_array.num_members, target);
 					return AST_BIND_FAILED;

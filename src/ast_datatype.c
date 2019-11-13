@@ -911,9 +911,15 @@ ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
 
 	switch (req) {
 		case AST_NAME_DEP_REQUIRE_TYPE:
-			ast_dt_job_dependency(ctx,
-					mbr->type_jobs.codegen,
-					target_job);
+			if (mbr->bound) {
+				ast_dt_job_dependency(ctx,
+						mbr->bound->value_jobs.codegen,
+						target_job);
+			} else {
+				ast_dt_job_dependency(ctx,
+						mbr->type_jobs.codegen,
+						target_job);
+			}
 			break;
 
 		case AST_NAME_DEP_REQUIRE_VALUE:
@@ -1143,10 +1149,12 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								body_deps[i].req = deps[i].req;
 								body_deps[i].lookup_failed = false;
 
-								if (deps[i].req == AST_NAME_DEP_REQUIRE_VALUE) {
+								if (deps[i].req == AST_NAME_DEP_REQUIRE_VALUE ||
+										(dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
 									assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
 
 									body_deps[i].determined = true;
+									body_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
 									body_deps[i].val = dep_mbr->const_value;
 								} else {
 									assert(dep_mbr->type != TYPE_UNSET);
