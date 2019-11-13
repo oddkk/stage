@@ -716,6 +716,85 @@ ast_dt_member_type_jobs_init(struct ast_dt_context *ctx, ast_member_id mbr_id)
 			mbr->type_jobs.codegen);
 }
 
+static ast_member_id
+ast_dt_resolve_l_expr(struct ast_dt_context *ctx, struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_LOOKUP:
+			if (node->lookup.ref.kind != AST_NAME_REF_MEMBER) {
+				// TODO: We can delay this message until after typecheck to
+				// have the error indicate if the member was a closure or
+				// not found at all.
+				stg_error(ctx->ast_ctx->err, node->loc,
+						"This member does not exist.");
+				return -1;
+			}
+			return node->lookup.ref.member;
+
+		case AST_NODE_ACCESS:
+			{
+				ast_member_id target;
+				target = ast_dt_resolve_l_expr(ctx, node->access.target);
+				if (target < 0) {
+					return -1;
+				}
+
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, target);
+				assert(mbr->type != TYPE_UNSET);
+
+				struct type *mbr_type;
+				mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
+
+				if (!mbr_type->obj_def) {
+					stg_error(ctx->ast_ctx->err, node->access.target->loc,
+							"This object does not have any members.");
+					return -1;
+				}
+
+				bool found = false;
+				size_t param_id = 0;
+				for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
+					if (mbr_type->obj_def->params[i].name == node->access.name) {
+						found = true;
+						break;
+					}
+
+					param_id += 1;
+					struct type *param_type;
+					assert(TYPE_VALID(mbr_type->obj_def->params[i].type));
+					param_type = vm_get_type(ctx->ast_ctx->vm,
+							mbr_type->obj_def->params[i].type);
+					if (param_type->obj_def) {
+						param_id += ast_object_def_num_descendant_members(
+								ctx->ast_ctx, ctx->ast_mod, param_type->obj_def);
+					}
+				}
+
+				if (!found) {
+					stg_error(ctx->ast_ctx->err, node->access.target->loc,
+							"This object does not have a member '%.*s'.",
+							ALIT(node->access.name));
+					return -1;
+				}
+
+				ast_member_id first_child;
+				if ((mbr->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
+					first_child = mbr->first_child;
+				} else {
+					first_child = target + 1;
+				}
+
+				return first_child + param_id;
+			}
+
+		default:
+			stg_error(ctx->ast_ctx->err, node->loc,
+					"Bind targets may only contain names and accesses.");
+			return -1;
+	}
+}
+
 static void
 ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 {
@@ -755,13 +834,25 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		struct ast_node *target_node;
 		target_node = node->composite.binds[i].target;
 
-		// TODO: Support more complex bind targets.
-		assert(target_node->kind == AST_NODE_LOOKUP);
-		assert(target_node->lookup.ref.kind == AST_NAME_REF_MEMBER);
+		int err;
+		err = ast_composite_node_resolve_names(
+				ctx->ast_ctx, ctx->ast_env, NULL, NULL,
+				false, ctx->root_node, target_node,
+				ctx->local_member_ids);
+		if (err) {
+			continue;
+		}
+
+		ast_member_id target_member;
+		target_member = ast_dt_resolve_l_expr(ctx, target_node);
+		if (target_member < 0) {
+			// TODO: Error.
+			continue;
+		}
 
 		struct ast_dt_bind *bind;
 		bind = ast_dt_register_bind(ctx, node->composite.binds[i].loc,
-				target_node->lookup.ref.member,
+				target_member,
 				node->composite.binds[i].value,
 				node->composite.binds[i].overridable);
 		ast_dt_bind_value_jobs_init(ctx, bind);
