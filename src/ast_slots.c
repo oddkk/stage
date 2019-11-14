@@ -124,7 +124,7 @@ ast_bind_result_code_name(enum ast_bind_result_code code)
 	return "invalid code";
 }
 
-static ast_slot_id
+ast_slot_id
 ast_bind_result_to_slot(struct ast_bind_result res)
 {
 	if (res.code != AST_BIND_OK) {
@@ -135,7 +135,7 @@ ast_bind_result_to_slot(struct ast_bind_result res)
 	return res.ok.result;
 }
 
-static ast_slot_id
+ast_slot_id
 ast_bind_require_ok(struct ast_bind_result res)
 {
 	if (res.code != AST_BIND_OK) {

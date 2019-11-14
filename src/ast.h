@@ -229,6 +229,12 @@ struct ast_bind_result {
 struct ast_context
 ast_init_context(struct stg_error_context *, struct atom_table *, struct vm *);
 
+ast_slot_id
+ast_bind_result_to_slot(struct ast_bind_result res);
+
+ast_slot_id
+ast_bind_require_ok(struct ast_bind_result res);
+
 struct ast_bind_result
 ast_try_bind_slot_error(struct ast_context *,
 		struct ast_env *, ast_slot_id target);
