@@ -336,6 +336,10 @@ ast_slot_id
 ast_unpack_arg_named(struct ast_context *, struct ast_env *,
 		ast_slot_id obj, ast_slot_id target, struct atom *name);
 
+struct ast_bind_result
+ast_try_unpack_arg_named(struct ast_context *, struct ast_env *,
+		ast_slot_id obj, ast_slot_id target, struct atom *name);
+
 ast_slot_id
 ast_union_slot(struct ast_context *, struct ast_env *,
 		ast_slot_id target, ast_slot_id src_slot);
