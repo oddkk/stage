@@ -845,10 +845,12 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 	if (ctx.num_jobs_failed > 0 || ctx.err.num_errors > 0) {
 #if COMPILE_DEBUG_JOBS
 		printf("\n");
-#endif
 		printf(TERM_COLOR_RED("Compilation failed! "
 					"(%zu jobs failed, %zu errors)") "\n",
 			   ctx.num_jobs_failed, ctx.err.num_errors);
+#endif
+
+		assert(ctx.err.num_errors > 0);
 
 		print_errors(&ctx.err);
 		ctx.ast_ctx->err = NULL;

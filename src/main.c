@@ -122,7 +122,6 @@ int main(int argc, char *argv[])
 
 	err = stg_compile(&vm, &ctx, compile_opts, STR("./config/"));
 	if (err) {
-		printf("Failed to compile config.\n");
 		return -1;
 	}
 
