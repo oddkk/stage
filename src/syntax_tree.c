@@ -117,8 +117,8 @@ st_node_unpack_func_proto(struct st_node *proto_node,
 }
 
 void
-st_node_visit_stmt(struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *struct_node, struct st_node *stmt)
+st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *struct_node, struct st_node *stmt)
 {
 	assert(stmt->type == ST_NODE_STMT);
 	assert(stmt->STMT.stmt);
@@ -128,13 +128,22 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_env *env,
 			panic("TODO: Use statement in composite datatype");
 			break;
 
+		case ST_NODE_MOD_STMT:
+			{
+				struct st_node *mod_stmt;
+				mod_stmt = stmt->STMT.stmt;
+				ast_module_add_dependency(ctx, mod, struct_node,
+						mod_stmt->MOD_STMT.ident);
+			}
+			break;
+
 		case ST_NODE_ASSIGN_STMT:
 			{
 				struct st_node *assign = stmt->STMT.stmt;
 
 				struct ast_node *target =
 					st_node_visit_expr(
-							ctx, env, NULL,
+							ctx, mod, env, NULL,
 							assign->ASSIGN_STMT.ident);
 
 				struct st_node *expr_node;
@@ -143,7 +152,7 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_env *env,
 				expr_node = assign->ASSIGN_STMT.body;
 				if (expr_node) {
 					expr = st_node_visit_expr(
-							ctx, env, NULL, expr_node);
+							ctx, mod, env, NULL, expr_node);
 				}
 
 				bool overridable;
@@ -164,7 +173,7 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_env *env,
 
 					if (type_node) {
 						type = st_node_visit_expr(
-								ctx, env, NULL, type_node);
+								ctx, mod, env, NULL, type_node);
 					} else {
 						assert(expr);
 					}
@@ -199,7 +208,7 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_env *env,
 
 				struct ast_node *expr;
 				expr = st_node_visit_expr(
-						ctx, env, NULL, expr_node);
+						ctx, mod, env, NULL, expr_node);
 
 
 				ast_node_composite_add_free_expr(
@@ -228,8 +237,8 @@ st_node_has_templ_params(struct st_node *node)
 }
 
 struct ast_node *
-st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *templ_node, struct st_node *node)
+st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *templ_node, struct st_node *node)
 {
 	switch (node->type) {
 
@@ -237,7 +246,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 			{
 				struct ast_node *target;
 				target = st_node_visit_expr(
-						ctx, env, templ_node,
+						ctx, mod, env, templ_node,
 						node->ACCESS.target);
 				struct ast_node *access;
 				access = ast_init_node_access(
@@ -251,10 +260,10 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 	case ST_NODE_BIN_OP: {
 		struct ast_func_arg func_args[] = {
 			{vm_atoms(ctx->vm, "lhs"),
-				st_node_visit_expr(ctx, env, templ_node,
+				st_node_visit_expr(ctx, mod, env, templ_node,
 						node->BIN_OP.lhs)},
 			{vm_atoms(ctx->vm, "rhs"),
-				st_node_visit_expr(ctx, env, templ_node,
+				st_node_visit_expr(ctx, mod, env, templ_node,
 						node->BIN_OP.rhs)},
 		};
 
@@ -279,10 +288,10 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 	case ST_NODE_BIND: {
 		struct ast_func_arg func_args[] = {
 			{vm_atoms(ctx->vm, "src"),
-				st_node_visit_expr(ctx, env, templ_node,
+				st_node_visit_expr(ctx, mod, env, templ_node,
 						node->BIN_OP.lhs)},
 			{vm_atoms(ctx->vm, "drain"),
-				st_node_visit_expr(ctx, env, templ_node,
+				st_node_visit_expr(ctx, mod, env, templ_node,
 						node->BIN_OP.rhs)},
 		};
 
@@ -337,12 +346,12 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 
 
 		for (size_t i = 0; i < params_decl.num_members; i++) {
-			params[i] = st_node_visit_expr(ctx, env,
+			params[i] = st_node_visit_expr(ctx, mod, env,
 					templ, params_decl.types[i]);
 		}
 
 		if (ret_type_decl) {
-			ret_type = st_node_visit_expr(ctx, env,
+			ret_type = st_node_visit_expr(ctx, mod, env,
 					templ, ret_type_decl);
 		}
 
@@ -395,7 +404,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 				return NULL;
 			}
 		} else {
-			body = st_node_visit_expr(ctx, env, NULL, body_decl);
+			body = st_node_visit_expr(ctx, mod, env, NULL, body_decl);
 
 			func = ast_init_node_func(ctx, env,
 					AST_NODE_NEW, node->loc,
@@ -418,7 +427,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 
 		struct ast_node *func;
 
-		func = st_node_visit_expr(ctx, env, templ_node, node->FUNC_CALL.ident);
+		func = st_node_visit_expr(ctx, mod, env, templ_node, node->FUNC_CALL.ident);
 
 		size_t num_args = 0;
 
@@ -442,7 +451,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 				assert(arg->type == ST_NODE_TUPLE_LIT_ITEM);
 				func_args[i].name = arg->TUPLE_LIT_ITEM.name;
 				func_args[i].value =
-					st_node_visit_expr(ctx, env,
+					st_node_visit_expr(ctx, mod, env,
 							templ_node,
 							arg->TUPLE_LIT_ITEM.value);
 				arg = arg->next_sibling;
@@ -469,7 +478,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 		}
 
 		while (member) {
-			st_node_visit_stmt(ctx, env, struct_node, member);
+			st_node_visit_stmt(ctx, mod, env, struct_node, member);
 			member = member->next_sibling;
 		}
 
@@ -498,7 +507,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_env *env,
 		while (arg) {
 			struct expr_node *n;
 
-			n = st_node_visit_expr(ctx, expr,
+			n = st_node_visit_expr(ctx, mod, expr,
 									NULL, func_scope,
 									arg->TUPLE_DECL_ITEM.type);
 

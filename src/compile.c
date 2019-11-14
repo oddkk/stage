@@ -194,7 +194,7 @@ job_parse_file(struct compile_ctx *ctx, job_parse_file_t *data)
 	stmt = node->MODULE.body;
 
 	while (stmt) {
-		st_node_visit_stmt(ctx->ast_ctx, &data->mod->env, data->scope, stmt);
+		st_node_visit_stmt(ctx->ast_ctx, data->mod, &data->mod->env, data->scope, stmt);
 		stmt = stmt->next_sibling;
 	}
 
@@ -314,8 +314,15 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 
 		case FTS_DP:
 			if (f->fts_namelen) {
-				assert(dir_ns_head > 0);
-				dir_ns_head -= 1;
+				struct string name;
+				name.text = f->fts_name;
+				name.length = f->fts_namelen;
+
+				// Discard directories named src as those probably contains c-code.
+				if (!string_equal(name, STR("src"))) {
+					assert(dir_ns_head > 0);
+					dir_ns_head -= 1;
+				}
 			}
 			break;
 
