@@ -139,6 +139,12 @@ func_param_type(struct vm *, type_id func_type, size_t param_i);
 void print_type_repr(struct vm *vm, struct type *);
 void print_obj_repr(struct vm *vm, struct object);
 
+struct string
+type_repr_to_alloced_string(struct vm *vm, struct type *type);
+
+struct string
+obj_repr_to_alloced_string(struct vm *vm, struct object obj);
+
 struct object
 register_object(struct vm *, struct objstore *store, struct object obj);
 

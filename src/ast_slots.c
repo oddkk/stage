@@ -126,6 +126,8 @@ static ast_slot_id
 ast_bind_result_to_slot(struct ast_bind_result res)
 {
 	if (res.code != AST_BIND_OK) {
+		printf("[warning] Failed to bind slot: %s.\n",
+				ast_bind_result_code_name(res.code));
 		return AST_BIND_FAILED;
 	}
 	return res.ok.result;

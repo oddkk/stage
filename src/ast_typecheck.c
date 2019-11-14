@@ -149,6 +149,99 @@ is_slot_func_type(struct ast_context *ctx, struct ast_env *env,
         return false;
 }
 
+static void
+ast_report_bind_error(struct ast_context *ctx, struct stg_location loc,
+		struct ast_bind_result bind_res)
+{
+	switch (bind_res.code) {
+		case AST_BIND_TYPE_MISMATCH:
+			{
+				struct string old_str, new_str;
+
+				old_str = type_repr_to_alloced_string(
+						ctx->vm, vm_get_type(ctx->vm, bind_res.type_mismatch.old));
+				new_str = type_repr_to_alloced_string(
+						ctx->vm, vm_get_type(ctx->vm, bind_res.type_mismatch.new));
+
+				stg_error(ctx->err, loc,
+						"Expected type '%.*s', got '%.*s'.",
+						LIT(old_str), LIT(new_str));
+
+				free(old_str.text);
+				free(new_str.text);
+			}
+			break;
+
+		case AST_BIND_VALUE_MISMATCH:
+			{
+				struct string old_str, new_str;
+
+				old_str = obj_repr_to_alloced_string(
+						ctx->vm, bind_res.value_mismatch.old);
+				new_str = obj_repr_to_alloced_string(
+						ctx->vm, bind_res.value_mismatch.new);
+
+				stg_error(ctx->err, loc,
+						"Expected value '%.*s', got '%.*s'.",
+						LIT(old_str), LIT(new_str));
+
+				free(old_str.text);
+				free(new_str.text);
+			}
+			break;
+
+		case AST_BIND_TYPE_VALUE_MISMATCH:
+			{
+				struct string old_str, new_str;
+
+				struct object old_obj = {0}, new_obj = {0};
+
+				old_obj.type = ctx->types.type;
+				old_obj.data = &bind_res.type_mismatch.old;
+				new_obj.type = ctx->types.type;
+				new_obj.data = &bind_res.type_mismatch.new;
+
+				old_str = obj_repr_to_alloced_string(
+						ctx->vm, old_obj);
+				new_str = obj_repr_to_alloced_string(
+						ctx->vm, new_obj);
+
+				stg_error(ctx->err, loc,
+						"Expected value '%.*s', got '%.*s'.",
+						LIT(old_str), LIT(new_str));
+
+				free(old_str.text);
+				free(new_str.text);
+			}
+			break;
+
+		case AST_BIND_ARRAY_LENGTH_MISMATCH:
+			stg_error(ctx->err, loc,
+					"Expected the array to have length %zu, got %zu.",
+					bind_res.array_length_mismatch.old,
+					bind_res.array_length_mismatch.new);
+			break;
+
+		case AST_BIND_OBJ_HAS_NO_MEMBERS:
+			stg_error(ctx->err, loc,
+					"This object does not have any members.");
+			break;
+
+		case AST_BIND_TYPE_HAS_NO_MEMBERS:
+			stg_error(ctx->err, loc,
+					"This type does not have any members.");
+			break;
+
+		case AST_BIND_COMPILER_ERROR:
+			stg_error(ctx->err, loc,
+					"Compiler error.");
+			break;
+
+		default:
+		case AST_BIND_OK:
+			panic("Invalid bind result.");
+	}
+}
 
 static ast_slot_id
 ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_module *mod,
@@ -442,14 +535,34 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 		break;
 
 	case AST_NODE_SLOT:
-		target = ast_union_slot(ctx, env, target, node->slot);
-		node->slot = target;
+		{
+			struct ast_bind_result bind_res;
+			bind_res = ast_try_union_slot(ctx, env, target, node->slot);
+			if (bind_res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, bind_res);
+				*num_errors += 1;
+			} else {
+				target = bind_res.ok.result;
+			}
+			node->slot = target;
+		}
 		break;
 
 	case AST_NODE_LIT:
-		target = ast_bind_slot_const(ctx, env, target,
-				NULL, node->lit.obj);
-		node->lit.slot = target;
+		{
+			struct ast_bind_result bind_res;
+			bind_res = ast_try_bind_slot_const(ctx, env, target,
+					NULL, node->lit.obj);
+			if (bind_res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, bind_res);
+				*num_errors += 1;
+			} else {
+				target = bind_res.ok.result;
+			}
+			node->lit.slot = target;
+		}
 		break;
 
 	case AST_NODE_LOOKUP:
@@ -462,7 +575,17 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				*num_errors += 1;
 			}
 			assert(res->value == AST_SLOT_TYPE || res->value >= 0);
-			target = ast_union_slot(ctx, env, target, res->value);
+
+			struct ast_bind_result bind_res;
+			bind_res = ast_try_union_slot(ctx, env, target, res->value);
+			if (bind_res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, bind_res);
+				*num_errors += 1;
+			} else {
+				target = bind_res.ok.result;
+			}
+
 			node->lookup.slot = target;
 		}
 		break;

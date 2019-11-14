@@ -202,6 +202,29 @@ void print_type_repr(struct vm *vm, struct type *type)
 	arena_pop(&vm->memory, mem);
 }
 
+struct string
+type_repr_to_alloced_string(struct vm *vm, struct type *type)
+{
+	struct arena mem = arena_push(&vm->memory);
+	struct string res;
+
+	if (type->base->repr) {
+		res = type->base->repr(vm, &mem, type);
+	} else {
+		res = default_type_repr(vm, &mem, type);
+	}
+
+	struct string alloced;
+	alloced.length = res.length;
+	alloced.text = calloc(1, alloced.length);
+
+	memcpy(alloced.text, res.text, alloced.length);
+
+	arena_pop(&vm->memory, mem);
+
+	return alloced;
+}
+
 void print_obj_repr(struct vm *vm, struct object obj)
 {
 	struct arena mem = arena_push(&vm->memory);
@@ -216,6 +239,30 @@ void print_obj_repr(struct vm *vm, struct object obj)
 	printf("%.*s", LIT(res));
 
 	arena_pop(&vm->memory, mem);
+}
+
+struct string
+obj_repr_to_alloced_string(struct vm *vm, struct object obj)
+{
+	struct arena mem = arena_push(&vm->memory);
+	struct type *type = vm_get_type(vm, obj.type);
+	struct string res;
+
+	if (type->base->obj_repr) {
+		res = type->base->obj_repr(vm, &mem, &obj);
+	} else {
+		res = default_obj_repr(vm, &mem, &obj);
+	}
+
+	struct string alloced;
+	alloced.length = res.length;
+	alloced.text = calloc(1, alloced.length);
+
+	memcpy(alloced.text, res.text, alloced.length);
+
+	arena_pop(&vm->memory, mem);
+
+	return alloced;
 }
 
 void
