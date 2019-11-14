@@ -142,6 +142,19 @@ ast_bind_require_ok(struct ast_bind_result res)
 	return res.ok.result;
 }
 
+static struct ast_bind_result
+ast_bind_res_as_type(struct ast_bind_result res)
+{
+	switch (res.code) {
+		case AST_BIND_TYPE_VALUE_MISMATCH:
+			res.code = AST_BIND_TYPE_MISMATCH;
+			return res;
+
+		default:
+			return res;
+	}
+}
+
 #define BIND_OK(res) (struct ast_bind_result){.code=AST_BIND_OK, .ok={.result=res}}
 
 #define BIND_COMPILER_ERROR (struct ast_bind_result){.code=AST_BIND_COMPILER_ERROR}
@@ -163,6 +176,14 @@ ast_bind_require_ok(struct ast_bind_result res)
 		struct ast_bind_result _local_result = (res); \
 		if (_local_result.code != AST_BIND_OK) {      \
 			return _local_result;                     \
+		}                                             \
+	} while (0);
+
+#define TYPE_BIND_EXPECT_OK(res)                      \
+	do {                                              \
+		struct ast_bind_result _local_result = (res); \
+		if (_local_result.code != AST_BIND_OK) {      \
+			return ast_bind_res_as_type(_local_result);                     \
 		}                                             \
 	} while (0);
 
@@ -195,7 +216,7 @@ ast_try_bind_slot_wildcard(struct ast_context *ctx,
 		}
 		target = ast_alloc_slot(env, name, type, AST_SLOT_WILDCARD);
 	} else {
-		BIND_EXPECT_OK(ast_try_union_slot(
+		TYPE_BIND_EXPECT_OK(ast_try_union_slot(
 					ctx, env, ast_env_slot(ctx, env, target).type, type));
 	}
 
@@ -240,7 +261,7 @@ ast_try_bind_slot_const(struct ast_context *ctx,
 					struct ast_bind_result res;
 					res = ast_try_bind_slot_const_type(ctx, env,
 							target_slot.type, NULL, obj.type);
-					BIND_EXPECT_OK(res);
+					TYPE_BIND_EXPECT_OK(res);
 					env->slots[target].type = res.ok.result;
 				}
 				break;
@@ -373,8 +394,7 @@ ast_try_bind_slot_const(struct ast_context *ctx,
 
 						ast_slot_id new_member_slot;
 						struct ast_bind_result res;
-						res =
-							ast_try_bind_slot_const(ctx, env,
+						res = ast_try_bind_slot_const(ctx, env,
 									member_slot,
 									NULL, member);
 						BIND_EXPECT_OK(res);
@@ -587,7 +607,7 @@ ast_try_bind_slot_templ(struct ast_context *ctx,
 		switch (target_slot.kind) {
 			case AST_SLOT_WILDCARD:
 				env->slots[target].kind = AST_SLOT_TEMPL;
-				BIND_EXPECT_OK(ast_try_union_slot(
+				TYPE_BIND_EXPECT_OK(ast_try_union_slot(
 							ctx, env, env->slots[target].type, type));
 				break;
 
@@ -625,7 +645,7 @@ ast_try_bind_slot_member(struct ast_context *ctx,
 		switch (target_slot.kind) {
 			case AST_SLOT_WILDCARD:
 				env->slots[target].kind = AST_SLOT_MEMBER;
-				BIND_EXPECT_OK(ast_try_union_slot(
+				TYPE_BIND_EXPECT_OK(ast_try_union_slot(
 							ctx, env, env->slots[target].type, type));
 				break;
 
@@ -669,7 +689,7 @@ ast_try_bind_slot_closure(struct ast_context *ctx,
 		switch (target_slot.kind) {
 			case AST_SLOT_WILDCARD:
 				env->slots[target].kind = AST_SLOT_CLOSURE;
-				BIND_EXPECT_OK(ast_try_union_slot(
+				TYPE_BIND_EXPECT_OK(ast_try_union_slot(
 							ctx, env, env->slots[target].type, type));
 				break;
 
@@ -855,13 +875,13 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 
 		res = ast_union_slot_internal(
 				&cpy_ctx, env, type_slot, &def->env, def->ret_type);
-		BIND_EXPECT_OK(res);
+		TYPE_BIND_EXPECT_OK(res);
 		type_slot = res.ok.result;
 	} else {
 		struct ast_bind_result res;
 		res = ast_try_bind_slot_wildcard(
 				ctx, env, type_slot, NULL, AST_SLOT_TYPE);
-		BIND_EXPECT_OK(res);
+		TYPE_BIND_EXPECT_OK(res);
 		type_slot = res.ok.result;
 	}
 
@@ -957,8 +977,8 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 				env->slots[target].cons.args[arg].slot = AST_BIND_NEW;
 			}
 
-			struct ast_bind_result res =
-				ast_union_slot_internal(&cpy_ctx,
+			struct ast_bind_result res;
+			res = ast_union_slot_internal(&cpy_ctx,
 						env, env->slots[target].cons.args[arg].slot,
 						&def->env, def->params[param_i].slot);
 			BIND_EXPECT_OK(res);
@@ -1080,7 +1100,7 @@ ast_try_bind_slot_cons_array(struct ast_context *ctx,
 	res = ast_try_bind_slot_cons(
 			ctx, env, env->slots[target].type, NULL,
 			ctx->cons.array);
-	BIND_EXPECT_OK(res);
+	TYPE_BIND_EXPECT_OK(res);
 	env->slots[target].type = res.ok.result;
 
 	ast_slot_id old_member_count = env->slots[target].cons_array.member_count;
@@ -1089,7 +1109,7 @@ ast_try_bind_slot_cons_array(struct ast_context *ctx,
 				env->slots[target].type,
 				AST_BIND_NEW,
 				ctx->atoms.array_cons_arg_count);
-	BIND_EXPECT_OK(res);
+	TYPE_BIND_EXPECT_OK(res);
 	env->slots[target].cons_array.member_count = res.ok.result;
 
 	assert(old_member_count == AST_BIND_NEW ||
@@ -1100,7 +1120,7 @@ ast_try_bind_slot_cons_array(struct ast_context *ctx,
 				env->slots[target].type,
 				AST_BIND_NEW,
 				ctx->atoms.array_cons_arg_type);
-	BIND_EXPECT_OK(res);
+	TYPE_BIND_EXPECT_OK(res);
 
 	env->slots[target].cons_array.member_type = res.ok.result;
 	assert(old_member_type == AST_BIND_NEW || old_member_type == AST_SLOT_TYPE ||
@@ -1115,7 +1135,7 @@ ast_try_bind_slot_cons_array(struct ast_context *ctx,
 	res = ast_try_union_slot(ctx, env,
 				env->slots[target].cons_array.member_type,
 				member_type_slot);
-	BIND_EXPECT_OK(res);
+	TYPE_BIND_EXPECT_OK(res);
 	env->slots[target].cons_array.member_type = res.ok.result;
 
 	if (!env->slots[target].cons_array.members) {
@@ -1328,7 +1348,7 @@ ast_try_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 		} else {
 			tmp_args[tmp_num_args - 1].slot = target;
 			// Make sure the type of the type is type.
-			BIND_EXPECT_OK(ast_try_bind_slot_const_type(ctx, env,
+			TYPE_BIND_EXPECT_OK(ast_try_bind_slot_const_type(ctx, env,
 					ast_env_slot(ctx, env,
 						ast_env_slot(ctx, env, target).type).type,
 					NULL, ctx->types.type));
@@ -1439,7 +1459,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 				res = ast_union_slot_internal(
 						ctx, dest, type_target,
 						src, slot.type);
-				BIND_EXPECT_OK(res);
+				TYPE_BIND_EXPECT_OK(res);
 				result = ast_try_bind_slot_wildcard(
 						ctx->ctx, dest, target, slot.name,
 						res.ok.result);
@@ -1462,7 +1482,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 				res = ast_union_slot_internal(
 						ctx, dest, type_target,
 						src, slot.type);
-				BIND_EXPECT_OK(res);
+				TYPE_BIND_EXPECT_OK(res);
 				result = ast_try_bind_slot_param(
 						ctx->ctx, dest, target, slot.name, slot.param_index,
 						res.ok.result);
@@ -1475,7 +1495,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 				res = ast_union_slot_internal(
 						ctx, dest, type_target,
 						src, slot.type);
-				BIND_EXPECT_OK(res);
+				TYPE_BIND_EXPECT_OK(res);
 				result = ast_try_bind_slot_templ(
 						ctx->ctx, dest, target, slot.name,
 						res.ok.result);
@@ -1488,7 +1508,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 				res = ast_union_slot_internal(
 						ctx, dest, type_target,
 						src, slot.type);
-				BIND_EXPECT_OK(res);
+				TYPE_BIND_EXPECT_OK(res);
 				result = ast_try_bind_slot_member(
 						ctx->ctx, dest, target, slot.name,
 						res.ok.result);
@@ -1501,7 +1521,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 				res = ast_union_slot_internal(
 						ctx, dest, type_target,
 						src, slot.type);
-				BIND_EXPECT_OK(res);
+				TYPE_BIND_EXPECT_OK(res);
 				result = ast_try_bind_slot_closure(
 						ctx->ctx, dest, target, slot.name,
 						res.ok.result);
@@ -1522,11 +1542,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 								AST_BIND_NEW, // TODO: slot.cons.args[i].slot,
 								slot.cons.args[i].name));
 
-				struct ast_bind_result res;
-				res = ast_union_slot_internal(ctx,
+				BIND_EXPECT_OK(ast_union_slot_internal(ctx,
 						dest, arg_slot,
-						src, slot.cons.args[i].slot);
-				BIND_EXPECT_OK(res);
+						src, slot.cons.args[i].slot));
 			}
 
 			// TODO: Union type?
@@ -1577,7 +1595,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			res = ast_union_slot_internal(
 					ctx, dest, member_type_slot,
 					src, slot.cons_array.member_type);
-			BIND_EXPECT_OK(res);
+			TYPE_BIND_EXPECT_OK(res);
 			member_type_slot = res.ok.result;
 
 			// Because unioning some members might change others, we have to
