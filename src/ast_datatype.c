@@ -1312,7 +1312,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						ctx->ast_ctx, ctx->ast_mod, ctx->ast_env, node,
 						body_deps, num_deps);
 				if (err) {
-					printf("Failed to typecheck.\n");
 					return -1;
 				}
 
@@ -1689,7 +1688,9 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 		int err;
 		err = ast_dt_dispatch_job(ctx, job_id);
 		if (err) {
+#if AST_DT_DEBUG_JOBS
 			printf("job failed!\n");
+#endif
 			failed_jobs += 1;
 
 			ast_dt_remove_job_from_target(ctx, job_id);
@@ -2087,7 +2088,9 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 	err = ast_dt_run_jobs(&dt_ctx);
 	if (err) {
+#if AST_DT_DEBUG_JOBS
 		printf("One or more jobs failed when resolving datastructure.\n");
+#endif
 		return TYPE_UNSET;
 	}
 

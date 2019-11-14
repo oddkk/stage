@@ -8,6 +8,8 @@
 #define AST_DEBUG_UNION 0
 #define AST_DEBUG_SUBST 0
 
+#define AST_BIND_ERROR_DEBUG_PRINT 0
+
 // If 1, slot 0 will be set to error to debug uninitialized slots.
 #define AST_DEBUG_OFFSET_SLOTS 0
 
@@ -271,12 +273,14 @@ ast_try_bind_slot_const(struct ast_context *ctx,
 			case AST_SLOT_CONST:
 				{
 					if (target_slot.const_object.type != obj.type) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to bind CONST with type '");
 						print_type_repr(ctx->vm, vm_get_type(ctx->vm, obj.type));
 						printf("' over CONST with type '");
 						print_type_repr(ctx->vm, vm_get_type(ctx->vm,
 									target_slot.const_object.type));
 						printf("'. (bind %i)\n", target);
+#endif
 						return BIND_TYPE_MISMATCH(target_slot.const_object.type, obj.type);
 					}
 
@@ -284,11 +288,13 @@ ast_try_bind_slot_const(struct ast_context *ctx,
 
 					// TODO: Use user defined comparator.
 					if (memcmp(target_slot.const_object.data, obj.data, type->size) != 0) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to bind CONST '");
 						print_obj_repr(ctx->vm, obj);
 						printf("' over CONST '");
 						print_obj_repr(ctx->vm, target_slot.const_object);
 						printf("'. (bind %i)\n", target);
+#endif
 						return BIND_VAL_MISMATCH(target_slot.const_object, obj);
 					}
 				}
@@ -299,9 +305,11 @@ ast_try_bind_slot_const(struct ast_context *ctx,
 					struct type *type = vm_get_type(ctx->vm, obj.type);
 
 					if (!type->obj_def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to bind CONS over CONST with "
 								"object that does not have a constructor (bind %i).\n",
 								target);
+#endif
 						return BIND_COMPILER_ERROR;
 					}
 
@@ -379,8 +387,10 @@ ast_try_bind_slot_const(struct ast_context *ctx,
 					struct ast_array_def *def = type->base->array_def;
 
 					if (!def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to bind CONS_ARRAY over CONST with "
 								"object that does not have an array constructor.\n");
+#endif
 						return BIND_COMPILER_ERROR;
 					}
 
@@ -413,8 +423,10 @@ ast_try_bind_slot_const(struct ast_context *ctx,
 				return BIND_OK(target);
 
 			default:
+#if AST_BIND_ERROR_DEBUG_PRINT
 				panic("Warning: Attempted to bind CONST over %s. (bind %i)\n",
 						ast_slot_name(target_slot.kind), target);
+#endif
 				return BIND_COMPILER_ERROR;
 		}
 	}
@@ -468,11 +480,13 @@ ast_try_bind_slot_const_type(struct ast_context *ctx,
 
 			case AST_SLOT_CONST_TYPE:
 				if (target_slot.const_type != type) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 					printf("Warning: Attempted to bind CONST_TYPE with type '");
 					print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
 					printf("' over CONST_TYPE with type '");
 					print_type_repr(ctx->vm, vm_get_type(ctx->vm, target_slot.const_type));
 					printf("'. (bind %i)\n", target);
+#endif
 					return BIND_TYPE_VAL_MISMATCH(target_slot.const_type, type);
 				}
 				break;
@@ -482,9 +496,11 @@ ast_try_bind_slot_const_type(struct ast_context *ctx,
 					struct type *type_inst = vm_get_type(ctx->vm, type);
 
 					if (!type_inst->type_def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to bind CONS over CONST_TYPE with "
 								"object that does not have a constructor. (bind %i)\n",
 								target);
+#endif
 						return BIND_COMPILER_ERROR;
 					}
 
@@ -496,8 +512,10 @@ ast_try_bind_slot_const_type(struct ast_context *ctx,
 						target = res.ok.result;
 					} else {
 						if (target_slot.cons.def != type_inst->type_def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 							printf("Warning: Attempted to bind CONS over CONST_TYPE with "
 									"object that does not match the one in CONS.\n");
+#endif
 							return BIND_COMPILER_ERROR;
 						}
 					}
@@ -539,8 +557,10 @@ ast_try_bind_slot_const_type(struct ast_context *ctx,
 				return BIND_OK(target);
 
 			default:
+#if AST_BIND_ERROR_DEBUG_PRINT
 				printf("Warning: Attempted to bind CONST_TYPE over %s. (bind %i)\n",
 						ast_slot_name(target_slot.kind), target);
+#endif
 				return BIND_COMPILER_ERROR;
 		}
 	}
@@ -578,8 +598,10 @@ ast_try_bind_slot_param(struct ast_context *ctx,
 				break;
 
 			default:
+#if AST_BIND_ERROR_DEBUG_PRINT
 				printf("Warning: Attempted to bind PARAM over %s. (bind %i)\n",
 						ast_slot_name(target_slot.kind), target);
+#endif
 				return BIND_COMPILER_ERROR;
 		}
 	}
@@ -615,8 +637,10 @@ ast_try_bind_slot_templ(struct ast_context *ctx,
 
 			case AST_SLOT_ERROR:
 			case AST_SLOT_SUBST:
+#if AST_BIND_ERROR_DEBUG_PRINT
 				printf("Warning: Attempted to bind TEMPL over %s. (bind %i)\n",
 						ast_slot_name(target_slot.kind), target);
+#endif
 				return BIND_COMPILER_ERROR;
 
 			default:
@@ -653,8 +677,10 @@ ast_try_bind_slot_member(struct ast_context *ctx,
 
 			case AST_SLOT_ERROR:
 			case AST_SLOT_SUBST:
+#if AST_BIND_ERROR_DEBUG_PRINT
 				printf("Warning: Attempted to bind MEMBER over %s. (bind %i)\n",
 						ast_slot_name(target_slot.kind), target);
+#endif
 				return BIND_COMPILER_ERROR;
 
 			default:
@@ -697,8 +723,10 @@ ast_try_bind_slot_closure(struct ast_context *ctx,
 
 			case AST_SLOT_ERROR:
 			case AST_SLOT_SUBST:
+#if AST_BIND_ERROR_DEBUG_PRINT
 				printf("Warning: Attempted to bind CLOSURE over %s. (bind %i)\n",
 						ast_slot_name(target_slot.kind), target);
+#endif
 				return BIND_COMPILER_ERROR;
 
 			default:
@@ -755,17 +783,21 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 
 			case AST_SLOT_CONS:
 				if (def && old_slot.cons.def && old_slot.cons.def != def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 					printf("Warning: Attempted to bind CONS of %p over %p. (bind %i)\n",
 							(void *)def, (void *)old_slot.cons.def, target);
+#endif
 					return BIND_COMPILER_ERROR;
 				} else if (def == old_slot.cons.def) {
 					return BIND_OK(target);
 				/*
 				} else if (def && env->slots[target].cons.num_present_args > def->num_params) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 					printf("Warning: Attempted to bind CONS with %zu parameters to "
 							"CONS with %zu arguments. (bind %i)\n",
 							def->num_params, env->slots[target].cons.num_present_args,
 							target);
+#endif
 					return AST_BIND_FAILED;
 				*/
 				}
@@ -779,16 +811,20 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 						vm_get_type(ctx->vm, slot_obj.type);
 
 					if (!slot_obj_type->obj_def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to unpack a object that cannot be "
 								"unpacked (missing def).\n");
+#endif
 						return BIND_COMPILER_ERROR;
 					}
 
 					if (def && slot_obj_type->obj_def != def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to bind CONS with def %p over "
 								"CONST with def %p.\n",
 								(void *)def,
 								(void *)slot_obj_type->obj_def);
+#endif
 					}
 
 					// We first rebind the target slot to wildcard to allow us
@@ -817,16 +853,20 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 						vm_get_type(ctx->vm, slot_val);
 
 					if (!slot_val_type->type_def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to unpack a type that cannot be "
 								"unpacked (missing def).\n");
+#endif
 						return BIND_TYPE_NO_MEMBERS(slot_val);
 					}
 
 					if (def && slot_val_type->type_def != def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to bind CONS with def %p over "
 								"CONST with def %p.\n",
 								(void *)def,
 								(void *)slot_val_type->type_def);
+#endif
 					}
 
 					// We first rebind the target slot to wildcard to allow us
@@ -848,8 +888,10 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 				return BIND_OK(target);
 
 			default:
+#if AST_BIND_ERROR_DEBUG_PRINT
 				printf("Warning: Attempted to bind CONS over %s. (bind %i)\n",
 						ast_slot_name(old_slot.kind), target);
+#endif
 				return BIND_COMPILER_ERROR;
 		}
 	}
@@ -1038,9 +1080,11 @@ ast_try_bind_slot_cons_array(struct ast_context *ctx,
 
 			case AST_SLOT_CONS_ARRAY:
 				if (old_slot.cons_array.num_members != num_members) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 					printf("Warning: Attempted to bind CONS_ARRAY with length %zu "
 							"over CONS_ARRAY with length %zu. (bind %i)\n",
 							num_members, old_slot.cons_array.num_members, target);
+#endif
 					return BIND_ARRAY_LENGTH_MISMATCH(
 							old_slot.cons_array.num_members, num_members);
 				}
@@ -1055,8 +1099,10 @@ ast_try_bind_slot_cons_array(struct ast_context *ctx,
 						(struct stg_array_type *)slot_obj_type->data;
 
 					if (!slot_obj_type->base->array_def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to unpack an object as an "
 								"array that cannot be unpacked (missing def).\n");
+#endif
 						return BIND_COMPILER_ERROR;
 					}
 
@@ -1090,8 +1136,10 @@ ast_try_bind_slot_cons_array(struct ast_context *ctx,
 				return BIND_OK(target);
 
 			default:
+#if AST_BIND_ERROR_DEBUG_PRINT
 				printf("Warning: Attempted to bind CONS_ARRAY over %s. (bind %i)\n",
 						ast_slot_name(old_slot.kind), target);
+#endif
 				return BIND_COMPILER_ERROR;
 		}
 

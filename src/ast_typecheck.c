@@ -661,6 +661,7 @@ ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
 			deps, num_deps);
 
 	if (num_errors > 0) {
+		assert(ctx->err->num_errors > 0);
 		return -1;
 	}
 
