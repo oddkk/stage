@@ -578,8 +578,16 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					ctx, num_errors, mod, env, node->access.target,
 					AST_BIND_NEW, deps, num_deps);
 
-			target = ast_unpack_arg_named(ctx, env,
+			struct ast_bind_result res;
+			res = ast_try_unpack_arg_named(ctx, env,
 					slot, target, node->access.name);
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				target = res.ok.result;
+			}
 			node->access.slot = target;
 		}
 		break;

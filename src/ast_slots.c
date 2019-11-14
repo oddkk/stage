@@ -366,12 +366,8 @@ ast_try_bind_slot_const(struct ast_context *ctx,
 						BIND_EXPECT_OK(res);
 						member_slot = res.ok.result;
 
-						ast_slot_id new_member_slot;
 						res = ast_try_bind_slot_const(ctx, env, member_slot, NULL, member);
 						BIND_EXPECT_OK(res);
-						new_member_slot = res.ok.result;
-
-						ast_substitute(ctx, env, new_member_slot, member_slot);
 					}
 				}
 #if AST_DEBUG_BINDS
@@ -454,11 +450,35 @@ ast_try_bind_slot_const_type(struct ast_context *ctx,
 			target = ast_alloc_slot(env, name, AST_SLOT_TYPE, AST_SLOT_CONST_TYPE);
 		}
 	} else if (target >= 0 && type_equals(ctx->vm, type, ctx->types.type)) {
-		ast_substitute(ctx, env, target, AST_SLOT_TYPE);
+		struct ast_env_slot target_slot;
+
+		target_slot = ast_env_slot(ctx, env, target);
+		switch (target_slot.kind) {
+			case AST_SLOT_TEMPL:
+			case AST_SLOT_WILDCARD:
+				TYPE_BIND_EXPECT_OK(
+						ast_try_bind_slot_const_type(
+							ctx, env, target_slot.type, NULL,
+							ctx->types.type));
+
+				ast_substitute(ctx, env, AST_SLOT_TYPE, target);
+				return BIND_OK(AST_SLOT_TYPE);
+
+			case AST_SLOT_CONST_TYPE:
+				return BIND_TYPE_VAL_MISMATCH(
+						target_slot.const_type, ctx->types.type);
+
+			default:
+#if AST_BIND_ERROR_DEBUG_PRINT
+				printf("Warning: Attempted to bind CONST_TYPE over %s. (bind %i)\n",
+						ast_slot_name(target_slot.kind), target);
+#endif
+				return BIND_COMPILER_ERROR;
+		}
+
 #if AST_DEBUG_BINDS
 		printf("=== bind const type of type, %i -> -1: \n", target);
 #endif
-		target = AST_SLOT_TYPE;
 	} else {
 		struct ast_env_slot target_slot;
 
@@ -467,14 +487,14 @@ ast_try_bind_slot_const_type(struct ast_context *ctx,
 			case AST_SLOT_TEMPL:
 			case AST_SLOT_WILDCARD:
 				{
-					// TODO: Name?
-					env->slots[target].kind = AST_SLOT_CONST_TYPE;
-
 					struct ast_bind_result res;
 					res = ast_try_bind_slot_const_type(ctx, env,
 							env->slots[target].type, NULL, ctx->types.type);
-					BIND_EXPECT_OK(res);
+					TYPE_BIND_EXPECT_OK(res);
 					env->slots[target].type = res.ok.result;
+
+					// TODO: Name?
+					env->slots[target].kind = AST_SLOT_CONST_TYPE;
 				}
 				break;
 
@@ -540,13 +560,9 @@ ast_try_bind_slot_const_type(struct ast_context *ctx,
 						BIND_EXPECT_OK(res);
 						member_slot = res.ok.result;
 
-						ast_slot_id new_member_slot;
 						res = ast_try_bind_slot_const(
 								ctx, env, member_slot, NULL, member);
 						BIND_EXPECT_OK(res);
-						new_member_slot = res.ok.result;
-
-						ast_substitute(ctx, env, new_member_slot, member_slot);
 					}
 				}
 #if AST_DEBUG_BINDS
@@ -1433,7 +1449,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 #if AST_DEBUG_UNION
 		printf(" -> -1 (type)\n");
 #endif
-		return BIND_OK(AST_SLOT_TYPE);
+		return ast_try_bind_slot_const_type(
+				ctx->ctx, dest, target,
+				NULL, ctx->ctx->types.type);
 	} else if (src_slot == AST_BIND_FAILED) {
 #if AST_DEBUG_UNION
 		printf(" -> fail\n");
