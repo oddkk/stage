@@ -552,7 +552,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					struct ast_bind_result res;
 					res = ast_try_unpack_arg_named(
 							ctx, env, node->call.cons,
-							AST_BIND_NEW, node->call.args[i].name);
+							AST_BIND_NEW, name);
 					if (res.code != AST_BIND_OK) {
 						ast_report_bind_error(
 								ctx, node->loc, res);

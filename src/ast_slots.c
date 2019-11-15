@@ -1370,6 +1370,10 @@ ast_try_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 
 		slot = ast_env_slot(ctx, env, obj);
 	} else if (slot.kind != AST_SLOT_CONS) {
+#if AST_BIND_ERROR_DEBUG_PRINT
+		printf("Warning: Attempted to unpack named argument from %s slot.\n",
+				ast_slot_name(slot.kind));
+#endif
 		return BIND_COMPILER_ERROR;
 	}
 
@@ -1394,6 +1398,10 @@ ast_try_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 	if (slot.cons.def) {
 		// If the argument would be present in the object definition, it should
 		// already have been found on the object.
+#if AST_BIND_ERROR_DEBUG_PRINT
+		printf("Warning: Attempted to unpack non-existent member %.*s.\n",
+				ALIT(arg_name));
+#endif
 		return BIND_COMPILER_ERROR;
 	} else {
 		struct ast_object_arg *tmp_args;
