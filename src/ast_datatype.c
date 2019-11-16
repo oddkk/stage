@@ -1333,48 +1333,51 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			return 0;
 
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
-		case AST_DT_JOB_BIND_RESOLVE_TYPES:
-		case AST_DT_JOB_BIND_TYPE_CONST:
 		case AST_DT_JOB_BIND_TYPE_PACK:
 			{
-				if (job->expr == AST_DT_JOB_EXPR_BIND) {
-					struct ast_dt_member *target;
-					target = get_member(ctx, job->bind->target);
-					if (job->bind->kind == AST_OBJECT_DEF_BIND_PACK) {
-						struct ast_object_def *def;
-						def = job->bind->pack;
-						assert(def);
+				struct ast_dt_member *target;
+				target = get_member(ctx, job->bind->target);
 
-						type_id type;
-						int err;
-						err = ast_slot_pack_type(
-								ctx->ast_ctx, ctx->ast_mod, &def->env,
-								def->ret_type, &type);
-						if (err) {
-							printf("Failed to pack return type for pack bind.\n");
-							return -1;
-						}
+				struct ast_object_def *def;
+				def = job->bind->pack;
+				assert(def);
 
-						if (target->type == TYPE_UNSET) {
-							target->type = type;
-						} else {
-							assert_type_equals(ctx->ast_ctx->vm,
-									target->type, type);
-						}
-
-						return 0;
-					} else if (job->bind->kind == AST_OBJECT_DEF_BIND_CONST) {
-						if (target->type == TYPE_UNSET) {
-							target->type = job->bind->const_value.type;
-						} else {
-							assert_type_equals(ctx->ast_ctx->vm,
-									target->type, job->bind->const_value.type);
-						}
-
-						return 0;
-					}
+				type_id type;
+				int err;
+				err = ast_slot_pack_type(
+						ctx->ast_ctx, ctx->ast_mod, &def->env,
+						def->ret_type, &type);
+				if (err) {
+					printf("Failed to pack return type for pack bind.\n");
+					return -1;
 				}
+
+				if (target->type == TYPE_UNSET) {
+					target->type = type;
+				} else {
+					assert_type_equals(ctx->ast_ctx->vm,
+							target->type, type);
+				}
+			}
+			return 0;
+
+		case AST_DT_JOB_BIND_TYPE_CONST:
+			{
+				struct ast_dt_member *target;
+				target = get_member(ctx, job->bind->target);
+
+				if (target->type == TYPE_UNSET) {
+					target->type = job->bind->const_value.type;
+				} else {
+					assert_type_equals(ctx->ast_ctx->vm,
+							target->type, job->bind->const_value.type);
+				}
+			}
+			return 0;
+
+		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
+		case AST_DT_JOB_BIND_RESOLVE_TYPES:
+			{
 				struct ast_name_dep *deps = NULL;
 				size_t num_deps = 0;
 
