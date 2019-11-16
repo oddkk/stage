@@ -1357,73 +1357,20 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	printf("\n");
 #endif
 
-	struct ast_node *node;
-	enum ast_name_dep_requirement dep_req;
-	dep_req = AST_NAME_DEP_REQUIRE_TYPE;
-
-	switch (job->expr) {
-		case AST_DT_JOB_EXPR_TARGET:
-			return 0;
-
-		case AST_DT_JOB_EXPR_BIND:
-			node = job->bind->value.node;
-			break;
-
-		case AST_DT_JOB_EXPR_TYPE:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				node = mbr->type_node;
-
-				if (!node) {
-					assert(mbr->type != TYPE_UNSET);
-					return 0;
-				}
-
-				dep_req = AST_NAME_DEP_REQUIRE_VALUE;
-			}
-			break;
-
-		default:
-			panic("Invalid job expr.");
-			return -1;
-	}
-
 	switch (job->kind) {
 		case AST_DT_JOB_MBR_RESOLVE_TARGET:
 			break;
 
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
-		case AST_DT_JOB_BIND_RESOLVE_NAMES:
 			{
-				bool require_const = false;
-				ast_dt_job_id next_job = -1;
-
-				switch (job->expr) {
-					case AST_DT_JOB_EXPR_TARGET:
-						break;
-
-					case AST_DT_JOB_EXPR_BIND:
-						next_job = job->bind->value_jobs.resolve_types;
-						break;
-
-					case AST_DT_JOB_EXPR_TYPE:
-						{
-							struct ast_dt_member *mbr;
-							mbr = get_member(ctx, job->member);
-
-							next_job = mbr->type_jobs.resolve_types;
-
-							require_const = true;
-						}
-						break;
-				}
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, job->member);
 
 				int err;
 				err = ast_composite_node_resolve_names(
 						ctx->ast_ctx, ctx->ast_env,
 						ctx->ast_mod->stg_mod->native_mod,
-						NULL, require_const, ctx->root_node, node,
+						NULL, true, ctx->root_node, mbr->type_node,
 						ctx->local_member_ids);
 				if (err) {
 					printf("Failed to resolve names.\n");
@@ -1431,7 +1378,28 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				}
 
 				ast_dt_find_named_dependencies(
-						ctx, next_job, dep_req, node);
+						ctx, mbr->type_jobs.resolve_types,
+						AST_NAME_DEP_REQUIRE_VALUE, mbr->type_node);
+			}
+			return 0;
+
+		case AST_DT_JOB_BIND_RESOLVE_NAMES:
+			{
+				int err;
+				err = ast_composite_node_resolve_names(
+						ctx->ast_ctx, ctx->ast_env,
+						ctx->ast_mod->stg_mod->native_mod,
+						NULL, false, ctx->root_node,
+						job->bind->value.node,
+						ctx->local_member_ids);
+				if (err) {
+					printf("Failed to resolve names.\n");
+					break;
+				}
+
+				ast_dt_find_named_dependencies(
+						ctx, job->bind->value_jobs.resolve_types,
+						AST_NAME_DEP_REQUIRE_TYPE, job->bind->value.node);
 			}
 			return 0;
 
@@ -1496,7 +1464,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			{
 				int err;
 				err = ast_dt_expr_typecheck(
-						ctx, node, AST_NAME_DEP_REQUIRE_TYPE);
+						ctx, job->bind->value.node,
+						AST_NAME_DEP_REQUIRE_TYPE);
 				if (err) {
 					return -1;
 				}
@@ -1505,7 +1474,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				mbr_id = job->bind->target;
 
 				ast_try_set_local_member_type(
-						ctx, mbr_id, node->type);
+						ctx, mbr_id, job->bind->value.node->type);
 			}
 			return 0;
 
