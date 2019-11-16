@@ -1173,6 +1173,76 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 	return 0;
 }
 
+static func_id
+ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
+		type_id expected_type, enum ast_name_dep_requirement dep_req,
+		ast_member_id **out_dep_members, size_t *out_num_dep_members)
+{
+	struct ast_name_dep *names = NULL;
+	size_t num_names = 0;
+
+	ast_node_find_named_dependencies(
+			node, dep_req, &names, &num_names);
+
+	size_t num_dep_members = 0;
+	for (size_t i = 0; i < num_names; i++) {
+		if (names[i].ref.kind == AST_NAME_REF_MEMBER) {
+			num_dep_members += 1;
+		}
+	}
+
+	ast_member_id *dep_members = calloc(num_dep_members, sizeof(ast_member_id));
+	type_id dep_member_types[num_dep_members];
+	struct object dep_member_const[num_dep_members];
+
+	size_t dep_mbr_i = 0;
+	for (size_t name_i = 0; name_i < num_names; name_i++) {
+		if (names[name_i].ref.kind == AST_NAME_REF_MEMBER) {
+			dep_members[dep_mbr_i] = names[name_i].ref.member;
+			struct ast_dt_member *mbr = get_member(ctx, dep_members[dep_mbr_i]);
+			assert(mbr->type != TYPE_UNSET);
+			dep_member_types[dep_mbr_i] = mbr->type;
+
+			if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
+				dep_member_const[dep_mbr_i] = mbr->const_value;
+			} else {
+				dep_member_const[dep_mbr_i].type = TYPE_UNSET;
+				dep_member_const[dep_mbr_i].data = NULL;
+			}
+
+			dep_mbr_i += 1;
+		}
+	}
+
+	num_names = 0;
+	free(names);
+	names = NULL;
+
+	struct bc_env *bc_env;
+	bc_env =
+		ast_composite_bind_gen_bytecode(
+				ctx->ast_ctx, ctx->ast_mod, ctx->ast_env,
+				dep_members, dep_member_types,
+				dep_member_const, num_dep_members,
+				ctx->closures, ctx->num_closures, node);
+
+	struct func func = {0};
+	func.type = stg_register_func_type(ctx->ast_mod->stg_mod,
+			expected_type, dep_member_types, num_dep_members);
+
+	func.kind = FUNC_BYTECODE;
+	func.bytecode = bc_env;
+
+	func_id fid;
+	fid = stg_register_func(ctx->ast_mod->stg_mod, func);
+
+	*out_num_dep_members = num_dep_members;
+	*out_dep_members = dep_members;
+
+
+	return fid;
+}
+
 static inline int
 ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 {
@@ -1478,54 +1548,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 		case AST_DT_JOB_MBR_TYPE_EVAL:
 		case AST_DT_JOB_BIND_CODEGEN:
 			{
-				struct ast_name_dep *names = NULL;
-				size_t num_names = 0;
-
-				ast_node_find_named_dependencies(
-						node, dep_req, &names, &num_names);
-
-				size_t num_dep_members = 0;
-				for (size_t i = 0; i < num_names; i++) {
-					if (names[i].ref.kind == AST_NAME_REF_MEMBER) {
-						num_dep_members += 1;
-					}
-				}
-
-				ast_member_id dep_members[num_dep_members];
-				type_id dep_member_types[num_dep_members];
-				struct object dep_member_const[num_dep_members];
-
-				size_t dep_mbr_i = 0;
-				for (size_t name_i = 0; name_i < num_names; name_i++) {
-					if (names[name_i].ref.kind == AST_NAME_REF_MEMBER) {
-						dep_members[dep_mbr_i] = names[name_i].ref.member;
-						struct ast_dt_member *mbr = get_member(ctx, dep_members[dep_mbr_i]);
-						assert(mbr->type != TYPE_UNSET);
-						dep_member_types[dep_mbr_i] = mbr->type;
-
-						if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
-							dep_member_const[dep_mbr_i] = mbr->const_value;
-						} else {
-							dep_member_const[dep_mbr_i].type = TYPE_UNSET;
-							dep_member_const[dep_mbr_i].data = NULL;
-						}
-
-						dep_mbr_i += 1;
-					}
-				}
-
-				num_names = 0;
-				free(names);
-				names = NULL;
-
-				struct bc_env *bc_env;
-				bc_env =
-					ast_composite_bind_gen_bytecode(
-							ctx->ast_ctx, ctx->ast_mod, ctx->ast_env,
-							dep_members, dep_member_types,
-							dep_member_const, num_dep_members,
-							ctx->closures, ctx->num_closures, node);
-
 				struct ast_dt_member *mbr;
 
 				type_id expected_type;
@@ -1547,15 +1569,13 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						break;
 				}
 
-				struct func func = {0};
-				func.type = stg_register_func_type(ctx->ast_mod->stg_mod,
-						expected_type, dep_member_types, num_dep_members);
-
-				func.kind = FUNC_BYTECODE;
-				func.bytecode = bc_env;
+				ast_member_id *dep_members = NULL;
+				size_t num_dep_members = 0;
 
 				func_id fid;
-				fid = stg_register_func(ctx->ast_mod->stg_mod, func);
+				fid = ast_dt_expr_codegen(
+						ctx, node, expected_type, dep_req,
+						&dep_members, &num_dep_members);
 
 				switch (job->expr) {
 					case AST_DT_JOB_EXPR_TARGET:
