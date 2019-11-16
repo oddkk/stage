@@ -1243,6 +1243,108 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 	return fid;
 }
 
+static int
+ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
+		enum ast_name_dep_requirement dep_req)
+{
+	struct ast_name_dep *deps = NULL;
+	size_t num_deps = 0;
+
+	ast_node_find_named_dependencies(
+			node, dep_req, &deps, &num_deps);
+
+	struct ast_typecheck_dep body_deps[num_deps];
+
+	for (size_t i = 0; i < num_deps; i++) {
+		switch (deps[i].ref.kind) {
+
+			case AST_NAME_REF_MEMBER:
+				{
+					struct ast_dt_member *dep_mbr;
+					dep_mbr = get_member(ctx, deps[i].ref.member);
+
+					body_deps[i].ref = deps[i].ref;
+					body_deps[i].req = deps[i].req;
+					body_deps[i].lookup_failed = false;
+
+					if (deps[i].req == AST_NAME_DEP_REQUIRE_VALUE ||
+							(dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
+						assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
+
+						body_deps[i].determined = true;
+						body_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+						body_deps[i].val = dep_mbr->const_value;
+					} else {
+						assert(dep_mbr->type != TYPE_UNSET);
+
+						body_deps[i].determined = true;
+						body_deps[i].type = dep_mbr->type;
+					}
+
+					ast_dt_bind_typecheck_dep(ctx, &body_deps[i]);
+				}
+				break;
+
+			case AST_NAME_REF_CLOSURE:
+				if (ctx->closures) {
+					assert(deps[i].ref.closure >= 0 &&
+							deps[i].ref.closure < ctx->num_closures);
+					struct ast_typecheck_closure *cls;
+					cls = &ctx->closures[deps[i].ref.closure];
+					body_deps[i].ref = deps[i].ref;
+					body_deps[i].req = cls->req;
+
+					body_deps[i].determined = true;
+					body_deps[i].lookup_failed = cls->lookup_failed;
+
+					switch (cls->req) {
+						case AST_NAME_DEP_REQUIRE_VALUE:
+							// The closure provided a value. It
+							// does not matter if we asked for a
+							// type instead.
+							body_deps[i].val = cls->value;
+							break;
+
+						case AST_NAME_DEP_REQUIRE_TYPE:
+							// The closure provided only a type.
+							// Make sure that is all we asked for.
+							assert(deps[i].req == AST_NAME_DEP_REQUIRE_TYPE);
+							body_deps[i].type = cls->type;
+							break;
+					}
+
+					ast_dt_bind_typecheck_dep(ctx, &body_deps[i]);
+				} else {
+					body_deps[i].ref = deps[i].ref;
+					body_deps[i].req = deps[i].req;
+					body_deps[i].value = AST_BIND_FAILED;
+					body_deps[i].lookup_failed = true;
+					body_deps[i].determined = false;
+				}
+				break;
+
+			default:
+			case AST_NAME_REF_NOT_FOUND:
+				panic("Invalid name reference.");
+				break;
+
+			case AST_NAME_REF_PARAM:
+				panic("Got unexpected reference to a param in composite.");
+				break;
+		}
+	}
+
+	int err;
+	err = ast_node_typecheck(
+			ctx->ast_ctx, ctx->ast_mod, ctx->ast_env, node,
+			body_deps, num_deps);
+	if (err) {
+		return -1;
+	}
+
+	return 0;
+}
+
 static inline int
 ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 {
@@ -1376,110 +1478,34 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			return 0;
 
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
-		case AST_DT_JOB_BIND_RESOLVE_TYPES:
 			{
-				struct ast_name_dep *deps = NULL;
-				size_t num_deps = 0;
-
-				ast_node_find_named_dependencies(
-						node, dep_req, &deps, &num_deps);
-
-				struct ast_typecheck_dep body_deps[num_deps];
-
-				for (size_t i = 0; i < num_deps; i++) {
-					switch (deps[i].ref.kind) {
-
-						case AST_NAME_REF_MEMBER:
-							{
-								struct ast_dt_member *dep_mbr;
-								dep_mbr = get_member(ctx, deps[i].ref.member);
-
-								body_deps[i].ref = deps[i].ref;
-								body_deps[i].req = deps[i].req;
-								body_deps[i].lookup_failed = false;
-
-								if (deps[i].req == AST_NAME_DEP_REQUIRE_VALUE ||
-										(dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
-									assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
-
-									body_deps[i].determined = true;
-									body_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
-									body_deps[i].val = dep_mbr->const_value;
-								} else {
-									assert(dep_mbr->type != TYPE_UNSET);
-
-									body_deps[i].determined = true;
-									body_deps[i].type = dep_mbr->type;
-								}
-
-								ast_dt_bind_typecheck_dep(ctx, &body_deps[i]);
-							}
-							break;
-
-						case AST_NAME_REF_CLOSURE:
-							if (ctx->closures) {
-								assert(deps[i].ref.closure >= 0 &&
-										deps[i].ref.closure < ctx->num_closures);
-								struct ast_typecheck_closure *cls;
-								cls = &ctx->closures[deps[i].ref.closure];
-								body_deps[i].ref = deps[i].ref;
-								body_deps[i].req = cls->req;
-
-								body_deps[i].determined = true;
-								body_deps[i].lookup_failed = cls->lookup_failed;
-
-								switch (cls->req) {
-									case AST_NAME_DEP_REQUIRE_VALUE:
-										// The closure provided a value. It
-										// does not matter if we asked for a
-										// type instead.
-										body_deps[i].val = cls->value;
-										break;
-
-									case AST_NAME_DEP_REQUIRE_TYPE:
-										// The closure provided only a type.
-										// Make sure that is all we asked for.
-										assert(deps[i].req == AST_NAME_DEP_REQUIRE_TYPE);
-										body_deps[i].type = cls->type;
-										break;
-								}
-
-								ast_dt_bind_typecheck_dep(ctx, &body_deps[i]);
-							} else {
-								body_deps[i].ref = deps[i].ref;
-								body_deps[i].req = deps[i].req;
-								body_deps[i].value = AST_BIND_FAILED;
-								body_deps[i].lookup_failed = true;
-								body_deps[i].determined = false;
-							}
-							break;
-
-						default:
-						case AST_NAME_REF_NOT_FOUND:
-							panic("Invalid name reference.");
-							break;
-
-						case AST_NAME_REF_PARAM:
-							panic("Got unexpected reference to a param in composite.");
-							break;
-					}
-				}
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, job->member);
 
 				int err;
-				err = ast_node_typecheck(
-						ctx->ast_ctx, ctx->ast_mod, ctx->ast_env, node,
-						body_deps, num_deps);
+				err = ast_dt_expr_typecheck(
+						ctx, mbr->type_node,
+						AST_NAME_DEP_REQUIRE_VALUE);
+				if (err) {
+					return -1;
+				}
+			}
+			return 0;
+
+		case AST_DT_JOB_BIND_RESOLVE_TYPES:
+			{
+				int err;
+				err = ast_dt_expr_typecheck(
+						ctx, node, AST_NAME_DEP_REQUIRE_TYPE);
 				if (err) {
 					return -1;
 				}
 
-				if (job->expr == AST_DT_JOB_EXPR_BIND) {
-					ast_member_id mbr_id;
-					mbr_id = job->bind->target;
+				ast_member_id mbr_id;
+				mbr_id = job->bind->target;
 
-					ast_try_set_local_member_type(
-							ctx, mbr_id, node->type);
-				}
+				ast_try_set_local_member_type(
+						ctx, mbr_id, node->type);
 			}
 			return 0;
 
@@ -1604,7 +1630,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				func_id fid;
 				fid = ast_dt_expr_codegen(
-						ctx, job->bind->value.node, mbr->type, dep_req,
+						ctx, job->bind->value.node, mbr->type,
+						AST_NAME_DEP_REQUIRE_TYPE,
 						&dep_members, &num_dep_members);
 
 				job->bind->num_member_deps = num_dep_members;
