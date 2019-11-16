@@ -70,6 +70,7 @@ struct ast_dt_member {
 		ast_member_id anscestor_local_member;
 	};
 
+	ast_dt_job_id type_resolved;
 	struct ast_dt_expr_jobs type_jobs;
 
 	struct object const_value;
@@ -459,7 +460,7 @@ ast_dt_bind_value_jobs_init(struct ast_dt_context *ctx, struct ast_dt_bind *bind
 		dep = get_member(ctx, bind->member_deps[i]);
 
 		ast_dt_job_dependency(ctx,
-				dep->type_jobs.codegen,
+				dep->type_resolved,
 				bind->value_jobs.codegen);
 	}
 }
@@ -512,6 +513,11 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 		}
 	} else {
 		member->bound = new_bind;
+	}
+
+	if (member->bound == new_bind && !member->type_node) {
+		assert(member->type_resolved == -1);
+		member->type_resolved = new_bind->value_jobs.resolve_types;
 	}
 
 	return new_bind;
@@ -692,17 +698,21 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 }
 
 static ast_member_id
-ast_dt_register_member(struct ast_dt_context *ctx,
-		struct atom *name, struct stg_location decl_loc)
+ast_dt_register_local_member(struct ast_dt_context *ctx,
+		struct atom *name, struct stg_location decl_loc,
+		struct ast_node *type_expr)
 {
 	struct ast_dt_member new_mbr = {0};
 
 	new_mbr.name = name;
 	new_mbr.decl_loc = decl_loc;
 	new_mbr.next = ctx->terminal_nodes;
+	new_mbr.flags |= AST_DT_MEMBER_IS_LOCAL;
 	new_mbr.first_child = -1;
-	new_mbr.anscestor_local_member = -1;
 	new_mbr.persistant_id = -1;
+	new_mbr.type_node = type_expr;
+
+	new_mbr.type_resolved = -1;
 
 	new_mbr.type_jobs.resolve_names = -1;
 	new_mbr.type_jobs.resolve_types = -1;
@@ -716,34 +726,74 @@ ast_dt_register_member(struct ast_dt_context *ctx,
 
 	ctx->terminal_nodes = mbr_id;
 
+	if (type_expr) {
+		struct ast_dt_member *mbr;
+		mbr = get_member(ctx, mbr_id);
+
+		mbr->type_jobs.resolve_names =
+			ast_dt_job_type(ctx, mbr_id,
+					AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES);
+
+		mbr->type_jobs.resolve_types =
+			ast_dt_job_type(ctx, mbr_id,
+					AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES);
+
+		mbr->type_jobs.codegen =
+			ast_dt_job_type(ctx, mbr_id,
+					AST_DT_JOB_MBR_TYPE_EVAL);
+
+		ast_dt_job_dependency(ctx,
+				mbr->type_jobs.resolve_names,
+				mbr->type_jobs.resolve_types);
+
+		ast_dt_job_dependency(ctx,
+				mbr->type_jobs.resolve_types,
+				mbr->type_jobs.codegen);
+
+		mbr->type_resolved = mbr->type_jobs.codegen;
+	}
+
 	return mbr_id;
 }
 
-static void
-ast_dt_member_type_jobs_init(struct ast_dt_context *ctx, ast_member_id mbr_id)
+static ast_member_id
+ast_dt_register_descendent_member(struct ast_dt_context *ctx,
+		struct atom *name, struct stg_location decl_loc,
+		type_id type, ast_member_id anscestor_id)
 {
-	struct ast_dt_member *mbr;
-	mbr = get_member(ctx, mbr_id);
+	struct ast_dt_member new_mbr = {0};
 
-	mbr->type_jobs.resolve_names =
-		ast_dt_job_type(ctx, mbr_id,
-				AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES);
+	new_mbr.name = name;
+	new_mbr.decl_loc = decl_loc;
+	new_mbr.type = type;
+	new_mbr.next = ctx->terminal_nodes;
 
-	mbr->type_jobs.resolve_types =
-		ast_dt_job_type(ctx, mbr_id,
-				AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES);
+	// Not local
+	new_mbr.flags &= ~AST_DT_MEMBER_IS_LOCAL;
+	new_mbr.anscestor_local_member = anscestor_id;
+	new_mbr.persistant_id = -1;
 
-	mbr->type_jobs.codegen =
-		ast_dt_job_type(ctx, mbr_id,
-				AST_DT_JOB_MBR_TYPE_EVAL);
+	new_mbr.type_jobs.resolve_names = -1;
+	new_mbr.type_jobs.resolve_types = -1;
+	new_mbr.type_jobs.codegen = -1;
 
-	ast_dt_job_dependency(ctx,
-			mbr->type_jobs.resolve_names,
-			mbr->type_jobs.resolve_types);
+	ast_member_id mbr_id;
+	mbr_id = dlist_append(
+			ctx->members,
+			ctx->num_members,
+			&new_mbr);
 
-	ast_dt_job_dependency(ctx,
-			mbr->type_jobs.resolve_types,
-			mbr->type_jobs.codegen);
+	struct ast_dt_member *anscestor;
+	anscestor = get_member(ctx, anscestor_id);
+
+	assert((anscestor->flags & AST_DT_MEMBER_IS_LOCAL) != 0);
+	if (anscestor->first_child < 0) {
+		anscestor->first_child = mbr_id;
+	}
+
+	ctx->terminal_nodes = mbr_id;
+
+	return mbr_id;
 }
 
 static ast_member_id
@@ -839,21 +889,8 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		mbr = &node->composite.members[i];
 
 		// TODO: Better location.
-		ast_member_id mbr_id;
-		mbr_id = ast_dt_register_member(ctx, mbr->name,
-				node->composite.members[i].loc);
-
-		members[i] = mbr_id;
-
-		struct ast_dt_member *new_mbr;
-		new_mbr = get_member(ctx, mbr_id);
-
-		new_mbr->flags |= AST_DT_MEMBER_IS_LOCAL;
-		new_mbr->first_child = -1;
-
-		new_mbr->type_node = node->composite.members[i].type;
-		ast_dt_member_type_jobs_init(ctx, mbr_id);
-
+		members[i] = ast_dt_register_local_member(
+				ctx, mbr->name, mbr->loc, mbr->type);
 	}
 
 	for (size_t i = 0; i < node->composite.num_binds; i++) {
@@ -899,17 +936,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		struct ast_dt_member *mbr;
 		mbr = get_member(ctx, mbr_id);
 
-		if (mbr->bound) {
-			// TODO: We should evaluate the binds that are being overridden.
-
-			if (!mbr->type_node) {
-				ast_dt_job_dependency(ctx,
-						mbr->bound->value_jobs.resolve_types,
-						mbr->type_jobs.resolve_names);
-			}
-		} else {
-			assert(mbr->type_node);
-		}
+		assert(mbr->type_node || mbr->bound);
 	}
 }
 
@@ -931,42 +958,14 @@ ast_dt_populate_descendants(struct ast_dt_context *ctx, ast_member_id local_ansc
 		struct ast_object_def *def;
 		def = parent_type->obj_def;
 
-		ast_slot_id first_child = -1;
-
-		// Be careful with parent and anscestor as ast_dt_register_member can
-		// invalidate those pointers.
-
 		for (size_t i = 0; i < def->num_params; i++) {
 			// TODO: Better location.
 			ast_slot_id param_mbr_id;
-			param_mbr_id = ast_dt_register_member(
-					ctx, def->params[i].name, STG_NO_LOC);
 
-			if (first_child < 0) {
-				first_child = param_mbr_id;
-
-				anscestor = get_member(ctx, local_anscestor);
-				assert((anscestor->flags & AST_DT_MEMBER_IS_LOCAL) != 0);
-				if (anscestor->first_child < 0) {
-					anscestor->first_child = first_child;
-				}
-			}
-
-			struct ast_dt_member *child;
-			child = get_member(ctx, param_mbr_id);
-			child->anscestor_local_member = local_anscestor;
-
-			ast_slot_id param_type_slot;
-			param_type_slot = ast_env_slot(ctx->ast_ctx, &def->env, def->params[i].slot).type;
-
-			int err;
-			err = ast_slot_pack_type(ctx->ast_ctx, ctx->ast_mod, &def->env,
-					param_type_slot, &child->type);
-			if (err) {
-				printf("Failed to evaluate obj_def member type.");
-				return;
-			}
-			assert(child->type != TYPE_UNSET);
+			assert(TYPE_VALID(def->params[i].type));
+			param_mbr_id = ast_dt_register_descendent_member(
+					ctx, def->params[i].name, STG_NO_LOC,
+					def->params[i].type, local_anscestor);
 
 			ast_dt_populate_descendants(ctx, local_anscestor, param_mbr_id);
 		}
@@ -1039,7 +1038,7 @@ ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
 						target_job);
 			} else {
 				ast_dt_job_dependency(ctx,
-						mbr->type_jobs.codegen,
+						mbr->type_resolved,
 						target_job);
 			}
 			break;
@@ -1688,6 +1687,8 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				mbr = get_member(ctx, job->member);
 				assert(mbr->type_jobs.codegen == job_id);
 				mbr->type_jobs.codegen = -1;
+				assert(mbr->type_resolved == job_id);
+				mbr->type_resolved = -1;
 			}
 			break;
 
