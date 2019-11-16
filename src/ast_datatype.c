@@ -1410,71 +1410,74 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			return 0;
 
-		case AST_DT_JOB_MBR_TYPE_EVAL:
-		case AST_DT_JOB_BIND_CODEGEN:
 		case AST_DT_JOB_BIND_EVAL_PACK:
+			{
+				struct ast_dt_member *target;
+				target = get_member(ctx, job->bind->target);
+
+				struct ast_object_def *def;
+				def = job->bind->pack;
+				assert(def);
+
+				ast_member_id first_child;
+				if ((target->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
+					first_child = target->first_child;
+				} else {
+					first_child = job->bind->target + 1;
+				}
+
+				assert(job->bind->num_member_deps == def->num_params);
+
+				bool is_const = true;
+				void *params[def->num_params];
+
+				for (size_t i = 0; i < def->num_params; i++) {
+					struct ast_dt_member *dep;
+					dep = get_member(ctx, first_child+i);
+
+					if ((dep->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+						is_const = false;
+					}
+
+					params[i] = dep->const_value.data;
+				}
+
+				if (is_const) {
+					struct type *type;
+					type = vm_get_type(ctx->ast_ctx->vm, target->type);
+
+					uint8_t value_buffer[type->size];
+
+					def->pack_func(
+							ctx->ast_ctx->vm,
+							def->data, value_buffer,
+							params, def->num_params);
+
+					struct object val = {0};
+					val.type = target->type;
+					val.data = value_buffer;
+
+					target->const_value = register_object(
+							ctx->ast_ctx->vm, ctx->ast_env->store, val);
+
+					target->flags |= AST_DT_MEMBER_IS_CONST;
+				}
+			}
+			return 0;
+
 		case AST_DT_JOB_BIND_EVAL_CONST:
 			{
-				if (job->expr == AST_DT_JOB_EXPR_BIND) {
-					struct ast_dt_member *target;
-					target = get_member(ctx, job->bind->target);
-					if (job->bind->kind == AST_OBJECT_DEF_BIND_PACK) {
-						struct ast_object_def *def;
-						def = job->bind->pack;
-						assert(def);
+				struct ast_dt_member *target;
+				target = get_member(ctx, job->bind->target);
 
-						ast_member_id first_child;
-						if ((target->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
-							first_child = target->first_child;
-						} else {
-							first_child = job->bind->target + 1;
-						}
+				target->const_value = job->bind->const_value;
+				target->flags |= AST_DT_MEMBER_IS_CONST;
+			}
+			return 0;
 
-						assert(job->bind->num_member_deps == def->num_params);
-
-						bool is_const = true;
-						void *params[def->num_params];
-
-						for (size_t i = 0; i < def->num_params; i++) {
-							struct ast_dt_member *dep;
-							dep = get_member(ctx, first_child+i);
-
-							if ((dep->flags & AST_DT_MEMBER_IS_CONST) == 0) {
-								is_const = false;
-							}
-
-							params[i] = dep->const_value.data;
-						}
-
-						if (is_const) {
-							struct type *type;
-							type = vm_get_type(ctx->ast_ctx->vm, target->type);
-
-							uint8_t value_buffer[type->size];
-
-							def->pack_func(
-									ctx->ast_ctx->vm,
-									def->data, value_buffer,
-									params, def->num_params);
-
-							struct object val = {0};
-							val.type = target->type;
-							val.data = value_buffer;
-
-							target->const_value = register_object(
-									ctx->ast_ctx->vm, ctx->ast_env->store, val);
-
-							target->flags |= AST_DT_MEMBER_IS_CONST;
-						}
-
-						return 0;
-					} else if (job->bind->kind == AST_OBJECT_DEF_BIND_CONST) {
-						target->const_value = job->bind->const_value;
-						target->flags |= AST_DT_MEMBER_IS_CONST;
-
-						return 0;
-					}
-				}
+		case AST_DT_JOB_MBR_TYPE_EVAL:
+		case AST_DT_JOB_BIND_CODEGEN:
+			{
 				struct ast_name_dep *names = NULL;
 				size_t num_names = 0;
 
