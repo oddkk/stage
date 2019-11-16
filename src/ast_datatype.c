@@ -1546,122 +1546,106 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			return 0;
 
 		case AST_DT_JOB_MBR_TYPE_EVAL:
+			{
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, job->member);
+
+				ast_member_id *dep_members = NULL;
+				size_t num_dep_members = 0;
+
+				assert(mbr->type_node);
+
+				func_id fid;
+				fid = ast_dt_expr_codegen(
+						ctx, mbr->type_node, ctx->ast_ctx->types.type,
+						AST_NAME_DEP_REQUIRE_VALUE,
+						&dep_members, &num_dep_members);
+
+				struct object const_member_values[num_dep_members];
+				for (size_t i = 0; i < num_dep_members; i++) {
+					struct ast_dt_member *dep_mbr;
+					dep_mbr = get_member(ctx, dep_members[i]);
+
+					assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
+
+					const_member_values[i] = dep_mbr->const_value;
+				}
+
+				type_id out_type = TYPE_UNSET;
+				struct object out = {0};
+				out.type = ctx->ast_ctx->types.type;
+				out.data = &out_type;
+
+				int err;
+				err = vm_call_func(ctx->ast_ctx->vm, fid,
+						const_member_values, num_dep_members,
+						&out);
+				if (err) {
+					printf("Failed to evaluate member type.\n");
+					return -1;
+				}
+
+				ast_try_set_local_member_type(
+						ctx, job->member, out_type);
+			}
+			return 0;
+
 		case AST_DT_JOB_BIND_CODEGEN:
 			{
 				struct ast_dt_member *mbr;
-
-				type_id expected_type;
-
-				switch (job->expr) {
-					case AST_DT_JOB_EXPR_TARGET:
-						panic("Invalid target job.");
-						return -1;
-
-					case AST_DT_JOB_EXPR_BIND:
-						mbr = get_member(ctx, job->bind->target);
-						assert(mbr->type != TYPE_UNSET);
-						expected_type = mbr->type;
-						break;
-
-					case AST_DT_JOB_EXPR_TYPE:
-						mbr = get_member(ctx, job->member);
-						expected_type = ctx->ast_ctx->types.type;
-						break;
-				}
+				mbr = get_member(ctx, job->bind->target);
+				assert(mbr->type != TYPE_UNSET);
 
 				ast_member_id *dep_members = NULL;
 				size_t num_dep_members = 0;
 
 				func_id fid;
 				fid = ast_dt_expr_codegen(
-						ctx, node, expected_type, dep_req,
+						ctx, job->bind->value.node, mbr->type, dep_req,
 						&dep_members, &num_dep_members);
 
-				switch (job->expr) {
-					case AST_DT_JOB_EXPR_TARGET:
-						panic("Tried to generate bytecode for target.");
-						break;
+				job->bind->num_member_deps = num_dep_members;
+				job->bind->member_deps = dep_members;
 
-					case AST_DT_JOB_EXPR_BIND:
-						{
-							job->bind->num_member_deps = num_dep_members;
-							job->bind->member_deps = calloc(
-									job->bind->num_member_deps, sizeof(ast_member_id));
+				bool is_const = true;
 
-							bool is_const = true;
+				struct object dep_member_values[job->bind->num_member_deps];
 
-							struct object dep_member_values[job->bind->num_member_deps];
+				for (size_t i = 0; i < job->bind->num_member_deps; i++) {
+					assert(job->bind->member_deps[i] >= 0);
 
-							for (size_t i = 0; i < job->bind->num_member_deps; i++) {
-								job->bind->member_deps[i] = dep_members[i];
-								assert(dep_members[i] >= 0);
+					struct ast_dt_member *dep_mbr;
+					dep_mbr = get_member(ctx, job->bind->member_deps[i]);
 
-								struct ast_dt_member *dep_mbr;
-								dep_mbr = get_member(ctx, dep_members[i]);
+					if ((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+						is_const = false;
+					}
 
-								if ((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
-									is_const = false;
-								}
+					dep_member_values[i] = dep_mbr->const_value;
+				}
 
-								dep_member_values[i] = dep_mbr->const_value;
-							}
+				job->bind->value.func = fid;
 
-							job->bind->value.func = fid;
+				if (is_const && !job->bind->overridable) {
+					struct type *ret_type;
+					ret_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
 
-							if (is_const && !job->bind->overridable) {
-								struct type *ret_type;
-								ret_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
+					uint8_t buffer[ret_type->size];
+					struct object obj = {0};
+					obj.type = mbr->type;
+					obj.data = buffer;
 
-								uint8_t buffer[ret_type->size];
-								struct object obj = {0};
-								obj.type = mbr->type;
-								obj.data = buffer;
+					int err;
+					err = vm_call_func(ctx->ast_ctx->vm, fid, dep_member_values,
+							job->bind->num_member_deps, &obj);
+					if (err) {
+						printf("Failed to evaluate constant member.\n");
+						return -1;
+					}
 
-								int err;
-								err = vm_call_func(ctx->ast_ctx->vm, fid, dep_member_values,
-										job->bind->num_member_deps, &obj);
-								if (err) {
-									printf("Failed to evaluate constant member.\n");
-									return -1;
-								}
-
-								mbr->const_value =
-									register_object(ctx->ast_ctx->vm, ctx->ast_env->store, obj);
-								mbr->flags |= AST_DT_MEMBER_IS_CONST;
-							}
-						}
-						break;
-
-					case AST_DT_JOB_EXPR_TYPE:
-						{
-							struct object const_member_values[num_dep_members];
-							for (size_t i = 0; i < num_dep_members; i++) {
-								struct ast_dt_member *dep_mbr;
-								dep_mbr = get_member(ctx, dep_members[i]);
-
-								assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
-
-								const_member_values[i] = dep_mbr->const_value;
-							}
-
-							type_id out_type = TYPE_UNSET;
-							struct object out = {0};
-							out.type = ctx->ast_ctx->types.type;
-							out.data = &out_type;
-
-							int err;
-							err = vm_call_func(ctx->ast_ctx->vm, fid,
-									const_member_values, num_dep_members,
-									&out);
-							if (err) {
-								printf("Failed to evaluate member type.\n");
-								return -1;
-							}
-
-							ast_try_set_local_member_type(
-									ctx, job->member, out_type);
-						}
-						break;
+					mbr->const_value =
+						register_object(ctx->ast_ctx->vm, ctx->ast_env->store, obj);
+					mbr->flags |= AST_DT_MEMBER_IS_CONST;
 				}
 			}
 			return 0;
