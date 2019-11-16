@@ -89,9 +89,22 @@ struct ast_dt_dependency {
 
 enum ast_dt_job_kind {
 	AST_DT_JOB_FREE = 0,
-	AST_DT_JOB_RESOLVE_NAMES,
-	AST_DT_JOB_RESOLVE_TYPES,
-	AST_DT_JOB_CODEGEN,
+
+	AST_DT_JOB_MBR_RESOLVE_TARGET,
+
+	AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES,
+	AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES,
+	AST_DT_JOB_MBR_TYPE_EVAL,
+
+	AST_DT_JOB_BIND_RESOLVE_NAMES,
+	AST_DT_JOB_BIND_RESOLVE_TYPES,
+	AST_DT_JOB_BIND_CODEGEN,
+
+	AST_DT_JOB_BIND_TYPE_CONST,
+	AST_DT_JOB_BIND_EVAL_CONST,
+
+	AST_DT_JOB_BIND_TYPE_PACK,
+	AST_DT_JOB_BIND_EVAL_PACK,
 };
 
 enum ast_dt_job_expr {
@@ -423,15 +436,15 @@ ast_dt_bind_value_jobs_init(struct ast_dt_context *ctx, struct ast_dt_bind *bind
 {
 	bind->value_jobs.resolve_names =
 		ast_dt_job_bind(ctx, bind,
-				AST_DT_JOB_RESOLVE_NAMES);
+				AST_DT_JOB_BIND_RESOLVE_NAMES);
 
 	bind->value_jobs.resolve_types =
 		ast_dt_job_bind(ctx, bind,
-				AST_DT_JOB_RESOLVE_TYPES);
+				AST_DT_JOB_BIND_RESOLVE_TYPES);
 
 	bind->value_jobs.codegen =
 		ast_dt_job_bind(ctx, bind,
-				AST_DT_JOB_CODEGEN);
+				AST_DT_JOB_BIND_CODEGEN);
 
 	ast_dt_job_dependency(ctx,
 			bind->value_jobs.resolve_names,
@@ -468,6 +481,9 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
+
+	ast_dt_bind_value_jobs_init(
+			ctx, new_bind);
 
 	if (member->bound) {
 		if (!member->bound->overridable && !overridable) {
@@ -636,13 +652,27 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 	new_bind->member_deps = value_params;
 	new_bind->num_member_deps = num_value_params;
 
+	new_bind->value_jobs.resolve_names = -1;
+	new_bind->value_jobs.resolve_types =
+		ast_dt_job_bind(ctx, new_bind,
+				AST_DT_JOB_BIND_TYPE_PACK);
+	new_bind->value_jobs.codegen =
+		ast_dt_job_bind(ctx, new_bind,
+				AST_DT_JOB_BIND_EVAL_PACK);
+
+	ast_dt_job_dependency(ctx,
+			new_bind->value_jobs.resolve_types,
+			new_bind->value_jobs.codegen);
+
 	for (size_t i = 0; i < num_value_params; i++) {
 		assert(value_params[i] >= 0);
+		struct ast_dt_member *dep;
+		dep = get_member(ctx, value_params[i]);
+		ast_dt_job_dependency(ctx,
+				new_bind->value_jobs.resolve_types,
+				new_bind->value_jobs.codegen);
 	}
 
-	new_bind->value_jobs.resolve_names = -1;
-	new_bind->value_jobs.resolve_types = -1;
-	new_bind->value_jobs.codegen = -1;
 
 	new_bind->loc = STG_NO_LOC;
 
@@ -697,15 +727,15 @@ ast_dt_member_type_jobs_init(struct ast_dt_context *ctx, ast_member_id mbr_id)
 
 	mbr->type_jobs.resolve_names =
 		ast_dt_job_type(ctx, mbr_id,
-				AST_DT_JOB_RESOLVE_NAMES);
+				AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES);
 
 	mbr->type_jobs.resolve_types =
 		ast_dt_job_type(ctx, mbr_id,
-				AST_DT_JOB_RESOLVE_TYPES);
+				AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES);
 
 	mbr->type_jobs.codegen =
 		ast_dt_job_type(ctx, mbr_id,
-				AST_DT_JOB_CODEGEN);
+				AST_DT_JOB_MBR_TYPE_EVAL);
 
 	ast_dt_job_dependency(ctx,
 			mbr->type_jobs.resolve_names,
@@ -812,16 +842,18 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		ast_member_id mbr_id;
 		mbr_id = ast_dt_register_member(ctx, mbr->name,
 				node->composite.members[i].loc);
-		ast_dt_member_type_jobs_init(ctx, mbr_id);
 
 		members[i] = mbr_id;
 
 		struct ast_dt_member *new_mbr;
 		new_mbr = get_member(ctx, mbr_id);
 
-		new_mbr->type_node = node->composite.members[i].type;
 		new_mbr->flags |= AST_DT_MEMBER_IS_LOCAL;
 		new_mbr->first_child = -1;
+
+		new_mbr->type_node = node->composite.members[i].type;
+		ast_dt_member_type_jobs_init(ctx, mbr_id);
+
 	}
 
 	for (size_t i = 0; i < node->composite.num_binds; i++) {
@@ -855,7 +887,6 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 				target_member,
 				node->composite.binds[i].value,
 				node->composite.binds[i].overridable);
-		ast_dt_bind_value_jobs_init(ctx, bind);
 	}
 
 	for (size_t i = 0; i < node->composite.num_members; i++) {
@@ -1138,7 +1169,6 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 		bind = ast_dt_register_bind_pack(ctx,
 				mbr_id, mbr_type->obj_def,
 				children, num_children);
-		ast_dt_bind_value_jobs_init(ctx, bind);
 	}
 
 	return 0;
@@ -1189,7 +1219,11 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	}
 
 	switch (job->kind) {
-		case AST_DT_JOB_RESOLVE_NAMES:
+		case AST_DT_JOB_MBR_RESOLVE_TARGET:
+			break;
+
+		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
+		case AST_DT_JOB_BIND_RESOLVE_NAMES:
 			{
 				bool require_const = false;
 				ast_dt_job_id next_job = -1;
@@ -1230,7 +1264,10 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			return 0;
 
-		case AST_DT_JOB_RESOLVE_TYPES:
+		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
+		case AST_DT_JOB_BIND_RESOLVE_TYPES:
+		case AST_DT_JOB_BIND_TYPE_CONST:
+		case AST_DT_JOB_BIND_TYPE_PACK:
 			{
 				if (job->expr == AST_DT_JOB_EXPR_BIND) {
 					struct ast_dt_member *target;
@@ -1374,7 +1411,10 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			return 0;
 
-		case AST_DT_JOB_CODEGEN:
+		case AST_DT_JOB_MBR_TYPE_EVAL:
+		case AST_DT_JOB_BIND_CODEGEN:
+		case AST_DT_JOB_BIND_EVAL_PACK:
+		case AST_DT_JOB_BIND_EVAL_CONST:
 			{
 				if (job->expr == AST_DT_JOB_EXPR_BIND) {
 					struct ast_dt_member *target;
@@ -1618,42 +1658,68 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	struct ast_dt_job *job;
 	job = get_job(ctx, job_id);
 
-	assert(job->kind != AST_DT_JOB_FREE);
-
-	struct ast_dt_expr_jobs *jobs = NULL;
-
-	switch (job->expr) {
-		case AST_DT_JOB_EXPR_TARGET:
-			return;
-
-		case AST_DT_JOB_EXPR_BIND:
-			jobs = &job->bind->value_jobs;
-			break;
-
-		case AST_DT_JOB_EXPR_TYPE:
-			jobs = &get_member(ctx, job->member)->type_jobs;
-			break;
-	}
-
-	assert(jobs);
-
 	switch (job->kind) {
 		case AST_DT_JOB_FREE:
-			return;
-
-		case AST_DT_JOB_RESOLVE_NAMES:
-			assert(jobs->resolve_names == job_id);
-			jobs->resolve_names = -1;
+			panic("Tried to remove freed job.");
 			break;
 
-		case AST_DT_JOB_RESOLVE_TYPES:
-			assert(jobs->resolve_types == job_id);
-			jobs->resolve_types = -1;
+		case AST_DT_JOB_MBR_RESOLVE_TARGET:
 			break;
 
-		case AST_DT_JOB_CODEGEN:
-			assert(jobs->codegen == job_id);
-			jobs->codegen = -1;
+		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
+			{
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, job->member);
+				assert(mbr->type_jobs.resolve_names == job_id);
+				mbr->type_jobs.resolve_names = -1;
+			}
+			break;
+		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
+			{
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, job->member);
+				assert(mbr->type_jobs.resolve_types == job_id);
+				mbr->type_jobs.resolve_types = -1;
+			}
+			break;
+		case AST_DT_JOB_MBR_TYPE_EVAL:
+			{
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, job->member);
+				assert(mbr->type_jobs.codegen == job_id);
+				mbr->type_jobs.codegen = -1;
+			}
+			break;
+
+		case AST_DT_JOB_BIND_RESOLVE_NAMES:
+			assert(job->bind->value_jobs.resolve_names == job_id);
+			job->bind->value_jobs.resolve_names = -1;
+			break;
+		case AST_DT_JOB_BIND_RESOLVE_TYPES:
+			assert(job->bind->value_jobs.resolve_types == job_id);
+			job->bind->value_jobs.resolve_types = -1;
+			break;
+		case AST_DT_JOB_BIND_CODEGEN:
+			assert(job->bind->value_jobs.codegen == job_id);
+			job->bind->value_jobs.codegen = -1;
+			break;
+
+		case AST_DT_JOB_BIND_TYPE_CONST:
+			assert(job->bind->value_jobs.resolve_types == job_id);
+			job->bind->value_jobs.resolve_types = -1;
+			break;
+		case AST_DT_JOB_BIND_EVAL_CONST:
+			assert(job->bind->value_jobs.codegen == job_id);
+			job->bind->value_jobs.codegen = -1;
+			break;
+
+		case AST_DT_JOB_BIND_TYPE_PACK:
+			assert(job->bind->value_jobs.resolve_types == job_id);
+			job->bind->value_jobs.resolve_types = -1;
+			break;
+		case AST_DT_JOB_BIND_EVAL_PACK:
+			assert(job->bind->value_jobs.codegen == job_id);
+			job->bind->value_jobs.codegen = -1;
 			break;
 	}
 }
