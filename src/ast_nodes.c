@@ -335,10 +335,11 @@ int
 ast_node_composite_add_member(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct atom *name,
-		struct ast_node *type)
+		struct ast_node *type, int type_giving_bind)
 {
 	assert(target && name);
 	assert(target->kind == AST_NODE_COMPOSITE);
+	assert(type_giving_bind < (ssize_t)target->composite.num_binds);
 
 	for (size_t i = 0; i < target->composite.num_members; i++) {
 		if (target->composite.members[i].name == name) {
@@ -348,8 +349,16 @@ ast_node_composite_add_member(
 
 	struct ast_datatype_member new_member = {0};
 	new_member.name = name;
-	new_member.type = type;
 	new_member.loc = target->loc;
+
+	if (type) {
+		new_member.type = type;
+		new_member.type_giving_bind = AST_NO_TYPE_GIVING_BIND;
+	} else {
+		new_member.type_giving_bind = type_giving_bind;
+	}
+
+	assert(new_member.type || new_member.type_giving_bind >= 0);
 
 	new_member.slot = AST_BIND_NEW;
 
@@ -370,7 +379,7 @@ ast_node_composite_get_member(
 			target->composite.cons, AST_BIND_NEW, name);
 }
 
-void
+int
 ast_node_composite_bind(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *composite, struct ast_node *target,
@@ -385,10 +394,13 @@ ast_node_composite_bind(
 	new_bind.value = value;
 	new_bind.overridable = overridable;
 
-	dlist_append(
+	int bind_id;
+	bind_id = dlist_append(
 			composite->composite.binds,
 			composite->composite.num_binds,
 			&new_bind);
+
+	return bind_id;
 }
 
 void

@@ -529,6 +529,11 @@ struct ast_datatype_member {
 	struct atom *name;
 	struct ast_node *type;
 	struct stg_location loc;
+
+	// If this member is not explicitly typed a bind must be specified to
+	// determine the members type.
+	int type_giving_bind;
+
 	// TODO: Is this necessary? It was added to allow it to be printed.
 	ast_slot_id slot;
 };
@@ -798,18 +803,20 @@ ast_init_node_composite(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct stg_location);
 
+#define AST_NO_TYPE_GIVING_BIND ((int)-1)
+
 int
 ast_node_composite_add_member(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct atom *name,
-		struct ast_node *type);
+		struct ast_node *type, int type_giving_bind);
 
 ast_slot_id
 ast_node_composite_get_member(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct atom *name);
 
-void
+int
 ast_node_composite_bind(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *composite, struct ast_node *target,
@@ -939,6 +946,9 @@ ast_composite_bind_gen_bytecode(
 
 void
 ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
+
+void
+ast_print_node(struct ast_context *, struct ast_env *, struct ast_node *);
 
 enum ast_module_name_kind {
 	AST_MODULE_NAME_DECL,

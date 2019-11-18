@@ -416,6 +416,87 @@ ast_print(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
 	ast_print_internal(ctx, env, node, 0);
 }
 
+void
+ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_FUNC:
+		case AST_NODE_FUNC_NATIVE:
+			printf("(");
+			for (size_t i = 0; i < node->func.num_params; i++) {
+				printf("%s%.*s: ", (i != 0) ? ", " : "",
+						ALIT(node->func.params[i].name));
+				ast_print_node(ctx, env, node->func.params[i].type);
+			}
+			printf(") -> ");
+			ast_print_node(ctx, env, node->func.return_type);
+			printf(" => ");
+
+			if (node->kind == AST_NODE_FUNC) {
+				ast_print_node(ctx, env, node->func.body);
+			} else {
+				printf("@native(\"%.*s\")", LIT(node->func.native.name));
+			}
+			break;
+
+		case AST_NODE_CALL:
+		case AST_NODE_CONS:
+			ast_print_node(ctx, env, node->call.func);
+			printf("(");
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				if (i != 0) {
+					printf(", ");
+				}
+				if (node->call.args[i].name) {
+					printf("%.*s=", ALIT(node->call.args[i].name));
+				}
+				ast_print_node(ctx, env, node->call.args[i].value);
+			}
+			printf(")");
+			break;
+
+		case AST_NODE_ACCESS:
+			ast_print_node(ctx, env, node->access.target);
+			printf(".%.*s", ALIT(node->access.name));
+			break;
+
+		case AST_NODE_TEMPL:
+			printf("(");
+			for (size_t i = 0; i < node->templ.num_params; i++) {
+				printf("%s%.*s: <", (i != 0) ? ", " : "",
+						ALIT(node->templ.params[i].name));
+				ast_print_slot(ctx, env, node->slot);
+				printf(">");
+			}
+			printf(") ->> ?");
+			printf(" => ");
+			break;
+
+		case AST_NODE_SLOT:
+			printf("<");
+			ast_print_slot(ctx, env, node->slot);
+			printf(">");
+			break;
+
+		case AST_NODE_LIT:
+			print_obj_repr(ctx->vm, node->lit.obj);
+			break;
+
+		case AST_NODE_LOOKUP:
+			printf("%.*s", ALIT(node->lookup.name));
+			break;
+
+		case AST_NODE_COMPOSITE:
+			printf("Struct {");
+			printf(" }");
+			break;
+
+		case AST_NODE_VARIANT:
+			printf("variant");
+			break;
+	}
+}
+
 /*
 static void
 ast_print_namespace(struct ast_context *ctx, struct ast_env *env,

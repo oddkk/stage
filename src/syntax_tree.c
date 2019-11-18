@@ -158,6 +158,13 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 				bool overridable;
 				overridable = assign->ASSIGN_STMT.overridable;
 
+				int type_giving_bind = AST_NO_TYPE_GIVING_BIND;
+
+				if (expr) {
+					type_giving_bind = ast_node_composite_bind(
+							ctx, env, struct_node,
+							target, expr, overridable);
+				}
 
 				if (assign->ASSIGN_STMT.decl) {
 					struct st_node *type_node;
@@ -181,7 +188,7 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 					int err;
 					err = ast_node_composite_add_member(
 							ctx, env, struct_node,
-							name, type);
+							name, type, type_giving_bind);
 					if (err) {
 						stg_error(ctx->err, target->loc,
 								"'%.*s' is already declared.",
@@ -191,12 +198,6 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 				} else {
 					assert(!assign->ASSIGN_STMT.type);
 					assert(expr);
-				}
-
-				if (expr) {
-					ast_node_composite_bind(
-							ctx, env, struct_node,
-							target, expr, overridable);
 				}
 			}
 			break;

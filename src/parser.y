@@ -226,12 +226,12 @@ stmt1:			';'                     { $$ = NULL; }
 		;
 
 assign_stmt:
-				l_expr ':' expr           { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=$3,   .body=NULL, .decl=true,  .overridable=true); }
-		|		l_expr ':'      '=' expr  { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=NULL, .body=$4,   .decl=true,  .overridable=false); }
-		|		l_expr ':' expr '=' expr  { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=$3,   .body=$5,   .decl=true,  .overridable=false); }
+				ident  ':' expr           { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=$3,   .body=NULL, .decl=true,  .overridable=true); }
+		|		ident  ':'      '=' expr  { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=NULL, .body=$4,   .decl=true,  .overridable=false); }
+		|		ident  ':' expr '=' expr  { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=$3,   .body=$5,   .decl=true,  .overridable=false); }
 		|		l_expr '=' expr           { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=NULL, .body=$3,   .decl=false, .overridable=false); }
-		|		l_expr ':'      "~=" expr { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=NULL, .body=$4,   .decl=true,  .overridable=true);  }
-		|		l_expr ':' expr "~=" expr { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=$3,   .body=$5,   .decl=true,  .overridable=true);  }
+		|		ident  ':'      "~=" expr { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=NULL, .body=$4,   .decl=true,  .overridable=true);  }
+		|		ident  ':' expr "~=" expr { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=$3,   .body=$5,   .decl=true,  .overridable=true);  }
 		|		l_expr "~=" expr          { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=NULL, .body=$3,   .decl=false, .overridable=true);  }
 		;
 

@@ -379,19 +379,20 @@ int
 ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_node *ns, struct atom *name, struct ast_node *expr)
 {
-	int err;
-	err = ast_node_composite_add_member(ctx, &mod->env,
-			ns, name, NULL);
-	if (err) {
-		return err;
-	}
-
 	struct ast_node *target;
 	target = ast_init_node_lookup(ctx, &mod->env,
 			AST_NODE_NEW, STG_NO_LOC, name);
 
-	ast_node_composite_bind(ctx, &mod->env, ns,
+	int bind_id;
+	bind_id = ast_node_composite_bind(ctx, &mod->env, ns,
 			target, expr, false);
+
+	int err;
+	err = ast_node_composite_add_member(ctx, &mod->env,
+			ns, name, NULL, bind_id);
+	if (err) {
+		return err;
+	}
 
 	return 0;
 }
@@ -423,7 +424,7 @@ ast_namespace_add_ns(struct ast_context *ctx, struct ast_env *env,
 
 	int err;
 	err = ast_node_composite_add_member(ctx, env,
-			ns, name, ns_type);
+			ns, name, ns_type, AST_NO_TYPE_GIVING_BIND);
 	assert(!err);
 
 	return ns_type;
@@ -494,7 +495,8 @@ ast_module_resolve_dependencies(struct ast_context *ctx,
 
 		int err;
 		err = ast_node_composite_add_member(ctx, &mod->env,
-				dep->container, dep->name, type);
+				dep->container, dep->name, type,
+				AST_NO_TYPE_GIVING_BIND);
 		assert(!err);
 	}
 }
