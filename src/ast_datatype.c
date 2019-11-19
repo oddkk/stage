@@ -304,6 +304,9 @@ ast_dt_alloc_job(struct ast_dt_context *ctx)
 	job = get_job(ctx, res);
 
 	ctx->free_list = job->free_list;
+
+	memset(job, 0, sizeof(struct ast_dt_job));
+
 	job->free_list = -1;
 
 	job->terminal_jobs = ctx->terminal_jobs;
