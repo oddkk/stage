@@ -2481,30 +2481,30 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 		binds[bind_i].kind = mbr->bound->kind;
 		switch (mbr->bound->kind) {
 			case AST_OBJECT_DEF_BIND_VALUE:
-				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) == 0 &&
+				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0 &&
 						!mbr->bound->overridable) {
+					binds[bind_i].kind = AST_OBJECT_DEF_BIND_CONST;
+					binds[bind_i].const_value = mbr->const_value;
+				} else {
 					assert(mbr->bound->value.func  != FUNC_UNSET);
 					binds[bind_i].value.func        = mbr->bound->value.func;
 					binds[bind_i].value.overridable = mbr->bound->overridable;
-				} else {
-					binds[bind_i].kind = AST_OBJECT_DEF_BIND_CONST;
-					binds[bind_i].const_value = mbr->const_value;
 				}
 				break;
 
 			case AST_OBJECT_DEF_BIND_CONST:
-				binds[bind_i].const_value = mbr->const_value;
+				binds[bind_i].const_value = mbr->bound->const_value;
 				break;
 
 			case AST_OBJECT_DEF_BIND_PACK:
 				assert(mbr->bound->num_targets == 1);
-				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) == 0 &&
+				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0 &&
 						!mbr->bound->overridable) {
-					assert(mbr->bound->pack);
-					binds[bind_i].pack = mbr->bound->pack;
-				} else {
 					binds[bind_i].kind = AST_OBJECT_DEF_BIND_CONST;
 					binds[bind_i].const_value = mbr->const_value;
+				} else {
+					assert(mbr->bound->pack);
+					binds[bind_i].pack = mbr->bound->pack;
 				}
 				break;
 		}
