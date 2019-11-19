@@ -287,8 +287,10 @@ ast_dt_alloc_job(struct ast_dt_context *ctx)
 
 		ctx->num_job_pages += 1;
 
+		size_t first_in_page = jobs_per_page * (ctx->num_job_pages-1);
+
 		for (size_t i = 0; i < jobs_per_page-1; i++) {
-			new_jobs[i].free_list = i+1;
+			new_jobs[i].free_list = first_in_page+i+1;
 		}
 
 		new_jobs[jobs_per_page-1].free_list = -1;
@@ -2635,6 +2637,15 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		bind = bind->next_alloced;
 		free(this_bind);
 	}
+
+	for (size_t i = 0; i < dt_ctx.num_job_pages; i++) {
+		int err;
+		err = munmap(dt_ctx.job_pages[i], dt_ctx.page_size);
+		if (err) {
+			perror("munmap");
+		}
+	}
+	free(dt_ctx.job_pages);
 
 #if AST_DT_DEBUG_JOBS
 	printf("end composite ");
