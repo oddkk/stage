@@ -169,7 +169,6 @@ ast_object_def_order_binds(
 
 		ast_member_id target;
 		target = bctx.binds[bind_i]->target;
-		printf("bind to target %i\n", target);
 		assert(target < bctx.num_members);
 		bctx.members_bind[target] = bind_i;
 	}

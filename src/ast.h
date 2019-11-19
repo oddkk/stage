@@ -398,6 +398,8 @@ struct ast_object_def_bind {
 	ast_member_id *value_params;
 	size_t num_value_params;
 
+	func_id unpack_func;
+
 	union {
 		struct {
 			bool overridable;
@@ -944,6 +946,10 @@ ast_composite_bind_gen_bytecode(
 		struct object *const_member_values, size_t num_members,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr);
 
+struct bc_env *
+ast_gen_value_unpack_func(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, type_id value_type, size_t descendent);
 void
 ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
 

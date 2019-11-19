@@ -713,3 +713,83 @@ ast_composite_bind_gen_bytecode(
 
 	return bc_env;
 }
+
+struct bc_env *
+ast_gen_value_unpack_func(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, type_id value_type, size_t descendent)
+{
+	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
+	bc_env->vm = ctx->vm;
+	bc_env->store = ctx->vm->instr_store;
+
+	struct ast_gen_bc_result result = {0};
+
+	result.out_var = bc_alloc_param(bc_env, 0, value_type);
+
+
+	type_id current_type = value_type;
+	while (descendent > 0) {
+		struct type *type;
+		type = vm_get_type(bc_env->vm, current_type);
+
+		struct ast_object_def *def;
+		def = type->obj_def;
+
+		// As descendent is > 0, we expect this child to have children.
+		assert(def);
+
+		size_t offset = 1;
+		for (size_t i = 0; i < def->num_params; i++) {
+			struct type *mbr_type;
+			mbr_type = vm_get_type(bc_env->vm,
+					def->params[i].type);
+
+			size_t num_desc;
+			if (mbr_type->obj_def) {
+				num_desc = ast_object_def_num_descendant_members(
+						ctx, mod, mbr_type->obj_def);
+			} else {
+				num_desc = 1;
+			}
+
+			assert(descendent >= offset);
+			if (descendent < offset + num_desc) {
+
+				assert(def->unpack_func);
+				append_bc_instr(&result,
+						bc_gen_push_arg(bc_env, result.out_var));
+				append_bc_instr(&result,
+						bc_gen_unpack(bc_env, BC_VAR_NEW,
+							def->unpack_func, def->data,
+							def->params[i].param_id, def->params[i].type));
+
+				current_type = def->params[i].type;
+				descendent -= offset;
+				break;
+			} else {
+				offset += num_desc;
+			}
+		}
+	}
+
+	append_bc_instr(&result,
+			bc_gen_ret(bc_env, result.out_var));
+
+	bc_env->entry_point = result.first;
+
+#if AST_GEN_SHOW_BC
+	printf("\nunpack bc:\n");
+	bc_print(bc_env, bc_env->entry_point);
+#endif
+
+	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
+	nbc_compile_from_bc(bc_env->nbc, bc_env);
+
+#if AST_GEN_SHOW_BC
+	printf("\nunpack nbc:\n");
+	nbc_print(bc_env->nbc);
+#endif
+
+	return bc_env;
+}
