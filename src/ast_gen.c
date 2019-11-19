@@ -5,6 +5,7 @@
 #include "vm.h"
 #include "base/mod.h"
 #include <stdlib.h>
+#include <string.h>
 
 #define AST_GEN_SHOW_BC 0
 
@@ -244,55 +245,97 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					ast_object_def_alloc_vars(ctx, mod, bc_env,
 							def, object_mbrs, &var_i, local_mbrs, true);
 
-					int bind_order[def->num_binds];
+					int bind_order[def->num_binds + node->call.num_args];
+
+					struct ast_object_def_bind cons_binds[node->call.num_args];
+					memset(&cons_binds, 0,
+							sizeof(struct ast_object_def_bind) * node->call.num_args);
+
+					bool cons_is_named = true;
+					for (size_t i = 0; i < node->call.num_args; i++) {
+						assert(i == 0 || cons_is_named == !!node->call.args[i].name);
+						cons_is_named = !!node->call.args[i].name;
+					}
+
+					for (size_t i = 0; i < node->call.num_args; i++) {
+						if (cons_is_named) {
+							bool found = false;
+							for (size_t j = 0; j < def->num_params; j++) {
+								if (def->params[j].name == node->call.args[i].name) {
+									cons_binds[i].target = def->params[j].param_id;
+									found = true;
+									break;
+								}
+							}
+
+							assert(found);
+						} else {
+							cons_binds[i].target = def->params[i].param_id;
+						}
+
+						cons_binds[i].value_params = NULL;
+						cons_binds[i].num_value_params = 0;
+					}
 
 					int err;
 					err = ast_object_def_order_binds(
-							ctx, mod, def, NULL, 0, bind_order);
+							ctx, mod, def, cons_binds, node->call.num_args, bind_order);
 					if (err) {
 						return (struct ast_gen_bc_result){0};
 					}
-					// TODO: Resort the def's binds together whith the cons' binds.
 
-					for (size_t i = 0; i < def->num_binds; i++) {
+					for (size_t i = 0; i < def->num_binds + node->call.num_args; i++) {
 						size_t bind_i = bind_order[i];
 
-						if (def->binds[bind_i].kind != AST_OBJECT_DEF_BIND_CONST) {
-							for (size_t val_i = 0;
-									val_i < def->binds[bind_i].num_value_params; val_i++) {
-								ast_member_id dep;
-								dep = def->binds[bind_i].value_params[val_i];
-								assert(dep < num_desc_members);
+						if(bind_i < def->num_binds) {
+							if (def->binds[bind_i].kind != AST_OBJECT_DEF_BIND_CONST) {
+								for (size_t val_i = 0;
+										val_i < def->binds[bind_i].num_value_params; val_i++) {
+									ast_member_id dep;
+									dep = def->binds[bind_i].value_params[val_i];
+									assert(dep < num_desc_members);
 
-								append_bc_instr(&result,
-										bc_gen_push_arg(bc_env, object_mbrs[dep]));
+									append_bc_instr(&result,
+											bc_gen_push_arg(bc_env, object_mbrs[dep]));
+								}
 							}
-						}
 
-						ast_member_id target;
-						target = def->binds[bind_i].target;
-						assert(target < num_desc_members);
+							ast_member_id target;
+							target = def->binds[bind_i].target;
+							assert(target < num_desc_members);
 
-						switch (def->binds[bind_i].kind) {
-							case AST_OBJECT_DEF_BIND_VALUE:
-								append_bc_instr(&result,
-										bc_gen_lcall(bc_env, object_mbrs[target],
-											def->binds[bind_i].value.func));
-								break;
+							switch (def->binds[bind_i].kind) {
+								case AST_OBJECT_DEF_BIND_VALUE:
+									append_bc_instr(&result,
+											bc_gen_lcall(bc_env, object_mbrs[target],
+												def->binds[bind_i].value.func));
+									break;
 
-							case AST_OBJECT_DEF_BIND_CONST:
-								append_bc_instr(&result,
-										bc_gen_load(bc_env, object_mbrs[target],
-											def->binds[bind_i].const_value));
-								break;
+								case AST_OBJECT_DEF_BIND_CONST:
+									append_bc_instr(&result,
+											bc_gen_load(bc_env, object_mbrs[target],
+												def->binds[bind_i].const_value));
+									break;
 
-							case AST_OBJECT_DEF_BIND_PACK:
-								append_bc_instr(&result,
-										bc_gen_pack(bc_env, object_mbrs[target],
-											def->binds[bind_i].pack->pack_func,
-											def->binds[bind_i].pack->data,
-											bc_get_var_type(bc_env, object_mbrs[target])));
-								break;
+								case AST_OBJECT_DEF_BIND_PACK:
+									append_bc_instr(&result,
+											bc_gen_pack(bc_env, object_mbrs[target],
+												def->binds[bind_i].pack->pack_func,
+												def->binds[bind_i].pack->data,
+												bc_get_var_type(bc_env, object_mbrs[target])));
+									break;
+							}
+						} else {
+							bind_i -= def->num_binds;
+							assert(bind_i < node->call.num_args);
+							struct ast_gen_bc_result arg;
+							arg = ast_node_gen_bytecode(ctx, mod, env, info, bc_env,
+									node->call.args[i].value);
+
+							append_bc_instrs(&result, arg);
+							append_bc_instr(&result,
+									bc_gen_copy(bc_env,
+										object_mbrs[cons_binds[bind_i].target], arg.out_var));
 						}
 					}
 

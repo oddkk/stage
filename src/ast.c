@@ -165,10 +165,11 @@ ast_object_def_order_binds(
 		size_t bind_i = def->num_binds + i;
 		bctx.binds[bind_i] = &extra_binds[i];
 		bctx.num_incoming_edges[bind_i] = 0;
-		bctx.num_outgoing_edges[i] = 0;
+		bctx.num_outgoing_edges[bind_i] = 0;
 
 		ast_member_id target;
-		target = def->binds[bind_i].target;
+		target = bctx.binds[bind_i]->target;
+		printf("bind to target %i\n", target);
 		assert(target < bctx.num_members);
 		bctx.members_bind[target] = bind_i;
 	}
