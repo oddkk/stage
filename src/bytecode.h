@@ -16,6 +16,9 @@ enum bc_op {
 	// Load global into var.
 	BC_LOAD,
 
+	// Copy a var to another.
+	BC_COPY,
+
 	// Append a var to the list of args for the next CALL.
 	BC_PUSH_ARG,
 
@@ -42,6 +45,11 @@ struct bc_instr {
 			bc_const obj;
 			bc_var target;
 		} load;
+
+		struct {
+			bc_var src;
+			bc_var target;
+		} copy;
 
 		struct {
 			bc_var var;
@@ -124,6 +132,9 @@ bc_gen_nop(struct bc_env *);
 
 struct bc_instr *
 bc_gen_load(struct bc_env *, bc_var target, struct object obj);
+
+struct bc_instr *
+bc_gen_copy(struct bc_env *, bc_var target, bc_var src);
 
 struct bc_instr *
 bc_gen_push_arg(struct bc_env *, bc_var var);

@@ -59,6 +59,19 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 				}
 				break;
 
+			case BC_COPY:
+				{
+					struct nbc_instr instr = {0};
+
+					instr.op = NBC_COPY;
+					instr.copy.target = vars[ip->copy.target].offset;
+					instr.copy.size   = vars[ip->copy.target].size;
+					instr.copy.src    = vars[ip->copy.src].offset;
+
+					nbc_append_instr(out_func, instr);
+				}
+				break;
+
 			case BC_PUSH_ARG:
 				{
 					struct nbc_instr instr = {0};
@@ -240,6 +253,11 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 						ip->load.data, ip->load.size);
 				break;
 
+			case NBC_COPY:
+				memcpy(&stack[ip->copy.target],
+						&stack[ip->copy.src], ip->copy.size);
+				break;
+
 			case NBC_PUSH_ARG:
 				args[num_args] = &stack[ip->push_arg.var];
 				num_args += 1;
@@ -319,6 +337,13 @@ nbc_print(struct nbc_func *func)
 						ip->load.target,
 						(void *)ip->load.data,
 						ip->load.size);
+				break;
+
+			case NBC_COPY:
+				printf("COPY sp+0x%zx = sp+0x%zx +%zu\n",
+						ip->copy.target,
+						ip->copy.src,
+						ip->copy.size);
 				break;
 
 			case NBC_PUSH_ARG:

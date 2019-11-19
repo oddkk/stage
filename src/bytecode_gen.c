@@ -152,6 +152,22 @@ bc_gen_load(struct bc_env *env, bc_var target, struct object obj)
 }
 
 struct bc_instr *
+bc_gen_copy(struct bc_env *env, bc_var target, bc_var src)
+{
+	struct bc_instr instr = {0};
+	instr.op = BC_COPY;
+	instr.copy.target = bc_use_or_alloc_var(
+			env, target, bc_get_var_type(env, src));
+	instr.copy.src = src;
+
+	assert_type_equals(env->vm,
+			bc_get_var_type(env, target),
+			bc_get_var_type(env, src));
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
 bc_gen_push_arg(struct bc_env *env, bc_var var)
 {
 	struct bc_instr instr = {0};

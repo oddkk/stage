@@ -6,6 +6,7 @@
 enum nbc_op {
 	NBC_NOP,
 	NBC_LOAD,
+	NBC_COPY,
 	NBC_PUSH_ARG,
 	NBC_PUSH_ARG_PARAM,
 	NBC_CALL,
@@ -26,6 +27,12 @@ struct nbc_instr {
 			void *data;
 			size_t size;
 		} load;
+
+		struct {
+			size_t target;
+			size_t src;
+			size_t size;
+		} copy;
 
 		union {
 			size_t var;

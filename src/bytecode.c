@@ -40,6 +40,17 @@ bc_print(struct bc_env *env, struct bc_instr *instr)
 				printf("\n");
 				break;
 
+			case BC_COPY:
+				printf("COPY ");
+				bc_print_var(env, instr->copy.target);
+				printf(" = ");
+				bc_print_var(env, instr->copy.src);
+				printf(" (");
+				print_type_repr(env->vm,
+						vm_get_type(env->vm, bc_get_var_type(env, instr->copy.src)));
+				printf(")\n");
+				break;
+
 			case BC_PUSH_ARG:
 				printf("PUSH_ARG ");
 				bc_print_var(env, instr->push_arg.var);
