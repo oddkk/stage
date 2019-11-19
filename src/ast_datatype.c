@@ -1944,6 +1944,21 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								job->bind->target_jobs.resolve);
 					}
 				}
+
+				for (size_t i = 0; i < job->bind->num_explicit_targets; i++) {
+					ast_member_id mbr_id;
+					mbr_id = job->bind->explicit_targets[i];
+
+					struct ast_dt_member *mbr;
+					mbr = get_member(ctx, mbr_id);
+
+					// We place this dependency to ensure the member can get
+					// all its dependencies from bind target resolve before its
+					// const resolved is dispatched.
+					ast_dt_job_dependency(ctx,
+							job->bind->target_jobs.resolve,
+							mbr->const_resolved);
+				}
 			}
 			return 0;
 
@@ -2038,11 +2053,9 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					ast_dt_bind_to_member(
 							ctx, job->bind, targets[i]);
 
-					if (mbr->bound) {
-						ast_dt_job_dependency(ctx,
-								job->bind->value_jobs.codegen,
-								mbr->const_resolved);
-					}
+					ast_dt_job_dependency(ctx,
+							job->bind->value_jobs.codegen,
+							mbr->const_resolved);
 				}
 			}
 			return 0;
