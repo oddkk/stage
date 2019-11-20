@@ -488,6 +488,99 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 
 	case ST_NODE_OBJECT_INST:
 	{
+		struct ast_node *func;
+
+		func = st_node_visit_expr(ctx, mod, env, templ_node, node->OBJECT_INST.name);
+
+		size_t num_args = 0;
+
+		struct st_node *args = node->OBJECT_INST.body;
+
+		for (struct st_node *arg = args;
+				arg != NULL;
+				arg = arg->next_sibling) {
+			num_args += 1;
+		}
+
+		struct ast_func_arg func_args[num_args];
+
+		{
+			struct st_node *arg = args;
+
+			bool err = false;
+
+			for (size_t i = 0; i < num_args; i++) {
+				assert(arg != NULL);
+
+				bool invalid_arg = false;
+				const char *node_kind_name = NULL;
+
+				assert(arg->type == ST_NODE_STMT);
+
+				struct st_node *stmt;
+				stmt = arg->STMT.stmt;
+
+				switch (stmt->type) {
+					case ST_NODE_ASSIGN_STMT:
+						if (stmt->ASSIGN_STMT.decl) {
+							stg_error(ctx->err, stmt->loc,
+									"Members can not be declared on object instantiation.");
+							break;
+						}
+						if (stmt->ASSIGN_STMT.ident->type != ST_NODE_IDENT) {
+							stg_error(ctx->err, stmt->ASSIGN_STMT.ident->loc,
+									"[TODO] Object instantiation assignments must be trivial.");
+							break;
+						}
+						if (stmt->ASSIGN_STMT.overridable) {
+							stg_error(ctx->err, stmt->ASSIGN_STMT.ident->loc,
+									"[TODO] Object instantiation assignments can not be overridable.");
+							break;
+						}
+
+						func_args[i].name  = stmt->ASSIGN_STMT.ident->IDENT;
+						func_args[i].value =
+							st_node_visit_expr(ctx, mod, env,
+									templ_node,
+									stmt->ASSIGN_STMT.body);
+						break;
+
+					case ST_NODE_MOD_STMT:
+						invalid_arg = true;
+						node_kind_name = "mod";
+						break;
+
+					case ST_NODE_USE_STMT:
+						invalid_arg = true;
+						node_kind_name = "use";
+						break;
+
+					default:
+						assert(stmt->type < ST_NODES_LEN);
+						panic("Invalid node %s in object instantiation.",
+								st_node_names[stmt->type]);
+						break;
+				}
+
+				if (invalid_arg) {
+					err = true;
+					assert(node_kind_name != NULL);
+					stg_error(ctx->err, stmt->loc,
+							"%s statements are not allowed in object instantiations (yet).",
+							node_kind_name);
+				}
+
+				arg = arg->next_sibling;
+			}
+
+			if (err) {
+				return NULL;
+			}
+		}
+
+		return ast_init_node_call(
+				ctx, env, AST_NODE_NEW, node->loc,
+				func, func_args, num_args);
 		break;
 	}
 
