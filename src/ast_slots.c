@@ -119,6 +119,7 @@ ast_bind_result_code_name(enum ast_bind_result_code code)
 		case AST_BIND_ARRAY_LENGTH_MISMATCH: return "array length mismatch";
 		case AST_BIND_OBJ_HAS_NO_MEMBERS:    return "object has no members";
 		case AST_BIND_TYPE_HAS_NO_MEMBERS:   return "type has no members";
+		case AST_BIND_OBJ_MISSING_MEMBER:    return "object has no such member";
 		case AST_BIND_COMPILER_ERROR:        return "compiler error";
 	}
 	return "invalid code";
@@ -172,6 +173,8 @@ ast_bind_res_as_type(struct ast_bind_result res)
 	.code=AST_BIND_ARRAY_LENGTH_MISMATCH, .array_length_mismatch={.old=_old, .new=_new}}
 #define BIND_OBJ_NO_MEMBERS(type) (struct ast_bind_result){\
 	.code=AST_BIND_OBJ_HAS_NO_MEMBERS, .obj_no_members={.obj_type=type}}
+#define BIND_OBJ_MISSING_MEMBER(_name) (struct ast_bind_result){\
+	.code=AST_BIND_OBJ_MISSING_MEMBER, .obj_missing_member={.name=_name}}
 #define BIND_TYPE_NO_MEMBERS(type) (struct ast_bind_result){\
 	.code=AST_BIND_TYPE_HAS_NO_MEMBERS, .obj_no_members={.obj_type=type}}
 
@@ -1402,7 +1405,7 @@ ast_try_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 		printf("Warning: Attempted to unpack non-existent member %.*s.\n",
 				ALIT(arg_name));
 #endif
-		return BIND_COMPILER_ERROR;
+		return BIND_OBJ_MISSING_MEMBER(arg_name);
 	} else {
 		struct ast_object_arg *tmp_args;
 		size_t tmp_num_args = slot.cons.num_present_args + 1;

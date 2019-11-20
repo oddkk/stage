@@ -232,6 +232,12 @@ ast_report_bind_error(struct ast_context *ctx, struct stg_location loc,
 					"This type does not have any members.");
 			break;
 
+		case AST_BIND_OBJ_MISSING_MEMBER:
+			stg_error(ctx->err, loc,
+					"This object does not have a member '%.*s'.",
+					ALIT(bind_res.obj_missing_member.name));
+			break;
+
 		case AST_BIND_COMPILER_ERROR:
 			stg_error(ctx->err, loc,
 					"Compiler error.");

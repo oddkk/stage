@@ -193,6 +193,7 @@ enum ast_bind_result_code {
 	AST_BIND_ARRAY_LENGTH_MISMATCH,
 	AST_BIND_OBJ_HAS_NO_MEMBERS,
 	AST_BIND_TYPE_HAS_NO_MEMBERS,
+	AST_BIND_OBJ_MISSING_MEMBER,
 	AST_BIND_COMPILER_ERROR,
 };
 
@@ -219,6 +220,10 @@ struct ast_bind_result {
 		struct {
 			type_id obj_type;
 		} obj_no_members;
+
+		struct {
+			struct atom *name;
+		} obj_missing_member;
 
 		struct {
 			type_id obj_type;
