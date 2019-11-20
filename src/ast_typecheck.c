@@ -421,9 +421,17 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					node->kind = AST_NODE_CALL;
 				} else {
 					node->kind = AST_NODE_CONS;
-					node->call.cons = ast_bind_require_ok(
-							ast_try_bind_slot_cons(
-								ctx, env, AST_BIND_NEW, NULL, cons));
+					struct ast_bind_result res;
+					res = ast_try_bind_slot_cons(
+								ctx, env, target, NULL, cons);
+					if (res.code != AST_BIND_OK) {
+						ast_report_bind_error(
+								ctx, node->loc, res);
+						*num_errors += 1;
+					} else {
+						node->call.cons = res.ok.result;
+						target = node->call.cons;
+					}
 				}
 			} else if (func_type == ctx->types.type) {
 				node->kind = AST_NODE_CONS;
@@ -443,9 +451,17 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					return AST_BIND_FAILED;
 				}
 
-				node->call.cons = ast_bind_require_ok(
-						ast_try_bind_slot_cons(
-						ctx, env, AST_BIND_NEW, NULL, type->obj_def));
+				struct ast_bind_result res;
+				res = ast_try_bind_slot_cons(
+						ctx, env, AST_BIND_NEW, NULL, type->obj_def);
+				if (res.code != AST_BIND_OK) {
+					ast_report_bind_error(
+							ctx, node->loc, res);
+					*num_errors += 1;
+				} else {
+					node->call.cons = res.ok.result;
+					target = node->call.cons;
+				}
 			} else {
 				// TODO: Add type name to error message.
 				stg_error(ctx->err, node->call.func->loc,
