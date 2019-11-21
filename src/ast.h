@@ -1001,7 +1001,7 @@ ast_namespace_use(struct ast_context *,
 		struct ast_module *, struct ast_node *,
 		ast_slot_id object);
 
-void
+int
 ast_module_resolve_dependencies(struct ast_context *, struct ast_module *);
 
 int

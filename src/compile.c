@@ -532,8 +532,12 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				}
 			}
 
-			ast_module_resolve_dependencies(
+			int err;
+			err = ast_module_resolve_dependencies(
 					ctx->ast_ctx, data->mod);
+			if (err) {
+				return JOB_ERROR;
+			}
 
 			{
 				struct stg_module_info modinfo = {

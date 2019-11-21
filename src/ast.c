@@ -477,7 +477,7 @@ ast_module_add_dependency(struct ast_context *ctx,
 			&new_dep);
 }
 
-void
+int
 ast_module_resolve_dependencies(struct ast_context *ctx,
 		struct ast_module *mod)
 {
@@ -491,7 +491,9 @@ ast_module_resolve_dependencies(struct ast_context *ctx,
 				ast_bind_slot_const_type(ctx, &mod->env,
 					AST_BIND_NEW, NULL, dep->mod->type));
 
-		assert(dep->mod->type != TYPE_UNSET);
+		if (dep->mod->type == TYPE_UNSET) {
+			return -1;
+		}
 
 		int err;
 		err = ast_node_composite_add_member(ctx, &mod->env,
@@ -499,6 +501,8 @@ ast_module_resolve_dependencies(struct ast_context *ctx,
 				AST_NO_TYPE_GIVING_BIND);
 		assert(!err);
 	}
+
+	return 0;
 }
 
 int
