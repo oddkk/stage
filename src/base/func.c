@@ -266,6 +266,7 @@ stg_register_func_type(struct stg_module *mod,
 	type.data = data;
 	type.type_def = mod->vm->default_cons.func;
 	type.size = sizeof(struct stg_func_object);
+	type.ffi_type = &ffi_type_uint64;
 
 	return stg_register_type(mod, type);
 }

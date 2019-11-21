@@ -169,6 +169,7 @@ struct ast_context {
 	} atoms;
 
 	struct {
+		type_id unit;
 		type_id type;
 		type_id cons;
 		type_id integer;

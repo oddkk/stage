@@ -21,6 +21,7 @@ ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, s
 	ctx.atoms.array_cons_arg_type  = atom_create(atom_table, STR("T"));
 	ctx.atoms.array_cons_arg_count = atom_create(atom_table, STR("N"));
 
+	ctx.types.unit = vm->default_types.unit;
 	ctx.types.type = vm->default_types.type;
 	ctx.types.cons = vm->default_types.cons;
 	ctx.types.integer = vm->default_types.integer;

@@ -3,6 +3,7 @@
 #include "../module.h"
 #include "../native.h"
 #include <stdlib.h>
+#include <ffi.h>
 
 static int64_t
 print_int(int64_t val)
@@ -41,6 +42,19 @@ stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 
 		type_id none_id = store_register_type(&mod->store, none);
 		assert(none_id == TYPE_NONE);
+	}
+
+	{
+		struct type_base *base = calloc(1, sizeof(struct type_base));
+		base->name = STR("unit");
+
+		struct type unit = {0};
+		unit.name = atom_create(mod->atom_table, STR("unit"));
+		unit.base = base;
+		unit.size = 0;
+		unit.ffi_type = &ffi_type_void;
+
+		mod->vm->default_types.unit = store_register_type(&mod->store, unit);
 	}
 
 	base_bootstrap_register_type(mod);
@@ -87,6 +101,18 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 			AST_NODE_NEW, STG_NO_LOC, type_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
 			mod->mod.root, mod_atoms(mod, "type"), type_type_expr);
+
+	struct ast_node *unit_type_expr;
+	struct object unit_obj = {0};
+	unit_obj.type = ctx->types.type;
+	unit_obj.data = &ctx->types.unit;
+	unit_obj = register_object(ctx->vm, &mod->store, unit_obj);
+
+	unit_type_expr = ast_init_node_lit(ctx, &mod->mod.env,
+			AST_NODE_NEW, STG_NO_LOC, unit_obj);
+	ast_namespace_add_decl(ctx, &mod->mod,
+			mod->mod.root, mod_atoms(mod, "unit"), unit_type_expr);
+
 
 	base_init_register_cons(ctx, mod);
 

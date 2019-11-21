@@ -35,6 +35,7 @@ struct vm {
 	struct bc_instr_store *instr_store;
 
 	struct {
+		type_id unit;
 		type_id type;
 		type_id cons;
 		type_id integer;
