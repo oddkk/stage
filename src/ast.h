@@ -838,19 +838,6 @@ void
 ast_node_substitute_slot(struct ast_node *,
 		ast_slot_id target, ast_slot_id new_slot);
 
-enum ast_node_dependencies_state {
-	// One or more dependencies will never become ready.
-	AST_NODE_DEPS_NOT_OK = 0x0,
-	// All dependencies are or might become ready.
-	AST_NODE_DEPS_NOT_READY = 0x1,
-	// All dependencies are ready.
-	AST_NODE_DEPS_OK = 0x3,
-};
-
-enum ast_node_dependencies_state
-ast_node_dependencies_fulfilled(struct ast_context *ctx,
-		struct ast_env *env, struct ast_node *node);
-
 struct stg_native_module;
 
 int
