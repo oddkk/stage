@@ -855,10 +855,6 @@ int
 ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *env,
 		struct ast_scope *scope, bool require_const, struct ast_node *node);
 
-bool
-ast_node_is_typed(struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *node);
-
 enum ast_name_dep_requirement {
 	AST_NAME_DEP_REQUIRE_TYPE,
 	AST_NAME_DEP_REQUIRE_VALUE,
