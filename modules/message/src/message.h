@@ -3,7 +3,7 @@
 
 #include "mod.h"
 
-typedef unsigned int message_id;
+typedef unsigned int msg_node_id;
 
 struct msg_endpoint {
 	int _dc;
@@ -68,13 +68,13 @@ struct msg_system {
 };
 
 struct msg_pipe_node *
-msg_filter_node(struct msg_system *, struct object func);
+msg_filter_node(struct msg_system *, func_id func);
 
 struct msg_pipe_node *
-msg_map_node(struct msg_system *, struct object func);
+msg_map_node(struct msg_system *, func_id func);
 
 struct msg_pipe_node *
-msg_match_node(struct msg_system *, struct object value_func,
+msg_match_node(struct msg_system *, func_id value_func,
                struct object *cases, size_t num_cases);
 
 struct msg_pipe_node *
@@ -83,10 +83,10 @@ msg_endpoint_node(struct msg_system *, vm_builtin_func func, void *user_data);
 bool
 msg_pipe_connect(struct msg_system *, struct msg_pipe_connection *src, struct msg_pipe_node *drain);
 
-message_id
+msg_node_id
 msg_register_message(struct msg_system *, type_id);
 
 void
-msg_post(struct msg_system *, message_id, struct object);
+msg_post(struct msg_system *, msg_node_id, struct object);
 
 #endif

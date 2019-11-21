@@ -1,0 +1,13 @@
+int := base.int;
+unit := base.unit;
+
+_printIn := (in: int) -> unit @nativeImpure("msg_print_in");
+Print := Struct {
+	in: Message(int);
+	_printIn(in);
+};
+
+OneShot := () -> Message(unit) @nativeImpure("msg_one_shot_out");
+
+# Map := (in: Message($T), f: (T) -> $U) -> Message($U) @nativeImpure("msg_map");
+Map := (in: Message(unit), f: () -> int) -> Message(int) @nativeImpure("msg_map");
