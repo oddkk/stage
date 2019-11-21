@@ -289,7 +289,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 			ast_slot_id param_array_slot;
 			param_array_slot = ast_bind_require_ok(
 					ast_try_unpack_arg_named(
-						ctx, env, node->func.type, AST_BIND_NEW,
+						ctx, env, ast_node_resolve_slot(env, &node->func.type), AST_BIND_NEW,
 						ctx->atoms.func_cons_arg_params));
 
 			struct ast_bind_result res;
@@ -590,6 +590,81 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				panic("Invalid node type after call func evaluation.");
 				return AST_BIND_FAILED;
 			}
+		}
+		break;
+
+	case AST_NODE_FUNC_TYPE:
+		{
+			struct ast_bind_result res;
+
+			res = ast_try_bind_slot_cons(
+					ctx, env, target, NULL,
+					ctx->cons.func);
+
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				target = res.ok.result;
+			}
+
+			node->func_type.slot = target;
+
+			ast_slot_id param_types_slot = AST_BIND_FAILED;
+			res = ast_try_unpack_arg_named(
+					ctx, env, target, AST_BIND_NEW,
+					ctx->atoms.func_cons_arg_params);
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				param_types_slot = res.ok.result;
+			}
+
+			res = ast_try_bind_slot_cons_array(
+					ctx, env, param_types_slot, NULL, NULL,
+					node->func_type.num_params, AST_SLOT_TYPE);
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				param_types_slot = res.ok.result;
+			}
+
+			struct ast_env_slot param_types;
+			param_types = ast_env_slot(ctx, env, param_types_slot);
+
+			for (size_t i = 0; i < node->func_type.num_params; i++) {
+				ast_slot_id param_type_slot;
+				param_type_slot = param_types.cons_array.members[i];
+
+				ast_node_bind_slots(
+						ctx, num_errors, mod, env,
+						node->func_type.param_types[i],
+						param_type_slot, deps, num_deps);
+			}
+
+			res = ast_try_unpack_arg_named(
+					ctx, env, target, AST_BIND_NEW,
+					ctx->atoms.func_cons_arg_ret);
+
+			ast_slot_id ret_type_slot = AST_BIND_FAILED;
+
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				ret_type_slot = res.ok.result;
+			}
+
+			ast_node_bind_slots(
+					ctx, num_errors, mod, env,
+					node->func_type.ret_type,
+					ret_type_slot, deps, num_deps);
 		}
 		break;
 

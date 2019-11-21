@@ -502,6 +502,7 @@ enum ast_node_kind {
 	AST_NODE_TEMPL,
 	AST_NODE_SLOT,
 	AST_NODE_LIT,
+	AST_NODE_FUNC_TYPE,
 	AST_NODE_LOOKUP,
 
 	// Datatype declarations
@@ -614,6 +615,15 @@ struct ast_node {
 		} call;
 
 		struct {
+			struct ast_node **param_types;
+			size_t num_params;
+			
+			struct ast_node *ret_type;
+
+			ast_slot_id slot;
+		} func_type;
+
+		struct {
 			struct atom *name;
 			struct ast_node *target;
 			ast_slot_id slot;
@@ -700,6 +710,12 @@ ast_node_name(enum ast_node_kind);
 				VISIT_NODE((node)->call.args[i].value);							\
 			}																	\
 			break;																\
+		case AST_NODE_FUNC_TYPE:												\
+			for (size_t i = 0; i < (node)->func_type.num_params; i++) {			\
+				VISIT_NODE((node)->func_type.param_types[i]);					\
+			}																	\
+			VISIT_NODE((node)->func_type.ret_type);								\
+			break;																\
 		case AST_NODE_ACCESS:													\
 			VISIT_NODE((node)->access.target);									\
 			break;																\
@@ -775,6 +791,13 @@ ast_init_node_cons(
 		struct ast_node *target, struct stg_location,
 		struct ast_node *func,
 		struct ast_func_arg *args, size_t num_args);
+
+struct ast_node *
+ast_init_node_func_type(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location,
+		struct ast_node **param_types, size_t num_params,
+		struct ast_node *ret_type);
 
 struct ast_node *
 ast_init_node_slot(

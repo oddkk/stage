@@ -288,6 +288,19 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			}
 			break;
 
+		case AST_NODE_FUNC_TYPE:
+			print_indent(depth);
+			printf("func type:\n");
+			for (size_t i = 0; i < node->func_type.num_params; i++) {
+				print_indent(depth+1);
+				printf("param %zu type:\n", i);
+				ast_print_internal(ctx, env, node->func_type.param_types[i], depth+2);
+			}
+			print_indent(depth+1);
+			printf("return type:\n");
+			ast_print_internal(ctx, env, node->func_type.ret_type, depth+2);
+			break;
+
 		case AST_NODE_TEMPL:
 			print_indent(depth);
 			printf("templ:\n");
@@ -453,6 +466,18 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 				ast_print_node(ctx, env, node->call.args[i].value);
 			}
 			printf(")");
+			break;
+
+		case AST_NODE_FUNC_TYPE:
+			printf("(");
+			for (size_t i = 0; node->func_type.num_params; i++) {
+				if (i != 0) {
+					printf(", ");
+				}
+				ast_print_node(ctx, env, node->func_type.param_types[i]);
+			}
+			printf(") -> ");
+			ast_print_node(ctx, env, node->func_type.ret_type);
 			break;
 
 		case AST_NODE_ACCESS:

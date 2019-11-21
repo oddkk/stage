@@ -224,6 +224,17 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			}
 			break;
 
+		case AST_NODE_FUNC_TYPE:
+			err += ast_node_resolve_names(
+					ctx, env, native_mod, scope,
+					true, node->func_type.ret_type);
+			for (size_t i = 0; i < node->func_type.num_params; i++) {
+				err += ast_node_resolve_names(
+						ctx, env, native_mod, scope,
+						true, node->func_type.param_types[i]);
+			}
+			break;
+
 		case AST_NODE_TEMPL:
 			{
 				struct ast_scope templates_scope = {0};
@@ -429,6 +440,17 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 				err += ast_node_discover_potential_closures(
 						ctx, env, scope, require_const,
 						node->call.args[i].value);
+			}
+			break;
+
+		case AST_NODE_FUNC_TYPE:
+			err += ast_node_discover_potential_closures(
+					ctx, env, scope, true,
+					node->func_type.ret_type);
+			for (size_t i = 0; i < node->func_type.num_params; i++) {
+				err += ast_node_discover_potential_closures(
+						ctx, env, scope, true,
+						node->func_type.param_types[i]);
 			}
 			break;
 

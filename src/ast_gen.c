@@ -365,6 +365,24 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			}
 			return result;
 
+		case AST_NODE_FUNC_TYPE:
+			{
+				struct object obj = {0};
+
+				int err;
+				err = ast_slot_pack(ctx, mod, env, node->func_type.slot, &obj);
+				if (err) {
+					return (struct ast_gen_bc_result){0};
+				}
+
+				assert_type_equals(ctx->vm, obj.type, ctx->types.type);
+
+				result.first = result.last =
+					bc_gen_load(bc_env, BC_VAR_NEW, obj);
+				result.out_var = result.first->load.target;
+			}
+			return result;
+
 		case AST_NODE_TEMPL:
 			panic("TODO: Implement generating bytecode for templ.");
 			break;

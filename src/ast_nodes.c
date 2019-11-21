@@ -14,6 +14,7 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_FUNC_NATIVE:	return "FUNC_NATIVE";
 		case AST_NODE_CALL:			return "CALL";
 		case AST_NODE_CONS:			return "CONS";
+		case AST_NODE_FUNC_TYPE:	return "FUNC_TYPE";
 		case AST_NODE_ACCESS:		return "ACCESS";
 		case AST_NODE_TEMPL:		return "TEMPL";
 		case AST_NODE_SLOT:			return "SLOT";
@@ -183,6 +184,37 @@ ast_init_node_cons(
 	node->call.cons = AST_SLOT_NOT_FOUND;
 
 	node->call.ret_type = AST_BIND_NEW;
+
+	return node;
+}
+
+struct ast_node *
+ast_init_node_func_type(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *node, struct stg_location loc,
+		struct ast_node **param_types, size_t num_params,
+		struct ast_node *ret_type)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(
+		node && ret_type &&
+		(param_types || num_params == 0)
+	);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_FUNC_TYPE;
+	node->loc = loc;
+
+	node->func_type.param_types = calloc(sizeof(struct ast_node *), num_params);
+	memcpy(node->func_type.param_types, param_types, sizeof(struct ast_node *) * num_params);
+	node->func_type.num_params = num_params;
+
+	node->func_type.ret_type = ret_type;
+
+	node->func_type.slot = AST_BIND_NEW;
 
 	return node;
 }
@@ -429,6 +461,9 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 		case AST_NODE_CONS:
 			return node->call.ret_type;
 
+		case AST_NODE_FUNC_TYPE:
+			return AST_SLOT_TYPE;
+
 		case AST_NODE_TEMPL:
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->templ.slot)).type;
@@ -475,6 +510,9 @@ ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 
 		case AST_NODE_ACCESS:
 			return ast_node_resolve_slot(env, &node->access.slot);
+
+		case AST_NODE_FUNC_TYPE:
+			return ast_node_resolve_slot(env, &node->func_type.slot);
 
 		case AST_NODE_FUNC_NATIVE:
 		case AST_NODE_FUNC:

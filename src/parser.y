@@ -172,7 +172,7 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
 %token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>"
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_proto func_params func_params1 func_param expr expr1	subscript_expr l_expr ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1	subscript_expr l_expr ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1
 
 %type <struct atom *> IDENTIFIER
 %type <struct string> STRINGLIT
@@ -250,32 +250,56 @@ special_arg:	numlit
 		|		strlit
 		;
 
-func_decl:		func_proto "=>" expr    { $$ = MKNODE(LAMBDA, .proto=$1, .body=$3, .special=false); }
-		|		ident      "=>" expr    { $$ = MKNODE(LAMBDA, .proto=$1, .body=$3, .special=false); }
-		|		func_proto special		{ $$ = MKNODE(LAMBDA, .proto=$1, .body=$2, .special=true ); }
+func_decl:		'(' func_decl_params ')'            "=>" expr   { $$ = MKNODE(LAMBDA, .proto=MKNODE(FUNC_PROTO, .params=$2,   .ret=NULL), .body=$5, .special=false); }
+		|		'('                  ')'            "=>" expr   { $$ = MKNODE(LAMBDA, .proto=MKNODE(FUNC_PROTO, .params=NULL, .ret=NULL), .body=$4, .special=false); }
+		|		'(' func_decl_params ')' "->" expr1 "=>" expr   { $$ = MKNODE(LAMBDA, .proto=MKNODE(FUNC_PROTO, .params=$2,   .ret=$5  ), .body=$7, .special=false); }
+		|		'('                  ')' "->" expr1 "=>" expr   { $$ = MKNODE(LAMBDA, .proto=MKNODE(FUNC_PROTO, .params=NULL, .ret=$4  ), .body=$6, .special=false); }
+
+		|		ident                               "=>" expr   { $$ = MKNODE(LAMBDA, .proto=$1,                                          .body=$3, .special=false); }
+
+		|		'(' func_decl_params ')' "->" expr1 special	    { $$ = MKNODE(LAMBDA, .proto=MKNODE(FUNC_PROTO, .params=$2,   .ret=$5  ), .body=$6, .special=true ); }
+		|		'('                  ')' "->" expr1 special	    { $$ = MKNODE(LAMBDA, .proto=MKNODE(FUNC_PROTO, .params=NULL, .ret=$4  ), .body=$5, .special=true ); }
 		;
 
-func_proto:		'(' func_params ')'             { $$ = MKNODE(FUNC_PROTO, .params=$2, .ret=NULL); }
-		|		'(' func_params ')' "->" expr1  { $$ = MKNODE(FUNC_PROTO, .params=$2, .ret=$5  ); }
+func_decl_params:
+				func_decl_params1                    { $$ = MKNODE(TUPLE_DECL, .items=$1, .named=true); }
+		|		func_decl_params1 ','                { $$ = MKNODE(TUPLE_DECL, .items=$1, .named=true); }
 		;
 
-func_params:	func_params1                { $$ = MKNODE(TUPLE_DECL, .items=$1, .named=true); }
-		|		func_params1 ','            { $$ = MKNODE(TUPLE_DECL, .items=$1, .named=true); }
-		|		%empty                      { $$ = MKNODE(TUPLE_DECL, .items=NULL, .named=true); }
+func_decl_params1:
+				func_decl_params1 ',' func_decl_param{ $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1  ); }
+		|		func_decl_param                      { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
 		;
 
-func_params1:	func_params1 ',' func_param { $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1  ); }
-		|		func_param                  { $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
-		;
-
-func_param:		IDENTIFIER ':' expr         { $$ = MKNODE(TUPLE_DECL_ITEM, .name=$1, .type=$3); }
+func_decl_param:
+			   IDENTIFIER ':' expr                   { $$ = MKNODE(TUPLE_DECL_ITEM, .name=$1, .type=$3); }
 		/*|		ident ':' expr '=' expr TODO: Default value */
 		;
+
+func_proto: 	'(' func_params ')' "->" expr1       { $$ = MKNODE(FUNC_PROTO, .params=$2,   .ret=$5  ); }
+		|		'('             ')' "->" expr1       { $$ = MKNODE(FUNC_PROTO, .params=NULL, .ret=$4  ); }
+		|		'(' expr        ')' "->" expr1       { $$ = MKNODE(FUNC_PROTO, .params=MKNODE(TUPLE_DECL, .items=MKNODE(TUPLE_DECL_ITEM, .name=NULL, .type=$2), .named=false), .ret=$5); }
+		;
+
+func_params:
+				func_params1 ',' expr                { $$ = MKNODE(TUPLE_DECL, .items=MKNODE(INTERNAL_LIST, .head=MKNODE(TUPLE_DECL_ITEM, .name=NULL, .type=$3), .tail=$1), .named=false); }
+		;
+
+func_params1:
+				func_params1 ',' expr                { $$ = MKNODE(INTERNAL_LIST, .head=MKNODE(TUPLE_DECL_ITEM, .name=NULL, .type=$3), .tail=$1  ); }
+		|		expr                                 { $$ = MKNODE(INTERNAL_LIST, .head=MKNODE(TUPLE_DECL_ITEM, .name=NULL, .type=$1), .tail=NULL); }
+		;
+
+/*
+func_param:
+			   expr                                  { $$ = MKNODE(TUPLE_DECL_ITEM, .name=NULL, .type=$1); }
+		;
+*/
 
 object_decl:
 				"Struct"                     object_decl1
 					{ $$ = MKNODE(OBJECT_DECL, .body=$2); }
-		|		"Struct" '(' func_params ')' object_decl1
+		|		"Struct" '(' func_decl_params ')' object_decl1
 					{ $$ = MKNODE(OBJECT_DECL, .body=$5, .params=$3); }
 
 		|		expr1                        object_decl1
@@ -283,7 +307,7 @@ object_decl:
 
 		|		"Enum"                       enum_decl1
 					{ $$ = MKNODE(ENUM_DECL, .items=$2); }
-		|		"Enum"   '(' func_params ')' enum_decl1
+		|		"Enum"   '(' func_decl_params ')' enum_decl1
 					{ $$ = MKNODE(ENUM_DECL, .items=$5, .params=$3); }
 		;
 
@@ -341,7 +365,7 @@ expr1:			l_expr                  { $$ = $1; }
 		/*|		numlit ident            { $$ = $1; } TODO: suffix "operators" */
 		|		strlit                  { $$ = $1; }
 		|		func_call               { $$ = $1; }
-		/*|		func_proto              { $$ = $1; } */
+		|		func_proto              { $$ = $1; }
 		|		special                 { $$ = $1; }
 		|		'$' IDENTIFIER          { $$ = MKNODE(TEMPLATE_VAR, .name=$2); }
 
@@ -365,8 +389,11 @@ expr1:			l_expr                  { $$ = $1; }
 		|		expr1 ">>" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LSFT, .loc=SLOC(@2));}
 		|		expr1 "<<" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_RSFT, .loc=SLOC(@2));}
 
+/*
 		|		expr1 "->" expr1 { $$ = MKNODE(BIND, .src=$1, .drain=$3);  }
 		|		expr1 "<-" expr1 { $$ = MKNODE(BIND, .drain=$1, .src=$3);  }
+*/
+
 		|		'(' expr ')'     { $$ = $2;  }
 		;
 

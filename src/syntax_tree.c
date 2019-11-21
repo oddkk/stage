@@ -50,6 +50,13 @@ static void
 st_node_unpack_tuple_nodes(struct st_node *tuple_node,
 		struct st_tuple_members *out_members)
 {
+	if (!tuple_node) {
+		out_members->names = NULL;
+		out_members->types = NULL;
+		out_members->num_members = 0;
+		return;
+	}
+
 	assert(tuple_node->type == ST_NODE_TUPLE_DECL);
 
 	struct st_tuple_members members = {0};
@@ -66,6 +73,7 @@ st_node_unpack_tuple_nodes(struct st_node *tuple_node,
 
 	for (struct st_node *param = tuple_node->TUPLE_DECL.items;
 			param; param = param->next_sibling) {
+		assert(param->type == ST_NODE_TUPLE_DECL_ITEM);
 		members.names[i] = param->TUPLE_DECL_ITEM.name;
 		members.types[i] = param->TUPLE_DECL_ITEM.type;
 
@@ -121,7 +129,12 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *struct_node, struct st_node *stmt)
 {
 	assert(stmt->type == ST_NODE_STMT);
-	assert(stmt->STMT.stmt);
+
+	if (!stmt->STMT.stmt) {
+		// There was a parse error. This should have been reported by the parser.
+		assert(ctx->err->num_errors > 0);
+		return;
+	}
 
 	switch (stmt->STMT.stmt->type) {
 		case ST_NODE_USE_STMT:
@@ -153,6 +166,9 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 				if (expr_node) {
 					expr = st_node_visit_expr(
 							ctx, mod, env, NULL, expr_node);
+					if (!expr) {
+						return;
+					}
 				}
 
 				bool overridable;
@@ -222,6 +238,12 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 bool
 st_node_has_templ_params(struct st_node *node)
 {
+	if (!node) {
+		// There was an error parsing this expression. A message should have
+		// been posted already.
+		return false;
+	}
+
 	if (node->type == ST_NODE_TEMPLATE_VAR) {
 		return true;
 	}
@@ -362,7 +384,8 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 		body_decl = node->LAMBDA.body;
 
 		if (node->LAMBDA.special) {
-			if (body_decl->SPECIAL.name == vm_atoms(ctx->vm, "native")) {
+			if (body_decl->SPECIAL.name == vm_atoms(ctx->vm, "native") ||
+					body_decl->SPECIAL.name == vm_atoms(ctx->vm, "nativeImpure")) {
 				struct st_node *args = body_decl->SPECIAL.args;
 
 				if (!args || args->next_sibling) {
@@ -372,7 +395,8 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 						num_args_provided += 1;
 					}
 					stg_error(ctx->err, body_decl->loc,
-							"@native expected exactly one argument, got %zu.",
+							"@%.*s expected exactly one argument, got %zu.",
+							ALIT(body_decl->SPECIAL.name),
 							num_args_provided);
 					return NULL;
 				}
@@ -424,8 +448,8 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 		}
 	} break;
 
-	case ST_NODE_FUNC_CALL: {
-
+	case ST_NODE_FUNC_CALL:
+	 {
 		struct ast_node *func;
 
 		func = st_node_visit_expr(ctx, mod, env, templ_node, node->FUNC_CALL.ident);
@@ -463,6 +487,39 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 				ctx, env, AST_NODE_NEW, node->loc,
 				func, func_args, num_args);
 	} break;
+
+	case ST_NODE_FUNC_PROTO:
+	{
+		struct st_tuple_members params_decl;
+		struct st_node *ret_type_decl;
+
+		st_node_unpack_func_proto(node,
+				&params_decl, &ret_type_decl);
+
+		assert(ret_type_decl);
+
+		struct ast_node *param_types[params_decl.num_members];
+
+		for (size_t i = 0; i < params_decl.num_members; i++) {
+			param_types[i] = st_node_visit_expr(
+					ctx, mod, env, templ_node,
+					params_decl.types[i]);
+		}
+
+		struct ast_node *ret_type;
+		ret_type = st_node_visit_expr(
+				ctx, mod, env, templ_node,
+				ret_type_decl);
+
+		free(params_decl.names);
+		free(params_decl.types);
+
+		return ast_init_node_func_type(
+				ctx, env, AST_NODE_NEW, node->loc,
+				param_types, params_decl.num_members,
+				ret_type);
+	}
+	break;
 
 	case ST_NODE_MODULE:
 	case ST_NODE_OBJECT_DECL:

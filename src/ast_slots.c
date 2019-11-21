@@ -502,7 +502,7 @@ ast_try_bind_slot_const_type(struct ast_context *ctx,
 				break;
 
 			case AST_SLOT_CONST_TYPE:
-				if (target_slot.const_type != type) {
+				if (!type_equals(ctx->vm, target_slot.const_type, type)) {
 #if AST_BIND_ERROR_DEBUG_PRINT
 					printf("Warning: Attempted to bind CONST_TYPE with type '");
 					print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
@@ -874,7 +874,9 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 					if (!slot_val_type->type_def) {
 #if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to unpack a type that cannot be "
-								"unpacked (missing def).\n");
+								"unpacked (missing def) <");
+						print_type_repr(ctx->vm, slot_val_type);
+						printf(">.\n");
 #endif
 						return BIND_TYPE_NO_MEMBERS(slot_val);
 					}
@@ -2057,6 +2059,14 @@ ast_node_deep_copy_internal(
 
 		DCP_NODE(call.func);
 		DCP_SLOT(call.ret_type);
+		break;
+
+	case AST_NODE_FUNC_TYPE:
+		DCP_DLIST(func_type.param_types, func_type.num_params);
+		for (size_t i = 0; i < result->func_type.num_params; i++) {
+			DCP_NODE(func_type.param_types[i]);
+		}
+		DCP_NODE(func_type.ret_type);
 		break;
 
 	case AST_NODE_TEMPL:
