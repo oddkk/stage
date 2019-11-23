@@ -675,17 +675,19 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					ctx, num_errors, mod, env, node->access.target,
 					AST_BIND_NEW, deps, num_deps);
 
-			struct ast_bind_result res;
-			res = ast_try_unpack_arg_named(ctx, env,
-					slot, target, node->access.name);
-			if (res.code != AST_BIND_OK) {
-				ast_report_bind_error(
-						ctx, node->loc, res);
-				*num_errors += 1;
-			} else {
-				target = res.ok.result;
+			if (slot != AST_BIND_FAILED) {
+				struct ast_bind_result res;
+				res = ast_try_unpack_arg_named(ctx, env,
+						slot, target, node->access.name);
+				if (res.code != AST_BIND_OK) {
+					ast_report_bind_error(
+							ctx, node->loc, res);
+					*num_errors += 1;
+				} else {
+					target = res.ok.result;
+				}
+				node->access.slot = target;
 			}
-			node->access.slot = target;
 		}
 		break;
 
@@ -732,17 +734,19 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				stg_error(ctx->err, node->loc,
 						"Object not found.");
 				*num_errors += 1;
-			}
-			assert(res->value == AST_SLOT_TYPE || res->value >= 0);
-
-			struct ast_bind_result bind_res;
-			bind_res = ast_try_union_slot(ctx, env, target, res->value);
-			if (bind_res.code != AST_BIND_OK) {
-				ast_report_bind_error(
-						ctx, node->loc, bind_res);
-				*num_errors += 1;
+				target = AST_BIND_FAILED;
 			} else {
-				target = bind_res.ok.result;
+				assert(res->value == AST_SLOT_TYPE || res->value >= 0);
+
+				struct ast_bind_result bind_res;
+				bind_res = ast_try_union_slot(ctx, env, target, res->value);
+				if (bind_res.code != AST_BIND_OK) {
+					ast_report_bind_error(
+							ctx, node->loc, bind_res);
+					*num_errors += 1;
+				} else {
+					target = bind_res.ok.result;
+				}
 			}
 
 			node->lookup.slot = target;
