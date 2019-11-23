@@ -106,5 +106,6 @@ int vm_init(struct vm *);
 void vm_destroy(struct vm *);
 
 int vm_start(struct vm *);
+int vm_post_init(struct vm *);
 
 #endif

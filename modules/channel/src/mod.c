@@ -103,9 +103,16 @@ static struct type_base channel_type_base = {
 	.repr = channel_type_repr,
 };
 
+struct cnl_context {
+	struct channel_system sys;
+	struct ast_object_def *channel_type_cons;
+};
+
 type_id
 cnl_register_channel_type(struct stg_module *mod, type_id cnl_type)
 {
+	struct cnl_context *ctx = mod->data;
+
 	struct cnl_channel_type_info *info;
 
 	info = calloc(1, sizeof(struct cnl_channel_type_info));
@@ -116,15 +123,10 @@ cnl_register_channel_type(struct stg_module *mod, type_id cnl_type)
 	type.base = &channel_type_base;
 	type.data = info;
 	type.size = sizeof(channel_id);
-	type.type_def = mod->vm->default_cons.array;
+	type.type_def = ctx->channel_type_cons;
 
 	return stg_register_type(mod, type);
 }
-
-struct cnl_context {
-	struct channel_system sys;
-	struct ast_object_def *channel_type_cons;
-};
 
 int
 mod_channel_init(struct ast_context *ctx, struct stg_module *mod)

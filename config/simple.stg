@@ -1,8 +1,82 @@
+# mod channel;
+mod message;
+
+op+ := base.op+;
+op- := base.op-;
+op* := base.op*;
+op/ := base.op/;
+int := base.int;
+
+# cnl: channel.Channel(int) = channel.Const(2);
+# 
+# prnt := channel.Print { in=cnl; };
+
+# prnt := message.Print(message.Map(
+# 	message.onStart, () -> int => 2));
+
+# conStr := "host=localhost port=5432 dbname=test user=test";
+# db: Connection = sql.postgresql.connect(conStr);
+# DBConnectionHandle := int;
+# 
+# _dbConnect := (conStr: String) -> DBConnectionHandle
+# 	@nativeImpure("db_connect");
+# 
+# Connection := Struct {
+# 	connectionString: String;
+# 	handle: DBConnectionHandle = _dbConnect(connectionString);
+# };
+# connect := (connectionString: String) -> Connection
+# 	=> Connection { connectionString = connectionString; };
+# 
+# query: sql.Query(int) = sql"
+# 	select foo from my_table
+# 	where 
+# ".query(int);
+# 
+# stmt: sql.Statement(Unit, int) = sql"
+# 	insert into my_table (foo) values ($foo)
+# ".statement();
+
+
+# message.onStart >>= db.exec(query);
+
+
+prnt := message.Print(message.Map(message.onStart, () -> int => 2));
+
+func_test := (base.type, int) -> int;
+
+# poly := (a: $T) -> T => a;
+
 Foo := Struct {
-	foo: int;
+	foo: int ~= 6;
 	bar: int ~= 2;
 	baz: int  = 3;
 	sum: int  = foo + bar + baz;
 
 	bar = 5;
 };
+
+Color := Struct {
+	r: int;
+	g: int;
+	b: int;
+};
+
+col1 := Color(5, 6, 7);
+
+addFive := (a: int) -> int => a + 5;
+
+b := addFive(1);
+j := addFive(9);
+
+c: Color;
+c.r = 1;
+c.g = 2;
+c.b = 3;
+
+col2 := Color { r=8; g=9; b=10; };
+
+foobar: Foo;
+foobar.foo = 3;
+
+# b := addFive(int);

@@ -4,89 +4,91 @@
 #include "mod.h"
 
 typedef unsigned int msg_node_id;
+typedef unsigned char msg_node_point_id;
 
-struct msg_endpoint {
-	int _dc;
-};
+typedef void (*msg_callback)(void *data, struct object obj);
 
-enum msg_pipe_node_type {
-	MSG_PIPE_FILTER,
+enum msg_pipe_node_kind {
 	MSG_PIPE_MAP,
-	MSG_PIPE_MATCH,
+	MSG_PIPE_FILTER,
+	MSG_PIPE_ENTRYPOINT,
 	MSG_PIPE_ENDPOINT,
 };
 
-struct expr_node;
-struct msg_pipe_node;
-
-struct msg_pipe_connection {
-	struct msg_pipe_node *node;
-};
-
-struct msg_match_case {
-	struct object value;
-	struct msg_pipe_connection *drain;
-};
-
 struct msg_pipe_node {
-	enum msg_pipe_node_type type;
-
-	struct msg_pipe_node *src;
-
-	type_id out_type;
+	enum msg_pipe_node_kind kind;
 
 	union {
 		struct {
 			struct object func;
-			struct msg_pipe_connection *drain;
-		} filter;
-
-		struct {
-			struct object func;
-			struct msg_pipe_connection *drain;
 		} map;
 
 		struct {
-			struct object value_func;
-			struct msg_match_connection *cases;
-		} match;
+			struct object func;
+		} filter;
 
 		struct {
-			vm_builtin_func func;
-			void *user_data;
+			type_id type;
+			func_id func;
+		} entrypoint;
+
+		struct {
+			msg_callback callback;
+			void *data;
 		} endpoint;
 	};
 };
 
-struct msg_entrypoint {
-	struct atom *name;
-	struct msg_pipe_node *pipe;
+struct msg_pipe_connection {
+	msg_node_id from, to;
 };
 
 struct msg_system {
+	struct vm *vm;
+
 	struct msg_entrypoint *entrypoints;
+	size_t num_entrypoints;
+
+	size_t page_size;
+
+	struct msg_pipe_node **node_pages;
+	size_t num_node_pages;
+	size_t num_alloced_nodes;
+
+	struct msg_pipe_connection **connection_pages;
+	size_t num_connection_pages;
+	size_t num_alloced_connections;
 };
 
 struct msg_pipe_node *
-msg_filter_node(struct msg_system *, func_id func);
+msg_pipe_get_node(struct msg_system *sys, msg_node_id);
 
-struct msg_pipe_node *
-msg_map_node(struct msg_system *, func_id func);
-
-struct msg_pipe_node *
-msg_match_node(struct msg_system *, func_id value_func,
-               struct object *cases, size_t num_cases);
-
-struct msg_pipe_node *
-msg_endpoint_node(struct msg_system *, vm_builtin_func func, void *user_data);
-
-bool
-msg_pipe_connect(struct msg_system *, struct msg_pipe_connection *src, struct msg_pipe_node *drain);
+int
+msg_pipe_iter_outgoing_connections(
+		struct msg_system *sys, msg_node_id from,
+		msg_node_id *out_to, size_t *iter);
 
 msg_node_id
-msg_register_message(struct msg_system *, type_id);
+msg_pipe_map(struct msg_system *sys, struct object func);
+
+msg_node_id
+msg_pipe_filter(struct msg_system *sys, struct object func);
+
+msg_node_id
+msg_pipe_entrypoint(struct msg_system *sys, type_id type);
+
+msg_node_id
+msg_pipe_endpoint(struct msg_system *sys, msg_callback, void *data);
 
 void
-msg_post(struct msg_system *, msg_node_id, struct object);
+msg_pipe_connect(struct msg_system *sys,
+		msg_node_id from, msg_node_id to);
+
+int
+msg_system_compile(struct msg_system *sys);
+
+void
+msg_post(struct msg_system *sys,
+		msg_node_id entrypoint, struct object obj);
 
 #endif

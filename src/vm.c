@@ -58,6 +58,17 @@ int vm_start(struct vm *vm)
 	return 0;
 }
 
+int vm_post_init(struct vm *vm)
+{
+	for (size_t i = 0; i < vm->num_modules; i++) {
+		struct stg_module *mod = vm->modules[i];
+		if (mod->info.post_init) {
+			mod->info.post_init(mod);
+		}
+	}
+
+	return 0;
+}
 
 struct stg_module *
 vm_register_module(struct vm *vm, struct ast_context *ctx,
