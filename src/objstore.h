@@ -86,17 +86,28 @@ enum func_kind {
 	FUNC_BYTECODE,
 };
 
+enum func_flags {
+	FUNC_IMPURE  = 0x1,
+	FUNC_CLOSURE = 0x2,
+};
+
 struct bc_env;
 
 struct func {
 	struct atom *name;
 	enum func_kind kind;
+	enum func_flags flags;
 	type_id type;
 
 	union {
 		void *native;
 		struct bc_env *bytecode;
 	};
+};
+
+struct stg_func_object {
+	func_id func;
+	void *closure;
 };
 
 struct object {

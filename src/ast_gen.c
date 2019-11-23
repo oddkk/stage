@@ -2,6 +2,7 @@
 #include "bytecode.h"
 #include "native_bytecode.h"
 #include "module.h"
+#include "native.h"
 #include "vm.h"
 #include "base/mod.h"
 #include <stdlib.h>
@@ -152,9 +153,8 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				fid = stg_register_func(mod->stg_mod, new_func);
 
 				struct object func_obj = {0};
-				func_obj.type = new_func.type;
-				func_obj.data = &fid;
-				func_obj = register_object(ctx->vm, env->store, func_obj);
+				func_obj = stg_register_func_object(
+						ctx->vm, env->store, fid, NULL);
 
 				struct bc_instr *func_instr;
 				func_instr = bc_gen_load(bc_env, BC_VAR_NEW, func_obj);
@@ -171,16 +171,45 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				new_func.kind = FUNC_NATIVE;
 				assert(node->type != TYPE_UNSET);
 				new_func.type = node->type;
-				assert(node->func.native.func != NULL);
-				new_func.native = node->func.native.func;
+
+				// We should already have checked that this native function
+				// exists during lookup.
+				struct stg_native_module *native_mod;
+				native_mod = mod->stg_mod->native_mod;
+				assert(native_mod);
+
+				struct stg_native_func *native_func = NULL;
+
+				for (size_t i = 0; i < native_mod->num_funcs; i++) {
+					if (string_equal(
+								native_mod->funcs[i].name,
+								node->func.native.name)) {
+						native_func = &native_mod->funcs[i];
+						break;
+					}
+				}
+
+				assert(native_func);
+				assert(native_func->func);
+				new_func.native = native_func->func;
+
+				void *closure = NULL;
+
+				if ((native_func->flags & STG_NATIVE_FUNC_IMPURE) != 0) {
+					new_func.flags |= FUNC_IMPURE;
+				}
+
+				if ((native_func->flags & STG_NATIVE_FUNC_MODULE_CLOSURE) != 0) {
+					closure = mod->stg_mod;
+					new_func.flags |= FUNC_CLOSURE;
+				}
 
 				func_id fid;
 				fid = stg_register_func(mod->stg_mod, new_func);
 
 				struct object func_obj = {0};
-				func_obj.type = new_func.type;
-				func_obj.data = &fid;
-				func_obj = register_object(ctx->vm, env->store, func_obj);
+				func_obj = stg_register_func_object(
+						ctx->vm, env->store, fid, closure);
 
 				struct bc_instr *func_instr;
 				func_instr = bc_gen_load(bc_env, BC_VAR_NEW, func_obj);

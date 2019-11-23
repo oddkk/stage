@@ -178,10 +178,10 @@ vm_get_func(struct vm *vm, func_id fid)
 }
 
 int
-vm_call_func(struct vm *vm, func_id fid, struct object *args,
+vm_call_func_obj(struct vm *vm, struct stg_func_object func_obj, struct object *args,
 		size_t num_args, struct object *ret)
 {
-	struct func *func = vm_get_func(vm, fid);
+	struct func *func = vm_get_func(vm, func_obj.func);
 	struct type *type = vm_get_type(vm, func->type);
 
 	struct stg_func_type *func_type;
@@ -199,46 +199,22 @@ vm_call_func(struct vm *vm, func_id fid, struct object *args,
 	switch (func->kind) {
 		case FUNC_NATIVE:
 			{
-				ffi_cif cif;
-				ffi_type *arg_types[num_args];
-				void *arg_values[num_args];
-
-				struct type *return_type;
-				return_type = vm_get_type(vm, func_type->return_type);
-				if (!return_type->ffi_type) {
-					printf("Type '");
-					print_type_repr(vm, return_type);
-					printf("' is missing a ffi_type.\n");
-					abort();
-					return -1;
-				}
-				assert(return_type->ffi_type);
+				// We reserver arg_values[0] for the closure value is present.
+				void *arg_values[num_args+1];
 
 				for (size_t i = 0; i < num_args; i++) {
-					struct type *arg_type = vm_get_type(vm, func_type->params[i]);
-					assert_type_equals(vm, args[i].type, func_type->params[i]);
-
-					if (!arg_type->ffi_type) {
-						printf("Type '");
-						print_type_repr(vm, arg_type);
-						printf("' is missing a ffi_type.\n");
-						abort();
-						return -1;
-					}
-					assert(arg_type->ffi_type);
-					arg_types[i] = arg_type->ffi_type;
-					arg_values[i] = args[i].data;
-				}
-				int err;
-				err = ffi_prep_cif(&cif, FFI_DEFAULT_ABI, num_args,
-						return_type->ffi_type, arg_types);
-				if (err != FFI_OK) {
-					printf("Failed to prepare call interface (%i).\n", err);
-					return -1;
+					arg_values[1+i] = args[i].data;
 				}
 
-				ffi_call(&cif, (void (*)(void))func->native,
-						ret->data, arg_values);
+				ffi_cif *cif = stg_func_ffi_cif(vm, func->type,
+						(func->flags & FUNC_CLOSURE) != 0);
+				if ((func->flags & FUNC_CLOSURE) != 0) {
+					arg_values[0] = &func_obj.closure;
+
+					ffi_call(cif, FFI_FN(func->native), ret->data, &arg_values[0]);
+				} else {
+					ffi_call(cif, FFI_FN(func->native), ret->data, &arg_values[1]);
+				}
 			}
 			return 0;
 
@@ -249,13 +225,26 @@ vm_call_func(struct vm *vm, func_id fid, struct object *args,
 					call_args[i] = args[i].data;
 				}
 				nbc_exec(vm, func->bytecode->nbc,
-						call_args, num_args, ret->data);
+						call_args, num_args, NULL, ret->data);
 			}
 			return 0;
 	}
 
 	panic("Invalid func kind");
 	return -1;
+}
+
+int
+vm_call_func(struct vm *vm, func_id fid, struct object *args,
+		size_t num_args, struct object *ret)
+{
+	struct func *func = vm_get_func(vm, fid);
+	assert((func->flags & FUNC_CLOSURE) == 0);
+
+	struct stg_func_object func_obj = {0};
+	func_obj.func = fid;
+
+	return vm_call_func_obj(vm, func_obj, args, num_args, ret);
 }
 
 struct atom *

@@ -98,6 +98,8 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 					struct func *func;
 					func = vm_get_func(env->vm, ip->lcall.func);
 
+					assert((func->flags & FUNC_CLOSURE) == 0);
+
 					struct nbc_instr instr = {0};
 
 					// We can not write to param slots.
@@ -109,14 +111,15 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 							{
 								instr.op = NBC_CALL_NBC;
 								instr.call.func.native.cif =
-									stg_func_ffi_cif(env->vm, func->type);
+									stg_func_ffi_cif(env->vm, func->type,
+											/* closure */ false);
 								instr.call.func.native.fp = func->native;
 							}
 							break;
 
 						case FUNC_BYTECODE:
 							instr.op = NBC_CALL_NBC;
-							instr.call.func.nbc = func->bytecode->nbc;
+							instr.call.func.nbc.fp = func->bytecode->nbc;
 							break;
 					}
 
@@ -125,6 +128,42 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 				}
 				break;
 
+			case BC_CLCALL:
+				{
+					struct func *func;
+					func = vm_get_func(env->vm, ip->clcall.func);
+
+					assert((func->flags & FUNC_CLOSURE) != 0);
+
+					struct nbc_instr instr = {0};
+
+					// We can not write to param slots.
+					assert(ip->clcall.target >= 0);
+					instr.call.target = vars[ip->clcall.target].offset;
+
+					switch (func->kind) {
+						case FUNC_NATIVE:
+							{
+								instr.op = NBC_CALL_NATIVE_CLOSURE;
+								instr.call.func.native.cif =
+									stg_func_ffi_cif(env->vm, func->type,
+											/* closure */ true);
+								instr.call.func.native.fp = func->native;
+								instr.call.func.native.closure = ip->clcall.closure;
+							}
+							break;
+
+						case FUNC_BYTECODE:
+							instr.op = NBC_CALL_NBC_CLOSURE;
+							instr.call.func.nbc.fp = func->bytecode->nbc;
+							instr.call.func.nbc.closure = ip->clcall.closure;
+							break;
+					}
+
+					nbc_append_instr(out_func, instr);
+					num_pushed_args = 0;
+				}
+				break;
 			case BC_VCALL:
 				{
 					struct nbc_instr instr = {0};
@@ -212,31 +251,42 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 }
 
 static void
-nbc_call_func(struct vm *vm, func_id fid, void **args, size_t num_args, void *ret)
+nbc_call_func(struct vm *vm, struct stg_func_object func_obj,
+		void **args, size_t num_args, void *ret)
 {
-	struct func *func = vm_get_func(vm, fid);
+	struct func *func = vm_get_func(vm, func_obj.func);
 
 	switch (func->kind) {
 		case FUNC_NATIVE:
 			{
-				ffi_cif *cif = stg_func_ffi_cif(vm, func->type);
+				ffi_cif *cif = stg_func_ffi_cif(vm, func->type,
+						(func->flags & FUNC_CLOSURE) != 0);
+				if ((func->flags & FUNC_CLOSURE) != 0) {
+					void *closure_args[num_args+1];
 
-				ffi_call(cif, FFI_FN(func->native), ret, args);
+					closure_args[0] = &func_obj.closure;
+					memcpy(&closure_args[1], args, sizeof(void *) * num_args);
+
+					ffi_call(cif, FFI_FN(func->native), ret, closure_args);
+				} else {
+					ffi_call(cif, FFI_FN(func->native), ret, args);
+				}
 			}
 			break;
 
 		case FUNC_BYTECODE:
-			nbc_exec(vm, func->bytecode->nbc, args, num_args, ret);
+			nbc_exec(vm, func->bytecode->nbc, args, num_args, func_obj.closure, ret);
 			break;
 	}
 }
 
 void
 nbc_exec(struct vm *vm, struct nbc_func *func,
-		void **params, size_t num_params, void *ret)
+		void **params, size_t num_params, void *closure, void *ret)
 {
 	uint8_t stack[func->stack_size];
-	void *args[func->max_callee_args];
+	void *closure_args[func->max_callee_args+1];
+	void **args = &closure_args[1];
 	size_t num_args = 0;
 	struct nbc_instr *ip = func->instrs;
 
@@ -269,20 +319,26 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 				break;
 
 			case NBC_CALL:
-				nbc_call_func(vm, *(func_id *)&stack[ip->call.func.var],
+				nbc_call_func(vm, *(struct stg_func_object *)&stack[ip->call.func.var],
 						args, num_args, &stack[ip->call.target]);
 				num_args = 0;
 				break;
 
 			case NBC_CALL_ARG:
-				nbc_call_func(vm, *(func_id *)params[ip->call.func.param],
+				nbc_call_func(vm, *(struct stg_func_object *)params[ip->call.func.param],
 						args, num_args, &stack[ip->call.target]);
 				num_args = 0;
 				break;
 
 			case NBC_CALL_NBC:
-				nbc_exec(vm, ip->call.func.nbc,
-						args, num_args, &stack[ip->call.target]);
+				nbc_exec(vm, ip->call.func.nbc.fp,
+						args, num_args, NULL, &stack[ip->call.target]);
+				num_args = 0;
+				break;
+
+			case NBC_CALL_NBC_CLOSURE:
+				nbc_exec(vm, ip->call.func.nbc.fp,
+						args, num_args, ip->call.func.nbc.closure, &stack[ip->call.target]);
 				num_args = 0;
 				break;
 
@@ -290,6 +346,14 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 				ffi_call((ffi_cif *)ip->call.func.native.cif,
 						(void (*)(void))ip->call.func.native.fp,
 						 &stack[ip->call.target], args);
+				num_args = 0;
+				break;
+
+			case NBC_CALL_NATIVE_CLOSURE:
+				closure_args[0] = &ip->call.func.native.closure;
+				ffi_call((ffi_cif *)ip->call.func.native.cif,
+						(void (*)(void))ip->call.func.native.fp,
+						 &stack[ip->call.target], closure_args);
 				num_args = 0;
 				break;
 
@@ -369,7 +433,14 @@ nbc_print(struct nbc_func *func)
 			case NBC_CALL_NBC:
 				printf("sp+0x%zx = CALL_NBC %p\n",
 						ip->call.target,
-						(void *)ip->call.func.nbc);
+						(void *)ip->call.func.nbc.fp);
+				break;
+
+			case NBC_CALL_NBC_CLOSURE:
+				printf("sp+0x%zx = CALL_NBC_CLOSURE %p %p\n",
+						ip->call.target,
+						(void *)ip->call.func.nbc.fp,
+						(void *)ip->call.func.nbc.closure);
 				break;
 
 			case NBC_CALL_NATIVE:
@@ -377,6 +448,14 @@ nbc_print(struct nbc_func *func)
 						ip->call.target,
 						ip->call.func.native.fp,
 						ip->call.func.native.cif);
+				break;
+
+			case NBC_CALL_NATIVE_CLOSURE:
+				printf("sp+0x%zx = CALL_NATIVE %p[%p] (%p)\n",
+						ip->call.target,
+						ip->call.func.native.fp,
+						ip->call.func.native.cif,
+						ip->call.func.native.closure);
 				break;
 
 			case NBC_PACK:

@@ -4,9 +4,19 @@
 #include "string.h"
 #include "objstore.h"
 
+enum stg_native_func_flags {
+	STG_NATIVE_FUNC_IMPURE = 0x1,
+
+	// If true, the function expects to receive a `struct stg_module *` ast its
+	// first argument.
+	STG_NATIVE_FUNC_MODULE_CLOSURE = 0x2,
+};
+
 struct stg_native_func {
 	struct string name;
 	void *func;
+
+	enum stg_native_func_flags flags;
 };
 
 struct stg_native_type {
@@ -37,9 +47,10 @@ struct stg_native_module {
 
 void
 stg_native_register_func(struct stg_native_module *,
-		struct string name, void *func);
-#define stg_native_register_funcs(mod, func) \
-	stg_native_register_func((mod), STR(#func), (void *)(func))
+		struct string name, void *func,
+		enum stg_native_func_flags flags);
+#define stg_native_register_funcs(mod, func, flags) \
+	stg_native_register_func((mod), STR(#func), (void *)(func), (flags))
 
 void
 stg_native_register_type(struct stg_native_module *,

@@ -256,11 +256,11 @@ msg_print(struct stg_module *mod, msg_node_id in)
 }
 
 static msg_node_id
-msg_map(struct stg_module *mod, msg_node_id in, func_id map_func)
+msg_map(struct stg_module *mod, msg_node_id in, struct stg_func_object map_func)
 {
 	// struct msg_context *ctx = mod->data;
 
-	printf("register map from %i over func %li\n", in, map_func);
+	printf("register map from %i over func %li (mod %p)\n", in, map_func.func, (void *)mod);
 
 	// msg_node_id res;
 	// res = msg_pipe_map(&ctx->sys, );
@@ -276,8 +276,10 @@ mod_message_load(struct stg_native_module *mod)
 	mod->hook_free      = mod_message_free;
 	mod->hook_start     = mod_message_start;
 
-	stg_native_register_funcs(mod, msg_print);
-	stg_native_register_funcs(mod, msg_map);
+	stg_native_register_funcs(mod, msg_print,
+			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
+	stg_native_register_funcs(mod, msg_map,
+			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
 
 	return 0;
 }

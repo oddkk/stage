@@ -63,6 +63,14 @@ bc_print(struct bc_env *env, struct bc_instr *instr)
 				printf(" = %lu\n", instr->lcall.func);
 				break;
 
+			case BC_CLCALL:
+				printf("CLCALL ");
+				bc_print_var(env, instr->clcall.target);
+				printf(" = %lu (%p)\n",
+						instr->clcall.func,
+						instr->clcall.closure);
+				break;
+
 			case BC_VCALL:
 				printf("VCALL ");
 				bc_print_var(env, instr->vcall.target);

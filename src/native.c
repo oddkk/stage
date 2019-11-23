@@ -6,7 +6,7 @@
 
 void
 stg_native_register_func(struct stg_native_module *mod,
-		struct string name, void *func)
+		struct string name, void *func, enum stg_native_func_flags flags)
 {
 	struct stg_native_func *tmp_funcs;
 	size_t tmp_num_funcs;
@@ -26,8 +26,9 @@ stg_native_register_func(struct stg_native_module *mod,
 	mod->num_funcs = tmp_num_funcs;
 	mod->funcs = tmp_funcs;
 
-	mod->funcs[func_id].name = name;
-	mod->funcs[func_id].func = func;
+	mod->funcs[func_id].name  = name;
+	mod->funcs[func_id].func  = func;
+	mod->funcs[func_id].flags = flags;
 }
 
 void

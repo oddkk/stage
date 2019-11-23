@@ -57,8 +57,8 @@ base_bootstrap_register_integer(struct stg_module *mod)
 
 void
 base_integer_register_native(struct stg_native_module *mod) {
-	stg_native_register_funcs(mod, op_add_int_int);
-	stg_native_register_funcs(mod, op_sub_int_int);
-	stg_native_register_funcs(mod, op_mul_int_int);
-	stg_native_register_funcs(mod, op_div_int_int);
+	stg_native_register_funcs(mod, op_add_int_int, 0);
+	stg_native_register_funcs(mod, op_sub_int_int, 0);
+	stg_native_register_funcs(mod, op_mul_int_int, 0);
+	stg_native_register_funcs(mod, op_div_int_int, 0);
 }

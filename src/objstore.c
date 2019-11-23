@@ -83,6 +83,8 @@ register_object(struct vm *vm, struct objstore *store, struct object obj) {
 			return OBJ_NONE;
 		}
 
+		store->data_pages = new_pages;
+
 		new_pages[store->num_data_pages] = mmap(NULL, store->page_size,
 										   PROT_READ|PROT_WRITE,
 										   MAP_PRIVATE|MAP_ANONYMOUS,
@@ -93,7 +95,6 @@ register_object(struct vm *vm, struct objstore *store, struct object obj) {
 			return OBJ_NONE;
 		}
 
-		store->data_pages = new_pages;
 		store->num_data_pages = store->num_data_pages + 1;
 		store->last_data_page_used = 0;
 	}

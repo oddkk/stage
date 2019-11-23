@@ -89,7 +89,6 @@ ast_init_node_func_native(struct ast_context *ctx, struct ast_env *env,
 	node->func.params = calloc(sizeof(struct ast_func_param), num_params);
 	node->func.num_params = num_params;
 	node->func.native.name = native_func_name;
-	node->func.native.func = NULL;
 	node->func.return_type = return_type;
 
 	for (size_t i = 0; i < num_params; i++) {

@@ -195,15 +195,17 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 							"This module does not have a native module.");
 						err += 1;
 				} else {
+					bool found = false;
 					for (size_t i = 0; i < native_mod->num_funcs; i++) {
 						if (string_equal(
 									native_mod->funcs[i].name,
 									node->func.native.name)) {
-							node->func.native.func = native_mod->funcs[i].func;
+							found = true;
+							break;
 						}
 					}
 
-					if (!node->func.native.func) {
+					if (!found) {
 						stg_error(ctx->err, node->loc,
 								"This module does not have a native function named '%.*s'.",
 								LIT(node->func.native.name));

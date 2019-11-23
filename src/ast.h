@@ -580,7 +580,6 @@ struct ast_node {
 				struct ast_node *body;
 				struct {
 					struct string name;
-					void *func;
 				} native;
 			};
 

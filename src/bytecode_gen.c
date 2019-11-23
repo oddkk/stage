@@ -195,6 +195,23 @@ bc_gen_lcall(struct bc_env *env, bc_var target, func_id func)
 }
 
 struct bc_instr *
+bc_gen_clcall(struct bc_env *env, bc_var target, func_id func, void *closure)
+{
+	struct func *func_inst = vm_get_func(env->vm, func);
+	type_id func_ret_type =
+		func_return_type(env->vm, func_inst->type);
+
+	struct bc_instr instr = {0};
+	instr.op = BC_CLCALL;
+	instr.clcall.target = bc_use_or_alloc_var(
+			env, target, func_ret_type);
+	instr.clcall.func = func;
+	instr.clcall.closure = closure;
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
 bc_gen_vcall(struct bc_env *env, bc_var target, bc_var func)
 {
 	assert(bc_valid_var(env, func));

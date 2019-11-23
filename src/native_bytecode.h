@@ -12,7 +12,9 @@ enum nbc_op {
 	NBC_CALL,
 	NBC_CALL_ARG,
 	NBC_CALL_NBC,
+	NBC_CALL_NBC_CLOSURE,
 	NBC_CALL_NATIVE,
+	NBC_CALL_NATIVE_CLOSURE,
 	NBC_PACK,
 	NBC_UNPACK,
 	NBC_RET,
@@ -44,10 +46,14 @@ struct nbc_instr {
 			union {
 				size_t var;
 				size_t param;
-				struct nbc_func *nbc;
+				struct {
+					struct nbc_func *fp;
+					void *closure;
+				} nbc;
 				struct {
 					void *cif;
 					void *fp;
+					void *closure;
 				} native;
 			} func;
 		} call;
@@ -87,7 +93,7 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *);
 
 void
 nbc_exec(struct vm *vm, struct nbc_func *func,
-		void **params, size_t num_params, void *ret);
+		void **params, size_t num_params, void *closure, void *ret);
 
 void
 nbc_print(struct nbc_func *func);

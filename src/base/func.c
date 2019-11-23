@@ -242,6 +242,19 @@ static struct type_base func_type_base = {
 	// todo: object repr
 };
 
+static ffi_type *ffi_type_stg_func_members[] = {
+	&ffi_type_uint64,
+	&ffi_type_pointer,
+	NULL
+};
+
+static ffi_type ffi_type_stg_func = {
+	.size = 0,
+	.alignment = 0,
+	.type = FFI_TYPE_STRUCT,
+	.elements = ffi_type_stg_func_members,
+};
+
 type_id
 stg_register_func_type(struct stg_module *mod,
 		type_id ret_type, type_id *param_types, size_t num_params)
@@ -266,23 +279,39 @@ stg_register_func_type(struct stg_module *mod,
 	type.data = data;
 	type.type_def = mod->vm->default_cons.func;
 	type.size = sizeof(struct stg_func_object);
-	type.ffi_type = &ffi_type_uint64;
+	type.ffi_type = &ffi_type_stg_func;
 
 	return stg_register_type(mod, type);
 }
 
 void *
-stg_func_ffi_cif(struct vm *vm, type_id func_tid)
+stg_func_ffi_cif(struct vm *vm, type_id func_tid, bool closure)
 {
 	struct type *type = vm_get_type(vm, func_tid);
 	assert(type->base == &func_type_base);
 	struct stg_func_type *func_info = type->data;
 
-	if (!func_info->ffi_cif) {
+	void *cif;
+	size_t closure_offset;
+	if (closure) {
+		cif = func_info->ffi_cif_closure;
+		closure_offset = 1;
+	} else {
+		cif = func_info->ffi_cif;
+		closure_offset = 0;
+	}
+
+	if (!cif) {
 		ffi_type **param_types; // [func_info->num_params];
 		ffi_type *ret_type;
 
-		param_types = calloc(func_info->num_params, sizeof(ffi_type *));
+		param_types = calloc(
+				func_info->num_params + closure_offset,
+				sizeof(ffi_type *));
+
+		if (closure) {
+			param_types[0] = &ffi_type_pointer;
+		}
 
 		for (size_t i = 0; i < func_info->num_params; i++) {
 			struct type *param_type;
@@ -295,7 +324,7 @@ stg_func_ffi_cif(struct vm *vm, type_id func_tid)
 				abort();
 				return NULL;
 			}
-			param_types[i] = param_type->ffi_type;
+			param_types[closure_offset+i] = param_type->ffi_type;
 		}
 
 		struct type *return_type;
@@ -310,22 +339,28 @@ stg_func_ffi_cif(struct vm *vm, type_id func_tid)
 		}
 		ret_type = return_type->ffi_type;
 
-		func_info->ffi_cif = calloc(1, sizeof(ffi_cif));
+		cif = calloc(1, sizeof(ffi_cif));
 
 		int err;
-		err = ffi_prep_cif(func_info->ffi_cif, FFI_DEFAULT_ABI,
-				func_info->num_params, ret_type, param_types);
+		err = ffi_prep_cif(cif, FFI_DEFAULT_ABI,
+				func_info->num_params+closure_offset, ret_type, param_types);
 		if (err != FFI_OK) {
 			printf("Failed to prepare call interface (%i).\n", err);
-			free(func_info->ffi_cif);
+			free(cif);
 			free(param_types);
-			func_info->ffi_cif = NULL;
+			cif = NULL;
 
 			return NULL;
 		}
+
+		if (closure) {
+			func_info->ffi_cif_closure = cif;
+		} else {
+			func_info->ffi_cif = cif;
+		}
 	}
 
-	return func_info->ffi_cif;
+	return cif;
 }
 
 bool
@@ -333,4 +368,24 @@ stg_type_is_func(struct vm *vm, type_id tid)
 {
 	struct type *type = vm_get_type(vm, tid);
 	return type->base == &func_type_base;
+}
+
+struct object
+stg_register_func_object(
+		struct vm *vm, struct objstore *store,
+		func_id func_id, void *closure)
+{
+	struct stg_func_object func_obj = {0};
+
+	func_obj.func = func_id;
+	func_obj.closure = closure;
+
+	struct func *func;
+	func = vm_get_func(vm, func_id);
+
+	struct object obj = {0};
+	obj.data = &func_obj;
+	obj.type = func->type;
+
+	return register_object(vm, store, obj);
 }

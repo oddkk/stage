@@ -90,6 +90,10 @@ vm_get_func(struct vm *, func_id);
 // return, and to have data point to a memory location where the result will be
 // written.
 int
+vm_call_func_obj(struct vm *, struct stg_func_object, struct object *args,
+		size_t num_args, struct object *ret);
+
+int
 vm_call_func(struct vm *, func_id, struct object *args,
 		size_t num_args, struct object *ret);
 

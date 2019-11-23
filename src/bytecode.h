@@ -22,8 +22,11 @@ enum bc_op {
 	// Append a var to the list of args for the next CALL.
 	BC_PUSH_ARG,
 
-	// Call litteral function.
+	// Call literal function.
 	BC_LCALL,
+
+	// Call literal function with the closure as its first argument.
+	BC_CLCALL,
 
 	// Call var function.
 	BC_VCALL,
@@ -59,6 +62,12 @@ struct bc_instr {
 			func_id func;
 			bc_var target;
 		} lcall;
+
+		struct {
+			func_id func;
+			void *closure;
+			bc_var target;
+		} clcall;
 
 		struct {
 			bc_var func;
@@ -141,6 +150,9 @@ bc_gen_push_arg(struct bc_env *, bc_var var);
 
 struct bc_instr *
 bc_gen_lcall(struct bc_env *, bc_var target, func_id);
+
+struct bc_instr *
+bc_gen_clcall(struct bc_env *, bc_var target, func_id, void *closure);
 
 struct bc_instr *
 bc_gen_vcall(struct bc_env *, bc_var target, bc_var func);

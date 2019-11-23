@@ -38,12 +38,12 @@ bool
 stg_type_is_func(struct vm *, type_id);
 
 void *
-stg_func_ffi_cif(struct vm *, type_id);
+stg_func_ffi_cif(struct vm *, type_id, bool closure);
 
-struct stg_func_object {
-	func_id func;
-	// TODO: Closure
-};
+struct object
+stg_register_func_object(
+		struct vm *, struct objstore *,
+		func_id func, void *data);
 
 struct stg_func_type {
 	type_id return_type;
@@ -51,6 +51,7 @@ struct stg_func_type {
 	size_t num_params;
 	type_id params_type;
 	void *ffi_cif;
+	void *ffi_cif_closure;
 };
 
 struct stg_array_type {
