@@ -537,7 +537,11 @@ re2c:define:YYFILL:naked = 1;
  }
 '0b' [01]+    {
 	lloc_col(ctx, lloc, CURRENT_LEN);
-	lval->NUMLIT = string_to_int64_base2(CURRENT_TOKEN);
+	// Strip '0b' prefix.
+	struct string num;
+	num.text = CURRENT_TOKEN.text + 2;
+	num.length = CURRENT_TOKEN.length - 2;
+	lval->NUMLIT = string_to_int64_base2(num);
 	return NUMLIT;
  }
 [1-9][0-9]* | '0'   {
@@ -547,7 +551,11 @@ re2c:define:YYFILL:naked = 1;
  }
 '0x' [0-9a-fA-F]+ {
 	lloc_col(ctx, lloc, CURRENT_LEN);
-	lval->NUMLIT = string_to_int64_base16(CURRENT_TOKEN);
+	// Strip '0x' prefix.
+	struct string num;
+	num.text = CURRENT_TOKEN.text + 2;
+	num.length = CURRENT_TOKEN.length - 2;
+	lval->NUMLIT = string_to_int64_base16(num);
 	return NUMLIT;
  }
 

@@ -148,6 +148,8 @@ int64_t string_to_int64_base2(struct string str)
 		char c = str.text[i];
 		if (c >= '0' || c <= '1') {
 			res = res * 2 + c - '0';
+		} else {
+			break;
 		}
 	}
 	return res;
@@ -170,13 +172,14 @@ int64_t string_to_int64_base10(struct string str)
 int64_t string_to_int64_base16(struct string str)
 {
 	int64_t res = 0;
+	printf("%.*s\n", LIT(str));
 	for (size_t i = 0; i < str.length; ++i) {
 		char c = str.text[i];
-		if (c > '0' && c <= '9') {
+		if (c >= '0' && c <= '9') {
 			res = res * 16 + c - '0';
-		} else if (c > 'a' && c <= 'f') {
+		} else if (c >= 'a' && c <= 'f') {
 			res = res * 16 + c - 'a' + 10;
-		} else if (c > 'A' && c <= 'F') {
+		} else if (c >= 'A' && c <= 'F') {
 			res = res * 16 + c - 'A' + 10;
 		} else {
 			break;
