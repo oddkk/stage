@@ -41,7 +41,7 @@ int := base.int;
 # message.onStart >>= db.exec(query);
 
 
-prnt := message.Print(message.Map(message.onStart, () -> int => 2));
+prnt := message.Print(message.Map(message.onStart, () -> int => 2+4));
 
 func_test := (base.type, int) -> int;
 

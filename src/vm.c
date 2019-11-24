@@ -193,8 +193,10 @@ vm_call_func_obj(struct vm *vm, struct stg_func_object func_obj, struct object *
 		return -1;
 	}
 
+	struct type *ret_type = vm_get_type(vm, func_type->return_type);;
+
 	assert_type_equals(vm, ret->type, func_type->return_type);
-	assert(ret->data != NULL);
+	assert(ret->data != NULL || ret_type->size == 0);
 
 	switch (func->kind) {
 		case FUNC_NATIVE:

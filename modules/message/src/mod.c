@@ -106,10 +106,10 @@ static struct type_base message_type_base = {
 
 struct msg_context {
 	struct msg_system sys;
-
 	struct ast_object_def *message_type_cons;
 
 	msg_node_id on_start_msg;
+	func_id endpoint_cons_func;
 };
 
 type_id
@@ -131,6 +131,29 @@ msg_register_message_type(struct stg_module *mod, type_id msg_type)
 	return stg_register_type(mod, type);
 }
 
+static void
+msg_print_int_callback(int64_t val)
+{
+	printf(" => %zi\n", val);
+}
+
+struct msg_endpoint_cons_info {
+	struct stg_module *mod;
+	struct stg_func_object func;
+};
+
+static void
+msg_endpoint_cons(struct msg_endpoint_cons_info *info, msg_node_id in)
+{
+	struct msg_context *ctx = info->mod->data;
+
+	msg_node_id res;
+	res = msg_pipe_endpoint(&ctx->sys,
+			info->func.func, info->func.closure);
+
+	msg_pipe_connect(&ctx->sys, in, res);
+}
+
 int
 mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 {
@@ -139,9 +162,32 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 	mod->data = ctx;
 
 	ctx->sys.vm = mod->vm;
+	ctx->sys.mod = mod;
 
 	ctx->on_start_msg = msg_pipe_entrypoint(
 			&ctx->sys, mod->vm->default_types.unit);
+
+	{
+		type_id endpoint_cons_params[1];
+		endpoint_cons_params[0] =
+			msg_register_message_type(mod,
+					mod->vm->default_types.integer);
+
+		type_id endpoint_cons_return;
+		endpoint_cons_return =
+			mod->vm->default_types.unit;
+
+		struct func func = {0};
+		func.kind = FUNC_NATIVE;
+		func.flags = FUNC_IMPURE | FUNC_CLOSURE;
+		func.type = stg_register_func_type(
+				mod, endpoint_cons_return,
+				endpoint_cons_params, 1);
+		func.native = (void *)msg_endpoint_cons;
+
+		ctx->endpoint_cons_func =
+			stg_register_func(mod, func);
+	}
 
 	{
 		struct ast_object_def *msg_type_def;
@@ -218,10 +264,8 @@ mod_message_start(struct stg_module *mod)
 {
 	struct msg_context *ctx = mod->data;
 
-	int64_t data = 0;
 	struct object obj = {0};
-	obj.type = mod->vm->default_types.integer;
-	obj.data = &data;
+	obj.type = mod->vm->default_types.unit;
 
 	msg_post(&ctx->sys, ctx->on_start_msg, obj);
 
@@ -235,38 +279,47 @@ mod_message_free(struct stg_module *mod)
 
 /*
 static void
-msg_print_callback(void *data, struct object obj)
+msg_print_int(struct stg_module *mod, msg_node_id in)
 {
-	struct stg_module *mod = data;
+	struct msg_context *ctx = mod->data;
 
-	printf(" => ");
-	print_obj_repr(mod->vm, obj);
-	printf("\n");
+	msg_node_id end;
+	end = msg_pipe_endpoint(&ctx->sys, msg_print_int_callback, mod);
+
+	msg_pipe_connect(&ctx->sys, in, end);
 }
 */
-
-static void
-msg_print(struct stg_module *mod, msg_node_id in)
-{
-	// struct msg_context *ctx = mod->data;
-
-	// msg_node_id end;
-	// end = msg_pipe_endpoint(&ctx->sys, msg_print_callback, mod);
-	printf("register print from %i\n", in);
-}
 
 static msg_node_id
 msg_map(struct stg_module *mod, msg_node_id in, struct stg_func_object map_func)
 {
-	// struct msg_context *ctx = mod->data;
+	struct msg_context *ctx = mod->data;
 
-	printf("register map from %i over func %li (mod %p)\n", in, map_func.func, (void *)mod);
+	msg_node_id res;
+	res = msg_pipe_map(&ctx->sys, map_func);
 
-	// msg_node_id res;
-	// res = msg_pipe_map(&ctx->sys, );
+	msg_pipe_connect(&ctx->sys, in, res);
 
-	return 0;
+	return res;
 }
+
+static struct stg_func_object
+msg_endpoint(struct stg_module *mod, struct stg_func_object map_func)
+{
+	struct msg_context *ctx = mod->data;
+
+	struct msg_endpoint_cons_info *info;
+	info = calloc(1, sizeof(struct msg_endpoint_cons_info));
+	info->mod = mod;
+	info->func = map_func;
+
+	struct stg_func_object cons_func = {0};
+	cons_func.func = ctx->endpoint_cons_func;
+	cons_func.closure = info;
+
+	return cons_func;
+}
+
 
 int
 mod_message_load(struct stg_native_module *mod)
@@ -276,9 +329,11 @@ mod_message_load(struct stg_native_module *mod)
 	mod->hook_free      = mod_message_free;
 	mod->hook_start     = mod_message_start;
 
-	stg_native_register_funcs(mod, msg_print,
-			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
+	stg_native_register_funcs(mod, msg_print_int_callback,
+			STG_NATIVE_FUNC_IMPURE);
 	stg_native_register_funcs(mod, msg_map,
+			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
+	stg_native_register_funcs(mod, msg_endpoint,
 			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
 
 	return 0;

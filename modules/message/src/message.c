@@ -1,6 +1,7 @@
 #include "message.h"
 #include <bytecode.h>
 #include <native_bytecode.h>
+#include <base/mod.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -66,6 +67,7 @@ msg_pipe_iter_outgoing_connections(
 		con = msg_pipe_get_connection(sys, *iter);
 		if (con->from == from) {
 			*out_to = con->to;
+			*iter += 1;
 			return 1;
 		}
 	}
@@ -185,7 +187,7 @@ msg_alloc_node(struct msg_system *sys)
 }
 
 msg_node_id
-msg_pipe_map(struct msg_system *sys, struct object func)
+msg_pipe_map(struct msg_system *sys, struct stg_func_object func)
 {
 	msg_node_id node_i;
 	node_i = msg_alloc_node(sys);
@@ -200,7 +202,7 @@ msg_pipe_map(struct msg_system *sys, struct object func)
 }
 
 msg_node_id
-msg_pipe_filter(struct msg_system *sys, struct object func)
+msg_pipe_filter(struct msg_system *sys, struct stg_func_object func)
 {
 	msg_node_id node_i;
 	node_i = msg_alloc_node(sys);
@@ -224,24 +226,24 @@ msg_pipe_entrypoint(struct msg_system *sys, type_id type)
 	node = msg_pipe_get_node(sys, node_i);
 	node->kind = MSG_PIPE_ENTRYPOINT;
 
-	node->entrypoint.func = FUNC_UNSET;
+	node->entrypoint.pipe_func = FUNC_UNSET;
 	node->entrypoint.type = type;
 
 	return node_i;
 }
 
 msg_node_id
-msg_pipe_endpoint(struct msg_system *sys, msg_callback callback, void *data)
+msg_pipe_endpoint(struct msg_system *sys, func_id callback, void *closure)
 {
 	msg_node_id node_i;
 	node_i = msg_alloc_node(sys);
 
 	struct msg_pipe_node *node;
 	node = msg_pipe_get_node(sys, node_i);
-	node->kind = MSG_PIPE_MAP;
+	node->kind = MSG_PIPE_ENDPOINT;
 
 	node->endpoint.callback = callback;
-	node->endpoint.data = data;
+	node->endpoint.closure = closure;
 
 	return node_i;
 }
@@ -262,7 +264,9 @@ msg_system_compile_node(
 		case MSG_PIPE_MAP:
 			{
 				struct bc_instr *func_load;
-				func_load = bc_gen_load(bc_env, BC_VAR_NEW, node->map.func);
+				func_load = bc_gen_load(bc_env, BC_VAR_NEW,
+						stg_register_func_object(sys->vm, &sys->mod->store,
+							node->map.func.func, node->map.func.closure));
 				append_bc_instr(&result, func_load);
 
 				append_bc_instr(&result,
@@ -278,7 +282,9 @@ msg_system_compile_node(
 		case MSG_PIPE_FILTER:
 			{
 				struct bc_instr *func_load;
-				func_load = bc_gen_load(bc_env, BC_VAR_NEW, node->map.func);
+				func_load = bc_gen_load(bc_env, BC_VAR_NEW,
+						stg_register_func_object(sys->vm, &sys->mod->store,
+							node->filter.func.func, node->filter.func.closure));
 				append_bc_instr(&result, func_load);
 
 				append_bc_instr(&result,
@@ -298,14 +304,22 @@ msg_system_compile_node(
 
 		case MSG_PIPE_ENDPOINT:
 			{
-				struct bc_instr *func_load;
-				func_load = bc_gen_load(bc_env, BC_VAR_NEW, node->map.func);
-				append_bc_instr(&result, func_load);
+				struct func *func;
+				func = vm_get_func(sys->vm, node->endpoint.callback);
+
 				append_bc_instr(&result,
 						bc_gen_push_arg(bc_env, in_var));
-				append_bc_instr(&result,
-						bc_gen_vcall(bc_env, BC_VAR_NEW,
-							func_load->load.target));
+
+				if ((func->flags & FUNC_CLOSURE) != 0) {
+					append_bc_instr(&result,
+							bc_gen_clcall(bc_env, BC_VAR_NEW,
+								node->endpoint.callback,
+								node->endpoint.closure));
+				} else {
+					append_bc_instr(&result,
+							bc_gen_lcall(bc_env, BC_VAR_NEW,
+								node->endpoint.callback));
+				}
 			}
 			return result;
 	}
@@ -317,7 +331,7 @@ msg_system_compile_node(
 	while (msg_pipe_iter_outgoing_connections(
 				sys, node_id, &child, &iter)) {
 		append_bc_instrs(&result,
-			msg_system_compile_node(sys, bc_env, node_id, out_var));
+			msg_system_compile_node(sys, bc_env, child, out_var));
 	}
 
 	return result;
@@ -348,7 +362,7 @@ msg_system_compile_entrypoint(
 	append_bc_instr(&result,
 			bc_gen_load(bc_env, BC_VAR_NEW, unit));
 	append_bc_instr(&result,
-			bc_gen_ret(bc_env, result.out_var));
+			bc_gen_ret(bc_env, result.last->load.target));
 
 	bc_env->entry_point = result.first;
 
@@ -364,6 +378,16 @@ msg_system_compile_entrypoint(
 	printf("\nunpack nbc:\n");
 	nbc_print(bc_env->nbc);
 #endif
+
+	struct func func = {0};
+	func.kind = FUNC_BYTECODE;
+	func.type = stg_register_func_type(
+			sys->mod, sys->vm->default_types.unit,
+			&node->entrypoint.type, 1);
+	func.bytecode = bc_env;
+
+	node->entrypoint.pipe_func =
+		stg_register_func(sys->mod, func);
 
 	return 0;
 }
@@ -395,4 +419,15 @@ msg_post(struct msg_system *sys,
 	struct msg_pipe_node *node;
 	node = msg_pipe_get_node(sys, entrypoint);
 	assert(node->kind == MSG_PIPE_ENTRYPOINT);
+	assert(node->entrypoint.pipe_func != FUNC_UNSET);
+
+	struct object ret = {0};
+	ret.type = sys->vm->default_types.unit;
+	int err;
+
+	err = vm_call_func(sys->vm, node->entrypoint.pipe_func,
+			&obj, 1, &ret);
+	if (err) {
+		printf("Failed to post message.\n");
+	}
 }

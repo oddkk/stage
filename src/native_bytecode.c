@@ -109,7 +109,7 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 					switch (func->kind) {
 						case FUNC_NATIVE:
 							{
-								instr.op = NBC_CALL_NBC;
+								instr.op = NBC_CALL_NATIVE;
 								instr.call.func.native.cif =
 									stg_func_ffi_cif(env->vm, func->type,
 											/* closure */ false);

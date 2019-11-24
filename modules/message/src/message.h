@@ -20,21 +20,21 @@ struct msg_pipe_node {
 
 	union {
 		struct {
-			struct object func;
+			struct stg_func_object func;
 		} map;
 
 		struct {
-			struct object func;
+			struct stg_func_object func;
 		} filter;
 
 		struct {
 			type_id type;
-			func_id func;
+			func_id pipe_func;
 		} entrypoint;
 
 		struct {
-			msg_callback callback;
-			void *data;
+			func_id callback;
+			void *closure;
 		} endpoint;
 	};
 };
@@ -45,6 +45,7 @@ struct msg_pipe_connection {
 
 struct msg_system {
 	struct vm *vm;
+	struct stg_module *mod;
 
 	struct msg_entrypoint *entrypoints;
 	size_t num_entrypoints;
@@ -69,16 +70,16 @@ msg_pipe_iter_outgoing_connections(
 		msg_node_id *out_to, size_t *iter);
 
 msg_node_id
-msg_pipe_map(struct msg_system *sys, struct object func);
+msg_pipe_map(struct msg_system *sys, struct stg_func_object func);
 
 msg_node_id
-msg_pipe_filter(struct msg_system *sys, struct object func);
+msg_pipe_filter(struct msg_system *sys, struct stg_func_object func);
 
 msg_node_id
 msg_pipe_entrypoint(struct msg_system *sys, type_id type);
 
 msg_node_id
-msg_pipe_endpoint(struct msg_system *sys, msg_callback, void *data);
+msg_pipe_endpoint(struct msg_system *sys, func_id, void *closure);
 
 void
 msg_pipe_connect(struct msg_system *sys,

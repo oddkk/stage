@@ -10,7 +10,11 @@ Map;
 # 	_printIn(in);
 # };
 
-Print := (in: Message(int)) -> unit @nativeImpure("msg_print");
+Endpoint := (func: (int) -> unit) -> ((Message(int)) -> unit) @nativeImpure("msg_endpoint");
+
+# Print := (in: Message(int)) -> unit @nativeImpure("msg_print_int");
+_printCallback := (val: int) -> unit @nativeImpure("msg_print_int_callback");
+Print := Endpoint(_printCallback);
 
 # Map := (in: Message($T), f: (T) -> $U) -> Message($U) @nativeImpure("msg_map");
 Map := (in: Message(unit), f: () -> int) -> Message(int) @nativeImpure("msg_map");
