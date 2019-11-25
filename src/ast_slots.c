@@ -1530,12 +1530,18 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			ctx->slot_map[src_slot] = mapped_slot.subst;
 			mapped_slot = ast_env_slot(ctx->ctx, dest, ctx->slot_map[src_slot]);
 		}
+
+		struct ast_bind_result res;
+		res = ast_try_union_slot(ctx->ctx, dest,
+				target, ctx->slot_map[src_slot]);
+		BIND_EXPECT_OK(res);
+
 #if AST_DEBUG_UNION
 		print_indent(union_depth);
 		printf(" -> %i (map)\n", res.ok.result);
 		union_depth -= 1;
 #endif
-		return BIND_OK(ctx->slot_map[src_slot]);
+		return res;
 	}
 
 	struct ast_env_slot slot = ast_env_slot(ctx->ctx, src, src_slot);
