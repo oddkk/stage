@@ -10,7 +10,7 @@
 // For mmap
 #include <sys/mman.h>
 
-#define MSG_GEN_SHOW_BC 1
+#define MSG_GEN_SHOW_BC 0
 
 static inline void
 append_bc_instr(struct ast_gen_bc_result *res, struct bc_instr *instr)

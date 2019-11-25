@@ -22,6 +22,8 @@ ast_name_ref_equals(struct ast_name_ref lhs, struct ast_name_ref rhs)
 			return lhs.param == rhs.param;
 		case AST_NAME_REF_CLOSURE:
 			return lhs.closure == rhs.closure;
+		case AST_NAME_REF_TEMPL:
+			return lhs.templ == rhs.templ;
 	}
 
 	return false;
@@ -423,8 +425,14 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 							ast_try_bind_slot_cons(
 								ctx, env, AST_BIND_NEW, NULL, cons));
 
+					func_cons->call.ret_type =
+						ast_env_slot(ctx, env, func_cons->call.cons).type;
+
 					node->call.func = func_cons;
 					node->kind = AST_NODE_CALL;
+
+					func_slot = ast_node_value(ctx, env, node->call.func);
+					func_type_slot = ast_node_type(ctx, env, node->call.func);
 				} else {
 					node->kind = AST_NODE_CONS;
 					struct ast_bind_result res;
@@ -692,7 +700,58 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 		break;
 
 	case AST_NODE_TEMPL:
-		// TODO: Implement templates.
+		{
+			struct ast_typecheck_dep body_deps[num_deps + node->templ.num_params];
+			memcpy(body_deps, deps, sizeof(struct ast_typecheck_dep) * num_deps);
+
+			for (size_t i = 0; i < node->templ.num_params; i++) {
+				node->templ.params[i].slot =
+					ast_bind_slot_templ(
+							ctx, env, node->templ.params[i].slot, NULL,
+							ast_bind_slot_wildcard(
+								ctx, env, AST_BIND_NEW,
+								NULL, AST_SLOT_TYPE));
+
+				body_deps[num_deps+i].req = AST_NAME_DEP_REQUIRE_VALUE;
+				body_deps[num_deps+i].ref.kind = AST_NAME_REF_TEMPL;
+				body_deps[num_deps+i].ref.templ = i;
+				body_deps[num_deps+i].determined = false;
+				body_deps[num_deps+i].lookup_failed = false;
+				body_deps[num_deps+i].value = node->templ.params[i].slot;
+			}
+
+			ast_slot_id body_slot;
+			body_slot = ast_node_bind_slots(
+					ctx, num_errors, mod, env,
+					node->templ.body, AST_BIND_NEW,
+					body_deps, num_deps + node->templ.num_params);
+
+			if (!node->templ.def) {
+				node->templ.def = ast_node_create_templ(
+						ctx, mod, env, node, deps, num_deps);
+				assert(node->templ.def);
+			}
+
+			struct object obj = {0};
+			obj.type = ctx->types.cons;
+			obj.data = &node->templ.def;
+
+			obj = register_object(ctx->vm, env->store, obj);
+
+			struct ast_bind_result res;
+			res = ast_try_bind_slot_const(
+					ctx, env, target, NULL, obj);
+
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				target = res.ok.result;
+			}
+
+			node->templ.slot = target;
+		}
 		break;
 
 	case AST_NODE_SLOT:
@@ -803,7 +862,7 @@ ast_node_resolve_types(struct ast_context *ctx, struct ast_module *mod,
 {
 	int errors = 0;
 #define VISIT_NODE(child) errors += ast_node_resolve_types(ctx, mod, env, child);
-	AST_NODE_VISIT(node, false, true);
+	AST_NODE_VISIT(node, false, true, false);
 #undef VISIT_NODE
 
 	assert(node->type == TYPE_UNSET);

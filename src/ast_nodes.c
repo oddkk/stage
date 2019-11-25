@@ -3,6 +3,8 @@
 #include <string.h>
 #include "utils.h"
 #include "module.h"
+#include "bytecode.h"
+#include "native_bytecode.h"
 #include "base/mod.h"
 #include "dlist.h"
 
@@ -642,8 +644,193 @@ ast_node_find_named_dependencies(
 #define VISIT_NODE(node) \
 	err += ast_node_find_named_dependencies(\
 			(node), req, out_refs, out_num_refs);
-	AST_NODE_VISIT(node, false, false);
+	AST_NODE_VISIT(node, false, false, false);
 #undef VISIT_NODE
 
 	return err;
+}
+
+struct ast_templ_cons_info {
+	struct ast_node *templ_node;
+
+	struct ast_typecheck_dep *deps;
+	size_t num_deps;
+};
+
+struct object
+ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_object_def *def, ast_slot_id obj_slot)
+{
+	struct ast_templ_cons_info *info;
+	info = def->data;
+
+	struct ast_node *templ_node;
+	templ_node = ast_node_deep_copy(ctx, env,
+			&def->env, info->templ_node);
+
+	struct ast_node *body;
+	body = templ_node->templ.body;
+
+	size_t num_body_deps = info->num_deps + def->num_params;
+	struct ast_typecheck_dep body_deps[num_body_deps];
+	memcpy(body_deps, info->deps, info->num_deps * sizeof(struct ast_typecheck_dep));
+
+	struct object param_values[def->num_params];
+
+	bool pack_failed = false;
+	for (size_t i = 0; i < def->num_params; i++) {
+		ast_slot_id arg_slot;
+		arg_slot = ast_unpack_arg_named(
+				ctx, env, obj_slot, AST_BIND_NEW,
+				def->params[i].name);
+
+		struct ast_typecheck_dep *dep;
+		dep = &body_deps[info->num_deps+i];
+
+		int err;
+		err = ast_slot_pack(
+				ctx, mod, env,
+				arg_slot, &param_values[def->params[i].param_id]);
+		if (err) {
+			printf("Failed to pack templ arg.\n");
+			pack_failed = true;
+			continue;
+		}
+
+		ast_bind_slot_const(
+				ctx, env, arg_slot, NULL,
+				param_values[def->params[i].param_id]);
+
+		dep->req = AST_NAME_DEP_REQUIRE_VALUE;
+		dep->ref.kind = AST_NAME_REF_TEMPL;
+		dep->ref.templ = def->params[i].param_id;
+		dep->determined = true;
+		dep->lookup_failed = false;
+		dep->value = arg_slot;
+		dep->val = param_values[def->params[i].param_id];
+	}
+
+	if (pack_failed) {
+		struct object res = {0};
+		return res;
+	}
+
+	int err;
+	err = ast_node_typecheck(ctx, mod, env,
+			body, body_deps, num_body_deps);
+	if (err) {
+		struct object res = {0};
+		return res;
+	}
+
+	struct ast_gen_info gen_info = {0};
+
+	gen_info.templ_objs = param_values;
+	gen_info.num_templ_objs = def->num_params;
+
+	struct bc_env bc_env = {0};
+	bc_env.vm = ctx->vm;
+	bc_env.store = ctx->vm->instr_store;
+
+	struct ast_gen_bc_result bc;
+	bc = ast_node_gen_bytecode(
+			ctx, mod, env, &gen_info,
+			&bc_env, body);
+
+	bc.last->next = bc_gen_ret(&bc_env, bc.out_var);
+	bc.last = bc.last->next;
+
+	bc_env.entry_point = bc.first;
+	struct nbc_func nbc_func = {0};
+	nbc_compile_from_bc(&nbc_func, &bc_env);
+
+	struct type *res_type;
+	res_type = vm_get_type(ctx->vm, body->type);
+
+	uint8_t buffer[res_type->size];
+
+	struct object res = {0};
+	res.type = body->type;
+	res.data = buffer;
+
+	nbc_exec(ctx->vm, &nbc_func,
+			NULL, 0, NULL, buffer);
+
+	res = register_object(ctx->vm, env->store, res);
+
+	printf("packed templ obj ");
+	print_obj_repr(ctx->vm, res);
+	printf(" ");
+	print_type_repr(ctx->vm, res_type);
+	printf("\n");
+
+
+	// TODO: Free.
+
+	return res;
+}
+
+struct object
+ast_templ_unpack(struct ast_context *ctx, struct ast_env *env,
+		struct ast_object_def *def, int param_id, struct object obj)
+{
+	struct object res = {0};
+
+	return res;
+}
+
+struct ast_object_def *
+ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *templ_node,
+		struct ast_typecheck_dep *deps, size_t num_deps)
+{
+	assert(templ_node->templ.body->kind == AST_NODE_FUNC ||
+			templ_node->templ.body->kind == AST_NODE_FUNC_NATIVE ||
+			templ_node->templ.body->kind == AST_NODE_COMPOSITE);
+
+	struct ast_object_def *def;
+	def = ast_object_def_register(env->store);
+
+	def->num_params = templ_node->templ.num_params;
+	def->params = calloc(def->num_params,
+			sizeof(struct ast_object_def_param));
+
+	struct ast_templ_cons_info *info;
+	info = calloc(1, sizeof(struct ast_templ_cons_info));
+
+	info->num_deps = num_deps;
+	info->deps = calloc(info->num_deps, sizeof(struct ast_typecheck_dep));
+	memcpy(info->deps, deps, sizeof(struct ast_typecheck_dep) * info->num_deps);
+
+	info->templ_node = ast_node_deep_copy(
+			ctx, &def->env, env, templ_node);
+
+	for (size_t i = 0; i < def->num_params; i++) {
+		def->params[i].param_id = i;
+		def->params[i].name = info->templ_node->templ.params[i].name;
+		def->params[i].slot = info->templ_node->templ.params[i].slot;
+
+		ast_slot_id param_type_slot;
+		param_type_slot =
+			ast_env_slot(ctx, &def->env, def->params[i].slot).type;
+
+		int err;
+		err = ast_slot_pack_type(
+				ctx, mod, &def->env,
+				param_type_slot,
+				&def->params[i].type);
+		if (err) {
+			printf("Failed to pack templ param type.\n");
+		}
+	}
+
+	def->ret_type =
+		ast_node_type(ctx, &def->env,
+				info->templ_node->templ.body);
+
+	def->data   = info;
+	def->pack   = ast_templ_pack;
+	def->unpack = ast_templ_unpack;
+
+	return def;
 }

@@ -247,13 +247,11 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				struct ast_scope_name template_scope_names[templates_scope.num_names];
 				templates_scope.names = template_scope_names;
 
-				panic("TODO: Implement lookup for templ nodes.");
-
 				for (size_t i = 0; i < templates_scope.num_names; i++) {
 					templates_scope.names[i].name =
 						node->templ.params[i].name;
-					// templates_scope.names[i].slot =
-					// 	node->templ.params[i].slot;
+					templates_scope.names[i].ref.kind = AST_NAME_REF_TEMPL;
+					templates_scope.names[i].ref.templ = i;
 				}
 
 				err += ast_node_resolve_names(ctx, env, native_mod,
@@ -466,14 +464,11 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 				struct ast_scope_name template_scope_names[templates_scope.num_names];
 				templates_scope.names = template_scope_names;
 
-				panic("TODO: Implement lookup for templ nodes.");
-
 				for (size_t i = 0; i < templates_scope.num_names; i++) {
 					templates_scope.names[i].name =
 						node->templ.params[i].name;
-					// TODO: Template params should probably have their own ref kind
-					templates_scope.names[i].ref.kind = AST_NAME_REF_PARAM;
-					templates_scope.names[i].ref.param = -1;
+					templates_scope.names[i].ref.kind = AST_NAME_REF_TEMPL;
+					templates_scope.names[i].ref.templ = i;
 				}
 
 				err += ast_node_discover_potential_closures(ctx, env,

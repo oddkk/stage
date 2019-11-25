@@ -1551,6 +1551,10 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 				}
 				break;
 
+			case AST_NAME_REF_TEMPL:
+				panic("TODO: Pass template information to datatype.");
+				break;
+
 			default:
 			case AST_NAME_REF_NOT_FOUND:
 				panic("Invalid name reference.");

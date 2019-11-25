@@ -207,6 +207,10 @@ ast_print_name_ref(struct ast_name_ref ref)
 		case AST_NAME_REF_CLOSURE:
 			printf("closure %i", ref.closure);
 			break;
+
+		case AST_NAME_REF_TEMPL:
+			printf("templ %i", ref.templ);
+			break;
 	}
 }
 
@@ -308,7 +312,7 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("params:\n");
 			for (size_t i = 0; i < node->templ.num_params; i++) {
 				print_indent(depth + 2);
-				printf("'%.*s'", ALIT(node->templ.params[i].name));
+				printf("'%.*s' = ", ALIT(node->templ.params[i].name));
 				print_slot(env, node->templ.params[i].slot);
 				printf("\n");
 			}

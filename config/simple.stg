@@ -41,11 +41,13 @@ int := base.int;
 # message.onStart >>= db.exec(query);
 
 
-prnt := message.Print(message.Map(message.onStart, () -> int => 0b100));
+prnt := message.Print(message.Map(message.onStart, () -> int => 100));
 
 func_test := (base.type, int) -> int;
 
-# poly := (a: $T) -> T => a;
+id := (a: $T) -> T => a;
+
+id_test := id(2);
 
 Foo := Struct {
 	foo: int ~= 6;

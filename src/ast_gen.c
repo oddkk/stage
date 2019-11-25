@@ -81,6 +81,7 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 	switch (ref.kind) {
 		case AST_NAME_REF_NOT_FOUND:
 			panic("Got unresolved name ref in code gen.");
+			break;
 
 		case AST_NAME_REF_MEMBER:
 			for (size_t i = 0; i < info->num_members; i++) {
@@ -113,7 +114,13 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 		case AST_NAME_REF_CLOSURE:
 			assert(ref.closure < info->num_closures);
 			return info->closures[ref.closure];
+
+		case AST_NAME_REF_TEMPL:
+			panic("TODO: Pass template information to gen.");
+			break;
 	}
+
+	return (struct ast_typecheck_closure){0};
 }
 
 struct ast_gen_bc_result
@@ -413,8 +420,18 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			return result;
 
 		case AST_NODE_TEMPL:
-			panic("TODO: Implement generating bytecode for templ.");
-			break;
+			{
+				struct object obj = {0};
+				obj.type = ctx->types.cons;
+				obj.data = &node->templ.def;
+
+				obj = register_object(ctx->vm, env->store, obj);
+
+				result.first = result.last =
+					bc_gen_load(bc_env, BC_VAR_NEW, obj);
+				result.out_var = result.first->load.target;
+			}
+			return result;
 
 		case AST_NODE_ACCESS:
 			{
@@ -598,6 +615,13 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 						panic("TODO: Closures");
 					}
 					break;
+
+				case AST_NAME_REF_TEMPL:
+					panic("TODO: Pass template information to gen.");
+					result.first = result.last = NULL;
+					result.out_var = bc_alloc_param(
+							bc_env, node->lookup.ref.param, node->type);
+					return result;
 
 				case AST_NAME_REF_NOT_FOUND:
 					panic("Got failed lookup in code gen.");

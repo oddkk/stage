@@ -21,6 +21,7 @@ enum ast_name_ref_kind {
 	AST_NAME_REF_MEMBER,
 	AST_NAME_REF_PARAM,
 	AST_NAME_REF_CLOSURE,
+	AST_NAME_REF_TEMPL,
 };
 
 struct ast_name_ref {
@@ -29,6 +30,7 @@ struct ast_name_ref {
 		ast_member_id  member;
 		ast_param_id   param;
 		ast_closure_id closure;
+		ast_param_id   templ;
 	};
 };
 
@@ -634,8 +636,6 @@ struct ast_node {
 			struct ast_template_param *params;
 			size_t num_params;
 
-			ast_slot_id cons;
-
 			ast_slot_id slot;
 
 			struct ast_object_def *def;
@@ -686,7 +686,7 @@ struct ast_node {
 char *
 ast_node_name(enum ast_node_kind);
 
-#define AST_NODE_VISIT(node, visit_composite_body, visit_func_body)				\
+#define AST_NODE_VISIT(node, visit_composite_body, visit_func_body, visit_templ_body) \
 	do { assert((node)); switch ((node)->kind) {								\
 		case AST_NODE_FUNC:														\
 			if (visit_func_body) {												\
@@ -719,7 +719,9 @@ ast_node_name(enum ast_node_kind);
 			VISIT_NODE((node)->access.target);									\
 			break;																\
 		case AST_NODE_TEMPL:													\
-			printf("TODO: Visit template.\n");									\
+			if (visit_templ_body) {												\
+				VISIT_NODE((node)->templ.body);									\
+			}																	\
 			break;																\
 		case AST_NODE_SLOT:														\
 			break;																\
@@ -920,6 +922,11 @@ struct ast_node *
 ast_node_deep_copy(struct ast_context *ctx, struct ast_env *dest_env,
 		struct ast_env *src_env, struct ast_node *src);
 
+struct ast_object_def *
+ast_node_create_templ(struct ast_context *ctx, struct ast_module *,
+		struct ast_env *env, struct ast_node *templ_node,
+		struct ast_typecheck_dep *deps, size_t num_deps);
+
 struct bc_env;
 struct bc_instr;
 typedef int bc_var;
@@ -938,6 +945,9 @@ struct ast_gen_info {
 
 	struct ast_typecheck_closure *closures;
 	size_t num_closures;
+
+	struct object *templ_objs;
+	size_t num_templ_objs;
 };
 
 struct ast_gen_bc_result
