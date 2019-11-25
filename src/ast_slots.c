@@ -1449,32 +1449,53 @@ ast_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 				ctx, env, obj, target, name));
 }
 
+#if AST_DEBUG_UNION
+static void
+print_indent(int depth)
+{
+	for (int i = 0; i < depth; ++i) {
+		printf("| ");
+	}
+}
+#endif
+
 static struct ast_bind_result
 ast_union_slot_internal(struct ast_union_context *ctx,
 		struct ast_env *dest, ast_slot_id target,
 		struct ast_env *src,  ast_slot_id src_slot)
 {
 #if AST_DEBUG_UNION
+	static int union_depth = -1;
+
+	union_depth += 1;
+
+	print_indent(union_depth);
 	printf("union (%p)%i -> (%p)%i\n", (void *)src, src_slot, (void *)dest, target);
 #endif
 
 	if (src_slot == AST_SLOT_TYPE) {
 #if AST_DEBUG_UNION
+		print_indent(union_depth);
 		printf(" -> -1 (type)\n");
+		union_depth -= 1;
 #endif
 		return ast_try_bind_slot_const_type(
 				ctx->ctx, dest, target,
 				NULL, ctx->ctx->types.type);
 	} else if (src_slot == AST_BIND_FAILED) {
 #if AST_DEBUG_UNION
+		print_indent(union_depth);
 		printf(" -> fail\n");
+		union_depth -= 1;
 #endif
 		return BIND_OK(AST_BIND_FAILED);
 	}
 
 	if (dest == src && target == src_slot && !ctx->copy_mode) {
 #if AST_DEBUG_UNION
+	print_indent(union_depth);
 		printf(" -> %i\n", target);
+		union_depth -= 1;
 #endif
 		return BIND_OK(target);
 	}
@@ -1510,7 +1531,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			mapped_slot = ast_env_slot(ctx->ctx, dest, ctx->slot_map[src_slot]);
 		}
 #if AST_DEBUG_UNION
-		printf(" -> %i (map)\n", target);
+		print_indent(union_depth);
+		printf(" -> %i (map)\n", res.ok.result);
+		union_depth -= 1;
 #endif
 		return BIND_OK(ctx->slot_map[src_slot]);
 	}
@@ -1530,7 +1553,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 	switch (slot.kind) {
 		case AST_SLOT_ERROR:
 #if AST_DEBUG_UNION
+			print_indent(union_depth);
 			printf(" -> fail\n");
+			union_depth -= 1;
 #endif
 			return BIND_OK(AST_BIND_FAILED);
 
@@ -1620,7 +1645,7 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 					ast_bind_require_ok(
 							ast_try_unpack_arg_named(
 								ctx->ctx, dest, result.ok.result,
-								AST_BIND_NEW, // TODO: slot.cons.args[i].slot,
+								AST_BIND_NEW,
 								slot.cons.args[i].name));
 
 				BIND_EXPECT_OK(ast_union_slot_internal(ctx,
@@ -1628,6 +1653,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 						src, slot.cons.args[i].slot));
 			}
 
+			BIND_EXPECT_OK(ast_union_slot_internal(ctx,
+					dest, ast_env_slot(ctx->ctx, dest, result.ok.result).type,
+					src, slot.type));
 			// TODO: Union type?
 			break;
 
@@ -1650,6 +1678,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 								"one of length %zu.\n",
 								target_slot.cons_array.num_members,
 								num_members);
+#if AST_DEBUG_UNION
+						union_depth -= 1;
+#endif
 						return BIND_ARRAY_LENGTH_MISMATCH(
 								target_slot.cons_array.num_members, num_members);
 					}
@@ -1701,6 +1732,9 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 			printf("failed bind (%p)%i -> (%p)%i\n", (void *)src, src_slot, (void *)dest, target);
 			panic("SUBST-slot in union (%i(%i) -> %i).", src_slot, slot.subst, target);
 #endif
+#if AST_DEBUG_UNION
+			union_depth -= 1;
+#endif
 			return ast_union_slot_internal(ctx,
 					dest, target,
 					src,  slot.subst);
@@ -1708,9 +1742,12 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 	BIND_EXPECT_OK(result);
 
 #if AST_DEBUG_UNION
+	print_indent(union_depth);
 	printf(" -> %i\n", result.ok.result);
+	union_depth -= 1;
 #endif
 
+	assert(ctx->slot_map[src_slot] == AST_SLOT_NOT_FOUND);
 	ctx->slot_map[src_slot] = result.ok.result;
 
 	ast_substitute(ctx->ctx, dest, result.ok.result, target);
@@ -1751,8 +1788,10 @@ ast_try_union_slot(struct ast_context *ctx, struct ast_env *env,
 	cpy_ctx.slot_map_len = env->num_slots;
 	cpy_ctx.copy_mode = false;
 
-	return ast_union_slot_internal(
+	struct ast_bind_result res;
+	res = ast_union_slot_internal(
 			&cpy_ctx, env, target, env, src_slot);
+	return res;
 }
 
 ast_slot_id
@@ -1781,9 +1820,11 @@ ast_copy_slot(struct ast_context *ctx,
 	cpy_ctx.slot_map_len = src->num_slots;
 	cpy_ctx.copy_mode = true;
 
-	return ast_bind_result_to_slot(
+	ast_slot_id res;
+	res = ast_bind_result_to_slot(
 			ast_union_slot_internal(
 				&cpy_ctx, dest, target, src, src_slot));
+	return res;
 }
 
 ast_slot_id
@@ -1804,9 +1845,11 @@ ast_copy_slot_with_member_id(struct ast_context *ctx,
 	cpy_ctx.copy_mode = true;
 	cpy_ctx.copy_member_id = true;
 
-	return ast_bind_result_to_slot(
+	ast_slot_id res;
+	res = ast_bind_result_to_slot(
 			ast_union_slot_internal(
 				&cpy_ctx, dest, target, src, src_slot));
+	return res;
 }
 
 
@@ -2041,7 +2084,9 @@ ast_node_deep_copy_internal(
 		DCP_SLOT(func.return_type_slot);
 		DCP_SLOT(func.param_types_slot);
 		DCP_SLOT(func.type);
+		DCP_SLOT(func.slot);
 		DCP_LIT(func.instance);
+		DCP_LIT(func.closure);
 		break;
 
 		break;
@@ -2079,7 +2124,6 @@ ast_node_deep_copy_internal(
 			DCP_LIT(templ.params[i].loc);
 		}
 
-		DCP_SLOT(templ.cons);
 		DCP_SLOT(templ.slot);
 		DCP_LIT(templ.def);
 		break;
@@ -2162,6 +2206,14 @@ ast_node_deep_copy(struct ast_context *ctx, struct ast_env *dest_env,
 	cpy_ctx.slot_map_len = src_env->num_slots;
 	cpy_ctx.copy_mode = true;
 
-	return ast_node_deep_copy_internal(
+	struct ast_node *res;
+#if AST_DEBUG_UNION
+	printf("\n=== begin deep copy ===\n");
+#endif
+	res = ast_node_deep_copy_internal(
 			&cpy_ctx, dest_env, src_env, src);
+#if AST_DEBUG_UNION
+	printf("===  end deep copy  ===\n");
+#endif
+	return res;
 }
