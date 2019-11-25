@@ -591,12 +591,8 @@ struct ast_node {
 			struct ast_node *return_type;
 			ast_slot_id return_type_slot;
 
-			ast_slot_id param_types_slot;
-
 			ast_slot_id type;
-
 			ast_slot_id slot;
-
 			func_id instance;
 
 			struct ast_closure_target closure;
@@ -610,6 +606,7 @@ struct ast_node {
 			size_t num_args;
 
 			ast_slot_id ret_type;
+			bool cons_evaled;
 
 			// Used only for cons.
 			ast_slot_id cons;

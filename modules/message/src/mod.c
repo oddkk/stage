@@ -119,13 +119,20 @@ msg_register_message_type(struct stg_module *mod, type_id msg_type)
 
 	info = calloc(1, sizeof(struct msg_message_type_info));
 
+	struct stg_module *msg_mod;
+	msg_mod = vm_get_module(mod->vm, STR("message"));
+	assert(msg_mod);
+
+	struct msg_context *ctx;
+	ctx = msg_mod->data;
+
 	info->type = msg_type;
 
 	struct type type = {0};
 	type.base = &message_type_base;
 	type.data = info;
 	type.size = sizeof(msg_node_id);
-	type.type_def = mod->vm->default_cons.array;
+	type.type_def = ctx->message_type_cons;
 	type.ffi_type = &ffi_type_uint32;
 
 	return stg_register_type(mod, type);

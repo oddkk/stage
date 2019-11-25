@@ -2088,7 +2088,6 @@ ast_node_deep_copy_internal(
 
 		DCP_NODE(func.return_type);
 		DCP_SLOT(func.return_type_slot);
-		DCP_SLOT(func.param_types_slot);
 		DCP_SLOT(func.type);
 		DCP_SLOT(func.slot);
 		DCP_LIT(func.instance);

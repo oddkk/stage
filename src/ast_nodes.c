@@ -69,7 +69,6 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 
 	node->func.type = AST_BIND_NEW;
 	node->func.return_type_slot = AST_BIND_NEW;
-	node->func.param_types_slot = AST_BIND_NEW;
 
 	return node;
 }
@@ -101,7 +100,6 @@ ast_init_node_func_native(struct ast_context *ctx, struct ast_env *env,
 
 	node->func.type = AST_BIND_NEW;
 	node->func.return_type_slot = AST_BIND_NEW;
-	node->func.param_types_slot = AST_BIND_NEW;
 
 	return node;
 }
@@ -545,7 +543,10 @@ ast_node_find_named_dependencies_add(
 		struct ast_name_ref ref, enum ast_name_dep_requirement req,
 		struct ast_name_dep **out_refs, size_t *out_num_refs)
 {
-	if (ref.kind != AST_NAME_REF_NOT_FOUND) {
+	// We do not want the template parameter dependencies to be passed
+	// to the underlying datastructure, so we prune them here.
+	if (ref.kind != AST_NAME_REF_NOT_FOUND &&
+			ref.kind != AST_NAME_REF_TEMPL) {
 		struct ast_name_dep dep = {0};
 
 		dep.ref = ref;
@@ -644,7 +645,7 @@ ast_node_find_named_dependencies(
 #define VISIT_NODE(node) \
 	err += ast_node_find_named_dependencies(\
 			(node), req, out_refs, out_num_refs);
-	AST_NODE_VISIT(node, false, false, false);
+	AST_NODE_VISIT(node, false, false, true);
 #undef VISIT_NODE
 
 	return err;
@@ -715,6 +716,7 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 		return res;
 	}
 
+	size_t num_errors_pre = ctx->err->num_errors;
 	int err;
 	err = ast_node_typecheck(ctx, mod, env,
 			body, body_deps, num_body_deps);
@@ -722,6 +724,7 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 		struct object res = {0};
 		return res;
 	}
+	assert(num_errors_pre == ctx->err->num_errors);
 
 	struct ast_gen_info gen_info = {0};
 

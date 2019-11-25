@@ -256,7 +256,7 @@ st_node_has_templ_params(struct st_node *node)
 #undef TREE_VISIT_NODE
 #undef TREE_VISIT_ATOM
 
-	return false;
+	return has_param;
 }
 
 struct ast_node *
