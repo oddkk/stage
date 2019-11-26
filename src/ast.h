@@ -174,6 +174,7 @@ struct ast_context {
 		type_id unit;
 		type_id type;
 		type_id cons;
+		type_id string;
 		type_id integer;
 	} types;
 

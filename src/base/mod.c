@@ -46,7 +46,7 @@ stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
-		base->name = STR("unit");
+		base->name = STR("Unit");
 
 		struct type unit = {0};
 		unit.name = atom_create(mod->atom_table, STR("unit"));
@@ -60,6 +60,7 @@ stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 	base_bootstrap_register_type(mod);
 	base_bootstrap_register_cons(mod);
 	base_bootstrap_register_integer(mod);
+	base_bootstrap_register_string(mod);
 
 	struct ast_context tmp_ctx;
 	tmp_ctx = ast_init_context(NULL, &mod->vm->atom_table, mod->vm);
@@ -111,7 +112,18 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 	unit_type_expr = ast_init_node_lit(ctx, &mod->mod.env,
 			AST_NODE_NEW, STG_NO_LOC, unit_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
-			mod->mod.root, mod_atoms(mod, "unit"), unit_type_expr);
+			mod->mod.root, mod_atoms(mod, "Unit"), unit_type_expr);
+
+	struct ast_node *string_type_expr;
+	struct object string_obj = {0};
+	string_obj.type = ctx->types.type;
+	string_obj.data = &ctx->types.string;
+	string_obj = register_object(ctx->vm, &mod->store, string_obj);
+
+	string_type_expr = ast_init_node_lit(ctx, &mod->mod.env,
+			AST_NODE_NEW, STG_NO_LOC, string_obj);
+	ast_namespace_add_decl(ctx, &mod->mod,
+			mod->mod.root, mod_atoms(mod, "String"), string_type_expr);
 
 
 	base_init_register_cons(ctx, mod);

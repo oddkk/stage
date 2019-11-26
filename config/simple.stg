@@ -1,11 +1,21 @@
 # mod channel;
 mod message;
+mod sql;
 
 op+ := base.op+;
 op- := base.op-;
 op* := base.op*;
 op/ := base.op/;
 int := base.int;
+Unit := base.Unit;
+String := base.String;
+
+# Monad := Struct { a: int; set: int; };
+# Some  := (val: int) -> Monad => Monad { a = val; set = 1; }
+# None  := () -> Monad { a = 0; set = 0; }
+# 
+# bind := (a: Monad, (int) -> Monad) -> Monad
+# 	=> 
 
 # cnl: channel.Channel(int) = channel.Const(2);
 # 
@@ -37,13 +47,15 @@ int := base.int;
 # 	insert into my_table (foo) values ($foo)
 # ".statement();
 
-
 # message.onStart >>= db.exec(query);
 
 prnt := message.Print(
 	message.Map(
-	message.Map(message.onStart, (a: base.unit) -> int => 500),
+	message.Map(message.onStart, (a: Unit) -> int => 500),
 	(a: int) -> int => a * 2));
+
+prnt2 := message.PrintStr(
+	message.Map(message.onStart, (a: Unit) -> String => "Hello, World!"));
 
 # asdfasdfasdf := message.msgId(message.onStart);
 

@@ -24,6 +24,7 @@ ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, s
 	ctx.types.unit = vm->default_types.unit;
 	ctx.types.type = vm->default_types.type;
 	ctx.types.cons = vm->default_types.cons;
+	ctx.types.string = vm->default_types.string;
 	ctx.types.integer = vm->default_types.integer;
 
 	ctx.cons.func = vm->default_cons.func;

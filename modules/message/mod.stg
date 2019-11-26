@@ -1,13 +1,13 @@
 int := base.int;
-unit := base.unit;
+Unit := base.Unit;
 
-# Print  := (val: int) -> Message(unit);
+# Print  := (val: int) -> Message(Unit);
 # Delay  := (val: $T, time: TimeDelta) -> Message(T);
 # Map    := (val: $T, fun: (T) -> $U) -> Message(U);
 
-Endpoint := (func: ($T) -> unit) -> ((Message(T)) -> unit) @nativeImpure("msg_endpoint");
+Endpoint := (func: ($T) -> Unit) -> ((Message(T)) -> Unit) @nativeImpure("msg_endpoint");
 
-_printCallback := (val: int) -> unit @nativeImpure("msg_print_int_callback");
-Print := Endpoint(_printCallback);
+Print    := Endpoint((val: int) -> Unit @nativeImpure("msg_print_int_callback"));
+PrintStr := Endpoint((val: base.String) -> Unit @nativeImpure("msg_print_string_callback"));
 
 Map := (in: Message($T), f: (T) -> $U) -> Message(U) @nativeImpure("msg_map");

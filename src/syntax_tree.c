@@ -710,8 +710,17 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 	} break;
 
 	case ST_NODE_STR_LIT:
-		// return expr_lit_str(mod, expr, node->loc, node->STR_LIT);
-		break;
+	{
+		struct object obj;
+
+		obj.data = &node->STR_LIT;
+		obj.type = ctx->types.string;
+
+		return ast_init_node_lit(
+				ctx, env, AST_NODE_NEW, node->loc,
+				register_object(ctx->vm, env->store, obj));
+	}
+	break;
 
 	case ST_NODE_IDENT:
 		return ast_init_node_lookup(ctx, env,

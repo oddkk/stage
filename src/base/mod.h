@@ -16,6 +16,9 @@ void
 base_bootstrap_register_integer(struct stg_module *mod);
 
 void
+base_bootstrap_register_string(struct stg_module *mod);
+
+void
 base_bootstrap_register_array(struct ast_context *, struct stg_module *mod);
 
 void

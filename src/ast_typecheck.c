@@ -786,6 +786,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					ast_report_bind_error(
 							ctx, node->loc, res);
 					*num_errors += 1;
+					target = AST_BIND_FAILED;
 				} else {
 					target = res.ok.result;
 				}

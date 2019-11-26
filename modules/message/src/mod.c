@@ -144,6 +144,12 @@ msg_print_int_callback(int64_t val)
 	printf(" => %zi\n", val);
 }
 
+static void
+msg_print_string_callback(struct string val)
+{
+	printf(" => %.*s\n", LIT(val));
+}
+
 struct msg_endpoint_cons_info {
 	struct stg_module *mod;
 	struct stg_func_object func;
@@ -337,6 +343,8 @@ mod_message_load(struct stg_native_module *mod)
 	mod->hook_start     = mod_message_start;
 
 	stg_native_register_funcs(mod, msg_print_int_callback,
+			STG_NATIVE_FUNC_IMPURE);
+	stg_native_register_funcs(mod, msg_print_string_callback,
 			STG_NATIVE_FUNC_IMPURE);
 	stg_native_register_funcs(mod, msg_map,
 			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
