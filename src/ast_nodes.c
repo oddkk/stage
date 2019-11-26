@@ -676,6 +676,38 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 	struct ast_typecheck_dep body_deps[num_body_deps];
 	memcpy(body_deps, info->deps, info->num_deps * sizeof(struct ast_typecheck_dep));
 
+	for (size_t i = 0; i < info->num_deps; i++) {
+		body_deps[i].value = AST_BIND_FAILED;
+		assert(!body_deps[i].lookup_failed);
+
+		if (body_deps[i].determined) {
+			switch (body_deps[i].req) {
+				case AST_NAME_DEP_REQUIRE_TYPE:
+					body_deps[i].value =
+						ast_bind_require_ok(
+								ast_try_bind_slot_const_type(
+									ctx, env, AST_BIND_NEW,
+									NULL, body_deps[i].type));
+					break;
+
+				case AST_NAME_DEP_REQUIRE_VALUE:
+					body_deps[i].value =
+						ast_bind_require_ok(
+								ast_try_bind_slot_const(
+									ctx, env, AST_BIND_NEW,
+									NULL, body_deps[i].val));
+					break;
+			}
+		} else {
+			body_deps[i].value =
+				ast_bind_slot_wildcard(
+						ctx, env, AST_BIND_NEW, NULL,
+						ast_bind_slot_wildcard(
+							ctx, env, AST_BIND_NEW, NULL,
+							AST_SLOT_TYPE));
+		}
+	}
+
 	struct object param_values[def->num_params];
 
 	bool pack_failed = false;

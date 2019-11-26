@@ -363,6 +363,109 @@ ast_templ_body_preliminary_bind_slots(struct ast_context *ctx, size_t *num_error
 }
 
 static ast_slot_id
+ast_cons_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *node,
+		ast_slot_id target, struct ast_typecheck_dep *deps, size_t num_deps)
+{
+	assert(node->kind == AST_NODE_CONS);
+
+	ast_slot_id func_slot = ast_node_value(ctx, env, node->call.func);
+
+	struct object cons_obj;
+
+	int err;
+	err = ast_slot_pack(ctx, mod, env,
+			func_slot, &cons_obj);
+
+	struct ast_object_def *cons;
+	if (type_equals(ctx->vm, cons_obj.type, ctx->types.type)) {
+		type_id tid;
+		tid = *(type_id *)cons_obj.data;
+
+		struct type *type;
+		type = vm_get_type(ctx->vm, tid);
+
+		if (!type->obj_def) {
+			// TODO: Add type name to error message.
+			stg_error(ctx->err, node->call.func->loc,
+					"This type can not be used as a constructor.");
+			*num_errors += 1;
+			node->call.cons_evaled = true;
+			return AST_BIND_FAILED;
+		}
+
+		cons = type->obj_def;
+	} else {
+		assert_type_equals(ctx->vm, cons_obj.type, ctx->types.cons);
+		cons = *(struct ast_object_def **)cons_obj.data;
+	}
+
+	struct ast_bind_result res;
+	res = ast_try_bind_slot_cons(
+			ctx, env, target, NULL, cons);
+	if (res.code != AST_BIND_OK) {
+		ast_report_bind_error(
+				ctx, node->loc, res);
+		*num_errors += 1;
+	} else {
+		node->call.cons = res.ok.result;
+		target = node->call.cons;
+	}
+
+	bool is_named = false;
+	for (size_t i = 0; i < node->call.num_args; i++) {
+		bool this_is_named;
+		this_is_named = !!node->call.args[i].name;
+		assert(i == 0 || is_named == this_is_named);
+		is_named = this_is_named;
+	}
+
+	node->call.ret_type =
+		ast_env_slot(ctx, env, node->call.cons).type;
+
+	struct ast_env_slot slot;
+	slot = ast_env_slot(ctx, env,
+			ast_node_resolve_slot(env, &node->call.cons));
+	assert(slot.kind == AST_SLOT_CONS);
+
+	if (node->call.num_args > slot.cons.def->num_params) {
+		stg_error(ctx->err, node->loc,
+				"Expected at most %zu arguments, got %zu.",
+				slot.cons.def->num_params,
+				node->call.num_args);
+		*num_errors += 1;
+		return AST_BIND_FAILED;
+	}
+
+	for (size_t i = 0; i < node->call.num_args; i++) {
+		struct atom *name;
+		if (is_named) {
+			name = node->call.args[i].name;
+		} else {
+			name = slot.cons.def->params[i].name;
+		}
+
+		ast_slot_id arg_slot = AST_BIND_FAILED;
+		struct ast_bind_result res;
+		res = ast_try_unpack_arg_named(
+				ctx, env, node->call.cons,
+				AST_BIND_NEW, name);
+		if (res.code != AST_BIND_OK) {
+			ast_report_bind_error(
+					ctx, node->loc, res);
+			*num_errors += 1;
+		} else {
+			arg_slot = res.ok.result;
+		}
+		ast_node_bind_slots(
+				ctx, num_errors, mod, env, node->call.args[i].value,
+				arg_slot, deps, num_deps);
+	}
+
+	return target;
+}
+
+static ast_slot_id
 ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node,
 		ast_slot_id target, struct ast_typecheck_dep *deps, size_t num_deps)
@@ -481,14 +584,12 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 								node->call.func->loc,
 								node->call.func, NULL, 0);
 
-						func_cons->call.cons = ast_bind_require_ok(
-								ast_try_bind_slot_cons(
-									ctx, env, AST_BIND_NEW, NULL, cons));
-
-						func_cons->call.ret_type =
-							ast_env_slot(ctx, env, func_cons->call.cons).type;
-
 						func_cons->call.cons_evaled = true;
+
+						ast_cons_node_bind_slots(
+								ctx, num_errors, mod,
+								env, func_cons, AST_BIND_NEW,
+								deps, num_deps);
 
 						node->call.func = func_cons;
 						node->kind = AST_NODE_CALL;
@@ -497,48 +598,9 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 						func_type_slot = ast_node_type(ctx, env, node->call.func);
 					} else {
 						node->kind = AST_NODE_CONS;
-						struct ast_bind_result res;
-						res = ast_try_bind_slot_cons(
-									ctx, env, target, NULL, cons);
-						if (res.code != AST_BIND_OK) {
-							ast_report_bind_error(
-									ctx, node->loc, res);
-							*num_errors += 1;
-						} else {
-							node->call.cons = res.ok.result;
-							target = node->call.cons;
-						}
 					}
 				} else if (func_type == ctx->types.type) {
 					node->kind = AST_NODE_CONS;
-
-					type_id tid;
-					err = ast_slot_pack_type(ctx, mod, env,
-							func_slot, &tid);
-
-					struct type *type;
-					type = vm_get_type(ctx->vm, tid);
-
-					if (!type->obj_def) {
-						// TODO: Add type name to error message.
-						stg_error(ctx->err, node->call.func->loc,
-								"This type can not be used as a constructor.");
-						*num_errors += 1;
-						node->call.cons_evaled = true;
-						return AST_BIND_FAILED;
-					}
-
-					struct ast_bind_result res;
-					res = ast_try_bind_slot_cons(
-							ctx, env, AST_BIND_NEW, NULL, type->obj_def);
-					if (res.code != AST_BIND_OK) {
-						ast_report_bind_error(
-								ctx, node->loc, res);
-						*num_errors += 1;
-					} else {
-						node->call.cons = res.ok.result;
-						target = node->call.cons;
-					}
 				} else {
 					// TODO: Add type name to error message.
 					stg_error(ctx->err, node->call.func->loc,
@@ -622,54 +684,10 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 							arg_slot, deps, num_deps);
 				}
 			} else if (node->kind == AST_NODE_CONS) {
-				bool is_named = false;
-				for (size_t i = 0; i < node->call.num_args; i++) {
-					bool this_is_named;
-					this_is_named = !!node->call.args[i].name;
-					assert(i == 0 || is_named == this_is_named);
-					is_named = this_is_named;
-				}
-
-				node->call.ret_type =
-					ast_env_slot(ctx, env, node->call.cons).type;
-
-				struct ast_env_slot slot;
-				slot = ast_env_slot(ctx, env, node->call.cons);
-				assert(slot.kind == AST_SLOT_CONS);
-
-				if (node->call.num_args > slot.cons.def->num_params) {
-					stg_error(ctx->err, node->loc,
-							"Expected at most %zu arguments, got %zu.",
-							slot.cons.def->num_params,
-							node->call.num_args);
-					*num_errors += 1;
-					return AST_BIND_FAILED;
-				}
-
-				for (size_t i = 0; i < node->call.num_args; i++) {
-					struct atom *name;
-					if (is_named) {
-						name = node->call.args[i].name;
-					} else {
-						name = slot.cons.def->params[i].name;
-					}
-
-					ast_slot_id arg_slot = AST_BIND_FAILED;
-					struct ast_bind_result res;
-					res = ast_try_unpack_arg_named(
-							ctx, env, node->call.cons,
-							AST_BIND_NEW, name);
-					if (res.code != AST_BIND_OK) {
-						ast_report_bind_error(
-								ctx, node->loc, res);
-						*num_errors += 1;
-					} else {
-						arg_slot = res.ok.result;
-					}
-					ast_node_bind_slots(
-							ctx, num_errors, mod, env, node->call.args[i].value,
-							arg_slot, deps, num_deps);
-				}
+				target = ast_cons_node_bind_slots(
+						ctx, num_errors, mod,
+						env, node, target,
+						deps, num_deps);
 			} else {
 				panic("Invalid node type after call func evaluation.");
 				return AST_BIND_FAILED;
