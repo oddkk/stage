@@ -40,8 +40,12 @@ int := base.int;
 
 # message.onStart >>= db.exec(query);
 
+prnt := message.Print(
+	message.Map(
+	message.Map(message.onStart, (a: base.unit) -> int => 500),
+	(a: int) -> int => a * 2));
 
-prnt := message.Print(message.Map(message.onStart, () -> int => 100));
+# asdfasdfasdf := message.msgId(message.onStart);
 
 func_test := (base.type, int) -> int;
 

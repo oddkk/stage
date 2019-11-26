@@ -793,13 +793,6 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 
 	res = register_object(ctx->vm, env->store, res);
 
-	printf("packed templ obj ");
-	print_obj_repr(ctx->vm, res);
-	printf(" ");
-	print_type_repr(ctx->vm, res_type);
-	printf("\n");
-
-
 	// TODO: Free.
 
 	return res;

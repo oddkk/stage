@@ -136,8 +136,10 @@ int main(int argc, char *argv[])
 
 	vm_call_func(&vm, vm.init_func, NULL, 0, &program_obj);
 
+	/*
 	print_obj_repr(&vm, program_obj);
 	printf("\n");
+	*/
 
 #if 0
 	for (size_t i = 0; i < vm.num_modules; i++) {
