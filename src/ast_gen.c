@@ -370,7 +370,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 							assert(bind_i < node->call.num_args);
 							struct ast_gen_bc_result arg;
 							arg = ast_node_gen_bytecode(ctx, mod, env, info, bc_env,
-									node->call.args[i].value);
+									node->call.args[bind_i].value);
 
 							append_bc_instrs(&result, arg);
 							append_bc_instr(&result,
