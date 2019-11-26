@@ -519,7 +519,7 @@ ast_dt_bind_to_member(struct ast_dt_context *ctx,
 	member = get_member(ctx, mbr_id);
 	if (member->bound) {
 		if (!member->bound->overridable && !bind->overridable) {
-			stg_error(ctx->ast_ctx->err, STG_NO_LOC,
+			stg_error(ctx->ast_ctx->err, bind->loc,
 					"'%.*s' is bound multiple times.", ALIT(member->name));
 			stg_appendage(ctx->ast_ctx->err,
 					member->bound->loc, "Also bound here.");
@@ -528,7 +528,7 @@ ast_dt_bind_to_member(struct ast_dt_context *ctx,
 		}
 
 		if (member->bound->overridable && bind->overridable) {
-			stg_error(ctx->ast_ctx->err, STG_NO_LOC,
+			stg_error(ctx->ast_ctx->err, bind->loc,
 					"'%.*s' has multiple default binds.", ALIT(member->name));
 			stg_appendage(ctx->ast_ctx->err,
 					member->bound->loc, "Also bound here.");
@@ -679,7 +679,8 @@ ast_dt_register_typegiving_bind(struct ast_dt_context *ctx,
 
 static struct ast_dt_bind *
 ast_dt_register_bind_func(struct ast_dt_context *ctx,
-		ast_member_id target, func_id unpack_func, func_id func,
+		struct stg_location loc, ast_member_id target,
+		func_id unpack_func, func_id func,
 		ast_member_id *value_params, size_t num_value_params,
 		bool overridable)
 {
@@ -706,7 +707,7 @@ ast_dt_register_bind_func(struct ast_dt_context *ctx,
 	new_bind->target_jobs.resolve_names = -1;
 	new_bind->target_jobs.resolve = -1;
 
-	new_bind->loc = STG_NO_LOC;
+	new_bind->loc = loc;
 
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
@@ -719,8 +720,9 @@ ast_dt_register_bind_func(struct ast_dt_context *ctx,
 
 static struct ast_dt_bind *
 ast_dt_register_bind_const(struct ast_dt_context *ctx,
-		ast_member_id target, func_id unpack_func,
-		struct object value, bool overridable)
+		struct stg_location loc, ast_member_id target,
+		func_id unpack_func, struct object value,
+		bool overridable)
 {
 	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
 
@@ -740,7 +742,7 @@ ast_dt_register_bind_const(struct ast_dt_context *ctx,
 	new_bind->target_jobs.resolve_names = -1;
 	new_bind->target_jobs.resolve = -1;
 
-	new_bind->loc = STG_NO_LOC;
+	new_bind->loc = loc;
 
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
@@ -759,7 +761,8 @@ ast_dt_register_bind_const(struct ast_dt_context *ctx,
 
 static struct ast_dt_bind *
 ast_dt_register_bind_pack(struct ast_dt_context *ctx,
-		ast_member_id target, func_id unpack_func, struct ast_object_def *pack,
+		struct stg_location loc, ast_member_id target,
+		func_id unpack_func, struct ast_object_def *pack,
 		ast_member_id *value_params, size_t num_value_params)
 {
 	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
@@ -780,7 +783,7 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 	new_bind->target_jobs.resolve_names = -1;
 	new_bind->target_jobs.resolve = -1;
 
-	new_bind->loc = STG_NO_LOC;
+	new_bind->loc = loc;
 
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
@@ -1176,6 +1179,7 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 			switch (def->binds[i].kind) {
 				case AST_OBJECT_DEF_BIND_VALUE:
 					ast_dt_register_bind_func(ctx,
+							def->binds[i].loc,
 							mbr_id, def->binds[i].unpack_func,
 							def->binds[i].value.func,
 							deps, def->binds[i].num_value_params,
@@ -1184,12 +1188,14 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 
 				case AST_OBJECT_DEF_BIND_CONST:
 					ast_dt_register_bind_const(ctx,
+							def->binds[i].loc,
 							mbr_id, def->binds[i].unpack_func,
 							def->binds[i].const_value, false);
 					break;
 
 				case AST_OBJECT_DEF_BIND_PACK:
 					ast_dt_register_bind_pack(ctx,
+							def->binds[i].loc,
 							mbr_id, def->binds[i].unpack_func,
 							def->binds[i].pack,
 							deps, def->binds[i].num_value_params);
@@ -1396,7 +1402,7 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 
 		struct ast_dt_bind *bind;
 		bind = ast_dt_register_bind_pack(ctx,
-				mbr_id, FUNC_UNSET, mbr_type->obj_def,
+				mbr->decl_loc, mbr_id, FUNC_UNSET, mbr_type->obj_def,
 				children, num_children);
 	}
 
@@ -2552,6 +2558,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 		binds[bind_i].target =
 			ast_dt_calculate_persistant_id(
 					ctx, mbr_i);
+
+		binds[bind_i].loc = mbr->bound->loc;
 
 		bind_i += 1;
 	}

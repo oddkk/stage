@@ -409,6 +409,8 @@ struct ast_object_def_bind {
 
 	func_id unpack_func;
 
+	struct stg_location loc;
+
 	union {
 		struct {
 			bool overridable;
