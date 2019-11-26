@@ -190,6 +190,8 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				err += ast_node_resolve_names(ctx, env, native_mod,
 						scope, true, node->func.return_type);
 
+				node->func.native.native_mod = native_mod;
+
 				if (!native_mod) {
 					stg_error(ctx->err, node->loc,
 							"This module does not have a native module.");

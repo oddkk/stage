@@ -182,7 +182,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				// We should already have checked that this native function
 				// exists during lookup.
 				struct stg_native_module *native_mod;
-				native_mod = mod->stg_mod->native_mod;
+				native_mod = node->func.native.native_mod;
 				assert(native_mod);
 
 				struct stg_native_func *native_func = NULL;
@@ -207,7 +207,11 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				}
 
 				if ((native_func->flags & STG_NATIVE_FUNC_MODULE_CLOSURE) != 0) {
-					closure = mod->stg_mod;
+					struct stg_module *owning_mod = NULL;
+					owning_mod = vm_get_module_by_native(
+							ctx->vm, native_mod);
+
+					closure = owning_mod;
 					new_func.flags |= FUNC_CLOSURE;
 				}
 

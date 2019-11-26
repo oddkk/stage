@@ -582,6 +582,7 @@ struct ast_node {
 				struct ast_node *body;
 				struct {
 					struct string name;
+					struct stg_native_module *native_mod;
 				} native;
 			};
 

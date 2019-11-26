@@ -119,6 +119,21 @@ vm_get_module(struct vm *vm, struct string mod_name)
 	return mod;
 }
 
+struct stg_module *
+vm_get_module_by_native(struct vm *vm, struct stg_native_module *nmod)
+{
+	struct stg_module *mod = NULL;
+
+	for (uint32_t mid = 0; mid < vm->num_modules; mid++) {
+		if (vm->modules[mid]->native_mod == nmod) {
+			mod = vm->modules[mid];
+			break;
+		}
+	}
+
+	return mod;
+}
+
 struct type *
 vm_get_type(struct vm *vm, type_id tid)
 {

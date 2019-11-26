@@ -74,6 +74,9 @@ vm_register_module(struct vm *vm, struct ast_context *,
 struct stg_module *
 vm_get_module(struct vm *vm, struct string name);
 
+struct stg_module *
+vm_get_module_by_native(struct vm *vm, struct stg_native_module *mod);
+
 struct type *
 vm_get_type(struct vm *, type_id);
 
