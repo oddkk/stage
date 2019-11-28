@@ -157,6 +157,7 @@ int main(int argc, char *argv[])
 
 	vm_post_init(&vm);
 	vm_start(&vm);
+	vm_destroy(&vm);
 
 	return 0;
 

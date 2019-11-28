@@ -254,6 +254,12 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 						node->templ.params[i].name;
 					templates_scope.names[i].ref.kind = AST_NAME_REF_TEMPL;
 					templates_scope.names[i].ref.templ = i;
+
+					if (node->templ.params[i].type) {
+						err += ast_node_resolve_names(
+								ctx, env, native_mod, scope, true,
+								node->templ.params[i].type);
+					}
 				}
 
 				err += ast_node_resolve_names(ctx, env, native_mod,
@@ -471,6 +477,12 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 						node->templ.params[i].name;
 					templates_scope.names[i].ref.kind = AST_NAME_REF_TEMPL;
 					templates_scope.names[i].ref.templ = i;
+
+					if (node->templ.params[i].type) {
+						err += ast_node_discover_potential_closures(
+								ctx, env, scope, true,
+								node->templ.params[i].type);
+					}
 				}
 
 				err += ast_node_discover_potential_closures(ctx, env,

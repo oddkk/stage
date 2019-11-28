@@ -347,7 +347,6 @@ ast_templ_body_preliminary_bind_slots(struct ast_context *ctx, size_t *num_error
 			break;
 
 		case AST_NODE_COMPOSITE:
-			panic("TODO: Preliminary bind for composite in templ body.");
 			break;
 
 		case AST_NODE_VARIANT:
@@ -801,17 +800,30 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 			memcpy(body_deps, deps, sizeof(struct ast_typecheck_dep) * num_deps);
 
 			for (size_t i = 0; i < node->templ.num_params; i++) {
+				ast_slot_id type_slot;
+				type_slot = ast_bind_slot_wildcard(
+						ctx, env, AST_BIND_NEW,
+						NULL, AST_SLOT_TYPE);
+
+				if (node->templ.params[i].type) {
+					body_deps[num_deps+i].determined = true;
+
+					type_slot = ast_node_bind_slots(
+							ctx, num_errors, mod, env,
+							node->templ.params[i].type,
+							type_slot, deps, num_deps);
+				} else {
+					body_deps[num_deps+i].determined = false;
+				}
+
 				node->templ.params[i].slot =
 					ast_bind_slot_templ(
-							ctx, env, node->templ.params[i].slot, NULL,
-							ast_bind_slot_wildcard(
-								ctx, env, AST_BIND_NEW,
-								NULL, AST_SLOT_TYPE));
+							ctx, env, node->templ.params[i].slot,
+							NULL, type_slot);
 
 				body_deps[num_deps+i].req = AST_NAME_DEP_REQUIRE_VALUE;
 				body_deps[num_deps+i].ref.kind = AST_NAME_REF_TEMPL;
 				body_deps[num_deps+i].ref.templ = i;
-				body_deps[num_deps+i].determined = false;
 				body_deps[num_deps+i].lookup_failed = false;
 				body_deps[num_deps+i].value = node->templ.params[i].slot;
 			}

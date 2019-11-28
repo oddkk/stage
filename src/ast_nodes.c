@@ -312,7 +312,7 @@ void
 ast_node_templ_register_param(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *templ, struct atom *name,
-		struct stg_location loc)
+		struct ast_node *type, struct stg_location loc)
 {
 	if (!templ) {
 		stg_error(ctx->err, loc,
@@ -335,6 +335,7 @@ ast_node_templ_register_param(
 	tmpl_param.name = name;
 	tmpl_param.loc = loc;
 	tmpl_param.slot = AST_BIND_NEW;
+	tmpl_param.type = type;
 
 	dlist_append(
 			templ->templ.params,

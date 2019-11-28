@@ -314,7 +314,13 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 				print_indent(depth + 2);
 				printf("'%.*s' = ", ALIT(node->templ.params[i].name));
 				print_slot(env, node->templ.params[i].slot);
-				printf("\n");
+				if (node->templ.params[i].type) {
+					printf(" type\n");
+					ast_print_internal(ctx, env,
+							node->templ.params[i].type, depth+3);
+				} else {
+					printf("\n");
+				}
 			}
 			print_indent(depth + 1);
 			printf("body:\n");
@@ -492,8 +498,13 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 		case AST_NODE_TEMPL:
 			printf("(");
 			for (size_t i = 0; i < node->templ.num_params; i++) {
-				printf("%s%.*s: <", (i != 0) ? ", " : "",
+				printf("%s%.*s: ", (i != 0) ? ", " : "",
 						ALIT(node->templ.params[i].name));
+				if (node->type) {
+					ast_print_node(ctx, env, node->templ.params[i].type);
+					printf(" ");
+				}
+				printf("<");
 				ast_print_slot(ctx, env, node->slot);
 				printf(">");
 			}

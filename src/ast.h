@@ -530,6 +530,7 @@ struct ast_func_param {
 
 struct ast_template_param {
 	struct atom *name;
+	struct ast_node *type;
 	ast_slot_id slot;
 	struct stg_location loc;
 };
@@ -720,6 +721,11 @@ ast_node_name(enum ast_node_kind);
 			VISIT_NODE((node)->access.target);									\
 			break;																\
 		case AST_NODE_TEMPL:													\
+			for (size_t i = 0; i < (node)->templ.num_params; i++) {				\
+				if ((node)->templ.params[i].type) {								\
+					VISIT_NODE((node)->templ.params[i].type);					\
+				}																\
+			}																	\
 			if (visit_templ_body) {												\
 				VISIT_NODE((node)->templ.body);									\
 			}																	\
@@ -829,7 +835,7 @@ void
 ast_node_templ_register_param(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *templ, struct atom *name,
-		struct stg_location loc);
+		struct ast_node *type, struct stg_location loc);
 
 struct ast_node *
 ast_init_node_composite(

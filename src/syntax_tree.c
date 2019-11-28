@@ -540,7 +540,37 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 			member = member->next_sibling;
 		}
 
-		return struct_node;
+		if (node->type == ST_NODE_OBJECT_DECL &&
+				node->OBJECT_DECL.params) {
+			struct st_tuple_members params;
+			st_node_unpack_tuple_nodes(
+					node->OBJECT_DECL.params, &params);
+
+			struct ast_node *templ_node;
+
+			templ_node = ast_init_node_templ(
+					ctx, env, AST_NODE_NEW,
+					node->loc, struct_node);
+
+			for (size_t i = 0; i < params.num_members; i++) {
+				struct ast_node *type_node;
+
+				type_node = st_node_visit_expr(
+						ctx, mod, env, NULL, params.types[i]);
+
+				// TODO: Better location.
+				ast_node_templ_register_param(
+						ctx, env, templ_node, params.names[i],
+						type_node, node->loc);
+			}
+
+			free(params.names);
+			free(params.types);
+
+			return templ_node;
+		} else {
+			return struct_node;
+		}
 	}
 
 	case ST_NODE_OBJECT_INST:
@@ -735,7 +765,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 		ast_node_templ_register_param(
 				ctx, env, templ_node,
 				node->TEMPLATE_VAR.name,
-				node->loc);
+				NULL, node->loc);
 
 		return ast_init_node_lookup(ctx, env,
 				AST_NODE_NEW, node->loc,

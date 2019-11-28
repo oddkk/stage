@@ -2078,6 +2078,7 @@ ast_node_deep_copy_internal(
 			DCP_LIT(func.native);
 		} else {
 			DCP_NODE(func.body);
+			DCP_LIT(func.closure);
 		}
 		DCP_DLIST(func.params, func.num_params);
 		for (size_t i = 0; i < result->func.num_params; i++) {
@@ -2126,6 +2127,11 @@ ast_node_deep_copy_internal(
 		for (size_t i = 0; i < result->templ.num_params; i++) {
 			DCP_LIT(templ.params[i].name);
 			DCP_SLOT(templ.params[i].slot);
+			if (src->templ.params[i].type) {
+				DCP_NODE(templ.params[i].type);
+			} else {
+				result->templ.params[i].type = NULL;
+			}
 			DCP_LIT(templ.params[i].loc);
 		}
 
@@ -2170,6 +2176,8 @@ ast_node_deep_copy_internal(
 		for (size_t i = 0; i < result->composite.num_free_exprs; i++) {
 			DCP_NODE(composite.free_exprs[i]);
 		}
+
+		DCP_LIT(composite.closure);
 
 		DCP_SLOT(composite.ret_value);
 		break;
