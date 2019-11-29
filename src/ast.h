@@ -922,7 +922,8 @@ struct ast_typecheck_dep {
 int
 ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node,
-		struct ast_typecheck_dep *deps, size_t num_deps);
+		struct ast_typecheck_dep *deps, size_t num_deps,
+		type_id expected_type);
 
 // Defined in ast_slots.c
 struct ast_node *

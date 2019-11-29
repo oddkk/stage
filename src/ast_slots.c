@@ -1413,6 +1413,10 @@ ast_try_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 		size_t tmp_num_args = slot.cons.num_present_args + 1;
 		tmp_args = realloc(slot.cons.args, tmp_num_args * sizeof(struct ast_object_arg));
 
+		assert(tmp_args);
+
+		env->slots[obj].cons.args = tmp_args;
+
 		tmp_args[tmp_num_args - 1].name = arg_name;
 		if (target == AST_BIND_NEW) {
 			struct ast_bind_result res;
@@ -1434,7 +1438,6 @@ ast_try_unpack_arg_named(struct ast_context *ctx, struct ast_env *env,
 		}
 
 		env->slots[obj].cons.num_present_args = tmp_num_args;
-		env->slots[obj].cons.args = tmp_args;
 
 		return BIND_OK(tmp_args[tmp_num_args - 1].slot);
 	}

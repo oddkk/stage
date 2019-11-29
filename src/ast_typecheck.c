@@ -347,6 +347,9 @@ ast_templ_body_preliminary_bind_slots(struct ast_context *ctx, size_t *num_error
 			break;
 
 		case AST_NODE_COMPOSITE:
+			target = ast_bind_slot_wildcard(
+					ctx, env, target, NULL,
+					AST_SLOT_TYPE);
 			break;
 
 		case AST_NODE_VARIANT:
@@ -1000,11 +1003,28 @@ ast_node_resolve_types(struct ast_context *ctx, struct ast_module *mod,
 int
 ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *node,
-		struct ast_typecheck_dep *deps, size_t num_deps)
+		struct ast_typecheck_dep *deps, size_t num_deps,
+		type_id expected_type)
 {
 	size_t num_errors = 0;
 	int err;
-	ast_node_bind_slots(ctx, &num_errors, mod, env, node, AST_BIND_NEW,
+
+	ast_slot_id result = AST_BIND_NEW;
+
+	if (expected_type != TYPE_UNSET) {
+		ast_slot_id type_slot;
+
+		type_slot = ast_bind_slot_const_type(
+				ctx, env, AST_BIND_NEW, NULL, expected_type);
+
+		result = ast_bind_slot_wildcard(
+				ctx, env, AST_BIND_NEW, NULL,
+				type_slot);
+	}
+
+	result = ast_node_bind_slots(
+			ctx, &num_errors, mod,
+			env, node, result,
 			deps, num_deps);
 
 	if (num_errors > 0) {

@@ -596,8 +596,8 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 			new_bind->target_jobs.resolve);
 
 	ast_dt_job_dependency(ctx,
-			new_bind->value_jobs.resolve_types,
-			new_bind->target_jobs.resolve);
+			new_bind->target_jobs.resolve,
+			new_bind->value_jobs.resolve_types);
 
 	ast_dt_job_dependency(ctx,
 			new_bind->target_jobs.resolve_names,
@@ -1479,7 +1479,7 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 
 static int
 ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
-		enum ast_name_dep_requirement dep_req)
+		enum ast_name_dep_requirement dep_req, type_id expected_type)
 {
 	struct ast_name_dep *deps = NULL;
 	size_t num_deps = 0;
@@ -1575,7 +1575,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 	int err;
 	err = ast_node_typecheck(
 			ctx->ast_ctx, ctx->ast_mod, ctx->ast_env, node,
-			body_deps, num_deps);
+			body_deps, num_deps, expected_type);
 	if (err) {
 		return -1;
 	}
@@ -1707,7 +1707,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				int err;
 				err = ast_dt_expr_typecheck(
 						ctx, mbr->type_node,
-						AST_NAME_DEP_REQUIRE_VALUE);
+						AST_NAME_DEP_REQUIRE_VALUE,
+						ctx->ast_ctx->types.type);
 				if (err) {
 					return -1;
 				}
@@ -1716,10 +1717,23 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 		case AST_DT_JOB_BIND_RESOLVE_TYPES:
 			{
+				type_id expected_type = TYPE_UNSET;
+
+				if (job->bind->num_targets > 0) {
+					assert(job->bind->num_targets == 1);
+
+					struct ast_dt_member *target;
+					target = get_member(ctx,
+							ast_dt_get_bind_targets(job->bind)[0]);
+
+					expected_type = target->type;
+				}
+
 				int err;
 				err = ast_dt_expr_typecheck(
 						ctx, job->bind->value.node,
-						AST_NAME_DEP_REQUIRE_TYPE);
+						AST_NAME_DEP_REQUIRE_TYPE,
+						expected_type);
 				if (err) {
 					return -1;
 				}
@@ -2002,6 +2016,9 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					return -1;
 				}
 
+				type_id target_type;
+				target_type = get_member(ctx, target)->type;
+
 				ast_member_id *targets = NULL;
 				int *descendent_ids = NULL;
 				size_t num_targets = 0;
@@ -2042,18 +2059,23 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						bind_value_type = job->bind->const_value.type;
 						break;
 				}
-				assert(bind_value_type != TYPE_UNSET);
+				// assert(bind_value_type != TYPE_UNSET);
+
+				if (bind_value_type != TYPE_UNSET) {
+					assert_type_equals(ctx->ast_ctx->vm,
+							bind_value_type, target_type);
+				}
 
 				for (size_t i = 0; i < job->bind->num_targets; i++) {
 					struct bc_env *bc_env;
 					bc_env = ast_gen_value_unpack_func(
 							ctx->ast_ctx, ctx->ast_mod, ctx->ast_env,
-							bind_value_type, descendent_ids[i]);
+							target_type, descendent_ids[i]);
 
 					struct func func = {0};
 					func.type = stg_register_func_type(ctx->ast_mod->stg_mod,
 							get_member(ctx, targets[i])->type,
-							&bind_value_type, 1);
+							&target_type, 1);
 
 					func.kind = FUNC_BYTECODE;
 					func.bytecode = bc_env;

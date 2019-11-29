@@ -752,7 +752,7 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 	size_t num_errors_pre = ctx->err->num_errors;
 	int err;
 	err = ast_node_typecheck(ctx, mod, env,
-			body, body_deps, num_body_deps);
+			body, body_deps, num_body_deps, TYPE_UNSET);
 	if (err) {
 		struct object res = {0};
 		return res;

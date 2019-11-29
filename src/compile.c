@@ -764,7 +764,7 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 	assert(!ctx.ast_ctx->err);
 	ctx.ast_ctx->err = &ctx.err;
 
-	struct ast_module *main_mod;
+	struct ast_module *main_mod = NULL;
 
 	DISPATCH_JOB(&ctx, load_module, COMPILE_PHASE_DISCOVER,
 			.module_name = vm_atoms(vm, "main"),
@@ -842,7 +842,7 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 
 		int err;
 		err = ast_node_typecheck(ast_ctx, main_mod, &main_mod->env,
-				main_mod_init_func, NULL, 0);
+				main_mod_init_func, NULL, 0, TYPE_UNSET);
 		if (err) {
 			printf("Failed typechecking initialize function for main module.\n");
 			return -1;
