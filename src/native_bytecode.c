@@ -63,10 +63,18 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 				{
 					struct nbc_instr instr = {0};
 
-					instr.op = NBC_COPY;
+					// Can not copy into a parameter.
+					assert(ip->copy.target >= 0);
 					instr.copy.target = vars[ip->copy.target].offset;
 					instr.copy.size   = vars[ip->copy.target].size;
-					instr.copy.src    = vars[ip->copy.src].offset;
+
+					if (ip->copy.src < 0) {
+						instr.op = NBC_COPY_PARAM;
+						instr.copy.src_param = (-ip->copy.src) - 1;;
+					} else {
+						instr.op = NBC_COPY;
+						instr.copy.src = vars[ip->copy.src].offset;
+					}
 
 					nbc_append_instr(out_func, instr);
 				}
@@ -308,6 +316,11 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 						&stack[ip->copy.src], ip->copy.size);
 				break;
 
+			case NBC_COPY_PARAM:
+				memcpy(&stack[ip->copy.target],
+						params[ip->copy.src_param], ip->copy.size);
+				break;
+
 			case NBC_PUSH_ARG:
 				args[num_args] = &stack[ip->push_arg.var];
 				num_args += 1;
@@ -407,6 +420,13 @@ nbc_print(struct nbc_func *func)
 				printf("COPY sp+0x%zx = sp+0x%zx +%zu\n",
 						ip->copy.target,
 						ip->copy.src,
+						ip->copy.size);
+				break;
+
+			case NBC_COPY_PARAM:
+				printf("COPY_PARAM sp+0x%zx = p%zu +%zu\n",
+						ip->copy.target,
+						ip->copy.src_param,
 						ip->copy.size);
 				break;
 
