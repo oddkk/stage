@@ -449,18 +449,29 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 	} break;
 
 	case ST_NODE_FUNC_CALL:
+	case ST_NODE_TEMPL_INST:
 	 {
-		struct ast_node *func;
+		struct st_node *args, *func_node;
+		if (node->type == ST_NODE_FUNC_CALL) {
+			assert(node->FUNC_CALL.params);
+			assert(node->FUNC_CALL.params->type == ST_NODE_TUPLE_LIT);
 
-		func = st_node_visit_expr(ctx, mod, env, templ_node, node->FUNC_CALL.ident);
+			args = node->FUNC_CALL.params->TUPLE_LIT.items;
+			func_node = node->FUNC_CALL.ident;
+		} else {
+			assert(node->TEMPL_INST.params);
+			assert(node->TEMPL_INST.params->type == ST_NODE_TUPLE_LIT);
+
+			args = node->TEMPL_INST.params->TUPLE_LIT.items;
+			func_node = node->TEMPL_INST.ident;
+		}
+
+		struct ast_node *func;
+		func = st_node_visit_expr(
+				ctx, mod, env, templ_node,
+				func_node);
 
 		size_t num_args = 0;
-
-		assert(node->FUNC_CALL.params);
-		assert(node->FUNC_CALL.params->type == ST_NODE_TUPLE_LIT);
-
-		struct st_node *args = node->FUNC_CALL.params->TUPLE_LIT.items;
-
 		for (struct st_node *arg = args;
 				arg != NULL;
 				arg = arg->next_sibling) {
@@ -483,9 +494,15 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 			}
 		}
 
-		return ast_init_node_call(
-				ctx, env, AST_NODE_NEW, node->loc,
-				func, func_args, num_args);
+		if (node->type == ST_NODE_FUNC_CALL) {
+			return ast_init_node_call(
+					ctx, env, AST_NODE_NEW, node->loc,
+					func, func_args, num_args);
+		} else {
+			return ast_init_node_cons(
+					ctx, env, AST_NODE_NEW, node->loc,
+					func, func_args, num_args);
+		}
 	} break;
 
 	case ST_NODE_FUNC_PROTO:
