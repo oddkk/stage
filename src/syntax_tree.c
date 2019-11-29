@@ -682,7 +682,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 			}
 		}
 
-		return ast_init_node_call(
+		return ast_init_node_cons(
 				ctx, env, AST_NODE_NEW, node->loc,
 				func, func_args, num_args);
 		break;

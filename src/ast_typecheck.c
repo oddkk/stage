@@ -412,7 +412,6 @@ ast_cons_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast
 			stg_error(ctx->err, node->call.func->loc,
 					"This type can not be used as a constructor.");
 			*num_errors += 1;
-			node->call.cons_evaled = true;
 			return AST_BIND_FAILED;
 		}
 
@@ -545,7 +544,6 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 		}
 		break;
 
-	case AST_NODE_CONS:
 	case AST_NODE_CALL:
 		{
 			size_t local_errors = 0;
@@ -571,25 +569,17 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 			ast_slot_id func_type_slot;
 			func_type_slot = ast_env_slot(ctx, env, func_slot).type;
 				
-			if (!node->call.cons_evaled) {
-				// Determine if func is cons or func
-				//  - if func_slot type is func-like or cons that returns func, this is a call
-				//  - else if slot is cons or type, this is cons
-				//  - else error
+			type_id func_type;
+			int err;
+			err = ast_slot_pack_type(ctx, mod, env,
+					func_type_slot, &func_type);
+			if (err) {
+				panic("Failed to pack call func.");
+				return AST_BIND_FAILED;
+			}
 
-				type_id func_type;
-				int err;
-				err = ast_slot_pack_type(ctx, mod, env,
-						func_type_slot, &func_type);
-				if (err) {
-					panic("Failed to pack call func.");
-					node->call.cons_evaled = true;
-					return AST_BIND_FAILED;
-				}
-
-				if (stg_type_is_func(ctx->vm, func_type)) {
-					node->kind = AST_NODE_CALL;
-				} else if (func_type == ctx->types.cons) {
+			if (!stg_type_is_func(ctx->vm, func_type)) {
+				if (func_type == ctx->types.cons) {
 					struct object cons_obj;
 					err = ast_slot_pack(ctx, mod, env,
 							func_slot, &cons_obj);
@@ -606,23 +596,23 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 								node->call.func->loc,
 								node->call.func, NULL, 0);
 
-						func_cons->call.cons_evaled = true;
-
 						ast_cons_node_bind_slots(
 								ctx, num_errors, mod,
 								env, func_cons, AST_BIND_NEW,
 								deps, num_deps);
 
 						node->call.func = func_cons;
-						node->kind = AST_NODE_CALL;
 
 						func_slot = ast_node_value(ctx, env, node->call.func);
 						func_type_slot = ast_node_type(ctx, env, node->call.func);
 					} else {
-						node->kind = AST_NODE_CONS;
+						// TODO: Print the (partial) type of the constructor.
+						stg_error(ctx->err, node->call.func->loc,
+								"This return value of this constructor is not callable.");
+
+						*num_errors += 1;
+						return AST_BIND_FAILED;
 					}
-				} else if (func_type == ctx->types.type) {
-					node->kind = AST_NODE_CONS;
 				} else {
 					struct string type_name;
 
@@ -636,92 +626,108 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					free(type_name.text);
 
 					*num_errors += 1;
-					node->call.cons_evaled = true;
 					return AST_BIND_FAILED;
 				}
-
-				node->call.cons_evaled = true;
 			}
 
 			// bind all param types to func type
-			if (node->kind == AST_NODE_CALL) {
-				struct ast_bind_result res;
-				res = ast_try_unpack_arg_named(
-						ctx, env, func_type_slot, node->call.ret_type,
-						ctx->atoms.func_cons_arg_ret);
-				if (res.code != AST_BIND_OK) {
-					ast_report_bind_error(
-							ctx, node->loc, res);
-					*num_errors += 1;
-					return AST_BIND_FAILED;
-				} else {
-					node->call.ret_type = res.ok.result;
-					res.ok.result = AST_BIND_FAILED;
-				}
-
-				ast_slot_id param_types_slot =
-					ast_bind_require_ok(
-							ast_try_unpack_arg_named(
-								ctx, env, func_type_slot, AST_BIND_NEW,
-								ctx->atoms.func_cons_arg_params));
-
-				res = ast_try_bind_slot_cons_array(
-						ctx, env, param_types_slot, NULL, NULL,
-						node->call.num_args, AST_SLOT_TYPE);
-				if (res.code != AST_BIND_OK) {
-					ast_report_bind_error(
-							ctx, node->loc, res);
-					*num_errors += 1;
-				} else {
-					param_types_slot = res.ok.result;
-					res.ok.result = AST_BIND_FAILED;
-				}
-
-				res = ast_try_bind_slot_wildcard(
-						ctx, env, target, NULL, node->call.ret_type);
-				if (res.code != AST_BIND_OK) {
-					ast_report_bind_error(
-							ctx, node->loc, res);
-					*num_errors += 1;
-				} else {
-					target = res.ok.result;
-				}
-
-				struct ast_env_slot param_types;
-				param_types = ast_env_slot(ctx, env, param_types_slot);
-				assert(param_types.kind == AST_SLOT_CONS_ARRAY);
-
-				if (param_types.cons_array.num_members != node->call.num_args) {
-					stg_error(ctx->err, node->loc,
-							"Expected %zu arguments, got %zu.",
-							param_types.cons_array.num_members,
-							node->call.num_args);
-					*num_errors += 1;
-					return AST_BIND_FAILED;
-				}
-
-				for (size_t i = 0; i < node->call.num_args; i++) {
-					ast_slot_id arg_type_slot;
-					arg_type_slot = param_types.cons_array.members[i];
-
-					ast_slot_id arg_slot;
-					arg_slot = ast_bind_require_ok(
-							ast_try_bind_slot_wildcard(ctx, env,
-								AST_BIND_NEW, NULL, arg_type_slot));
-
-					ast_node_bind_slots(
-							ctx, num_errors, mod, env, node->call.args[i].value,
-							arg_slot, deps, num_deps);
-				}
-			} else if (node->kind == AST_NODE_CONS) {
-				target = ast_cons_node_bind_slots(
-						ctx, num_errors, mod,
-						env, node, target,
-						deps, num_deps);
+			struct ast_bind_result res;
+			res = ast_try_unpack_arg_named(
+					ctx, env, func_type_slot, node->call.ret_type,
+					ctx->atoms.func_cons_arg_ret);
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+				return AST_BIND_FAILED;
 			} else {
-				panic("Invalid node type after call func evaluation.");
+				node->call.ret_type = res.ok.result;
+				res.ok.result = AST_BIND_FAILED;
+			}
+
+			ast_slot_id param_types_slot =
+				ast_bind_require_ok(
+						ast_try_unpack_arg_named(
+							ctx, env, func_type_slot, AST_BIND_NEW,
+							ctx->atoms.func_cons_arg_params));
+
+			res = ast_try_bind_slot_cons_array(
+					ctx, env, param_types_slot, NULL, NULL,
+					node->call.num_args, AST_SLOT_TYPE);
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				param_types_slot = res.ok.result;
+				res.ok.result = AST_BIND_FAILED;
+			}
+
+			res = ast_try_bind_slot_wildcard(
+					ctx, env, target, NULL, node->call.ret_type);
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				target = res.ok.result;
+			}
+
+			struct ast_env_slot param_types;
+			param_types = ast_env_slot(ctx, env, param_types_slot);
+			assert(param_types.kind == AST_SLOT_CONS_ARRAY);
+
+			if (param_types.cons_array.num_members != node->call.num_args) {
+				stg_error(ctx->err, node->loc,
+						"Expected %zu arguments, got %zu.",
+						param_types.cons_array.num_members,
+						node->call.num_args);
+				*num_errors += 1;
 				return AST_BIND_FAILED;
 			}
+
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				ast_slot_id arg_type_slot;
+				arg_type_slot = param_types.cons_array.members[i];
+
+				ast_slot_id arg_slot;
+				arg_slot = ast_bind_require_ok(
+						ast_try_bind_slot_wildcard(ctx, env,
+							AST_BIND_NEW, NULL, arg_type_slot));
+
+				ast_node_bind_slots(
+						ctx, num_errors, mod, env, node->call.args[i].value,
+						arg_slot, deps, num_deps);
+			}
+		}
+		break;
+
+	case AST_NODE_CONS:
+		{
+			size_t local_errors = 0;
+			// Evaluate func type
+			ast_slot_id func_slot;
+			func_slot = ast_node_bind_slots(
+					ctx, &local_errors, mod, env, node->call.func,
+					AST_BIND_NEW, deps, num_deps);
+
+			*num_errors += local_errors;
+
+			if (local_errors) {
+				// Go through the parameters to report errors.
+				for (size_t i = 0; i < node->call.num_args; i++) {
+					ast_node_bind_slots(
+							ctx, num_errors, mod, env,
+							node->call.args[i].value,
+							AST_BIND_NEW, deps, num_deps);
+				}
+				return AST_BIND_FAILED;
+			}
+
+			target = ast_cons_node_bind_slots(
+					ctx, num_errors, mod,
+					env, node, target,
+					deps, num_deps);
 		}
 		break;
 

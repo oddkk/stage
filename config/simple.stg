@@ -9,6 +9,7 @@ op/ := base.op/;
 int := base.int;
 Unit := base.Unit;
 String := base.String;
+Type := base.type;
 
 # Monad := Struct { a: int; set: int; };
 # Some  := (val: int) -> Monad => Monad { a = val; set = 1; }
@@ -49,13 +50,30 @@ String := base.String;
 
 # message.onStart >>= db.exec(query);
 
+# TODO: Pass type information from member type to bind.
+# testQuery: sql.SQL(int) = sql.sql[int]("
+# 	select * from foo where a = ?
+# ");
+
+
+
+TestType := [T: Type] Struct {
+	a: T;
+};
+
+TT2 := TestType[int];
+
+
+
 prnt := message.Print(
 	message.Map(
-	message.Map(message.onStart, (a: Unit) -> int => 500),
-	(a: int) -> int => a * 2));
+		message.Map(message.onStart, (a: Unit) -> int => 500),
+		(a: int) -> int => a * 2));
 
 prnt2 := message.PrintStr(
 	message.Map(message.onStart, (a: Unit) -> String => "Hello, World!"));
+
+con := sql.postgresql.connect("");
 
 # asdfasdfasdf := message.msgId(message.onStart);
 
@@ -80,7 +98,7 @@ Color := Struct {
 	b: int;
 };
 
-col1 := Color(5, 6, 7);
+col1 := Color { r=5; g=6; b=7; };
 
 addFive := (a: int) -> int => a + 5;
 

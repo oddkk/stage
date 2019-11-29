@@ -611,7 +611,6 @@ struct ast_node {
 			size_t num_args;
 
 			ast_slot_id ret_type;
-			bool cons_evaled;
 
 			// Used only for cons.
 			ast_slot_id cons;
