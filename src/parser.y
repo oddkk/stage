@@ -297,18 +297,18 @@ func_param:
 */
 
 object_decl:
-				"Struct"                     object_decl1
+				                         "Struct" object_decl1
 					{ $$ = MKNODE(OBJECT_DECL, .body=$2); }
-		|		"Struct" '[' func_decl_params ']' object_decl1
-					{ $$ = MKNODE(OBJECT_DECL, .body=$5, .params=$3); }
+		|		'[' func_decl_params ']' "Struct" object_decl1
+					{ $$ = MKNODE(OBJECT_DECL, .body=$5, .params=$2); }
 
-		|		expr1                        object_decl1
+		|		expr1                             object_decl1
 					{ $$ = MKNODE(OBJECT_INST, .name=$1, .body=$2); }
 
-		|		"Enum"                       enum_decl1
+		|		                         "Enum"   enum_decl1
 					{ $$ = MKNODE(ENUM_DECL, .items=$2); }
-		|		"Enum"   '[' func_decl_params ']' enum_decl1
-					{ $$ = MKNODE(ENUM_DECL, .items=$5, .params=$3); }
+		|		'[' func_decl_params ']' "Enum"   enum_decl1
+					{ $$ = MKNODE(ENUM_DECL, .items=$5, .params=$2); }
 		;
 
 enum_decl1:		'{' enum_items     '}'  { $$ = $2; }
