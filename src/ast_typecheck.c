@@ -225,13 +225,33 @@ ast_report_bind_error(struct ast_context *ctx, struct stg_location loc,
 			break;
 
 		case AST_BIND_OBJ_HAS_NO_MEMBERS:
-			stg_error(ctx->err, loc,
-					"This object does not have any members.");
+			{
+				struct string type_name;
+				type_name = type_repr_to_alloced_string(
+						ctx->vm, vm_get_type(ctx->vm,
+							bind_res.obj_no_members.obj_type));
+
+				stg_error(ctx->err, loc,
+						"Object of type '%.*s' does not have any members.",
+						LIT(type_name));
+
+				free(type_name.text);
+			}
 			break;
 
 		case AST_BIND_TYPE_HAS_NO_MEMBERS:
-			stg_error(ctx->err, loc,
-					"This type does not have any members.");
+			{
+				struct string type_name;
+				type_name = type_repr_to_alloced_string(
+						ctx->vm, vm_get_type(ctx->vm,
+							bind_res.type_no_members.obj_type));
+
+				stg_error(ctx->err, loc,
+						"This type, '%.*s', does not have any members.",
+						LIT(type_name));
+
+				free(type_name.text);
+			}
 			break;
 
 		case AST_BIND_OBJ_MISSING_MEMBER:
@@ -604,9 +624,17 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				} else if (func_type == ctx->types.type) {
 					node->kind = AST_NODE_CONS;
 				} else {
-					// TODO: Add type name to error message.
+					struct string type_name;
+
+					type_name = type_repr_to_alloced_string(
+							ctx->vm, vm_get_type(ctx->vm, func_type));
+
 					stg_error(ctx->err, node->call.func->loc,
-							"This object is not callable.");
+							"Object of type '%.*s' is not callable.",
+							LIT(type_name));
+
+					free(type_name.text);
+
 					*num_errors += 1;
 					node->call.cons_evaled = true;
 					return AST_BIND_FAILED;
