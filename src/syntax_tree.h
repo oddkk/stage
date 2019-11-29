@@ -164,6 +164,11 @@ extern struct string st_node_names[ST_NODES_LEN];
 		TREE_VISIT_NODE((node), FUNC_CALL, params);		\
 		break;											\
 														\
+	case ST_NODE_TEMPL_INST:							\
+		TREE_VISIT_NODE((node), FUNC_CALL, ident);		\
+		TREE_VISIT_NODE((node), FUNC_CALL, params);		\
+		break;											\
+														\
 	case ST_NODE_OBJECT_DECL:							\
 		TREE_VISIT_NODE((node), OBJECT_DECL, params);	\
 		TREE_VISIT_NODE((node), OBJECT_DECL, body); 	\

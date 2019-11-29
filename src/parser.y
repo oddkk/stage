@@ -172,7 +172,7 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
 %token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>"
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1	subscript_expr l_expr ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 l_expr ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1
 
 %type <struct atom *> IDENTIFIER
 %type <struct string> STRINGLIT
@@ -299,7 +299,7 @@ func_param:
 object_decl:
 				"Struct"                     object_decl1
 					{ $$ = MKNODE(OBJECT_DECL, .body=$2); }
-		|		"Struct" '(' func_decl_params ')' object_decl1
+		|		"Struct" '[' func_decl_params ']' object_decl1
 					{ $$ = MKNODE(OBJECT_DECL, .body=$5, .params=$3); }
 
 		|		expr1                        object_decl1
@@ -307,7 +307,7 @@ object_decl:
 
 		|		"Enum"                       enum_decl1
 					{ $$ = MKNODE(ENUM_DECL, .items=$2); }
-		|		"Enum"   '(' func_decl_params ')' enum_decl1
+		|		"Enum"   '[' func_decl_params ']' enum_decl1
 					{ $$ = MKNODE(ENUM_DECL, .items=$5, .params=$3); }
 		;
 
@@ -397,20 +397,25 @@ expr1:			l_expr                  { $$ = $1; }
 		|		'(' expr ')'     { $$ = $2;  }
 		;
 
+/*
 subscript_expr:	expr                    { $$ = $1;  }
 		|		".."                    { $$ = MKNODE(BIN_OP, .lhs=NULL, .rhs=NULL, .op=ST_OP_RANGE); }
 		|		expr ".."               { $$ = MKNODE(BIN_OP, .lhs=$1,   .rhs=NULL, .op=ST_OP_RANGE); }
 		|		".." expr               { $$ = MKNODE(BIN_OP, .lhs=NULL, .rhs=$2,   .op=ST_OP_RANGE); }
 		|		expr ".." expr          { $$ = MKNODE(BIN_OP, .lhs=$1,   .rhs=$3,   .op=ST_OP_RANGE); }
 		;
+*/
 
 l_expr:			ident                   { $$ = $1; }
 		|		l_expr '.' IDENTIFIER   { $$ = MKNODE(ACCESS, .target=$1, .name=$3); }
+/*
 		|		l_expr '[' subscript_expr ']'
 		{ $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_SUBSCRIPT); }
+*/
 		;
 
-func_call:		expr1 '(' func_args ')' { $$ = MKNODE(FUNC_CALL, .ident=$1, .params=$3); }
+func_call:		expr1 '(' func_args ')' { $$ = MKNODE(FUNC_CALL,  .ident=$1, .params=$3); }
+		|		expr1 '[' func_args ']' { $$ = MKNODE(TEMPL_INST, .ident=$1, .params=$3); }
 		;
 
 func_args:		func_args1              { $$ = MKNODE(TUPLE_LIT, .items=$1,   .named=false); }

@@ -99,6 +99,11 @@ ST_NODE(FUNC_CALL, struct {
 	struct st_node *params;
 })
 
+ST_NODE(TEMPL_INST, struct {
+	struct st_node *ident;
+	struct st_node *params;
+})
+
 ST_NODE(OBJECT_INST, struct {
 	struct st_node *name;
 	struct st_node *body;
