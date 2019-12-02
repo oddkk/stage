@@ -14,6 +14,15 @@ ast_scope_push_composite(struct ast_scope *target, struct ast_scope *parent)
 }
 
 void
+ast_scope_push_templ(struct ast_scope *target, struct ast_scope *parent)
+{
+	memset(target, 0, sizeof(struct ast_scope));
+
+	target->parent = parent;
+	target->parent_kind = AST_SCOPE_PARENT_CLOSURE;
+}
+
+void
 ast_scope_push_expr(struct ast_scope *target, struct ast_scope *parent)
 {
 	memset(target, 0, sizeof(struct ast_scope));
@@ -40,6 +49,9 @@ ast_node_get_closure_target(struct ast_node *node)
 
 		case AST_NODE_COMPOSITE:
 			return &node->composite.closure;
+
+		case AST_NODE_TEMPL:
+			return &node->templ.closure;
 
 		default:
 			panic("Attempted to get closure target off a node that does not allow closures (%s).");
@@ -243,7 +255,8 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			{
 				struct ast_scope templates_scope = {0};
 
-				ast_scope_push_expr(&templates_scope, scope);
+				ast_scope_push_templ(&templates_scope, scope);
+				templates_scope.closure_target = node;
 
 				templates_scope.num_names = node->templ.num_params;
 				struct ast_scope_name template_scope_names[templates_scope.num_names];
@@ -264,6 +277,10 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 				err += ast_node_resolve_names(ctx, env, native_mod,
 						&templates_scope, require_const, node->templ.body);
+
+				err += ast_closure_resolve_names(ctx, env,
+						scope, require_const,
+						&node->templ.closure);
 			}
 			break;
 
@@ -466,7 +483,8 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 			{
 				struct ast_scope templates_scope = {0};
 
-				ast_scope_push_expr(&templates_scope, scope);
+				ast_scope_push_templ(&templates_scope, scope);
+				templates_scope.closure_target = node;
 
 				templates_scope.num_names = node->templ.num_params;
 				struct ast_scope_name template_scope_names[templates_scope.num_names];
@@ -487,6 +505,10 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 
 				err += ast_node_discover_potential_closures(ctx, env,
 						&templates_scope, require_const, node->templ.body);
+
+				ast_closure_discover_potential_closures(ctx, env,
+						scope, require_const,
+						&node->templ.closure);
 			}
 			break;
 

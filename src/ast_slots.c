@@ -57,6 +57,28 @@ ast_object_lookup_arg(struct ast_object *obj, struct atom *arg_name)
 	return AST_SLOT_NOT_FOUND;
 }
 
+static struct ast_object_def *
+ast_try_determine_object_def(
+		struct ast_context *ctx, struct ast_env *env,
+		struct object obj, struct ast_object_def *obj_def,
+		struct ast_object_def *target_def)
+{
+	if (!obj_def && !target_def) {
+		return NULL;
+	}
+
+	if (target_def && obj_def != target_def) {
+		if (target_def->can_unpack &&
+				target_def->can_unpack(ctx, env, target_def, obj)) {
+			return target_def;
+		} else {
+			return NULL;
+		}
+	}
+
+	return obj_def;
+}
+
 ast_slot_id
 ast_alloc_slot(struct ast_env *ctx,
 		struct atom *name, ast_slot_id type, enum ast_slot_kind kind)
@@ -287,10 +309,7 @@ ast_try_bind_slot_const(struct ast_context *ctx,
 						return BIND_TYPE_MISMATCH(target_slot.const_object.type, obj.type);
 					}
 
-					struct type *type = vm_get_type(ctx->vm, target_slot.const_object.type);
-
-					// TODO: Use user defined comparator.
-					if (memcmp(target_slot.const_object.data, obj.data, type->size) != 0) {
+					if (!obj_equals(ctx->vm, target_slot.const_object, obj)) {
 #if AST_BIND_ERROR_DEBUG_PRINT
 						printf("Warning: Attempted to bind CONST '");
 						print_obj_repr(ctx->vm, obj);
@@ -518,48 +537,36 @@ ast_try_bind_slot_const_type(struct ast_context *ctx,
 				{
 					struct type *type_inst = vm_get_type(ctx->vm, type);
 
-					if (!type_inst->type_def) {
-#if AST_BIND_ERROR_DEBUG_PRINT
-						printf("Warning: Attempted to bind CONS over CONST_TYPE with "
-								"object that does not have a constructor. (bind %i)\n",
-								target);
-#endif
-						return BIND_COMPILER_ERROR;
-					}
-
-					if (!target_slot.cons.def) {
-						struct ast_bind_result res;
-						res = ast_try_bind_slot_cons(ctx, env, target,
-								NULL, type_inst->type_def);
-						BIND_EXPECT_OK(res);
-						target = res.ok.result;
-					} else {
-						if (target_slot.cons.def != type_inst->type_def) {
-#if AST_BIND_ERROR_DEBUG_PRINT
-							printf("Warning: Attempted to bind CONS over CONST_TYPE with "
-									"object that does not match the one in CONS.\n");
-#endif
-							return BIND_COMPILER_ERROR;
-						}
-					}
-
-					struct ast_object_def *def = type_inst->type_def;
 					struct object type_obj = {0};
 					type_obj.type = ctx->types.type;
 					type_obj.data = &type;
 
-					for (size_t i = 0; i < def->num_params; i++) {
+					struct ast_object_def *type_def;
+					type_def = ast_try_determine_object_def(
+							ctx, env, type_obj, type_inst->type_def, target_slot.cons.def);
+
+					if (!type_def) {
+#if AST_BIND_ERROR_DEBUG_PRINT
+						printf("Warning: Attempted to bind a type with no type "
+								"def over a CONS with no def <");
+						print_type_repr(ctx->vm, type_inst);
+						printf(">.\n");
+#endif
+						return BIND_TYPE_NO_MEMBERS(type);
+					}
+
+					for (size_t i = 0; i < type_def->num_params; i++) {
 						struct object member;
 
-						member = def->unpack(ctx, env, def,
-								def->params[i].param_id, type_obj);
+						member = type_def->unpack(ctx, env, type_def,
+								type_def->params[i].param_id, type_obj);
 						member = register_object(ctx->vm, env->store, member);
 
 						struct ast_bind_result res;
 
 						ast_slot_id member_slot;
 						res = ast_try_unpack_arg_named(ctx, env, target,
-								AST_BIND_NEW, def->params[i].name);
+								AST_BIND_NEW, type_def->params[i].name);
 						BIND_EXPECT_OK(res);
 						member_slot = res.ok.result;
 
@@ -871,24 +878,56 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 					struct type *slot_val_type =
 						vm_get_type(ctx->vm, slot_val);
 
-					if (!slot_val_type->type_def) {
+					struct object obj = {0};
+					obj.type = ctx->types.type;
+					obj.data = &slot_val;
+
+					struct ast_object_def *type_def;
+					type_def = ast_try_determine_object_def(
+							ctx, env, obj, slot_val_type->type_def, def);
+
+					if (!type_def) {
 #if AST_BIND_ERROR_DEBUG_PRINT
-						printf("Warning: Attempted to unpack a type that cannot be "
-								"unpacked (missing def) <");
+						printf("Warning: Attempted to unpack a type with no type "
+								"def over a CONS with no def <");
 						print_type_repr(ctx->vm, slot_val_type);
 						printf(">.\n");
 #endif
 						return BIND_TYPE_NO_MEMBERS(slot_val);
 					}
 
-					if (def && slot_val_type->type_def != def) {
+					/*
+					if (!def && !type_def) {
 #if AST_BIND_ERROR_DEBUG_PRINT
-						printf("Warning: Attempted to bind CONS with def %p over "
-								"CONST with def %p.\n",
-								(void *)def,
-								(void *)slot_val_type->type_def);
+						printf("Warning: Attempted to unpack a type with no type "
+								"def over a CONS with no def <");
+						print_type_repr(ctx->vm, slot_val_type);
+						printf(">.");
 #endif
+						return BIND_TYPE_NO_MEMBERS(slot_val);
 					}
+
+					if (def && type_def != def) {
+						struct object obj = {0};
+						obj.type = ctx->types.type;
+						obj.data = &slot_val;
+
+						if (def->can_unpack &&
+								def->can_unpack(ctx, env, def, obj)) {
+							type_def = def;
+						} else {
+#if AST_BIND_ERROR_DEBUG_PRINT
+							printf("Warning: Attempted to bind CONS with def %p over "
+									"CONST_TYPE <",
+									(void *)def);
+							print_type_repr(ctx->vm, slot_val_type);
+							printf("> with def %p.\n",
+									(void *)slot_val_type->type_def);
+#endif
+							return BIND_TYPE_NO_MEMBERS(slot_val);
+						}
+					}
+					*/
 
 					// We first rebind the target slot to wildcard to allow us
 					// to use bind_slot_cons to correctly instantiate it as a
@@ -899,7 +938,7 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 
 					struct ast_bind_result res;
 					res = ast_try_bind_slot_cons(ctx, env, target, NULL,
-							slot_val_type->type_def);
+							type_def);
 					BIND_EXPECT_OK(res);
 					res = ast_try_bind_slot_const_type(ctx, env, res.ok.result, NULL,
 							slot_val);
@@ -2140,6 +2179,8 @@ ast_node_deep_copy_internal(
 
 		DCP_SLOT(templ.slot);
 		DCP_LIT(templ.def);
+
+		DCP_LIT(templ.closure);
 		break;
 
 	case AST_NODE_ACCESS:
@@ -2154,6 +2195,7 @@ ast_node_deep_copy_internal(
 
 	case AST_NODE_LIT:
 		DCP_LIT(lit);
+		break;
 
 	case AST_NODE_LOOKUP:
 		DCP_LIT(lookup.name);

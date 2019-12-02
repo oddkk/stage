@@ -639,6 +639,14 @@ ast_node_find_named_dependencies(
 			// the composite.
 			break;
 
+		case AST_NODE_TEMPL:
+			err += ast_node_closure_find_named_dependencies(
+					req, &node->templ.closure,
+					out_refs, out_num_refs);
+
+			// We will not visit the body of the template.
+			break;
+
 		default:
 			break;
 	}
@@ -646,17 +654,25 @@ ast_node_find_named_dependencies(
 #define VISIT_NODE(node) \
 	err += ast_node_find_named_dependencies(\
 			(node), req, out_refs, out_num_refs);
-	AST_NODE_VISIT(node, false, false, true);
+	AST_NODE_VISIT(node, false, false, false);
 #undef VISIT_NODE
 
 	return err;
 }
+
+struct ast_templ_cons_inst {
+	struct object *params;
+	struct object result;
+};
 
 struct ast_templ_cons_info {
 	struct ast_node *templ_node;
 
 	struct ast_typecheck_dep *deps;
 	size_t num_deps;
+
+	struct ast_templ_cons_inst *insts;
+	size_t num_insts;
 };
 
 struct object
@@ -709,7 +725,8 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 		}
 	}
 
-	struct object param_values[def->num_params];
+	struct object *param_values;
+	param_values = calloc(def->num_params, sizeof(struct object));
 
 	bool pack_failed = false;
 	for (size_t i = 0; i < def->num_params; i++) {
@@ -764,6 +781,46 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 	gen_info.templ_objs = param_values;
 	gen_info.num_templ_objs = def->num_params;
 
+	struct ast_closure_target *closure;
+	closure = &templ_node->templ.closure;
+
+	struct ast_typecheck_closure closure_values[closure->num_members];
+	memset(closure_values, 0,
+			sizeof(struct ast_typecheck_closure) * closure->num_members);
+
+	for (size_t i = 0; i < closure->num_members; i++) {
+		struct ast_name_ref closure_ref = {0};
+		closure_ref.kind = AST_NAME_REF_CLOSURE;
+		closure_ref.closure = i;
+
+		struct ast_typecheck_dep *dep;
+		dep = ast_find_dep(body_deps, num_body_deps,
+				closure_ref);
+		assert(dep);
+
+		if (dep->lookup_failed) {
+			closure_values[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+			closure_values[i].lookup_failed = true;
+		} else if (closure->members[i].require_const || (
+					dep->determined &&
+					dep->req == AST_NAME_DEP_REQUIRE_VALUE)) {
+			closure_values[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+
+			assert(dep->determined && dep->req == AST_NAME_DEP_REQUIRE_VALUE);
+			closure_values[i].value = dep->val;
+		} else {
+			assert(dep->determined && dep->req == AST_NAME_DEP_REQUIRE_TYPE);
+			closure_values[i].req = AST_NAME_DEP_REQUIRE_TYPE;
+			closure_values[i].type = dep->type;
+		}
+	}
+
+	gen_info.closures = closure_values;
+	gen_info.num_closures = closure->num_members;
+
+	gen_info.templ_values = param_values;
+	gen_info.num_templ_values = def->num_params;
+
 	struct bc_env bc_env = {0};
 	bc_env.vm = ctx->vm;
 	bc_env.store = ctx->vm->instr_store;
@@ -794,6 +851,16 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 
 	res = register_object(ctx->vm, env->store, res);
 
+	struct ast_templ_cons_inst inst = {0};
+
+	inst.params = param_values;
+	inst.result = res;
+
+	dlist_append(
+			info->insts,
+			info->num_insts,
+			&inst);
+
 	// TODO: Free.
 
 	return res;
@@ -803,9 +870,32 @@ struct object
 ast_templ_unpack(struct ast_context *ctx, struct ast_env *env,
 		struct ast_object_def *def, int param_id, struct object obj)
 {
-	struct object res = {0};
+	struct ast_templ_cons_info *info = def->data;
 
-	return res;
+	struct ast_templ_cons_inst *inst = NULL;
+	for (size_t i = 0; i < info->num_insts; i++) {
+		if (obj_equals(ctx->vm, obj, info->insts[i].result)) {
+			inst = &info->insts[i];
+			break;
+		}
+	}
+	assert(inst);
+
+	assert(param_id < def->num_params);
+	return inst->params[param_id];
+}
+
+static bool
+ast_templ_can_unpack(struct ast_context *ctx, struct ast_env *env,
+		struct ast_object_def *def, struct object obj)
+{
+	struct ast_templ_cons_info *info = def->data;
+	for (size_t i = 0; i < info->num_insts; i++) {
+		if (obj_equals(ctx->vm, obj, info->insts[i].result)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 struct ast_object_def *
@@ -860,6 +950,7 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 	def->data   = info;
 	def->pack   = ast_templ_pack;
 	def->unpack = ast_templ_unpack;
+	def->can_unpack = ast_templ_can_unpack;
 
 	return def;
 }

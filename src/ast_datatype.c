@@ -38,6 +38,8 @@ struct ast_dt_bind {
 
 	size_t num_targets;
 
+	type_id target_type;
+
 	// The targets that are found by l-expr during BIND_TARGET_RESOLVE_NAMES.
 	// These members will be expanded to only contain terminal nodes that are
 	// stored in single_target or multiple_targets.
@@ -559,6 +561,7 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 	new_bind->value.node = value;
 	new_bind->overridable = overridable;
 	new_bind->loc = loc;
+	new_bind->target_type = TYPE_UNSET;
 
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
@@ -624,6 +627,7 @@ ast_dt_register_typegiving_bind(struct ast_dt_context *ctx,
 	new_bind->value.node = value;
 	new_bind->overridable = overridable;
 	new_bind->loc = loc;
+	new_bind->target_type = TYPE_UNSET;
 
 	new_bind->next_alloced = ctx->alloced_binds;
 	ctx->alloced_binds = new_bind;
@@ -697,6 +701,9 @@ ast_dt_register_bind_func(struct ast_dt_context *ctx,
 	new_bind->member_deps = value_params;
 	new_bind->num_member_deps = num_value_params;
 
+	// TODO: Could/should we set this based on the provided function here?
+	new_bind->target_type = TYPE_UNSET;
+
 	for (size_t i = 0; i < num_value_params; i++) {
 		assert(value_params[i] >= 0);
 	}
@@ -735,6 +742,9 @@ ast_dt_register_bind_const(struct ast_dt_context *ctx,
 	new_bind->overridable = overridable;
 	new_bind->member_deps = NULL;
 	new_bind->num_member_deps = 0;
+
+	// TODO: Could/should we set this based on the provided function here?
+	new_bind->target_type = TYPE_UNSET;
 
 	new_bind->value_jobs.resolve_names = -1;
 	new_bind->value_jobs.resolve_types = -1;
@@ -776,6 +786,9 @@ ast_dt_register_bind_pack(struct ast_dt_context *ctx,
 	new_bind->overridable = false;
 	new_bind->member_deps = value_params;
 	new_bind->num_member_deps = num_value_params;
+
+	// TODO: Could/should we set this based on the provided function here?
+	new_bind->target_type = TYPE_UNSET;
 
 	new_bind->value_jobs.resolve_names = -1;
 	new_bind->value_jobs.resolve_types = -1;
@@ -1484,8 +1497,13 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 	struct ast_name_dep *deps = NULL;
 	size_t num_deps = 0;
 
-	ast_node_find_named_dependencies(
+	int err;
+	err = ast_node_find_named_dependencies(
 			node, dep_req, &deps, &num_deps);
+	if (err) {
+		printf("Failed to find the named dependencies.\n");
+		return -1;
+	}
 
 	struct ast_typecheck_dep body_deps[num_deps];
 
@@ -1572,7 +1590,6 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 		}
 	}
 
-	int err;
 	err = ast_node_typecheck(
 			ctx->ast_ctx, ctx->ast_mod, ctx->ast_env, node,
 			body_deps, num_deps, expected_type);
@@ -1717,23 +1734,11 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 		case AST_DT_JOB_BIND_RESOLVE_TYPES:
 			{
-				type_id expected_type = TYPE_UNSET;
-
-				if (job->bind->num_targets > 0) {
-					assert(job->bind->num_targets == 1);
-
-					struct ast_dt_member *target;
-					target = get_member(ctx,
-							ast_dt_get_bind_targets(job->bind)[0]);
-
-					expected_type = target->type;
-				}
-
 				int err;
 				err = ast_dt_expr_typecheck(
 						ctx, job->bind->value.node,
 						AST_NAME_DEP_REQUIRE_TYPE,
-						expected_type);
+						job->bind->target_type);
 				if (err) {
 					return -1;
 				}
@@ -2001,6 +2006,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					assert(job->bind->num_explicit_targets == 1);
 					assert(job->bind->value.node->type != TYPE_UNSET);
 
+					job->bind->target_type = job->bind->value.node->type;
+
 					ast_try_set_local_member_type(ctx,
 							job->bind->explicit_targets[0],
 							job->bind->value.node->type);
@@ -2018,6 +2025,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				type_id target_type;
 				target_type = get_member(ctx, target)->type;
+
+				job->bind->target_type = target_type;
 
 				ast_member_id *targets = NULL;
 				int *descendent_ids = NULL;

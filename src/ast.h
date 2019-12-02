@@ -429,6 +429,10 @@ typedef struct object (*ast_object_pack)(
 		struct ast_context *, struct ast_module *, struct ast_env *,
 		struct ast_object_def *, ast_slot_id);
 
+typedef bool (*ast_object_can_unpack)(
+		struct ast_context *, struct ast_env *,
+		struct ast_object_def *, struct object obj);
+
 struct ast_object_def {
 	struct ast_object_def_param *params;
 	size_t num_params;
@@ -438,6 +442,8 @@ struct ast_object_def {
 	size_t num_binds;
 
 	ast_slot_id ret_type;
+
+	ast_object_can_unpack can_unpack;
 
 	ast_object_unpack unpack;
 	ast_object_pack pack;
@@ -640,6 +646,8 @@ struct ast_node {
 			ast_slot_id slot;
 
 			struct ast_object_def *def;
+
+			struct ast_closure_target closure;
 		} templ;
 
 		ast_slot_id slot;
@@ -924,6 +932,10 @@ ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		type_id expected_type);
 
+struct ast_typecheck_dep *
+ast_find_dep(struct ast_typecheck_dep *deps, size_t num_deps,
+		struct ast_name_ref ref);
+
 // Defined in ast_slots.c
 struct ast_node *
 ast_node_deep_copy(struct ast_context *ctx, struct ast_env *dest_env,
@@ -952,6 +964,9 @@ struct ast_gen_info {
 
 	struct ast_typecheck_closure *closures;
 	size_t num_closures;
+
+	struct object *templ_values;
+	size_t num_templ_values;
 
 	struct object *templ_objs;
 	size_t num_templ_objs;
@@ -1063,6 +1078,11 @@ struct ast_typecheck_closure {
 		struct object value;
 	};
 };
+
+void
+ast_fill_closure(struct ast_closure_target *closure,
+		struct ast_typecheck_closure *closure_values,
+		struct ast_typecheck_dep *deps, size_t num_deps);
 
 type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,

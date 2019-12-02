@@ -29,7 +29,7 @@ ast_name_ref_equals(struct ast_name_ref lhs, struct ast_name_ref rhs)
 	return false;
 }
 
-static struct ast_typecheck_dep *
+struct ast_typecheck_dep *
 ast_find_dep(struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_name_ref ref)
 {
@@ -97,7 +97,7 @@ ast_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 }
 
 // closure_values is expected to be an array of length closure->num_members.
-static void
+void
 ast_fill_closure(struct ast_closure_target *closure,
 		struct ast_typecheck_closure *closure_values,
 		struct ast_typecheck_dep *deps, size_t num_deps)
@@ -834,7 +834,12 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 	case AST_NODE_TEMPL:
 		{
 			struct ast_typecheck_dep body_deps[num_deps + node->templ.num_params];
-			memcpy(body_deps, deps, sizeof(struct ast_typecheck_dep) * num_deps);
+			memset(body_deps, 0, sizeof(struct ast_typecheck_dep) *
+					(num_deps + node->templ.num_params));
+			ast_fill_closure_deps(ctx, env,
+					body_deps, &node->templ.closure,
+					deps, num_deps);
+
 
 			for (size_t i = 0; i < node->templ.num_params; i++) {
 				ast_slot_id type_slot;
@@ -881,7 +886,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 
 			if (!node->templ.def) {
 				node->templ.def = ast_node_create_templ(
-						ctx, mod, env, node, deps, num_deps);
+						ctx, mod, env, node, body_deps, num_deps);
 				assert(node->templ.def);
 			}
 

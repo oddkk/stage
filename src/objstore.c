@@ -65,6 +65,20 @@ _assert_type_equals_failed(struct vm *vm, type_id lhs, type_id rhs,
 	abort();
 }
 
+bool
+obj_equals(struct vm *vm, struct object lhs, struct object rhs)
+{
+	if (!type_equals(vm, lhs.type, rhs.type)) {
+		return false;
+	}
+
+	struct type *lhs_type = vm_get_type(vm, lhs.type);
+	struct type *rhs_type = vm_get_type(vm, rhs.type);
+	assert(lhs_type->size == rhs_type->size);
+	// TODO: Use user defined comparator.
+	return memcmp(lhs.data, rhs.data, lhs_type->size) == 0;
+}
+
 struct object
 register_object(struct vm *vm, struct objstore *store, struct object obj) {
 	if (store->page_size == 0) {

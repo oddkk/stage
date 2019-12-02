@@ -116,7 +116,15 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 			return info->closures[ref.closure];
 
 		case AST_NAME_REF_TEMPL:
-			panic("TODO: Pass template information to gen.");
+			{
+				assert(ref.templ < info->num_templ_values);
+
+				struct ast_typecheck_closure res = {0};
+				res.req = AST_NAME_DEP_REQUIRE_VALUE;
+				res.lookup_failed = false;
+				res.value = info->templ_values[ref.templ];
+				return res;
+			}
 			break;
 	}
 

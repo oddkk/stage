@@ -81,6 +81,9 @@ _assert_type_equals_failed(struct vm *, type_id lhs, type_id rhs,
 		_assert_type_equals_failed((vm), (lhs), (rhs), __FILE__, __LINE__, __func__); \
 	} } while (0)
 
+bool
+obj_equals(struct vm *, struct object lhs, struct object rhs);
+
 enum func_kind {
 	FUNC_NATIVE,
 	FUNC_BYTECODE,
