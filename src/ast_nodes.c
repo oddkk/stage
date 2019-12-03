@@ -829,6 +829,10 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 	bc = ast_node_gen_bytecode(
 			ctx, mod, env, &gen_info,
 			&bc_env, body);
+	if (bc.err) {
+		struct object res = {0};
+		return res;
+	}
 
 	bc.last->next = bc_gen_ret(&bc_env, bc.out_var);
 	bc.last = bc.last->next;

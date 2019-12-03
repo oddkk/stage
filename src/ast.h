@@ -954,6 +954,7 @@ struct ast_gen_bc_result {
 	struct bc_instr *first;
 	struct bc_instr *last;
 	bc_var out_var;
+	int err;
 };
 
 struct ast_gen_info {

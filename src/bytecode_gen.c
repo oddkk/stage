@@ -140,6 +140,8 @@ bc_gen_nop(struct bc_env *env)
 struct bc_instr *
 bc_gen_load(struct bc_env *env, bc_var target, struct object obj)
 {
+	assert(obj.type != TYPE_UNSET);
+
 	struct bc_instr instr = {0};
 	instr.op = BC_LOAD;
 	instr.load.target = bc_use_or_alloc_var(env, target, obj.type);

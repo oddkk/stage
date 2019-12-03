@@ -131,6 +131,9 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 	return (struct ast_typecheck_closure){0};
 }
 
+#define AST_GEN_ERROR ((struct ast_gen_bc_result){.err=-1})
+#define AST_GEN_EXPECT_OK(res) do { if ((res).err) { return res; } } while (0);
+
 struct ast_gen_bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_gen_info *info,
@@ -157,6 +160,9 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				struct bc_env *func_bc;
 				func_bc = ast_func_gen_bytecode(
 						ctx, mod, env, closure, num_closures, node);
+				if (!func_bc) {
+					return AST_GEN_ERROR;
+				}
 
 				struct func new_func = {0};
 				new_func.kind = FUNC_BYTECODE;
@@ -247,6 +253,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					struct ast_gen_bc_result arg;
 					arg = ast_node_gen_bytecode(ctx, mod, env, info, bc_env,
 							node->call.args[i].value);
+					AST_GEN_EXPECT_OK(arg);
 
 					append_bc_instrs(&result, arg);
 					params[i] = arg.out_var;
@@ -255,6 +262,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				struct ast_gen_bc_result func;
 				func = ast_node_gen_bytecode(ctx, mod, env, info, bc_env,
 						node->call.func);
+				AST_GEN_EXPECT_OK(func);
 				append_bc_instrs(&result, func);
 
 				for (size_t i = 0; i < node->call.num_args; i++) {
@@ -329,7 +337,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					err = ast_object_def_order_binds(
 							ctx, mod, def, cons_binds, node->call.num_args, bind_order);
 					if (err) {
-						return (struct ast_gen_bc_result){0};
+						return AST_GEN_ERROR;
 					}
 
 					for (size_t i = 0; i < def->num_binds + node->call.num_args; i++) {
@@ -379,6 +387,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 							struct ast_gen_bc_result arg;
 							arg = ast_node_gen_bytecode(ctx, mod, env, info, bc_env,
 									node->call.args[bind_i].value);
+							AST_GEN_EXPECT_OK(arg);
 
 							append_bc_instrs(&result, arg);
 							append_bc_instr(&result,
@@ -406,6 +415,10 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					obj = def->pack(ctx, mod, env,
 							def, node->call.cons);
 
+					if (obj.type == TYPE_UNSET) {
+						return AST_GEN_ERROR;
+					}
+
 					result.first = result.last =
 						bc_gen_load(bc_env, BC_VAR_NEW, obj);
 					result.out_var = result.first->load.target;
@@ -420,7 +433,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				int err;
 				err = ast_slot_pack(ctx, mod, env, node->func_type.slot, &obj);
 				if (err) {
-					return (struct ast_gen_bc_result){0};
+					return AST_GEN_ERROR;
 				}
 
 				assert_type_equals(ctx->vm, obj.type, ctx->types.type);
@@ -452,6 +465,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				target = ast_node_gen_bytecode(
 						ctx, mod, env, info, bc_env,
 						node->access.target);
+				AST_GEN_EXPECT_OK(target);
 
 				append_bc_instrs(&result, target);
 				append_bc_instr(&result,
@@ -512,7 +526,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 							err = ast_slot_pack(ctx, mod, env, node->slot, &obj);
 							if (err) {
 								panic("Failed to pack slot in gen bytecode.");
-								return (struct ast_gen_bc_result){0};
+								return AST_GEN_ERROR;
 							}
 
 							result.first = result.last =
@@ -529,7 +543,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 							err = ast_slot_pack(ctx, mod, env, slot.type, &type_obj);
 							if (err) {
 								panic("Failed to pack slot type in gen bytecode.");
-								return (struct ast_gen_bc_result){0};
+								return AST_GEN_ERROR;
 							}
 
 							assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
@@ -551,7 +565,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 							err = ast_slot_pack(ctx, mod, env, slot.type, &type_obj);
 							if (err) {
 								panic("Failed to pack slot type in gen bytecode.");
-								return (struct ast_gen_bc_result){0};
+								return AST_GEN_ERROR;
 							}
 
 							assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
@@ -582,7 +596,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					default:
 						panic("Invalid slot %s in bytecode gen.",
 								ast_slot_name(slot.kind));
-						return (struct ast_gen_bc_result ){0};
+						return AST_GEN_ERROR;
 				}
 
 			}
@@ -660,7 +674,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 				if (type == TYPE_UNSET) {
 					printf("Failed to initialize composite type.\n");
-					return (struct ast_gen_bc_result){0};
+					return AST_GEN_ERROR;
 				}
 
 				struct object obj;
@@ -682,7 +696,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 	}
 
 	printf("Invalid ast node in gen byte code.\n");
-	return (struct ast_gen_bc_result){0};
+	return AST_GEN_ERROR;
 }
 
 struct bc_env *
@@ -721,6 +735,9 @@ ast_func_gen_bytecode(
 	struct ast_gen_bc_result func_instr;
 	func_instr = ast_node_gen_bytecode(ctx, mod, env, &info,
 			bc_env, node->func.body);
+	if (func_instr.err) {
+		return NULL;
+	}
 
 	append_bc_instr(&func_instr,
 			bc_gen_ret(bc_env, func_instr.out_var));
@@ -775,6 +792,9 @@ ast_composite_bind_gen_bytecode(
 	struct ast_gen_bc_result func_instr;
 	func_instr = ast_node_gen_bytecode(ctx, mod, env, &info,
 			bc_env, expr);
+	if (func_instr.err) {
+		return NULL;
+	}
 
 	append_bc_instr(&func_instr,
 			bc_gen_ret(bc_env, func_instr.out_var));

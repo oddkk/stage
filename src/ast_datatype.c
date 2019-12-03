@@ -1473,6 +1473,9 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 				dep_members, dep_member_types,
 				dep_member_const, num_dep_members,
 				ctx->closures, ctx->num_closures, node);
+	if (!bc_env) {
+		return FUNC_UNSET;
+	}
 
 	struct func func = {0};
 	func.type = stg_register_func_type(ctx->ast_mod->stg_mod,
@@ -1763,6 +1766,9 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						ctx, mbr->type_node,
 						AST_NAME_DEP_REQUIRE_VALUE,
 						&dep_members, &num_dep_members);
+				if (fid == FUNC_UNSET) {
+					return -1;
+				}
 
 				struct object const_member_values[num_dep_members];
 				for (size_t i = 0; i < num_dep_members; i++) {
@@ -1934,6 +1940,9 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						ctx, job->bind->value.node,
 						AST_NAME_DEP_REQUIRE_TYPE,
 						&dep_members, &num_dep_members);
+				if (fid == FUNC_UNSET) {
+					return -1;
+				}
 
 				job->bind->num_member_deps = num_dep_members;
 				job->bind->member_deps = dep_members;
