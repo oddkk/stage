@@ -1,0 +1,52 @@
+mod message;
+
+int     := base.int;
+String  := base.String;
+Unit    := base.Unit;
+Type    := base.type;
+Message := message.Message;
+
+# _dbConnect := (kind: String, conStr: String) -> DBConnectionHandle
+# 	@nativeImpure("db_connect");
+
+DBConnectionHandle := base.int;
+
+_dbConnect := (kind: String, conStr: String) -> DBConnectionHandle
+	@nativeImpure("sql_db_connect");
+
+Connection := Struct {
+	dbKind: String;
+	connectionString: String;
+	_handle: DBConnectionHandle;
+	# TODO: Fix binds from non-overridable members conflicting with implicit
+	# binds.
+	# = _dbConnect(dbKind, connectionString);
+};
+
+# query := (con: Connection, sql: String, trigger: Message[Unit]) -> Message[int]
+# 	=> message.Endpoint();
+
+# Query := (T: type) Struct {
+# 	sql: SQL;
+# };
+
+Statement := [ParamsType: Type] Struct {
+	sql: SQL[ParamsType];
+};
+
+# This should have the type of the parameters.
+SQL := [ParamsType: Type] Struct {
+	stmt: String;
+
+	# query := () -> Query($T) => Query(T) { sql = stmt; };
+	# stmt := (T: type) -> Statement;
+};
+
+sql := (a: String) -> SQL[$T]
+	=> SQL[T] { stmt = a; };
+
+# query := (db: Connection, q: Query($T, $U), params: U) -> Message[T]
+# 	=> ;
+# 
+# query := (db: Connection, q: Query($T), trigger: Message[U]) -> Message[T]
+# 	=> ;

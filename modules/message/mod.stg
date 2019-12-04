@@ -10,4 +10,9 @@ Endpoint := (func: ($T) -> Unit) -> ((Message[T]) -> Unit) @nativeImpure("msg_en
 Print    := Endpoint((val: int) -> Unit @nativeImpure("msg_print_int_callback"));
 PrintStr := Endpoint((val: base.String) -> Unit @nativeImpure("msg_print_string_callback"));
 
-Map := (in: Message[$T], f: (T) -> $U) -> Message[U] @nativeImpure("msg_map");
+Map2 := (in: Message[$T], f: (T) -> $U) -> Message[U] @nativeImpure("msg_map");
+
+# Message := [T: Type] Struct { msgId: int; };
+# return := (val: $T) -> Message[T] => ;
+
+Map := (in: Message[$T], f: (T) -> Message[$U]) -> Message[U] @nativeImpure("msg_map");

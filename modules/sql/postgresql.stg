@@ -1,0 +1,8 @@
+connect := (connectionString: String) -> Connection
+	=> Connection {
+		dbKind = "postgresql";
+		connectionString = connectionString;
+		# TODO: Fix ordering.
+		# _handle = _dbConnect(dbKind, connectionString);
+		_handle = _dbConnect("postgresql", connectionString);
+	};
