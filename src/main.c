@@ -8,15 +8,6 @@
 #include <stdlib.h>
 #include <signal.h>
 
-/* enable clock_* functions */
-#ifndef __USE_POSIX199309
-#define __USE_POSIX199309
-#endif
-
-#ifndef __USE_XOPEN2K
-#define __USE_XOPEN2K
-#endif
-
 #include <time.h>
 #include <errno.h>
 

@@ -1,9 +1,5 @@
 #include "net.h"
 
-#ifndef _POSIX_C_SOURCE
-#define _POSIX_C_SOURCE 201112L
-#endif
-
 #include <stdbool.h>
 #include <unistd.h>
 #include <stdio.h>
