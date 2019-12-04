@@ -58,40 +58,45 @@ ast_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 		in_dep = ast_find_dep(deps, num_deps, mbr->ref);
 		assert(in_dep);
 
-		if (mbr->require_const) {
-			assert(in_dep->determined && 
-					in_dep->req == AST_NAME_DEP_REQUIRE_VALUE);
-			out_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
-			out_deps[i].value =
-				ast_bind_slot_const(ctx, env, AST_BIND_NEW,
-						NULL, in_dep->val);
-
-			out_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
-			out_deps[i].determined = true;
-			out_deps[i].val = in_dep->val;
-		} else {
-			assert(in_dep->determined);
-			out_deps[i].req = AST_NAME_DEP_REQUIRE_TYPE;
-
-			if (in_dep->req == AST_NAME_DEP_REQUIRE_TYPE) {
-				ast_slot_id type_slot;
-				type_slot =
-					ast_bind_slot_const_type(ctx, env, AST_BIND_NEW,
-							NULL, in_dep->type);
-
-				out_deps[i].value =
-					ast_bind_slot_closure(ctx, env, AST_BIND_NEW,
-							NULL, type_slot);
-				out_deps[i].type = in_dep->type;
-			} else {
+		if (in_dep->determined) {
+			if (mbr->require_const) {
+				assert(in_dep->determined &&
+						in_dep->req == AST_NAME_DEP_REQUIRE_VALUE);
+				out_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
 				out_deps[i].value =
 					ast_bind_slot_const(ctx, env, AST_BIND_NEW,
 							NULL, in_dep->val);
-				out_deps[i].val = in_dep->val;
-			}
 
-			out_deps[i].req = in_dep->req;
-			out_deps[i].determined = true;
+				out_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+				out_deps[i].determined = true;
+				out_deps[i].val = in_dep->val;
+			} else {
+				assert(in_dep->determined);
+				out_deps[i].req = AST_NAME_DEP_REQUIRE_TYPE;
+
+				if (in_dep->req == AST_NAME_DEP_REQUIRE_TYPE) {
+					ast_slot_id type_slot;
+					type_slot =
+						ast_bind_slot_const_type(ctx, env, AST_BIND_NEW,
+								NULL, in_dep->type);
+
+					out_deps[i].value =
+						ast_bind_slot_closure(ctx, env, AST_BIND_NEW,
+								NULL, type_slot);
+					out_deps[i].type = in_dep->type;
+				} else {
+					out_deps[i].value =
+						ast_bind_slot_const(ctx, env, AST_BIND_NEW,
+								NULL, in_dep->val);
+					out_deps[i].val = in_dep->val;
+				}
+
+				out_deps[i].req = in_dep->req;
+				out_deps[i].determined = true;
+			}
+		} else {
+			out_deps[i].determined = false;
+			out_deps[i].value = in_dep->value;
 		}
 	}
 }
@@ -523,6 +528,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					body_deps[i].ref.kind = AST_NAME_REF_PARAM;
 					body_deps[i].ref.param = i;
 					body_deps[i].lookup_failed = false;
+					body_deps[i].determined = false;
 
 					body_deps[i].value =
 						ast_bind_require_ok(
@@ -633,7 +639,9 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 			// bind all param types to func type
 			struct ast_bind_result res;
 			res = ast_try_unpack_arg_named(
-					ctx, env, func_type_slot, node->call.ret_type,
+					ctx, env,
+					ast_node_resolve_slot(env, &func_type_slot),
+					ast_node_resolve_slot(env, &node->call.ret_type),
 					ctx->atoms.func_cons_arg_ret);
 			if (res.code != AST_BIND_OK) {
 				ast_report_bind_error(

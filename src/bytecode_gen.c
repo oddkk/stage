@@ -98,6 +98,7 @@ bc_alloc_param(struct bc_env *env, unsigned int param_id, type_id tid)
 static inline bc_var
 bc_use_or_alloc_var(struct bc_env *env, bc_var var, type_id type)
 {
+	assert(type != TYPE_UNSET);
 	if (var == BC_VAR_NEW) {
 		return dlist_append(env->var_types, env->num_vars, &type);
 	} else {

@@ -11,6 +11,13 @@ Unit := base.Unit;
 String := base.String;
 Type := base.type;
 
+compose := (lhs: ($T) -> $U, rhs: (U) -> $V) -> (T) -> V
+	=> (a: T) -> V => rhs(lhs(a));
+
+fdsafdsa := compose(
+	(a: int) -> int => a + 2,
+	(a: int) -> int => a * 2);
+
 # Monad := Struct { a: int; set: int; };
 # Some  := (val: int) -> Monad => Monad { a = val; set = 1; }
 # None  := () -> Monad { a = 0; set = 0; }
@@ -83,7 +90,7 @@ prnt := message.Print(
 prnt2 := message.PrintStr(
 	message.Map2(message.onStart, (a: Unit) -> String => "Hello, World!"));
 
-con := sql.postgresql.connect("");
+# con := sql.postgresql.connect("");
 
 # asdfasdfasdf := message.msgId(message.onStart);
 
