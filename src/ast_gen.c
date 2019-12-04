@@ -248,12 +248,16 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 		case AST_NODE_CALL:
 			{
 				bc_var params[node->call.num_args];
+				int err = 0;
 
 				for (size_t i = 0; i < node->call.num_args; i++) {
 					struct ast_gen_bc_result arg;
 					arg = ast_node_gen_bytecode(ctx, mod, env, info, bc_env,
 							node->call.args[i].value);
-					AST_GEN_EXPECT_OK(arg);
+					if (arg.err) {
+						err = -1;
+						continue;
+					}
 
 					append_bc_instrs(&result, arg);
 					params[i] = arg.out_var;
@@ -262,7 +266,14 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				struct ast_gen_bc_result func;
 				func = ast_node_gen_bytecode(ctx, mod, env, info, bc_env,
 						node->call.func);
-				AST_GEN_EXPECT_OK(func);
+				if (func.err) {
+					err = -1;
+				}
+
+				if (err) {
+					return AST_GEN_ERROR;
+				}
+
 				append_bc_instrs(&result, func);
 
 				for (size_t i = 0; i < node->call.num_args; i++) {
@@ -414,7 +425,6 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 					obj = def->pack(ctx, mod, env,
 							def, node->call.cons);
-
 					if (obj.type == TYPE_UNSET) {
 						return AST_GEN_ERROR;
 					}
@@ -626,6 +636,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					if (info->closures[node->lookup.ref.closure].lookup_failed) {
 						stg_error(ctx->err, node->loc,
 								"Name not found.");
+						return AST_GEN_ERROR;
 					} else if (info->closures[node->lookup.ref.closure].req ==
 							AST_NAME_DEP_REQUIRE_VALUE) {
 						struct bc_instr *lit_instr;
@@ -638,7 +649,9 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 						return result;
 					} else {
-						panic("TODO: Closures");
+						stg_error(ctx->err, node->loc,
+								"TODO: Closures");
+						return AST_GEN_ERROR;
 					}
 					break;
 
