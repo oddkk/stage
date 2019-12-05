@@ -207,8 +207,7 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 		msg_type_def = ast_object_def_register(&mod->store);
 
 		ast_slot_id arg_type = ast_bind_slot_templ(
-				ast_ctx, &msg_type_def->env, AST_BIND_NEW,
-				vm_atoms(ast_ctx->vm, "T"), AST_SLOT_TYPE);
+				ast_ctx, &msg_type_def->env, AST_BIND_NEW, AST_SLOT_TYPE);
 
 
 		struct ast_object_def_param msg_type_params[] = {

@@ -101,14 +101,12 @@ base_bootstrap_register_array(struct ast_context *ctx, struct stg_module *mod)
 		ast_object_def_register(&mod->store);
 
 	ast_slot_id arg_type = ast_bind_slot_templ(
-			ctx, &array_type_def->env, AST_BIND_NEW,
-			ctx->atoms.array_cons_arg_type, AST_SLOT_TYPE);
+			ctx, &array_type_def->env, AST_BIND_NEW, AST_SLOT_TYPE);
 
 	ast_slot_id arg_count =
-		ast_bind_slot_templ(ctx, &array_type_def->env,
-				AST_BIND_NEW, ctx->atoms.array_cons_arg_count,
+		ast_bind_slot_templ(ctx, &array_type_def->env, AST_BIND_NEW,
 				ast_bind_slot_const_type(ctx, &array_type_def->env,
-					AST_BIND_NEW, NULL, ctx->types.integer));
+					AST_BIND_NEW, ctx->types.integer));
 	struct ast_object_def_param array_type_params[] = {
 		{ARRAY_TYPE_PARAM_TYPE,   ctx->atoms.array_cons_arg_type,  ctx->types.type,     arg_type},
 		{ARRAY_TYPE_PARAM_LENGTH, ctx->atoms.array_cons_arg_count, ctx->types.integer,  arg_count},

@@ -140,8 +140,7 @@ mod_channel_init(struct ast_context *ctx, struct stg_module *mod)
 			ast_object_def_register(&mod->store);
 
 		ast_slot_id arg_type = ast_bind_slot_templ(
-				ctx, &cnl_type_def->env, AST_BIND_NEW,
-				vm_atoms(ctx->vm, "T"), AST_SLOT_TYPE);
+				ctx, &cnl_type_def->env, AST_BIND_NEW, AST_SLOT_TYPE);
 
 
 		struct ast_object_def_param cnl_type_params[] = {

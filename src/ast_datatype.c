@@ -1341,9 +1341,9 @@ ast_dt_bind_typecheck_dep(struct ast_dt_context *ctx,
 	if (dep->lookup_failed) {
 		dep->value = ast_bind_slot_wildcard(
 				ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
-				NULL, ast_bind_slot_wildcard(
+				ast_bind_slot_wildcard(
 					ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
-					NULL, AST_SLOT_TYPE));
+					AST_SLOT_TYPE));
 		return;
 	}
 
@@ -1354,18 +1354,16 @@ ast_dt_bind_typecheck_dep(struct ast_dt_context *ctx,
 			dep->value =
 				ast_bind_slot_const(
 						ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
-						NULL, dep->val);
+						dep->val);
 			break;
 
 		case AST_NAME_DEP_REQUIRE_TYPE:
 			dep->value =
 				ast_bind_slot_closure(
-						ctx->ast_ctx, ctx->ast_env,
-						AST_BIND_NEW, NULL,
+						ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
 						ast_bind_slot_const_type(
 							ctx->ast_ctx, ctx->ast_env,
-							AST_BIND_NEW, NULL,
-							dep->type));
+							AST_BIND_NEW, dep->type));
 			break;
 	}
 }
@@ -2492,9 +2490,9 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 
 		params[i].type = mbr->type;
 		params[i].slot =
-			ast_bind_slot_wildcard(ctx->ast_ctx, &def->env, AST_BIND_NEW, NULL,
+			ast_bind_slot_wildcard(ctx->ast_ctx, &def->env, AST_BIND_NEW,
 					ast_bind_slot_const_type(ctx->ast_ctx, &def->env, AST_BIND_NEW,
-						NULL, mbr->type));
+						mbr->type));
 
 		// NOTE: We keep the old member_id here so that we can replace all
 		// slot member ids after the binds have been added.
@@ -2627,7 +2625,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 	result = stg_register_type(mod->stg_mod, dt_type);
 
 	def->ret_type = ast_bind_slot_const_type(
-			ctx->ast_ctx, &def->env, AST_BIND_NEW, NULL, result);
+			ctx->ast_ctx, &def->env, AST_BIND_NEW, result);
 
 	return result;
 }

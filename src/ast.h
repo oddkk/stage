@@ -132,7 +132,6 @@ const char *
 ast_slot_name(enum ast_slot_kind kind);
 
 struct ast_env_slot {
-	struct atom *name;
 	ast_slot_id type;
 	ast_member_id member_id;
 
@@ -251,46 +250,46 @@ ast_try_bind_slot_error(struct ast_context *,
 struct ast_bind_result
 ast_try_bind_slot_wildcard(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, ast_slot_id type);
+		ast_slot_id type);
 
 struct ast_bind_result
 ast_try_bind_slot_const(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, struct object);
+		struct object);
 
 struct ast_bind_result
 ast_try_bind_slot_const_type(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, type_id);
+		type_id);
 
 struct ast_bind_result
 ast_try_bind_slot_param(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, int64_t param_index, ast_slot_id type);
+		int64_t param_index, ast_slot_id type);
 
 struct ast_bind_result
 ast_try_bind_slot_templ(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
-		struct atom *name, ast_slot_id type);
+		ast_slot_id type);
 
 struct ast_bind_result
 ast_try_bind_slot_member(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
-		struct atom *name, ast_slot_id type);
+		ast_slot_id type);
 
 struct ast_bind_result
 ast_try_bind_slot_closure(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
-		struct atom *name, ast_slot_id type);
+		ast_slot_id type);
 
 struct ast_bind_result
 ast_try_bind_slot_cons(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, struct ast_object_def *);
+		struct ast_object_def *);
 
 struct ast_bind_result
 ast_try_bind_slot_cons_array(struct ast_context *,
-		struct ast_env *, ast_slot_id target, struct atom *name,
+		struct ast_env *, ast_slot_id target,
 		ast_slot_id *members, size_t num_members, ast_slot_id member_type);
 
 struct ast_bind_result
@@ -305,46 +304,46 @@ ast_bind_slot_error(struct ast_context *,
 ast_slot_id
 ast_bind_slot_wildcard(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, ast_slot_id type);
+		ast_slot_id type);
 
 ast_slot_id
 ast_bind_slot_const(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, struct object);
+		struct object);
 
 ast_slot_id
 ast_bind_slot_const_type(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, type_id);
+		type_id);
 
 ast_slot_id
 ast_bind_slot_param(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, int64_t param_index, ast_slot_id type);
+		int64_t param_index, ast_slot_id type);
 
 ast_slot_id
 ast_bind_slot_templ(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
-		struct atom *name, ast_slot_id type);
+		ast_slot_id type);
 
 ast_slot_id
 ast_bind_slot_member(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
-		struct atom *name, ast_slot_id type);
+		ast_slot_id type);
 
 ast_slot_id
 ast_bind_slot_closure(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
-		struct atom *name, ast_slot_id type);
+		ast_slot_id type);
 
 ast_slot_id
 ast_bind_slot_cons(struct ast_context *,
 		struct ast_env *, ast_slot_id target,
-		struct atom *name, struct ast_object_def *);
+		struct ast_object_def *);
 
 ast_slot_id
 ast_bind_slot_cons_array(struct ast_context *,
-		struct ast_env *, ast_slot_id target, struct atom *name,
+		struct ast_env *, ast_slot_id target,
 		ast_slot_id *members, size_t num_members, ast_slot_id member_type);
 
 ast_slot_id

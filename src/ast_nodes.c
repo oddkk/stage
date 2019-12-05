@@ -704,7 +704,7 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 						ast_bind_require_ok(
 								ast_try_bind_slot_const_type(
 									ctx, env, AST_BIND_NEW,
-									NULL, body_deps[i].type));
+									body_deps[i].type));
 					break;
 
 				case AST_NAME_DEP_REQUIRE_VALUE:
@@ -712,15 +712,15 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 						ast_bind_require_ok(
 								ast_try_bind_slot_const(
 									ctx, env, AST_BIND_NEW,
-									NULL, body_deps[i].val));
+									body_deps[i].val));
 					break;
 			}
 		} else {
 			body_deps[i].value =
 				ast_bind_slot_wildcard(
-						ctx, env, AST_BIND_NEW, NULL,
+						ctx, env, AST_BIND_NEW,
 						ast_bind_slot_wildcard(
-							ctx, env, AST_BIND_NEW, NULL,
+							ctx, env, AST_BIND_NEW,
 							AST_SLOT_TYPE));
 		}
 	}
@@ -749,7 +749,7 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 		}
 
 		ast_bind_slot_const(
-				ctx, env, arg_slot, NULL,
+				ctx, env, arg_slot,
 				param_values[def->params[i].param_id]);
 
 		dep->req = AST_NAME_DEP_REQUIRE_VALUE;

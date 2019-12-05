@@ -65,7 +65,7 @@ ast_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 				out_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
 				out_deps[i].value =
 					ast_bind_slot_const(ctx, env, AST_BIND_NEW,
-							NULL, in_dep->val);
+							in_dep->val);
 
 				out_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
 				out_deps[i].determined = true;
@@ -78,16 +78,16 @@ ast_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 					ast_slot_id type_slot;
 					type_slot =
 						ast_bind_slot_const_type(ctx, env, AST_BIND_NEW,
-								NULL, in_dep->type);
+								in_dep->type);
 
 					out_deps[i].value =
 						ast_bind_slot_closure(ctx, env, AST_BIND_NEW,
-								NULL, type_slot);
+								type_slot);
 					out_deps[i].type = in_dep->type;
 				} else {
 					out_deps[i].value =
 						ast_bind_slot_const(ctx, env, AST_BIND_NEW,
-								NULL, in_dep->val);
+								in_dep->val);
 					out_deps[i].val = in_dep->val;
 				}
 
@@ -293,10 +293,10 @@ ast_node_func_bind_proto(struct ast_context *ctx, size_t *num_errors,
 
 	node->func.type = ast_bind_require_ok(
 			ast_try_bind_slot_cons(ctx, env, node->func.type,
-				NULL, ctx->cons.func));
+				ctx->cons.func));
 	target = ast_bind_require_ok(
 			ast_try_bind_slot_wildcard(ctx, env, target,
-				NULL, node->func.type));
+				node->func.type));
 	node->func.slot = target;
 
 	for (size_t i = 0 ; i < node->func.num_params; i++) {
@@ -306,7 +306,7 @@ ast_node_func_bind_proto(struct ast_context *ctx, size_t *num_errors,
 		struct ast_bind_result res;
 		res = ast_try_bind_slot_wildcard(
 				ctx, env, node->func.params[i].slot,
-				NULL, param_types[i]);
+				param_types[i]);
 
 		if (res.code != AST_BIND_OK) {
 			ast_report_bind_error(
@@ -326,7 +326,7 @@ ast_node_func_bind_proto(struct ast_context *ctx, size_t *num_errors,
 	struct ast_bind_result res;
 
 	res = ast_try_bind_slot_cons_array(
-			ctx, env, param_array_slot, NULL,
+			ctx, env, param_array_slot,
 			param_types, node->func.num_params,
 			AST_SLOT_TYPE);
 
@@ -373,8 +373,7 @@ ast_templ_body_preliminary_bind_slots(struct ast_context *ctx, size_t *num_error
 
 		case AST_NODE_COMPOSITE:
 			target = ast_bind_slot_wildcard(
-					ctx, env, target, NULL,
-					AST_SLOT_TYPE);
+					ctx, env, target, AST_SLOT_TYPE);
 			break;
 
 		case AST_NODE_VARIANT:
@@ -428,7 +427,7 @@ ast_cons_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast
 
 	struct ast_bind_result res;
 	res = ast_try_bind_slot_cons(
-			ctx, env, target, NULL, cons);
+			ctx, env, target, cons);
 	if (res.code != AST_BIND_OK) {
 		ast_report_bind_error(
 				ctx, node->loc, res);
@@ -511,7 +510,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				ast_slot_id body_slot;
 				body_slot = ast_bind_require_ok(
 						ast_try_bind_slot_wildcard(
-							ctx, env, AST_BIND_NEW, NULL,
+							ctx, env, AST_BIND_NEW,
 							node->func.return_type_slot));
 
 				size_t num_body_deps;
@@ -533,7 +532,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					body_deps[i].value =
 						ast_bind_require_ok(
 								ast_try_bind_slot_param(ctx, env, AST_BIND_NEW,
-									NULL, i, param_types[i]));
+									i, param_types[i]));
 				}
 
 				ast_fill_closure_deps(ctx, env,
@@ -660,7 +659,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 							ctx->atoms.func_cons_arg_params));
 
 			res = ast_try_bind_slot_cons_array(
-					ctx, env, param_types_slot, NULL, NULL,
+					ctx, env, param_types_slot, NULL,
 					node->call.num_args, AST_SLOT_TYPE);
 			if (res.code != AST_BIND_OK) {
 				ast_report_bind_error(
@@ -672,7 +671,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 			}
 
 			res = ast_try_bind_slot_wildcard(
-					ctx, env, target, NULL, node->call.ret_type);
+					ctx, env, target, node->call.ret_type);
 			if (res.code != AST_BIND_OK) {
 				ast_report_bind_error(
 						ctx, node->loc, res);
@@ -701,7 +700,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				ast_slot_id arg_slot;
 				arg_slot = ast_bind_require_ok(
 						ast_try_bind_slot_wildcard(ctx, env,
-							AST_BIND_NEW, NULL, arg_type_slot));
+							AST_BIND_NEW, arg_type_slot));
 
 				ast_node_bind_slots(
 						ctx, num_errors, mod, env, node->call.args[i].value,
@@ -744,8 +743,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 			struct ast_bind_result res;
 
 			res = ast_try_bind_slot_cons(
-					ctx, env, target, NULL,
-					ctx->cons.func);
+					ctx, env, target, ctx->cons.func);
 
 			if (res.code != AST_BIND_OK) {
 				ast_report_bind_error(
@@ -770,7 +768,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 			}
 
 			res = ast_try_bind_slot_cons_array(
-					ctx, env, param_types_slot, NULL, NULL,
+					ctx, env, param_types_slot, NULL,
 					node->func_type.num_params, AST_SLOT_TYPE);
 			if (res.code != AST_BIND_OK) {
 				ast_report_bind_error(
@@ -853,7 +851,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				ast_slot_id type_slot;
 				type_slot = ast_bind_slot_wildcard(
 						ctx, env, AST_BIND_NEW,
-						NULL, AST_SLOT_TYPE);
+						AST_SLOT_TYPE);
 
 				if (node->templ.params[i].type) {
 					body_deps[num_deps+i].determined = true;
@@ -869,7 +867,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 				node->templ.params[i].slot =
 					ast_bind_slot_templ(
 							ctx, env, node->templ.params[i].slot,
-							NULL, type_slot);
+							type_slot);
 
 				body_deps[num_deps+i].req = AST_NAME_DEP_REQUIRE_VALUE;
 				body_deps[num_deps+i].ref.kind = AST_NAME_REF_TEMPL;
@@ -906,7 +904,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 
 			struct ast_bind_result res;
 			res = ast_try_bind_slot_const(
-					ctx, env, target, NULL, obj);
+					ctx, env, target, obj);
 
 			if (res.code != AST_BIND_OK) {
 				ast_report_bind_error(
@@ -939,7 +937,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 		{
 			struct ast_bind_result bind_res;
 			bind_res = ast_try_bind_slot_const(ctx, env, target,
-					NULL, node->lit.obj);
+					node->lit.obj);
 			if (bind_res.code != AST_BIND_OK) {
 				ast_report_bind_error(
 						ctx, node->loc, bind_res);
@@ -1004,7 +1002,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 
 			struct ast_bind_result res;
 			res = ast_try_bind_slot_const_type(
-					ctx, env, target, NULL, node->composite.type);
+					ctx, env, target, node->composite.type);
 			if (res.code != AST_BIND_OK) {
 				ast_report_bind_error(
 						ctx, node->loc, res);
@@ -1062,10 +1060,10 @@ ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
 		ast_slot_id type_slot;
 
 		type_slot = ast_bind_slot_const_type(
-				ctx, env, AST_BIND_NEW, NULL, expected_type);
+				ctx, env, AST_BIND_NEW, expected_type);
 
 		result = ast_bind_slot_wildcard(
-				ctx, env, AST_BIND_NEW, NULL,
+				ctx, env, AST_BIND_NEW,
 				type_slot);
 	}
 

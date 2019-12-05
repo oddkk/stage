@@ -491,7 +491,7 @@ ast_module_resolve_dependencies(struct ast_context *ctx,
 		type = ast_init_node_slot(ctx, &mod->env,
 				AST_NODE_NEW, STG_NO_LOC,
 				ast_bind_slot_const_type(ctx, &mod->env,
-					AST_BIND_NEW, NULL, dep->mod->type));
+					AST_BIND_NEW, dep->mod->type));
 
 		if (dep->mod->type == TYPE_UNSET) {
 			return -1;

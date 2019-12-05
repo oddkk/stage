@@ -131,33 +131,31 @@ base_bootstrap_register_func(struct ast_context *ctx, struct stg_module *mod)
 
 	ast_slot_id func_params_type = ast_bind_slot_cons(
 			ctx, &func_type_def->env, AST_BIND_NEW,
-			NULL, ctx->cons.array);
+			ctx->cons.array);
 
 	ast_slot_id func_params_T =
 		ast_unpack_arg_named(ctx, &func_type_def->env,
 				func_params_type, AST_BIND_NEW,
 				ctx->atoms.array_cons_arg_type);
 	func_params_T = ast_bind_slot_templ(
-			ctx, &func_type_def->env, func_params_T,
-			ctx->atoms.array_cons_arg_type, AST_SLOT_TYPE);
+			ctx, &func_type_def->env, func_params_T, AST_SLOT_TYPE);
 
 	ast_slot_id func_params_N =
 		ast_unpack_arg_named(ctx, &func_type_def->env,
 				func_params_type, AST_BIND_NEW,
 				ctx->atoms.array_cons_arg_count);
 	func_params_N = ast_bind_slot_templ(
-			ctx, &func_type_def->env, func_params_N, ctx->atoms.array_cons_arg_count,
+			ctx, &func_type_def->env, func_params_N,
 			ast_bind_slot_const_type(ctx, &func_type_def->env,
 				ast_env_slot(ctx, &func_type_def->env, func_params_N).type,
-				NULL, ctx->types.integer));
+				ctx->types.integer));
 
 	ast_slot_id func_params = ast_bind_slot_templ(
-			ctx, &func_type_def->env, AST_BIND_NEW,
-			ctx->atoms.func_cons_arg_params, func_params_type);
+			ctx, &func_type_def->env, AST_BIND_NEW, func_params_type);
 
 	ast_slot_id func_ret = ast_bind_slot_templ(
 			ctx, &func_type_def->env, AST_BIND_NEW,
-			ctx->atoms.func_cons_arg_ret, AST_SLOT_TYPE);
+			AST_SLOT_TYPE);
 
 	// NOTE: Setting TYPE_NONE for the params type is a hack to allow this a
 	// parametric type for this parameter.
