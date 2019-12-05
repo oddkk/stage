@@ -119,7 +119,6 @@ ast_alloc_slot(struct ast_env *ctx,
 
 	ctx->slots[res].type = type;
 	ctx->slots[res].kind = kind;
-	ctx->slots[res].member_id = -1;
 
 	assert(
 			type >= 0 ||
@@ -774,7 +773,6 @@ struct ast_union_context {
 	bool slot_map_freeable;
 
 	bool copy_mode;
-	bool copy_member_id;
 };
 
 static struct ast_bind_result
@@ -1793,13 +1791,6 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 
 	ast_substitute(ctx->ctx, dest, result.ok.result, target);
 
-	if ((src == dest && !ctx->copy_mode) || ctx->copy_member_id) {
-		if (slot.member_id >= 0) {
-			assert(dest->slots[result.ok.result].member_id < 0);
-			dest->slots[result.ok.result].member_id = slot.member_id;
-		}
-	}
-
 	if (src == dest && !ctx->copy_mode) {
 		ast_substitute(ctx->ctx, dest, result.ok.result, src_slot);
 	}
@@ -1868,32 +1859,6 @@ ast_copy_slot(struct ast_context *ctx,
 	return res;
 }
 
-ast_slot_id
-ast_copy_slot_with_member_id(struct ast_context *ctx,
-		struct ast_env *dest, ast_slot_id target,
-		struct ast_env *src,  ast_slot_id src_slot)
-{
-	ast_slot_id slot_map[src->num_slots];
-
-	for (size_t i = 0; i < src->num_slots; i++) {
-		slot_map[i] = AST_SLOT_NOT_FOUND;
-	}
-
-	struct ast_union_context cpy_ctx = {0};
-	cpy_ctx.ctx = ctx;
-	cpy_ctx.slot_map = slot_map;
-	cpy_ctx.slot_map_len = src->num_slots;
-	cpy_ctx.copy_mode = true;
-	cpy_ctx.copy_member_id = true;
-
-	ast_slot_id res;
-	res = ast_bind_result_to_slot(
-			ast_union_slot_internal(
-				&cpy_ctx, dest, target, src, src_slot));
-	return res;
-}
-
-
 void
 ast_substitute(struct ast_context *ctx, struct ast_env *env,
 		ast_slot_id new_slot, ast_slot_id target)
@@ -1913,7 +1878,6 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 
 	memset(&env->slots[target], 0, sizeof(struct ast_env_slot));
 	env->slots[target].kind = AST_SLOT_SUBST;
-	env->slots[target].member_id = -1;
 	env->slots[target].subst = new_slot;
 	env->slots[target].type = AST_BIND_FAILED;
 
@@ -2006,13 +1970,11 @@ ast_env_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot)
 			.type = AST_SLOT_TYPE,
 			.kind = AST_SLOT_CONST_TYPE,
 			.const_type = ctx->types.type,
-			.member_id = -1,
 		};
 	} else {
 		return (struct ast_env_slot) {
 			.type = AST_BIND_FAILED,
 			.kind = AST_SLOT_ERROR,
-			.member_id = -1,
 		};
 	}
 }

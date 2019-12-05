@@ -2494,10 +2494,6 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 					ast_bind_slot_const_type(ctx->ast_ctx, &def->env, AST_BIND_NEW,
 						mbr->type));
 
-		// NOTE: We keep the old member_id here so that we can replace all
-		// slot member ids after the binds have been added.
-		def->env.slots[params[i].slot].member_id = mbr_id;
-
 		mbr->persistant_id = cumulative_persistant_id;
 		cumulative_persistant_id += 1 +
 			ast_dt_num_descendant_members(ctx, mod, mbr->type);
