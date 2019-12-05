@@ -119,7 +119,6 @@ enum ast_slot_kind {
 	AST_SLOT_CONST_TYPE,
 	AST_SLOT_CONST,
 	AST_SLOT_PARAM,
-	AST_SLOT_MEMBER,
 	AST_SLOT_CLOSURE,
 	AST_SLOT_TEMPL,
 	AST_SLOT_CONS,
@@ -268,11 +267,6 @@ ast_try_bind_slot_param(struct ast_context *,
 
 struct ast_bind_result
 ast_try_bind_slot_templ(struct ast_context *ctx,
-		struct ast_env *env, ast_slot_id target,
-		ast_slot_id type);
-
-struct ast_bind_result
-ast_try_bind_slot_member(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
 		ast_slot_id type);
 

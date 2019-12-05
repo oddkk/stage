@@ -567,42 +567,6 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 						}
 						return result;
 
-					case AST_SLOT_MEMBER:
-						{
-							struct object type_obj;
-							int err;
-
-							err = ast_slot_pack(ctx, mod, env, slot.type, &type_obj);
-							if (err) {
-								panic("Failed to pack slot type in gen bytecode.");
-								return AST_GEN_ERROR;
-							}
-
-							assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
-
-							type_id member_type;
-							member_type = *(type_id *)type_obj.data;
-
-							int member_i = -1;
-
-							/*
-							 * TODO: Lookup based on member id
-							for (size_t i = 0; i < info->num_member_names; i++) {
-								if (slot.member_name == info->member_names[i]) {
-									member_i = i;
-									break;
-								}
-							}
-							*/
-
-							assert(member_i > -1);
-
-							result.first = result.last = NULL;
-							result.out_var = bc_alloc_param(
-									bc_env, member_i, member_type);
-						}
-						return result;
-
 					default:
 						panic("Invalid slot %s in bytecode gen.",
 								ast_slot_name(slot.kind));

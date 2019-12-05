@@ -23,7 +23,6 @@ ast_slot_name(enum ast_slot_kind kind) {
 		case AST_SLOT_CONST:      return "CONST";
 		case AST_SLOT_PARAM:      return "PARAM";
 		case AST_SLOT_TEMPL:      return "TEMPL";
-		case AST_SLOT_MEMBER:     return "MEMBER";
 		case AST_SLOT_CLOSURE:    return "CLOSURE";
 		case AST_SLOT_CONS:       return "CONS";
 		case AST_SLOT_CONS_ARRAY: return "CONS_ARRAY";
@@ -681,46 +680,6 @@ ast_try_bind_slot_templ(struct ast_context *ctx,
 }
 
 struct ast_bind_result
-ast_try_bind_slot_member(struct ast_context *ctx,
-		struct ast_env *env, ast_slot_id target,
-		ast_slot_id type)
-{
-	if (target == AST_BIND_NEW) {
-		target = ast_alloc_slot(env, type, AST_SLOT_MEMBER);
-	} else {
-		struct ast_env_slot target_slot;
-
-		target_slot = ast_env_slot(ctx, env, target);
-		switch (target_slot.kind) {
-			case AST_SLOT_WILDCARD:
-				env->slots[target].kind = AST_SLOT_MEMBER;
-				TYPE_BIND_EXPECT_OK(ast_try_union_slot(
-							ctx, env, env->slots[target].type, type));
-				break;
-
-			case AST_SLOT_ERROR:
-			case AST_SLOT_SUBST:
-#if AST_BIND_ERROR_DEBUG_PRINT
-				printf("Warning: Attempted to bind MEMBER over %s. (bind %i)\n",
-						ast_slot_name(target_slot.kind), target);
-#endif
-				return BIND_COMPILER_ERROR;
-
-			default:
-				break;
-		}
-	}
-
-#if AST_DEBUG_BINDS
-	printf("bind %i=member ", target);
-	ast_print_slot(ctx, env, target);
-	printf("\n");
-#endif
-
-	return BIND_OK(target);
-}
-
-struct ast_bind_result
 ast_try_bind_slot_closure(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
 		ast_slot_id type)
@@ -1352,16 +1311,6 @@ ast_bind_slot_templ(struct ast_context *ctx,
 }
 
 ast_slot_id
-ast_bind_slot_member(struct ast_context *ctx,
-		struct ast_env *env, ast_slot_id target,
-		ast_slot_id type)
-{
-	return ast_bind_result_to_slot(
-			ast_try_bind_slot_member(
-				ctx, env, target, type));
-}
-
-ast_slot_id
 ast_bind_slot_closure(struct ast_context *ctx,
 		struct ast_env *env, ast_slot_id target,
 		ast_slot_id type)
@@ -1646,18 +1595,6 @@ ast_union_slot_internal(struct ast_union_context *ctx,
 						src, slot.type);
 				TYPE_BIND_EXPECT_OK(res);
 				result = ast_try_bind_slot_templ(
-						ctx->ctx, dest, target, res.ok.result);
-			}
-			break;
-
-		case AST_SLOT_MEMBER:
-			{
-				struct ast_bind_result res;
-				res = ast_union_slot_internal(
-						ctx, dest, type_target,
-						src, slot.type);
-				TYPE_BIND_EXPECT_OK(res);
-				result = ast_try_bind_slot_member(
 						ctx->ctx, dest, target, res.ok.result);
 			}
 			break;
@@ -1952,7 +1889,6 @@ ast_substitute(struct ast_context *ctx, struct ast_env *env,
 			case AST_SLOT_CONST:
 			case AST_SLOT_PARAM:
 			case AST_SLOT_TEMPL:
-			case AST_SLOT_MEMBER:
 			case AST_SLOT_CLOSURE:
 				break;
 		}

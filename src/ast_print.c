@@ -37,10 +37,6 @@ ast_print_slot_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("(templ)");
 			break;
 
-		case AST_SLOT_MEMBER:
-			printf("member");
-			break;
-
 		case AST_SLOT_CLOSURE:
 			printf("closure");
 			break;
@@ -132,9 +128,6 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 				break;
 
 			case AST_SLOT_TEMPL:
-				break;
-
-			case AST_SLOT_MEMBER:
 				break;
 
 			case AST_SLOT_CLOSURE:
