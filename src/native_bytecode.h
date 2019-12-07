@@ -8,6 +8,7 @@ enum nbc_op {
 	NBC_LOAD,
 	NBC_COPY,
 	NBC_COPY_PARAM,
+	NBC_COPY_CLOSURE,
 	NBC_PUSH_ARG,
 	NBC_PUSH_ARG_PARAM,
 	NBC_CALL,
@@ -36,6 +37,7 @@ struct nbc_instr {
 			union {
 				size_t src;
 				size_t src_param;
+				size_t src_closure_offset;
 			};
 			size_t size;
 		} copy;
@@ -90,6 +92,7 @@ struct nbc_func {
 	size_t num_instr;
 	size_t max_callee_args;
 	size_t stack_size;
+	size_t closure_size;
 };
 
 void

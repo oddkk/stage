@@ -6,6 +6,7 @@
 
 typedef int bc_var;
 typedef unsigned int bc_const;
+typedef unsigned int bc_closure;
 
 #define BC_VAR_NEW ((bc_var)INT_MIN)
 
@@ -18,6 +19,9 @@ enum bc_op {
 
 	// Copy a var to another.
 	BC_COPY,
+
+	// Copy closure into var.
+	BC_COPY_CLOSURE,
 
 	// Append a var to the list of args for the next CALL.
 	BC_PUSH_ARG,
@@ -53,6 +57,11 @@ struct bc_instr {
 			bc_var src;
 			bc_var target;
 		} copy;
+
+		struct {
+			bc_closure closure;
+			bc_var target;
+		} copy_closure;
 
 		struct {
 			bc_var var;
@@ -124,6 +133,9 @@ struct bc_env {
 	type_id *param_types;
 	size_t num_params;
 
+	type_id *closure_types;
+	size_t num_closures;
+
 	struct nbc_func *nbc;
 };
 
@@ -132,6 +144,9 @@ bc_alloc_var(struct bc_env *, type_id);
 
 type_id
 bc_get_var_type(struct bc_env *, bc_var);
+
+type_id
+bc_get_closure_type(struct bc_env *, bc_closure);
 
 bc_var
 bc_alloc_param(struct bc_env *, unsigned int param_id, type_id);
@@ -144,6 +159,9 @@ bc_gen_load(struct bc_env *, bc_var target, struct object obj);
 
 struct bc_instr *
 bc_gen_copy(struct bc_env *, bc_var target, bc_var src);
+
+struct bc_instr *
+bc_gen_copy_closure(struct bc_env *, bc_var target, bc_closure closure);
 
 struct bc_instr *
 bc_gen_push_arg(struct bc_env *, bc_var var);

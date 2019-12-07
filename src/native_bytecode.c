@@ -36,6 +36,22 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 		out_func->stack_size = offset;
 	}
 
+	struct nbc_stack_var_info closures[env->num_closures];
+
+	{
+		size_t offset = 0;
+		for (size_t i = 0; i < env->num_closures; i++) {
+			struct type *closure_type;
+			closure_type = vm_get_type(env->vm, env->closure_types[i]);
+			closures[i].offset = offset;
+			closures[i].size = closure_type->size;
+			offset += closure_type->size;
+		}
+
+		out_func->closure_size = offset;
+	}
+
+
 	out_func->max_callee_args = 0;
 	size_t num_pushed_args = 0;
 
@@ -75,6 +91,26 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 						instr.op = NBC_COPY;
 						instr.copy.src = vars[ip->copy.src].offset;
 					}
+
+					nbc_append_instr(out_func, instr);
+				}
+				break;
+
+			case BC_COPY_CLOSURE:
+				{
+					struct nbc_instr instr = {0};
+
+					instr.op = NBC_COPY_CLOSURE;
+
+					// Can not copy into a parameter.
+					assert(ip->copy_closure.target >= 0);
+
+					instr.copy.target = vars[ip->copy_closure.target].offset;
+					instr.copy.size   = vars[ip->copy_closure.target].size;
+					instr.copy.src_closure_offset =
+						closures[ip->copy_closure.closure].offset;
+
+					assert(instr.copy.size == closures[ip->copy_closure.closure].size);
 
 					nbc_append_instr(out_func, instr);
 				}
@@ -321,6 +357,11 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 						params[ip->copy.src_param], ip->copy.size);
 				break;
 
+			case NBC_COPY_CLOSURE:
+				memcpy(&stack[ip->copy.target],
+						(uint8_t *)closure + ip->copy.src_closure_offset, ip->copy.size);
+				break;
+
 			case NBC_PUSH_ARG:
 				args[num_args] = &stack[ip->push_arg.var];
 				num_args += 1;
@@ -427,6 +468,13 @@ nbc_print(struct nbc_func *func)
 				printf("COPY_PARAM sp+0x%zx = p%zu +%zu\n",
 						ip->copy.target,
 						ip->copy.src_param,
+						ip->copy.size);
+				break;
+
+			case NBC_COPY_CLOSURE:
+				printf("COPY_CLOSURE sp+0x%zx = closure+%zu +%zu\n",
+						ip->copy.target,
+						ip->copy.src_closure_offset,
 						ip->copy.size);
 				break;
 

@@ -51,6 +51,15 @@ bc_print(struct bc_env *env, struct bc_instr *instr)
 				printf(")\n");
 				break;
 
+			case BC_COPY_CLOSURE:
+				printf("COPY_CLOSURE ");
+				bc_print_var(env, instr->copy_closure.target);
+				printf(" = %u (", instr->copy_closure.closure);
+				print_type_repr(env->vm, vm_get_type(env->vm,
+							bc_get_closure_type(env, instr->copy_closure.closure)));
+				printf(")\n");
+				break;
+
 			case BC_PUSH_ARG:
 				printf("PUSH_ARG ");
 				bc_print_var(env, instr->push_arg.var);

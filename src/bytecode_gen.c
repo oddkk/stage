@@ -119,6 +119,13 @@ bc_get_var_type(struct bc_env *env, bc_var var)
 	}
 }
 
+type_id
+bc_get_closure_type(struct bc_env *env, bc_closure closure)
+{
+	assert(closure < env->num_closures);
+	return env->closure_types[closure];
+}
+
 bool
 bc_valid_var(struct bc_env *env, bc_var var)
 {
@@ -166,6 +173,27 @@ bc_gen_copy(struct bc_env *env, bc_var target, bc_var src)
 	assert_type_equals(env->vm,
 			bc_get_var_type(env, target),
 			bc_get_var_type(env, src));
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
+bc_gen_copy_closure(struct bc_env *env, bc_var target, bc_closure closure)
+{
+	assert(closure < env->num_closures);
+
+	type_id closure_type;
+	closure_type = bc_get_closure_type(env, closure);
+
+	struct bc_instr instr = {0};
+	instr.op = BC_COPY_CLOSURE;
+	instr.copy_closure.target =
+		bc_use_or_alloc_var(env, target, closure_type);
+	instr.copy_closure.closure = closure;
+
+	assert_type_equals(env->vm,
+			bc_get_var_type(env, instr.copy_closure.target),
+			closure_type);
 
 	return bc_instr_alloc(env->store, instr);
 }
