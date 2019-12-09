@@ -551,6 +551,7 @@ struct ast_datatype_bind {
 	struct ast_node *value;
 	struct stg_location loc;
 	bool overridable;
+	bool erroneous;
 };
 
 struct ast_closure_member {
@@ -854,6 +855,12 @@ ast_node_composite_bind(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *composite, struct ast_node *target,
 		struct ast_node *value, bool overridable);
+
+void
+ast_node_composite_tag_bind_erroneous(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *composite, int bind_id);
+
 
 void
 ast_node_composite_add_free_expr(

@@ -1107,6 +1107,12 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 	}
 
 	for (size_t i = 0; i < node->composite.num_binds; i++) {
+		if (node->composite.binds[i].erroneous) {
+			// TODO: Maby we should register the bind, but tag it as erroneous,
+			// to allow typechecking and reporting of potential errors.
+			continue;
+		}
+
 		if (type_giving_for[i] >= 0) {
 			ast_dt_register_typegiving_bind(ctx,
 					node->composite.binds[i].loc,

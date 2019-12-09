@@ -436,6 +436,15 @@ ast_node_composite_bind(
 }
 
 void
+ast_node_composite_tag_bind_erroneous(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *composite, int bind_id)
+{
+	assert(bind_id < composite->composite.num_binds);
+	composite->composite.binds[bind_id].erroneous = true;
+}
+
+void
 ast_node_composite_add_free_expr(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct ast_node *expr)

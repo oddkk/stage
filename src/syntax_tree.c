@@ -209,6 +209,10 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 						stg_error(ctx->err, target->loc,
 								"'%.*s' is already declared.",
 								ALIT(name));
+						if (type_giving_bind != AST_NO_TYPE_GIVING_BIND) {
+							ast_node_composite_tag_bind_erroneous(
+									ctx, env, struct_node, type_giving_bind);
+						}
 						return;
 					}
 				} else {
