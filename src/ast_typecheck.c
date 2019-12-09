@@ -58,6 +58,8 @@ ast_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 		in_dep = ast_find_dep(deps, num_deps, mbr->ref);
 		assert(in_dep);
 
+		out_deps[i].lookup_failed = in_dep->lookup_failed;
+
 		if (in_dep->determined) {
 			if (mbr->require_const) {
 				assert(in_dep->determined &&
