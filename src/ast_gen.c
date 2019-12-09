@@ -134,6 +134,72 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 #define AST_GEN_ERROR ((struct ast_gen_bc_result){.err=-1})
 #define AST_GEN_EXPECT_OK(res) do { if ((res).err) { return res; } } while (0);
 
+static struct ast_gen_bc_result
+ast_name_ref_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_gen_info *info,
+		struct bc_env *bc_env, struct ast_name_ref ref,
+		struct stg_location loc, type_id type)
+{
+	struct ast_gen_bc_result result = {0};
+
+	switch (ref.kind) {
+		case AST_NAME_REF_MEMBER:
+			for (size_t i = 0; i < info->num_members; i++) {
+				if (info->members[i] == ref.member) {
+					result.first = result.last = NULL;
+					result.out_var = bc_alloc_param(
+							bc_env, i, type);
+					return result;
+				}
+			}
+			break;
+
+		case AST_NAME_REF_PARAM:
+			result.first = result.last = NULL;
+			result.out_var = bc_alloc_param(
+					bc_env, ref.param, type);
+			return result;
+
+		case AST_NAME_REF_CLOSURE:
+			assert(ref.closure < info->num_closures);
+			if (info->closures[ref.closure].lookup_failed) {
+				stg_error(ctx->err, loc,
+						"Name not found.");
+				return AST_GEN_ERROR;
+			} else if (info->closures[ref.closure].req ==
+					AST_NAME_DEP_REQUIRE_VALUE) {
+				struct bc_instr *lit_instr;
+				lit_instr = bc_gen_load(bc_env, BC_VAR_NEW,
+						info->closures[ref.closure].value);
+
+				append_bc_instr(&result, lit_instr);
+
+				result.out_var = lit_instr->load.target;
+
+				return result;
+			} else {
+				stg_error(ctx->err, loc,
+						"TODO: Closures");
+				return AST_GEN_ERROR;
+			}
+			break;
+
+		case AST_NAME_REF_TEMPL:
+			panic("TODO: Pass template information to gen.");
+			result.first = result.last = NULL;
+			result.out_var = bc_alloc_param(
+					bc_env, ref.param, type);
+			return result;
+
+		case AST_NAME_REF_NOT_FOUND:
+			panic("Got failed lookup in code gen.");
+			break;
+	}
+
+	printf("Name ref not handled in code gen\n");
+	return AST_GEN_ERROR;
+}
+
 struct ast_gen_bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_gen_info *info,
@@ -577,59 +643,9 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			break;
 
 		case AST_NODE_LOOKUP:
-			switch (node->lookup.ref.kind) {
-				case AST_NAME_REF_MEMBER:
-					for (size_t i = 0; i < info->num_members; i++) {
-						if (info->members[i] == node->lookup.ref.member) {
-							result.first = result.last = NULL;
-							result.out_var = bc_alloc_param(
-									bc_env, i, node->type);
-							return result;
-						}
-					}
-					break;
-
-				case AST_NAME_REF_PARAM:
-					result.first = result.last = NULL;
-					result.out_var = bc_alloc_param(
-							bc_env, node->lookup.ref.param, node->type);
-					return result;
-
-				case AST_NAME_REF_CLOSURE:
-					assert(node->lookup.ref.closure < info->num_closures);
-					if (info->closures[node->lookup.ref.closure].lookup_failed) {
-						stg_error(ctx->err, node->loc,
-								"Name not found.");
-						return AST_GEN_ERROR;
-					} else if (info->closures[node->lookup.ref.closure].req ==
-							AST_NAME_DEP_REQUIRE_VALUE) {
-						struct bc_instr *lit_instr;
-						lit_instr = bc_gen_load(bc_env, BC_VAR_NEW,
-								info->closures[node->lookup.ref.closure].value);
-
-						append_bc_instr(&result, lit_instr);
-
-						result.out_var = lit_instr->load.target;
-
-						return result;
-					} else {
-						stg_error(ctx->err, node->loc,
-								"TODO: Closures");
-						return AST_GEN_ERROR;
-					}
-					break;
-
-				case AST_NAME_REF_TEMPL:
-					panic("TODO: Pass template information to gen.");
-					result.first = result.last = NULL;
-					result.out_var = bc_alloc_param(
-							bc_env, node->lookup.ref.param, node->type);
-					return result;
-
-				case AST_NAME_REF_NOT_FOUND:
-					panic("Got failed lookup in code gen.");
-					break;
-			}
+			return ast_name_ref_gen_bytecode(
+					ctx, mod, env, info, bc_env,
+					node->lookup.ref, node->loc, node->type);
 			break;
 
 		case AST_NODE_LIT:
