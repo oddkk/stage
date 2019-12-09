@@ -178,9 +178,23 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 				return result;
 			} else {
-				stg_error(ctx->err, loc,
-						"TODO: Closures");
-				return AST_GEN_ERROR;
+				bc_closure closure_ref;
+				assert(info->closure_refs);
+				closure_ref = info->closure_refs[ref.closure];
+				assert(closure_ref != AST_BC_CLOSURE_PRUNED);
+
+				struct bc_instr *closure_instr;
+				closure_instr = bc_gen_copy_closure(
+						bc_env, BC_VAR_NEW, closure_ref);
+
+				append_bc_instr(&result, closure_instr);
+				result.out_var = closure_instr->copy_closure.target;
+
+				return result;
+
+				// stg_error(ctx->err, loc,
+				// 		"TODO: Closures");
+				// return AST_GEN_ERROR;
 			}
 			break;
 
@@ -211,7 +225,12 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			{
 				size_t num_closures = node->func.closure.num_members;
 				struct ast_typecheck_closure closure[num_closures];
+				bc_closure closure_refs[num_closures];
+				bc_var closure_vars[num_closures];
+				struct stg_func_closure_member closure_members[num_closures];
 
+				bc_closure num_found_closures = 0;
+				size_t closure_offset = 0;
 				for (size_t i = 0; i < num_closures; i++) {
 					struct ast_closure_member *cls;
 					cls = &node->func.closure.members[i];
@@ -221,11 +240,43 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					// Ensure we got a value if we require const.
 					assert(!cls->require_const ||
 							closure[i].req == AST_NAME_DEP_REQUIRE_VALUE);
+
+					if (closure[i].req == AST_NAME_DEP_REQUIRE_TYPE) {
+						bc_closure closure_ref;
+						closure_ref = num_found_closures;
+						num_found_closures += 1;
+
+						closure_refs[i] = closure_ref;
+
+						struct type *mbr_type;
+						mbr_type = vm_get_type(ctx->vm,
+								closure[i].type);
+
+						closure_members[closure_ref].type   = closure[i].type;
+						closure_members[closure_ref].size   = mbr_type->size;
+						closure_members[closure_ref].offset = closure_offset;
+						closure_offset += closure_members[closure_ref].size;
+
+						struct ast_gen_bc_result value_instrs;
+						value_instrs = ast_name_ref_gen_bytecode(
+								ctx, mod, env, info, bc_env,
+								cls->ref, node->loc, closure[i].type);
+						append_bc_instrs(&result, value_instrs);
+						closure_vars[closure_ref] = value_instrs.out_var;
+
+						// TODO: Get bc reference to the value
+					} else {
+						// The value of this closure is constant, so we can
+						// prune it.
+						closure_refs[i] = AST_BC_CLOSURE_PRUNED;
+					}
 				}
+				size_t post_prune_num_closures = num_found_closures;
 
 				struct bc_env *func_bc;
 				func_bc = ast_func_gen_bytecode(
-						ctx, mod, env, closure, num_closures, node);
+						ctx, mod, env, closure,
+						closure_refs, num_closures, node);
 				if (!func_bc) {
 					return AST_GEN_ERROR;
 				}
@@ -243,12 +294,27 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				func_obj = stg_register_func_object(
 						ctx->vm, env->store, fid, NULL);
 
+				struct stg_func_closure_data *data;
+				data = calloc(1, sizeof(struct stg_func_closure_data));
+				data->num_members = post_prune_num_closures;
+				data->members = calloc(data->num_members,
+						sizeof(struct stg_func_closure_member));
+				memcpy(data->members, closure_members,
+						data->num_members * sizeof(struct stg_func_closure_member));
+				data->func = fid;
+				data->size = closure_offset;
+
+				for (size_t i = 0; i < post_prune_num_closures; i++) {
+					append_bc_instr(&result,
+							bc_gen_push_arg(bc_env, closure_vars[i]));
+				}
+
+				// TODO: Pack closure with function id.
 				struct bc_instr *func_instr;
-				func_instr = bc_gen_load(bc_env, BC_VAR_NEW, func_obj);
-
+				func_instr = bc_gen_pack(bc_env, BC_VAR_NEW,
+						stg_func_closure_pack, data, node->type);
 				append_bc_instr(&result, func_instr);
-
-				result.out_var = func_instr->load.target;
+				result.out_var = func_instr->pack.target;
 			}
 			return result;
 
@@ -695,7 +761,8 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 struct bc_env *
 ast_func_gen_bytecode(
 		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
-		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *node)
+		struct ast_typecheck_closure *closures, bc_closure *closure_refs,
+		size_t num_closures, struct ast_node *node)
 {
 	assert(node->kind == AST_NODE_FUNC);
 
@@ -723,7 +790,37 @@ ast_func_gen_bytecode(
 	struct ast_gen_info info = {0};
 
 	info.closures = closures;
+	info.closure_refs = closure_refs;
 	info.num_closures = num_closures;
+
+	size_t num_unpruned_closures = 0;
+	for (size_t i = 0; i < num_closures; i++) {
+		if (closure_refs[i] != AST_BC_CLOSURE_PRUNED) {
+			num_unpruned_closures += 1;
+		}
+	}
+
+	type_id closure_types[num_unpruned_closures];
+
+	for (size_t i = 0; i < num_unpruned_closures; i++) {
+		closure_types[i] = TYPE_UNSET;
+	}
+
+	for (size_t i = 0; i < num_closures; i++) {
+		if (closure_refs[i] != AST_BC_CLOSURE_PRUNED) {
+			assert(closure_refs[i] < num_unpruned_closures);
+			assert(closures[i].req == AST_NAME_DEP_REQUIRE_TYPE);
+			assert(closure_types[i] == TYPE_UNSET);
+
+			closure_types[i] = closures[i].type;
+		}
+	}
+
+	for (size_t i = 0; i < num_unpruned_closures; i++) {
+		assert(closure_types[i] != TYPE_UNSET);
+	}
+	bc_env->num_closures = num_unpruned_closures;
+	bc_env->closure_types = closure_types;
 
 	struct ast_gen_bc_result func_instr;
 	func_instr = ast_node_gen_bytecode(ctx, mod, env, &info,

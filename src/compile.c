@@ -850,7 +850,7 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 
 		struct bc_env *bc_env;
 		bc_env = ast_func_gen_bytecode(ast_ctx, main_mod,
-				&main_mod->env, NULL, 0, main_mod_init_func);
+				&main_mod->env, NULL, NULL, 0, main_mod_init_func);
 		if (!bc_env) {
 			return -1;
 		}

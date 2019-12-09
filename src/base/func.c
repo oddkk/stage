@@ -3,6 +3,7 @@
 #include "../utils.h"
 #include "../ast.h"
 #include <stdlib.h>
+#include <string.h>
 #include <ffi.h>
 
 #define FUNC_PARAM_RET 0
@@ -386,4 +387,30 @@ stg_register_func_object(
 	obj.type = func->type;
 
 	return register_object(vm, store, obj);
+}
+
+void
+stg_func_closure_pack(struct vm *vm, void *in_data, void *out,
+		void **params, size_t num_params)
+{
+	struct stg_func_closure_data *data = in_data;
+	struct stg_func_object *func_obj = out;
+
+	assert(data->num_members == num_params);
+
+	uint8_t *closure_data = NULL;
+
+	// TODO: Make a proper allocation and garbage collection system for run
+	// time memory.
+	if (num_params > 0) {
+		closure_data = calloc(data->size, 1);
+
+		for (size_t i = 0; i < num_params; i++) {
+			memcpy(&closure_data[data->members[i].offset],
+					params[i], data->members[i].size);
+		}
+	}
+
+	func_obj->func = data->func;
+	func_obj->closure = closure_data;
 }

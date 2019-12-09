@@ -48,6 +48,23 @@ stg_register_func_object(
 		struct vm *, struct objstore *,
 		func_id func, void *data);
 
+struct stg_func_closure_member {
+	type_id type;
+	size_t  offset;
+	size_t  size;
+};
+
+struct stg_func_closure_data {
+	func_id func;
+	struct stg_func_closure_member *members;
+	size_t num_members;
+	size_t size;
+};
+
+void
+stg_func_closure_pack(struct vm *, void *data, void *out,
+		void **params, size_t num_params);
+
 struct stg_func_type {
 	type_id return_type;
 	type_id *params;

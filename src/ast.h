@@ -936,6 +936,9 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *,
 struct bc_env;
 struct bc_instr;
 typedef int bc_var;
+typedef unsigned int bc_closure;
+
+#define AST_BC_CLOSURE_PRUNED ((bc_closure)UINT_MAX)
 
 struct ast_gen_bc_result {
 	struct bc_instr *first;
@@ -951,6 +954,7 @@ struct ast_gen_info {
 	size_t num_members;
 
 	struct ast_typecheck_closure *closures;
+	bc_closure *closure_refs;
 	size_t num_closures;
 
 	struct object *templ_values;
@@ -968,7 +972,8 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 struct bc_env *
 ast_func_gen_bytecode(
 		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
-		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *node);
+		struct ast_typecheck_closure *closures, bc_closure *closure_refs,
+		size_t num_closures, struct ast_node *node);
 
 struct bc_env *
 ast_composite_bind_gen_bytecode(

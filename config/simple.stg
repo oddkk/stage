@@ -14,7 +14,7 @@ Type := base.type;
 compose := (lhs: ($T) -> $U, rhs: (U) -> $V) -> (T) -> V
 	=> (a: T) -> V => rhs(lhs(a));
 
-fdsafdsa := compose(
+composeTest := compose(
 	(a: int) -> int => a + 2,
 	(a: int) -> int => a * 2);
 
@@ -84,7 +84,7 @@ TT2 := TestType[int];
 
 prnt := message.Print(
 	message.Map2(
-		message.Map2(message.onStart, (a: Unit) -> int => 500),
+		message.Map2(message.onStart, (a: Unit) -> int => composeTest(500)),
 		(a: int) -> int => a * 2));
 
 prnt2 := message.PrintStr(
