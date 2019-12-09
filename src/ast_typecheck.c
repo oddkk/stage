@@ -304,6 +304,23 @@ ast_node_func_bind_proto(struct ast_context *ctx, size_t *num_errors,
 				ctx, num_errors, mod, env, node->func.params[i].type,
 				AST_BIND_NEW, deps, num_deps);
 		struct ast_bind_result res;
+
+		// TODO: We should figure out why param_types[i] might be pointing to a
+		// substituted slot.
+		ast_node_resolve_slot(env, &param_types[i]);
+
+		// Ensure the type of the param types is type.
+		res = ast_try_bind_slot_wildcard(
+				ctx, env, param_types[i], AST_SLOT_TYPE);
+		if (res.code != AST_BIND_OK) {
+			ast_report_bind_error(
+					ctx, node->loc, res);
+			*num_errors += 1;
+		} else {
+			param_types[i] = res.ok.result;
+			res.ok.result = AST_BIND_FAILED;
+		}
+
 		res = ast_try_bind_slot_wildcard(
 				ctx, env, node->func.params[i].slot,
 				param_types[i]);
@@ -314,6 +331,7 @@ ast_node_func_bind_proto(struct ast_context *ctx, size_t *num_errors,
 			*num_errors += 1;
 		} else {
 			node->func.params[i].slot = res.ok.result;
+			res.ok.result = AST_BIND_FAILED;
 		}
 	}
 
@@ -345,6 +363,19 @@ ast_node_func_bind_proto(struct ast_context *ctx, size_t *num_errors,
 					ctx, env, node->func.type,
 					node->func.return_type_slot,
 					ctx->atoms.func_cons_arg_ret));
+
+	res = ast_try_bind_slot_wildcard(
+			ctx, env, node->func.return_type_slot,
+			AST_SLOT_TYPE);
+	if (res.code != AST_BIND_OK) {
+		ast_report_bind_error(
+				ctx, node->loc, res);
+		*num_errors += 1;
+	} else {
+		node->func.return_type_slot = res.ok.result;
+		res.ok.result = AST_BIND_FAILED;
+	}
+
 
 	node->func.return_type_slot = ast_node_bind_slots(
 			ctx, num_errors, mod, env, node->func.return_type,
@@ -968,6 +999,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					ast_report_bind_error(
 							ctx, node->loc, bind_res);
 					*num_errors += 1;
+					target = AST_BIND_FAILED;
 				} else {
 					target = bind_res.ok.result;
 				}
