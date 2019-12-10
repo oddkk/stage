@@ -7,3 +7,8 @@ op* := (lhs: int, rhs: int) -> int @native("op_mul_int_int");
 op/ := (lhs: int, rhs: int) -> int @native("op_div_int_int");
 
 print := (val: int) -> int @native("print_int");
+
+id := (a: $T) -> T => a;
+
+compose := (lhs: ($T) -> $U, rhs: (U) -> $V) -> (T) -> V
+	=> (a: T) -> V => rhs(lhs(a));

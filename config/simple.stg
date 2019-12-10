@@ -10,13 +10,15 @@ int := base.int;
 Unit := base.Unit;
 String := base.String;
 Type := base.type;
+id := base.id;
+compose := base.compose;
 
-compose := (lhs: ($T) -> $U, rhs: (U) -> $V) -> (T) -> V
-	=> (a: T) -> V => rhs(lhs(a));
-
-composeTest := compose(
+composeTest := base.compose(
 	(a: int) -> int => a + 2,
 	(a: int) -> int => a * 2);
+
+typeof := (a: $T) -> Type => T;
+asdfasdfasdfasdf := (a: typeof(2)) -> int => a + 2;
 
 # Monad := Struct { a: int; set: int; };
 # Some  := (val: int) -> Monad => Monad { a = val; set = 1; }
@@ -74,8 +76,6 @@ testQuery2 := sql.sql[int]("
 	select * from foo where a = ?
 ");
 
-
-
 TestType := [T: Type] Struct {
 	a: T;
 };
@@ -95,8 +95,6 @@ prnt2 := message.PrintStr(
 # asdfasdfasdf := message.msgId(message.onStart);
 
 func_test := (base.type, int) -> int;
-
-id := (a: $T) -> T => a;
 
 id_test := id(2);
 
