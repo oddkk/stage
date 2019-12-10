@@ -678,6 +678,8 @@ struct ast_node {
 
 			ast_slot_id ret_value;
 
+			struct ast_closure_target closure;
+
 			type_id type;
 		} variant;
 	};
@@ -1014,6 +1016,12 @@ ast_composite_bind_gen_bytecode(
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr);
 
 struct bc_env *
+ast_type_expr_gen_bytecode(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *expr,
+		struct ast_typecheck_closure *closures, size_t num_closures);
+
+struct bc_env *
 ast_gen_value_unpack_func(
 		struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, type_id value_type, size_t descendent);
@@ -1089,10 +1097,6 @@ ast_module_finalize(struct ast_context *, struct ast_module *);
 void
 ast_print_module(struct ast_context *, struct ast_module *);
 
-bool
-ast_dt_is_valid(struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *comp);
-
 struct ast_typecheck_closure {
 	enum ast_name_dep_requirement req;
 	bool lookup_failed;
@@ -1115,8 +1119,8 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 type_id
 ast_dt_finalize_variant(
-		struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_datatype_variant *options,
-		size_t num_options, struct ast_typecheck_dep *deps, size_t num_deps);
+		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
+		struct ast_datatype_variant *options, size_t num_options,
+		struct ast_typecheck_closure *closure_values, size_t num_closures);
 
 #endif

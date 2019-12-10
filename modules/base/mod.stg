@@ -1,4 +1,5 @@
 Bool := Variant { True, False };
+Maby := Variant { Some int, None };
 
 op+ := (lhs: int, rhs: int) -> int @native("op_add_int_int");
 op- := (lhs: int, rhs: int) -> int @native("op_sub_int_int");

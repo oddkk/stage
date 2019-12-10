@@ -989,7 +989,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 			assert(res);
 			if (res->lookup_failed) {
 				stg_error(ctx->err, node->loc,
-						"Object not found.");
+						"'%.*s' was not found.", ALIT(node->lookup.name));
 				*num_errors += 1;
 				target = AST_BIND_FAILED;
 			} else {
@@ -1051,12 +1051,22 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 	case AST_NODE_VARIANT:
 		{
 			if (node->variant.type == TYPE_UNSET) {
+				struct ast_closure_target *closure;
+				closure = &node->variant.closure;
+
+				struct ast_typecheck_closure closure_values[closure->num_members];
+				memset(closure_values, 0,
+						sizeof(struct ast_typecheck_closure) * closure->num_members);
+
+				ast_fill_closure(closure, closure_values,
+						deps, num_deps);
+
 				node->variant.type =
 					ast_dt_finalize_variant(
 							ctx, mod, env,
 							node->variant.options,
 							node->variant.num_options,
-							deps, num_deps);
+							closure_values, closure->num_members);
 
 				if (node->variant.type == TYPE_UNSET) {
 					*num_errors += 1;

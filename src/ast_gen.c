@@ -929,6 +929,50 @@ ast_composite_bind_gen_bytecode(
 }
 
 struct bc_env *
+ast_type_expr_gen_bytecode(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_node *expr,
+		struct ast_typecheck_closure *closures, size_t num_closures)
+{
+	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
+	bc_env->vm = ctx->vm;
+	bc_env->store = ctx->vm->instr_store;
+
+	struct ast_gen_info info = {0};
+
+	info.closures = closures;
+	info.closure_refs = NULL;
+	info.num_closures = num_closures;
+
+	struct ast_gen_bc_result func_instr;
+	func_instr = ast_node_gen_bytecode(ctx, mod, env, &info,
+			bc_env, expr);
+	if (func_instr.err) {
+		return NULL;
+	}
+
+	append_bc_instr(&func_instr,
+			bc_gen_ret(bc_env, func_instr.out_var));
+
+	bc_env->entry_point = func_instr.first;
+
+#if AST_GEN_SHOW_BC
+	printf("\nbc:\n");
+	bc_print(bc_env, bc_env->entry_point);
+#endif
+
+	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
+	nbc_compile_from_bc(bc_env->nbc, bc_env);
+
+#if AST_GEN_SHOW_BC
+	printf("\nnbc:\n");
+	nbc_print(bc_env->nbc);
+#endif
+
+	return bc_env;
+}
+
+struct bc_env *
 ast_gen_value_unpack_func(
 		struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, type_id value_type, size_t descendent)

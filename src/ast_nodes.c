@@ -687,6 +687,14 @@ ast_node_find_named_dependencies(
 			// the composite.
 			break;
 
+		case AST_NODE_VARIANT:
+			err += ast_node_closure_find_named_dependencies(
+					req, &node->variant.closure,
+					out_refs, out_num_refs);
+
+			// We will not visit the options of the variant.
+			break;
+
 		case AST_NODE_TEMPL:
 			err += ast_node_closure_find_named_dependencies(
 					req, &node->templ.closure,
@@ -702,7 +710,7 @@ ast_node_find_named_dependencies(
 #define VISIT_NODE(node) \
 	err += ast_node_find_named_dependencies(\
 			(node), req, out_refs, out_num_refs);
-	AST_NODE_VISIT(node, false, true, false, false);
+	AST_NODE_VISIT(node, false, false, false, false);
 #undef VISIT_NODE
 
 	return err;

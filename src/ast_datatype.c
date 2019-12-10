@@ -2,6 +2,7 @@
 #include "ast.h"
 #include "dlist.h"
 #include "module.h"
+#include "native_bytecode.h"
 #include "base/mod.h"
 #include <stdlib.h>
 #include <string.h>
@@ -2812,15 +2813,31 @@ struct type_base variant_type_base = {
 
 type_id
 ast_dt_finalize_variant(
-		struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_datatype_variant *options,
-		size_t num_options, struct ast_typecheck_dep *deps, size_t num_deps)
+		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
+		struct ast_datatype_variant *options, size_t num_options,
+		struct ast_typecheck_closure *closure_values, size_t num_closures)
 {
 	bool ok = true;
 	size_t max_data_size = 0;
 
 	struct stg_type_variant_option *opts;
 	opts = calloc(num_options, sizeof(struct stg_type_variant_option));
+
+	struct ast_typecheck_dep body_deps[num_closures];
+
+	for (size_t i = 0; i < num_closures; i++) {
+		assert(closure_values[i].req == AST_NAME_DEP_REQUIRE_VALUE);
+
+		body_deps[i].ref.kind = AST_NAME_REF_CLOSURE;
+		body_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+		body_deps[i].ref.closure = i;
+		body_deps[i].lookup_failed = closure_values[i].lookup_failed;
+		body_deps[i].determined = true;
+		body_deps[i].val = closure_values[i].value;
+
+		body_deps[i].value = ast_bind_slot_const(
+				ctx, env, AST_BIND_NEW, body_deps[i].val);
+	}
 
 	for (size_t i = 0; i < num_options; i++) {
 		opts[i].name = options[i].name;
@@ -2831,16 +2848,33 @@ ast_dt_finalize_variant(
 			err = ast_node_typecheck(
 					ctx, mod, env,
 					options[i].data_type,
-					deps, num_deps,
+					body_deps, num_closures,
 					ctx->types.type);
 			if (err) {
 				ok = false;
 				continue;
 			}
 
-			assert(TYPE_VALID(options[i].data_type->type));
+			assert_type_equals(ctx->vm,
+					options[i].data_type->type, ctx->types.type);
 
-			opts[i].data_type = options[i].data_type->type;
+			struct bc_env *type_expr_bc;
+			type_expr_bc = ast_type_expr_gen_bytecode(
+					ctx, mod, env, options[i].data_type,
+					closure_values, num_closures);
+
+			if (!type_expr_bc) {
+				printf("Failed to generate bytecode for variant data type expression.\n");
+				return TYPE_UNSET;
+			}
+
+			type_id out_type = TYPE_UNSET;
+
+			nbc_exec(ctx->vm, type_expr_bc->nbc,
+					NULL, 0, NULL, &out_type);
+			assert(out_type != TYPE_UNSET);
+
+			opts[i].data_type = out_type;
 
 			struct type *type;
 			type = vm_get_type(ctx->vm, opts[i].data_type);

@@ -2123,6 +2123,8 @@ ast_node_deep_copy_internal(
 			DCP_NODE(variant.options[i].data_type);
 		}
 
+		DCP_LIT(variant.closure);
+
 		DCP_SLOT(variant.ret_value);
 		break;
 	}

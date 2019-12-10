@@ -50,6 +50,9 @@ ast_node_get_closure_target(struct ast_node *node)
 		case AST_NODE_COMPOSITE:
 			return &node->composite.closure;
 
+		case AST_NODE_VARIANT:
+			return &node->variant.closure;
+
 		case AST_NODE_TEMPL:
 			return &node->templ.closure;
 
@@ -321,11 +324,21 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_NODE_VARIANT:
-			for (size_t i = 0; i < node->variant.num_options; i++) {
-				if (node->variant.options[i].data_type) {
-					err += ast_node_resolve_names(
-							ctx, env, native_mod, scope,
-							true, node->variant.options[i].data_type);
+			{
+				struct ast_scope member_scope = {0};
+				ast_scope_push_composite(&member_scope, scope);
+				member_scope.closure_target = node;
+
+				err += ast_closure_resolve_names(ctx, env,
+						scope, require_const,
+						&node->variant.closure);
+
+				for (size_t i = 0; i < node->variant.num_options; i++) {
+					if (node->variant.options[i].data_type) {
+						err += ast_node_resolve_names(
+								ctx, env, native_mod, &member_scope,
+								true, node->variant.options[i].data_type);
+					}
 				}
 			}
 			break;
@@ -583,12 +596,21 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 			break;
 
 		case AST_NODE_VARIANT:
-			for (size_t i = 0; i < node->variant.num_options; i++) {
-				if (node->variant.options[i].data_type) {
-					err += ast_node_discover_potential_closures(
-							ctx, env, scope, true,
-							node->variant.options[i].data_type);
+			{
+				struct ast_scope member_scope = {0};
+				ast_scope_push_composite(&member_scope, scope);
+				member_scope.closure_target = node;
+
+				for (size_t i = 0; i < node->variant.num_options; i++) {
+					if (node->variant.options[i].data_type) {
+						err += ast_node_discover_potential_closures(
+								ctx, env, &member_scope, true,
+								node->variant.options[i].data_type);
+					}
 				}
+
+				ast_closure_discover_potential_closures(ctx, env,
+						scope, require_const, &node->variant.closure);
 			}
 			break;
 	}
