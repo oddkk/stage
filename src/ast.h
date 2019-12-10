@@ -530,7 +530,8 @@ struct ast_template_param {
 
 struct ast_datatype_variant {
 	struct atom *name;
-	struct ast_node *type;
+	struct ast_node *data_type;
+	struct stg_location loc;
 };
 
 struct ast_datatype_member {
@@ -672,10 +673,12 @@ struct ast_node {
 		} composite;
 
 		struct {
-			struct ast_datatype_variant *variants;
-			size_t num_variants;
+			struct ast_datatype_variant *options;
+			size_t num_options;
 
 			ast_slot_id ret_value;
+
+			type_id type;
 		} variant;
 	};
 };
@@ -683,7 +686,11 @@ struct ast_node {
 char *
 ast_node_name(enum ast_node_kind);
 
-#define AST_NODE_VISIT(node, visit_composite_body, visit_func_body, visit_templ_body) \
+#define AST_NODE_VISIT(node, 													\
+		visit_composite_body, 													\
+		visit_variant_body, 													\
+		visit_func_body, 														\
+		visit_templ_body) 														\
 	do { assert((node)); switch ((node)->kind) {								\
 		case AST_NODE_FUNC:														\
 			if (visit_func_body) {												\
@@ -748,7 +755,13 @@ ast_node_name(enum ast_node_kind);
 			}																	\
 			break;																\
 		case AST_NODE_VARIANT:													\
-			printf("TODO: Visit variant.\n");									\
+			if (visit_variant_body) {											\
+				for (size_t i = 0; i < (node)->variant.num_options; i++) {		\
+					if ((node)->variant.options[i].data_type) {					\
+						VISIT_NODE((node)->variant.options[i].data_type);		\
+					}															\
+				}																\
+			}																	\
 			break;																\
 	}} while (0);
 
@@ -866,6 +879,17 @@ void
 ast_node_composite_add_free_expr(
 		struct ast_context *ctx, struct ast_env *env,
 		struct ast_node *target, struct ast_node *expr);
+
+struct ast_node *
+ast_init_node_variant(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location);
+
+void
+ast_node_variant_add_option(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location,
+		struct atom *name, struct ast_node *data_type);
 
 void
 ast_node_substitute_slot(struct ast_node *,
@@ -1088,5 +1112,11 @@ type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *comp,
 		struct ast_typecheck_closure *closures, size_t num_closures);
+
+type_id
+ast_dt_finalize_variant(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_datatype_variant *options,
+		size_t num_options, struct ast_typecheck_dep *deps, size_t num_deps);
 
 #endif

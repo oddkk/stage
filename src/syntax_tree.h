@@ -95,13 +95,13 @@ extern struct string st_node_names[ST_NODES_LEN];
 		TREE_VISIT_NODE((node), OBJ_DECL, body);		\
 		break;											\
 														\
-	case ST_NODE_ENUM_DECL:							\
-		TREE_VISIT_NODE((node), ENUM_DECL, items);		\
+	case ST_NODE_VARIANT_DECL:							\
+		TREE_VISIT_NODE((node), VARIANT_DECL, items);	\
 		break;											\
 														\
-	case ST_NODE_ENUM_ITEM:							\
-		TREE_VISIT_ATOM((node), ENUM_ITEM, name);		\
-		TREE_VISIT_NODE((node), ENUM_ITEM, data);		\
+	case ST_NODE_VARIANT_ITEM:							\
+		TREE_VISIT_ATOM((node), VARIANT_ITEM, name);	\
+		TREE_VISIT_NODE((node), VARIANT_ITEM, data_type);\
 		break;											\
 														\
 	case ST_NODE_MOD_STMT:								\

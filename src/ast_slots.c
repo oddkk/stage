@@ -2117,10 +2117,10 @@ ast_node_deep_copy_internal(
 		break;
 
 	case AST_NODE_VARIANT:
-		DCP_DLIST(variant.variants, variant.num_variants);
-		for (size_t i = 0; i < result->variant.num_variants; i++) {
-			DCP_LIT(variant.variants[i].name);
-			DCP_NODE(variant.variants[i].type);
+		DCP_DLIST(variant.options, variant.num_options);
+		for (size_t i = 0; i < result->variant.num_options; i++) {
+			DCP_LIT(variant.options[i].name);
+			DCP_NODE(variant.options[i].data_type);
 		}
 
 		DCP_SLOT(variant.ret_value);

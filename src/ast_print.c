@@ -368,13 +368,13 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 		case AST_NODE_VARIANT:
 			print_indent(depth);
 			printf("variant:\n");
-			for (size_t i = 0; i < node->variant.num_variants; i++) {
+			for (size_t i = 0; i < node->variant.num_options; i++) {
 				print_indent(depth + 1);
-				printf("%.*s:\n", ALIT(node->variant.variants[i].name));
+				printf("%.*s:\n", ALIT(node->variant.options[i].name));
 				print_indent(depth + 2);
 				printf("type:\n");
 				ast_print_internal(ctx, env,
-						node->variant.variants[i].type, depth + 3);
+						node->variant.options[i].data_type, depth + 3);
 			}
 			break;
 

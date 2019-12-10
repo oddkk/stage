@@ -23,14 +23,14 @@ ST_NODE(OBJ_DECL, struct {
 	struct st_node *body;
 })
 
-ST_NODE(ENUM_DECL, struct {
+ST_NODE(VARIANT_DECL, struct {
 	struct st_node *items;
 	struct st_node *params;
 })
 
-ST_NODE(ENUM_ITEM, struct {
+ST_NODE(VARIANT_ITEM, struct {
 	struct atom *name;
-	struct st_node *data;
+	struct st_node *data_type;
 })
 
 ST_NODE(USE_STMT, struct {

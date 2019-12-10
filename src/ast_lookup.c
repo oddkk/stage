@@ -321,8 +321,13 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_NODE_VARIANT:
-			// TODO: Populate scope.
-			// TODO: Do lookup.
+			for (size_t i = 0; i < node->variant.num_options; i++) {
+				if (node->variant.options[i].data_type) {
+					err += ast_node_resolve_names(
+							ctx, env, native_mod, scope,
+							true, node->variant.options[i].data_type);
+				}
+			}
 			break;
 	}
 
@@ -578,8 +583,13 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 			break;
 
 		case AST_NODE_VARIANT:
-			// TODO: Populate scope.
-			// TODO: Do lookup.
+			for (size_t i = 0; i < node->variant.num_options; i++) {
+				if (node->variant.options[i].data_type) {
+					err += ast_node_discover_potential_closures(
+							ctx, env, scope, true,
+							node->variant.options[i].data_type);
+				}
+			}
 			break;
 	}
 

@@ -5,6 +5,7 @@
 #include "base/mod.h"
 #include <stdlib.h>
 #include <string.h>
+#include <ffi.h>
 
 // For sysconf
 #include <unistd.h>
@@ -2706,4 +2707,189 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 #endif
 	comp->composite.type = result;
 	return result;
+}
+
+struct stg_type_variant_option {
+	struct atom *name;
+	type_id data_type;
+};
+
+struct stg_type_variant_info {
+	struct stg_type_variant_option *options;
+	size_t num_options;
+	uint8_t tag_size;
+};
+
+struct ast_dt_variant {
+	uint64_t tag;
+	struct object data;
+};
+
+static struct ast_dt_variant
+ast_dt_decode_variant(struct stg_type_variant_info *info, void *obj_data)
+{
+	uint64_t tag;
+	void *data;
+
+	switch (info->tag_size) {
+		case 1: tag = *(uint8_t  *)obj_data; break;
+		case 2: tag = *(uint16_t *)obj_data; break;
+		case 4: tag = *(uint32_t *)obj_data; break;
+		case 8: tag = *(uint64_t *)obj_data; break;
+		default:
+			panic("Invalid variant tag size");
+			return (struct ast_dt_variant){0};
+	}
+
+	assert(tag < info->num_options);
+
+	data = (void *)((uint8_t *)obj_data + info->tag_size);
+
+	struct ast_dt_variant var = {0};
+	var.tag = tag;
+	var.data.type = info->options[tag].data_type;
+	var.data.data = data;
+
+	return var;
+}
+
+static struct string
+ast_dt_variant_repr(struct vm *vm, struct arena *mem, struct type *type)
+{
+	struct stg_type_variant_info *info = type->data;
+	struct string res = arena_string_init(mem);
+
+	arena_string_append(mem, &res, STR("Variant { "));
+
+	for (size_t i = 0; i < info->num_options; i++) {
+		if (i != 0) {
+			arena_string_append(mem, &res, STR(", "));
+		}
+
+		arena_string_append_sprintf(mem, &res, "%.*s%s", ALIT(info->options[i].name),
+				info->options[i].data_type != TYPE_UNSET ? " " : "");
+
+		if (info->options[i].data_type != TYPE_UNSET) {
+			struct type *option_type;
+			option_type = vm_get_type(vm, info->options[i].data_type);
+			arena_string_append_type_repr(&res, vm, mem, option_type);
+		}
+	}
+
+	arena_string_append(mem, &res, STR(" }"));
+
+	return res;
+}
+
+static struct string
+ast_dt_variant_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
+{
+	struct type *type = vm_get_type(vm, obj->type);
+	struct stg_type_variant_info *info = type->data;
+	struct string res = arena_string_init(mem);
+
+	struct ast_dt_variant var;
+	var = ast_dt_decode_variant(info, obj->data);
+
+	struct stg_type_variant_option *opt;
+	opt = &info->options[var.tag];
+
+	arena_string_append_sprintf(mem, &res, "%.*s(", ALIT(opt->name));
+	arena_string_append_obj_repr(&res, vm, mem, &var.data);
+	arena_string_append(mem, &res, STR(")"));
+
+	return res;
+}
+
+struct type_base variant_type_base = {
+	.name     = STR("Variant"),
+	.repr     = ast_dt_variant_repr,
+	.obj_repr = ast_dt_variant_obj_repr,
+
+	// TODO: Implement
+	// .free = ...,
+};
+
+type_id
+ast_dt_finalize_variant(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_datatype_variant *options,
+		size_t num_options, struct ast_typecheck_dep *deps, size_t num_deps)
+{
+	bool ok = true;
+	size_t max_data_size = 0;
+
+	struct stg_type_variant_option *opts;
+	opts = calloc(num_options, sizeof(struct stg_type_variant_option));
+
+	for (size_t i = 0; i < num_options; i++) {
+		opts[i].name = options[i].name;
+		opts[i].data_type = TYPE_UNSET;
+
+		if (options[i].data_type) {
+			int err;
+			err = ast_node_typecheck(
+					ctx, mod, env,
+					options[i].data_type,
+					deps, num_deps,
+					ctx->types.type);
+			if (err) {
+				ok = false;
+				continue;
+			}
+
+			assert(TYPE_VALID(options[i].data_type->type));
+
+			opts[i].data_type = options[i].data_type->type;
+
+			struct type *type;
+			type = vm_get_type(ctx->vm, opts[i].data_type);
+			if (type->size > max_data_size) {
+				max_data_size = type->size;
+			}
+		}
+	}
+
+	if (!ok) {
+		free(opts);
+		return TYPE_UNSET;
+	}
+
+	struct stg_type_variant_info *info;
+	info = calloc(1, sizeof(struct stg_type_variant_info));
+
+	info->num_options = num_options;
+	info->options = opts;
+
+	size_t tag_size;
+	ffi_type *tag_type;
+
+	if (num_options <= UINT8_MAX) {
+		tag_size = 1;
+		tag_type = &ffi_type_uint8;
+	} else if (num_options <= UINT16_MAX) {
+		tag_size = 2;
+		tag_type = &ffi_type_uint16;
+	} else if (num_options <= UINT32_MAX) {
+		tag_size = 4;
+		tag_type = &ffi_type_uint32;
+	} else {
+		tag_size = 8;
+		tag_type = &ffi_type_uint64;
+	}
+
+	info->tag_size = tag_size;
+
+	struct type new_type = {0};
+
+	new_type.name = mod_atoms(mod->stg_mod, "Variant");
+	new_type.base = &variant_type_base;
+	new_type.size = tag_size + max_data_size;
+	new_type.data = info;
+
+	if (max_data_size == 0) {
+		new_type.ffi_type = tag_type;
+	}
+
+	return stg_register_type(mod->stg_mod, new_type);
 }

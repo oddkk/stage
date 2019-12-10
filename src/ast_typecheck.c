@@ -1049,6 +1049,43 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 		break;
 
 	case AST_NODE_VARIANT:
+		{
+			if (node->variant.type == TYPE_UNSET) {
+				node->variant.type =
+					ast_dt_finalize_variant(
+							ctx, mod, env,
+							node->variant.options,
+							node->variant.num_options,
+							deps, num_deps);
+
+				if (node->variant.type == TYPE_UNSET) {
+					*num_errors += 1;
+				}
+			}
+
+			struct ast_bind_result res;
+			res = ast_try_bind_slot_const_type(
+					ctx, env, target, node->variant.type);
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				target = res.ok.result;
+			}
+
+			res = ast_try_union_slot(
+					ctx, env, node->variant.ret_value, target);
+			if (res.code != AST_BIND_OK) {
+				ast_report_bind_error(
+						ctx, node->loc, res);
+				*num_errors += 1;
+			} else {
+				target = res.ok.result;
+			}
+
+			node->variant.ret_value = target;
+		}
 		break;
 	}
 
@@ -1061,7 +1098,7 @@ ast_node_resolve_types(struct ast_context *ctx, struct ast_module *mod,
 {
 	int errors = 0;
 #define VISIT_NODE(child) errors += ast_node_resolve_types(ctx, mod, env, child);
-	AST_NODE_VISIT(node, false, true, false);
+	AST_NODE_VISIT(node, false, false, true, false);
 #undef VISIT_NODE
 
 	assert(node->type == TYPE_UNSET);

@@ -692,6 +692,44 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 		break;
 	}
 
+	case ST_NODE_VARIANT_DECL:
+	{
+		if (node->VARIANT_DECL.params) {
+			stg_error(ctx->err, node->loc,
+					"TODO: Variant templates.");
+		}
+
+		struct st_node *option;
+		option = node->VARIANT_DECL.items;
+		assert(option);
+
+		struct ast_node *variant;
+		variant = ast_init_node_variant(
+				ctx, env, AST_NODE_NEW, node->loc);
+
+		while (option) {
+			assert(option->type == ST_NODE_VARIANT_ITEM);
+
+			struct atom *name;
+			name = option->VARIANT_ITEM.name;
+
+			struct ast_node *data_type = NULL;
+			if (option->VARIANT_ITEM.data_type) {
+				data_type = st_node_visit_expr(
+						ctx, mod, env, templ_node,
+						option->VARIANT_ITEM.data_type);
+			}
+
+			ast_node_variant_add_option(
+					ctx, env, variant, option->loc,
+					name, data_type);
+
+			option = option->next_sibling;
+		}
+
+		return variant;
+	}
+
 	case ST_NODE_TUPLE_DECL: {
 		/*
 		struct expr_node *first_arg = NULL, *last_arg = NULL;

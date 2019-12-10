@@ -167,7 +167,7 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 
 %token END 0
 %token IDENTIFIER "identifier" NUMLIT "number" STRINGLIT "string"
-%token NAMESPACE "namespace" ENUM "Enum" STRUCT "Struct" USE "use" MOD "mod"
+%token NAMESPACE "namespace" VARIANT "Variant" STRUCT "Struct" USE "use" MOD "mod"
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
 %token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>"
@@ -305,10 +305,10 @@ object_decl:
 		|		expr1                             object_decl1
 					{ $$ = MKNODE(OBJECT_INST, .name=$1, .body=$2); }
 
-		|		                         "Enum"   enum_decl1
-					{ $$ = MKNODE(ENUM_DECL, .items=$2); }
-		|		'[' func_decl_params ']' "Enum"   enum_decl1
-					{ $$ = MKNODE(ENUM_DECL, .items=$5, .params=$2); }
+		|		                         "Variant"   enum_decl1
+					{ $$ = MKNODE(VARIANT_DECL, .items=$2); }
+		|		'[' func_decl_params ']' "Variant"   enum_decl1
+					{ $$ = MKNODE(VARIANT_DECL, .items=$5, .params=$2); }
 		;
 
 enum_decl1:		'{' enum_items     '}'  { $$ = $2; }
@@ -320,8 +320,8 @@ enum_items:		enum_items ',' enum_item   { $$ = MKNODE(INTERNAL_LIST, .head=$3, .
 		|		error                      { $$ = NULL; }
 		;
 
-enum_item:		IDENTIFIER                 { $$ = MKNODE(ENUM_ITEM, .name=$1); }
-		|		IDENTIFIER '{' '}'         { $$ = MKNODE(ENUM_ITEM, .name=$1, .data=NULL); }
+enum_item:		IDENTIFIER                 { $$ = MKNODE(VARIANT_ITEM, .name=$1); }
+		|		IDENTIFIER expr            { $$ = MKNODE(VARIANT_ITEM, .name=$1, .data_type=$2); }
 		;
 
 object_decl1:	'{' stmt_list '}'   { $$ = $2; }
@@ -508,7 +508,7 @@ re2c:define:YYFILL:naked = 1;
 /* "attr"        { lloc_col(ctx, lloc, CURRENT_LEN); return ATTR; } */
 /* "default"     { lloc_col(ctx, lloc, CURRENT_LEN); return DEFAULT; } */
 "mod"         { lloc_col(ctx, lloc, CURRENT_LEN); return MOD; }
-"Enum"        { lloc_col(ctx, lloc, CURRENT_LEN); return ENUM; }
+"Variant"     { lloc_col(ctx, lloc, CURRENT_LEN); return VARIANT; }
 "Struct"      { lloc_col(ctx, lloc, CURRENT_LEN); return STRUCT; }
 "namespace"   { lloc_col(ctx, lloc, CURRENT_LEN); return NAMESPACE; }
 "use"         { lloc_col(ctx, lloc, CURRENT_LEN); return USE; }

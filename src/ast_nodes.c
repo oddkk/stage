@@ -457,6 +457,45 @@ ast_node_composite_add_free_expr(
 			&expr);
 }
 
+struct ast_node *
+ast_init_node_variant(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location loc)
+{
+	if (target == AST_NODE_NEW) {
+		target = calloc(sizeof(struct ast_node), 1);
+	}
+
+	memset(target, 0, sizeof(struct ast_node));
+	target->kind = AST_NODE_VARIANT;
+	target->loc = loc;
+
+	target->variant.ret_value = AST_BIND_NEW;
+	target->variant.type = TYPE_UNSET;
+
+	return target;
+}
+
+void
+ast_node_variant_add_option(
+		struct ast_context *ctx, struct ast_env *env,
+		struct ast_node *target, struct stg_location loc,
+		struct atom *name, struct ast_node *data_type)
+{
+	assert(target->kind == AST_NODE_VARIANT);
+
+	struct ast_datatype_variant option = {0};
+
+	option.name = name;
+	option.data_type = data_type;
+	option.loc  = loc;
+
+	dlist_append(
+			target->variant.options,
+			target->variant.num_options,
+			&option);
+}
+
 
 ast_slot_id
 ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
@@ -663,7 +702,7 @@ ast_node_find_named_dependencies(
 #define VISIT_NODE(node) \
 	err += ast_node_find_named_dependencies(\
 			(node), req, out_refs, out_num_refs);
-	AST_NODE_VISIT(node, false, false, false);
+	AST_NODE_VISIT(node, false, true, false, false);
 #undef VISIT_NODE
 
 	return err;

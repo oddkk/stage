@@ -751,7 +751,28 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			return result;
 
 		case AST_NODE_VARIANT:
-			break;
+			{
+				type_id type;
+				type = node->variant.type;
+
+				if (type == TYPE_UNSET) {
+					printf("Failed to initialize variant type.\n");
+					return AST_GEN_ERROR;
+				}
+
+				struct object obj;
+				obj.type = ctx->types.type;
+				obj.data = &type;
+
+				struct bc_instr *lit_instr;
+				lit_instr = bc_gen_load(bc_env, BC_VAR_NEW,
+						register_object(ctx->vm, env->store, obj));
+
+				append_bc_instr(&result, lit_instr);
+
+				result.out_var = lit_instr->load.target;
+			}
+			return result;
 	}
 
 	printf("Invalid ast node in gen byte code.\n");
