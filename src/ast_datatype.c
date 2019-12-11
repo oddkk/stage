@@ -1977,7 +1977,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						&job->bind->explicit_targets,
 						&job->bind->num_explicit_targets);
 				if (err) {
-					printf("Failed to find l-expr members\n");
+					return -1;
 				}
 
 				if (!job->bind->is_type_giving) {
