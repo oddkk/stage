@@ -435,6 +435,10 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 		} else {
 			body = st_node_visit_expr(ctx, mod, env, NULL, body_decl);
 
+			if (!body) {
+				return NULL;
+			}
+
 			func = ast_init_node_func(ctx, env,
 					AST_NODE_NEW, node->loc,
 					params_decl.names, params, params_decl.num_members,
@@ -627,6 +631,12 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 
 				struct st_node *stmt;
 				stmt = arg->STMT.stmt;
+
+				if (!stmt) {
+					// Something went wrong while parsing this object. An error
+					// should already have been emitted.
+					return NULL;
+				}
 
 				switch (stmt->type) {
 					case ST_NODE_ASSIGN_STMT:
