@@ -738,13 +738,6 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 	struct ast_templ_cons_info *info;
 	info = def->data;
 
-	struct ast_node *templ_node;
-	templ_node = ast_node_deep_copy(ctx, env,
-			&def->env, info->templ_node);
-
-	struct ast_node *body;
-	body = templ_node->templ.body;
-
 	size_t num_body_deps = info->num_deps + def->num_params;
 	struct ast_typecheck_dep body_deps[num_body_deps];
 	memcpy(body_deps, info->deps, info->num_deps * sizeof(struct ast_typecheck_dep));
@@ -821,6 +814,29 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 		struct object res = {0};
 		return res;
 	}
+
+	for (size_t inst_i = 0; inst_i < info->num_insts; inst_i++) {
+		bool match = true;
+		for (size_t i = 0; i < def->num_params; i++) {
+			if (!obj_equals(ctx->vm, param_values[i],
+						info->insts[inst_i].params[i])) {
+				match = false;
+				break;
+			}
+		}
+
+		if (match) {
+			free(param_values);
+			return info->insts[inst_i].result;
+		}
+	}
+
+	struct ast_node *templ_node;
+	templ_node = ast_node_deep_copy(ctx, env,
+			&def->env, info->templ_node);
+
+	struct ast_node *body;
+	body = templ_node->templ.body;
 
 	size_t num_errors_pre = ctx->err->num_errors;
 	int err;
