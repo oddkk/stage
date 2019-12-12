@@ -842,47 +842,28 @@ ast_try_bind_slot_cons(struct ast_context *ctx,
 							ctx, env, obj, slot_val_type->type_def, def);
 
 					if (!type_def) {
+						if (!slot_val_type->type_def && !def) {
 #if AST_BIND_ERROR_DEBUG_PRINT
-						printf("Warning: Attempted to unpack a type with no type "
-								"def over a CONS with no def <");
-						print_type_repr(ctx->vm, slot_val_type);
-						printf(">.\n");
-#endif
-						return BIND_TYPE_NO_MEMBERS(slot_val);
-					}
-
-					/*
-					if (!def && !type_def) {
-#if AST_BIND_ERROR_DEBUG_PRINT
-						printf("Warning: Attempted to unpack a type with no type "
-								"def over a CONS with no def <");
-						print_type_repr(ctx->vm, slot_val_type);
-						printf(">.");
-#endif
-						return BIND_TYPE_NO_MEMBERS(slot_val);
-					}
-
-					if (def && type_def != def) {
-						struct object obj = {0};
-						obj.type = ctx->types.type;
-						obj.data = &slot_val;
-
-						if (def->can_unpack &&
-								def->can_unpack(ctx, env, def, obj)) {
-							type_def = def;
-						} else {
-#if AST_BIND_ERROR_DEBUG_PRINT
-							printf("Warning: Attempted to bind CONS with def %p over "
-									"CONST_TYPE <",
-									(void *)def);
+							printf("Warning: Attempted to unpack a type with no type "
+									"def over a CONS with no def <");
 							print_type_repr(ctx->vm, slot_val_type);
-							printf("> with def %p.\n",
-									(void *)slot_val_type->type_def);
+							printf("> (%i).\n", target);
 #endif
 							return BIND_TYPE_NO_MEMBERS(slot_val);
+						} else {
+#if AST_BIND_ERROR_DEBUG_PRINT
+							printf("Warning: Attempted to bind type with type def "
+									"over CONS with mismatching def. <");
+							print_type_repr(ctx->vm, slot_val_type);
+							printf("> (%i). ", target);
+							ast_print_slot(ctx, env, target);
+							printf("\n");
+#endif
+							// TODO: Figure out a way of getting the type of
+							// the def for the error message.
+							return BIND_TYPE_VAL_MISMATCH(slot_val, TYPE_UNSET);
 						}
 					}
-					*/
 
 					// We first rebind the target slot to wildcard to allow us
 					// to use bind_slot_cons to correctly instantiate it as a

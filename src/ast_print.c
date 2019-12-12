@@ -457,7 +457,7 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
 			ast_print_node(ctx, env, node->call.func);
-			printf("(");
+			printf((node->kind == AST_NODE_CALL) ? "(" : "[");
 			for (size_t i = 0; i < node->call.num_args; i++) {
 				if (i != 0) {
 					printf(", ");
@@ -467,12 +467,12 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 				}
 				ast_print_node(ctx, env, node->call.args[i].value);
 			}
-			printf(")");
+			printf((node->kind == AST_NODE_CALL) ? ")" : "]");
 			break;
 
 		case AST_NODE_FUNC_TYPE:
 			printf("(");
-			for (size_t i = 0; node->func_type.num_params; i++) {
+			for (size_t i = 0; i < node->func_type.num_params; i++) {
 				if (i != 0) {
 					printf(", ");
 				}

@@ -463,8 +463,9 @@ ast_cons_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast
 			ctx, env, target, cons);
 	if (res.code != AST_BIND_OK) {
 		ast_report_bind_error(
-				ctx, node->loc, res);
+				ctx, node->call.func->loc, res);
 		*num_errors += 1;
+		return AST_BIND_FAILED;
 	} else {
 		node->call.cons = res.ok.result;
 		target = node->call.cons;
