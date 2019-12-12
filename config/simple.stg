@@ -13,6 +13,39 @@ Type := base.type;
 id := base.id;
 compose := base.compose;
 
+Init := [T: Type] Struct {
+	unsafePerformInit: () -> T;
+};
+
+return := (val: $T) -> Init[T]
+	=> Init[T] {
+		unsafePerformInit = () -> T
+			=> val;
+	};
+
+join := (a: Init[Init[$T]]) -> Init[T]
+	=> Init[T] {
+		unsafePerformInit = () -> T
+			=> a.unsafePerformInit().unsafePerformInit();
+	};
+
+fmap := (f: ($T) -> $U, a: Init[T]) -> Init[U]
+	=> Init[U] {
+		unsafePerformInit = () -> U
+			=> f(a.unsafePerformInit());
+	};
+
+bind := (a: Init[$T], f: (T) -> Init[$U]) -> Init[U]
+	=> Init[U] {
+		unsafePerformInit = () -> U
+			=> join(fmap(f, a));
+	};
+
+# someinittest: Init[int] = join(return(return(2)));
+
+init: Init[Unit] = bind(return(2), (a: int) -> Init[Unit]
+	=> return(base.print(a)));
+
 composeTest := base.compose(
 	(a: int) -> int => a + 2,
 	(a: int) -> int => a * 2);
@@ -59,14 +92,14 @@ asdfasdfasdfasdf := (a: typeof(2)) -> int => a + 2;
 
 # message.onStart >>= db.exec(query);
 
-Monad := [T: Type] Struct { val: T; };
+# Monad := [T: Type] Struct { val: T; };
+# 
+# bind := (v: Monad[$T], f: (T) -> $U) -> Monad[U]
+# 	=> Monad[U] { val = 2; };
+# unit := (v: $T) -> Monad[T]
+# 	=> Monad[T] { val = v; };
 
-bind := (v: Monad[$T], f: (T) -> $U) -> Monad[U]
-	=> Monad[U] { val = 2; };
-unit := (v: $T) -> Monad[T]
-	=> Monad[T] { val = v; };
-
-a := bind(unit(2), (a: int) -> int => a * 2);
+# a := bind(unit(2), (a: int) -> int => a * 2);
 
 testQuery: sql.SQL[int] = sql.sql("
 	select * from foo where a = ?
@@ -83,12 +116,12 @@ TestType := [T: Type] Struct {
 TT2 := TestType[int];
 
 prnt := message.Print(
-	message.Map2(
-		message.Map2(message.onStart, (a: Unit) -> int => composeTest(500)),
+	message.Map(
+		message.Map(message.onStart, (a: Unit) -> int => composeTest(500)),
 		(a: int) -> int => a * 2));
 
 prnt2 := message.PrintStr(
-	message.Map2(message.onStart, (a: Unit) -> String => "Hello, World!"));
+	message.Map(message.onStart, (a: Unit) -> String => "Hello, World!"));
 
 # con := sql.postgresql.connect("");
 

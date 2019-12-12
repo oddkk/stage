@@ -315,6 +315,19 @@ msg_map(struct stg_module *mod, msg_node_id in, struct stg_func_object map_func)
 	return res;
 }
 
+static msg_node_id
+msg_filter(struct stg_module *mod, msg_node_id in, struct stg_func_object filter_func)
+{
+	struct msg_context *ctx = mod->data;
+
+	msg_node_id res;
+	res = msg_pipe_filter(&ctx->sys, filter_func);
+
+	msg_pipe_connect(&ctx->sys, in, res);
+
+	return res;
+}
+
 static struct stg_func_object
 msg_endpoint(struct stg_module *mod, struct stg_func_object map_func)
 {
@@ -346,6 +359,8 @@ mod_message_load(struct stg_native_module *mod)
 	stg_native_register_funcs(mod, msg_print_string_callback,
 			STG_NATIVE_FUNC_IMPURE);
 	stg_native_register_funcs(mod, msg_map,
+			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
+	stg_native_register_funcs(mod, msg_filter,
 			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
 	stg_native_register_funcs(mod, msg_endpoint,
 			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
