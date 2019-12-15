@@ -52,18 +52,6 @@ struct vm {
 	type_id program_object_type;
 };
 
-struct exec_stack {
-	uint8_t *memory;
-	uint8_t *bp;
-	uint8_t *sp;
-	size_t cap;
-
-	struct vm *vm;
-	struct stg_module *mod;
-};
-
-typedef void (*vm_builtin_func)(struct vm *, struct exec_stack *, void *);
-
 struct ast_context;
 struct ast_module;
 

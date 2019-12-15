@@ -85,7 +85,9 @@ mark_channel_dirty(struct channel_system *, channel_id);
 void
 mark_channel_notify(struct channel_system *, channel_id);
 
+/*
 struct object
 eval_channel(struct vm *vm, struct channel_system *cnls, struct exec_stack *stack, channel_id cnl_id);
+*/
 
 #endif
