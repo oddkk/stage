@@ -153,10 +153,12 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 					switch (func->kind) {
 						case FUNC_NATIVE:
 							{
-								instr.op = NBC_CALL_NATIVE;
+								instr.op = ((func->flags & FUNC_HEAP) != 0)
+									? NBC_CALL_NATIVE_HEAP
+									: NBC_CALL_NATIVE;
 								instr.call.func.native.cif =
 									stg_func_ffi_cif(env->vm, func->type,
-											/* closure */ false);
+											func->flags);
 								instr.call.func.native.fp = func->native;
 							}
 							break;
@@ -188,10 +190,12 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 					switch (func->kind) {
 						case FUNC_NATIVE:
 							{
-								instr.op = NBC_CALL_NATIVE_CLOSURE;
+								instr.op = ((func->flags & FUNC_HEAP) != 0)
+									? NBC_CALL_NATIVE_HEAP_CLOSURE
+									: NBC_CALL_NATIVE_CLOSURE;
 								instr.call.func.native.cif =
 									stg_func_ffi_cif(env->vm, func->type,
-											/* closure */ true);
+											func->flags);
 								instr.call.func.native.fp = func->native;
 								instr.call.func.native.closure = ip->clcall.closure;
 							}
@@ -295,7 +299,7 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 }
 
 static void
-nbc_call_func(struct vm *vm, struct stg_func_object func_obj,
+nbc_call_func(struct vm *vm, struct stg_exec *ctx, struct stg_func_object func_obj,
 		void **args, size_t num_args, void *ret)
 {
 	struct func *func = vm_get_func(vm, func_obj.func);
@@ -303,34 +307,40 @@ nbc_call_func(struct vm *vm, struct stg_func_object func_obj,
 	switch (func->kind) {
 		case FUNC_NATIVE:
 			{
-				ffi_cif *cif = stg_func_ffi_cif(vm, func->type,
-						(func->flags & FUNC_CLOSURE) != 0);
-				if ((func->flags & FUNC_CLOSURE) != 0) {
-					void *closure_args[num_args+1];
+				ffi_cif *cif = stg_func_ffi_cif(
+						vm, func->type, func->flags);
+				void *closure_args[num_args+2];
+				size_t prefix_i = 0;
 
-					closure_args[0] = &func_obj.closure;
-					memcpy(&closure_args[1], args, sizeof(void *) * num_args);
-
-					ffi_call(cif, FFI_FN(func->native), ret, closure_args);
-				} else {
-					ffi_call(cif, FFI_FN(func->native), ret, args);
+				if ((func->flags & FUNC_HEAP) != 0) {
+					closure_args[prefix_i] = &ctx;
+					prefix_i += 1;
 				}
+
+				if ((func->flags & FUNC_CLOSURE) != 0) {
+					closure_args[prefix_i] = &func_obj.closure;
+					prefix_i += 1;
+				}
+
+				memcpy(&closure_args[prefix_i], args, sizeof(void *) * num_args);
+
+				ffi_call(cif, FFI_FN(func->native), ret, closure_args);
 			}
 			break;
 
 		case FUNC_BYTECODE:
-			nbc_exec(vm, func->bytecode->nbc, args, num_args, func_obj.closure, ret);
+			nbc_exec(vm, ctx, func->bytecode->nbc, args, num_args, func_obj.closure, ret);
 			break;
 	}
 }
 
 void
-nbc_exec(struct vm *vm, struct nbc_func *func,
+nbc_exec(struct vm *vm, struct stg_exec *ctx, struct nbc_func *func,
 		void **params, size_t num_params, void *closure, void *ret)
 {
 	uint8_t stack[func->stack_size];
-	void *closure_args[func->max_callee_args+1];
-	void **args = &closure_args[1];
+	void *closure_args[func->max_callee_args+2];
+	void **args = &closure_args[2];
 	size_t num_args = 0;
 	struct nbc_instr *ip = func->instrs;
 
@@ -373,25 +383,25 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 				break;
 
 			case NBC_CALL:
-				nbc_call_func(vm, *(struct stg_func_object *)&stack[ip->call.func.var],
+				nbc_call_func(vm, ctx, *(struct stg_func_object *)&stack[ip->call.func.var],
 						args, num_args, &stack[ip->call.target]);
 				num_args = 0;
 				break;
 
 			case NBC_CALL_ARG:
-				nbc_call_func(vm, *(struct stg_func_object *)params[ip->call.func.param],
+				nbc_call_func(vm, ctx, *(struct stg_func_object *)params[ip->call.func.param],
 						args, num_args, &stack[ip->call.target]);
 				num_args = 0;
 				break;
 
 			case NBC_CALL_NBC:
-				nbc_exec(vm, ip->call.func.nbc.fp,
+				nbc_exec(vm, ctx, ip->call.func.nbc.fp,
 						args, num_args, NULL, &stack[ip->call.target]);
 				num_args = 0;
 				break;
 
 			case NBC_CALL_NBC_CLOSURE:
-				nbc_exec(vm, ip->call.func.nbc.fp,
+				nbc_exec(vm, ctx, ip->call.func.nbc.fp,
 						args, num_args, ip->call.func.nbc.closure, &stack[ip->call.target]);
 				num_args = 0;
 				break;
@@ -404,7 +414,24 @@ nbc_exec(struct vm *vm, struct nbc_func *func,
 				break;
 
 			case NBC_CALL_NATIVE_CLOSURE:
-				closure_args[0] = &ip->call.func.native.closure;
+				closure_args[1] = &ip->call.func.native.closure;
+				ffi_call((ffi_cif *)ip->call.func.native.cif,
+						(void (*)(void))ip->call.func.native.fp,
+						 &stack[ip->call.target], closure_args+1);
+				num_args = 0;
+				break;
+
+			case NBC_CALL_NATIVE_HEAP:
+				closure_args[1] = &ctx;
+				ffi_call((ffi_cif *)ip->call.func.native.cif,
+						(void (*)(void))ip->call.func.native.fp,
+						 &stack[ip->call.target], closure_args+1);
+				num_args = 0;
+				break;
+
+			case NBC_CALL_NATIVE_HEAP_CLOSURE:
+				closure_args[0] = &ctx;
+				closure_args[1] = &ip->call.func.native.closure;
 				ffi_call((ffi_cif *)ip->call.func.native.cif,
 						(void (*)(void))ip->call.func.native.fp,
 						 &stack[ip->call.target], closure_args);
@@ -520,6 +547,21 @@ nbc_print(struct nbc_func *func)
 
 			case NBC_CALL_NATIVE_CLOSURE:
 				printf("sp+0x%zx = CALL_NATIVE %p[%p] (%p)\n",
+						ip->call.target,
+						ip->call.func.native.fp,
+						ip->call.func.native.cif,
+						ip->call.func.native.closure);
+				break;
+
+			case NBC_CALL_NATIVE_HEAP:
+				printf("sp+0x%zx = CALL_NATIVE_HEAP %p (%p)\n",
+						ip->call.target,
+						ip->call.func.native.fp,
+						ip->call.func.native.cif);
+				break;
+
+			case NBC_CALL_NATIVE_HEAP_CLOSURE:
+				printf("sp+0x%zx = CALL_NATIVE_HEAP_CLOSURE %p[%p] (%p)\n",
 						ip->call.target,
 						ip->call.func.native.fp,
 						ip->call.func.native.cif,

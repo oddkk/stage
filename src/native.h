@@ -7,9 +7,13 @@
 enum stg_native_func_flags {
 	STG_NATIVE_FUNC_IMPURE = 0x1,
 
-	// If true, the function expects to receive a `struct stg_module *` ast its
+	// If true, the function expects to receive a `struct stg_exec *` ast its
 	// first argument.
-	STG_NATIVE_FUNC_MODULE_CLOSURE = 0x2,
+	STG_NATIVE_FUNC_HEAP = 0x2,
+
+	// If true, the function expects to receive a `struct stg_module *` ast its
+	// first argument (second if STG_NATIVE_FUNC_HEAP also is set).
+	STG_NATIVE_FUNC_MODULE_CLOSURE = 0x4,
 };
 
 struct stg_native_func {

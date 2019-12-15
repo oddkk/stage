@@ -425,7 +425,8 @@ msg_post(struct msg_system *sys,
 	ret.type = sys->vm->default_types.unit;
 	int err;
 
-	err = vm_call_func(sys->vm, node->entrypoint.pipe_func,
+	err = vm_call_func(
+			sys->vm, NULL, node->entrypoint.pipe_func,
 			&obj, 1, &ret);
 	if (err) {
 		printf("Failed to post message.\n");

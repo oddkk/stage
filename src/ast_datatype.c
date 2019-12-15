@@ -1792,7 +1792,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				out.data = &out_type;
 
 				int err;
-				err = vm_call_func(ctx->ast_ctx->vm, fid,
+				err = vm_call_func(
+						ctx->ast_ctx->vm, NULL, fid,
 						const_member_values, num_dep_members,
 						&out);
 				if (err) {
@@ -1853,7 +1854,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								obj.data = buffer;
 
 								int err;
-								err = vm_call_func(ctx->ast_ctx->vm, fid, dep_member_obj,
+								err = vm_call_func(
+										ctx->ast_ctx->vm, NULL, fid, dep_member_obj,
 										bind->num_member_deps, &obj);
 								if (err) {
 									printf("Failed to evaluate constant member.\n");
@@ -2870,8 +2872,12 @@ ast_dt_finalize_variant(
 
 			type_id out_type = TYPE_UNSET;
 
-			nbc_exec(ctx->vm, type_expr_bc->nbc,
+			struct stg_exec exec_ctx = {0};
+			exec_ctx.heap = arena_push(&ctx->vm->memory);
+			nbc_exec(ctx->vm, &exec_ctx, type_expr_bc->nbc,
 					NULL, 0, NULL, &out_type);
+			arena_pop(&ctx->vm->memory, exec_ctx.heap);
+
 			assert(out_type != TYPE_UNSET);
 
 			opts[i].data_type = out_type;

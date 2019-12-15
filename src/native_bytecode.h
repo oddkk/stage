@@ -17,6 +17,8 @@ enum nbc_op {
 	NBC_CALL_NBC_CLOSURE,
 	NBC_CALL_NATIVE,
 	NBC_CALL_NATIVE_CLOSURE,
+	NBC_CALL_NATIVE_HEAP,
+	NBC_CALL_NATIVE_HEAP_CLOSURE,
 	NBC_PACK,
 	NBC_UNPACK,
 	NBC_RET,
@@ -99,7 +101,7 @@ void
 nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *);
 
 void
-nbc_exec(struct vm *vm, struct nbc_func *func,
+nbc_exec(struct vm *vm, struct stg_exec *, struct nbc_func *func,
 		void **params, size_t num_params, void *closure, void *ret);
 
 void

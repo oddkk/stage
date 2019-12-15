@@ -91,7 +91,8 @@ enum func_kind {
 
 enum func_flags {
 	FUNC_IMPURE  = 0x1,
-	FUNC_CLOSURE = 0x2,
+	FUNC_HEAP    = 0x2,
+	FUNC_CLOSURE = 0x4,
 };
 
 struct bc_env;
@@ -186,6 +187,13 @@ typedef void (*object_pack_func)(
 
 typedef void (*object_unpack_func)(
 		struct vm *, void *data, void *out, void *obj, int param_id);
+
+struct stg_exec {
+	struct arena heap;
+};
+
+void *
+stg_alloc(struct stg_exec *, size_t nmemb, size_t size);
 
 void free_objstore(struct objstore *store);
 

@@ -41,7 +41,7 @@ bool
 stg_type_is_func(struct vm *, type_id);
 
 void *
-stg_func_ffi_cif(struct vm *, type_id, bool closure);
+stg_func_ffi_cif(struct vm *, type_id, enum func_flags);
 
 struct object
 stg_register_func_object(
@@ -72,6 +72,8 @@ struct stg_func_type {
 	type_id params_type;
 	void *ffi_cif;
 	void *ffi_cif_closure;
+	void *ffi_cif_heap;
+	void *ffi_cif_heap_closure;
 };
 
 struct stg_array_type {

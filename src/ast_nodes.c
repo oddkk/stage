@@ -922,8 +922,13 @@ ast_templ_pack(struct ast_context *ctx, struct ast_module *mod,
 	res.type = body->type;
 	res.data = buffer;
 
-	nbc_exec(ctx->vm, &nbc_func,
+	struct stg_exec exec_ctx = {0};
+	exec_ctx.heap = arena_push(&ctx->vm->memory);
+
+	nbc_exec(ctx->vm, &exec_ctx, &nbc_func,
 			NULL, 0, NULL, buffer);
+
+	arena_pop(&ctx->vm->memory, exec_ctx.heap);
 
 	res = register_object(ctx->vm, env->store, res);
 
@@ -981,7 +986,8 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 {
 	assert(templ_node->templ.body->kind == AST_NODE_FUNC ||
 			templ_node->templ.body->kind == AST_NODE_FUNC_NATIVE ||
-			templ_node->templ.body->kind == AST_NODE_COMPOSITE);
+			templ_node->templ.body->kind == AST_NODE_COMPOSITE ||
+			templ_node->templ.body->kind == AST_NODE_VARIANT);
 
 	struct ast_object_def *def;
 	def = ast_object_def_register(env->store);

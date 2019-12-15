@@ -192,10 +192,28 @@ vm_get_func(struct vm *vm, func_id fid)
 	return store_get_func(&vm->modules[mid]->store, mfid);
 }
 
+struct stg_exec
+vm_init_exec_context(struct vm *vm)
+{
+	struct stg_exec res = {0};
+	res.heap = arena_push(&vm->memory);
+	return res;
+}
+
+void
+vm_release_exec_context(struct vm *vm, struct stg_exec *ctx)
+{
+	arena_pop(&vm->memory, ctx->heap);
+	memset(ctx, 0, sizeof(struct stg_exec));
+}
+
 int
-vm_call_func_obj(struct vm *vm, struct stg_func_object func_obj, struct object *args,
+vm_call_func_obj(
+		struct vm *vm, struct stg_exec *ctx,
+		struct stg_func_object func_obj, struct object *args,
 		size_t num_args, struct object *ret)
 {
+
 	struct func *func = vm_get_func(vm, func_obj.func);
 	struct type *type = vm_get_type(vm, func->type);
 
@@ -213,27 +231,41 @@ vm_call_func_obj(struct vm *vm, struct stg_func_object func_obj, struct object *
 	assert_type_equals(vm, ret->type, func_type->return_type);
 	assert(ret->data != NULL || ret_type->size == 0);
 
+	bool tmp_exec_ctx = !ctx;
+	struct stg_exec _tmp_exec_ctx;
+	if (tmp_exec_ctx) {
+		_tmp_exec_ctx = vm_init_exec_context(vm);
+		ctx = &_tmp_exec_ctx;
+	}
+
 	switch (func->kind) {
 		case FUNC_NATIVE:
 			{
-				// We reserver arg_values[0] for the closure value is present.
-				void *arg_values[num_args+1];
+				// We reserver arg_values[0] and arg_values[1] for the heap and
+				// closure value if present.
+				void *arg_values[num_args+2];
+				size_t prefix = 0;
+
+				if ((func->flags & FUNC_HEAP) != 0) {
+					arg_values[prefix] = &ctx;
+					prefix += 1;
+				}
+
+				if ((func->flags & FUNC_CLOSURE) != 0) {
+					arg_values[prefix] = &func_obj.closure;
+					prefix += 1;
+				}
 
 				for (size_t i = 0; i < num_args; i++) {
-					arg_values[1+i] = args[i].data;
+					arg_values[prefix+i] = args[i].data;
 				}
 
 				ffi_cif *cif = stg_func_ffi_cif(vm, func->type,
-						(func->flags & FUNC_CLOSURE) != 0);
-				if ((func->flags & FUNC_CLOSURE) != 0) {
-					arg_values[0] = &func_obj.closure;
+						func->flags);
 
-					ffi_call(cif, FFI_FN(func->native), ret->data, &arg_values[0]);
-				} else {
-					ffi_call(cif, FFI_FN(func->native), ret->data, &arg_values[1]);
-				}
+				ffi_call(cif, FFI_FN(func->native), ret->data, arg_values);
 			}
-			return 0;
+			break;
 
 		case FUNC_BYTECODE:
 			{
@@ -241,18 +273,27 @@ vm_call_func_obj(struct vm *vm, struct stg_func_object func_obj, struct object *
 				for (size_t i = 0; i < num_args; i++) {
 					call_args[i] = args[i].data;
 				}
-				nbc_exec(vm, func->bytecode->nbc,
+				nbc_exec(vm, ctx, func->bytecode->nbc,
 						call_args, num_args, NULL, ret->data);
 			}
-			return 0;
+			break;
+
+		default:
+			panic("Invalid func kind");
+			return -1;
 	}
 
-	panic("Invalid func kind");
-	return -1;
+	if (tmp_exec_ctx) {
+		vm_release_exec_context(vm, ctx);
+	}
+
+	return 0;
 }
 
 int
-vm_call_func(struct vm *vm, func_id fid, struct object *args,
+vm_call_func(
+		struct vm *vm, struct stg_exec *ctx,
+		func_id fid, struct object *args,
 		size_t num_args, struct object *ret)
 {
 	struct func *func = vm_get_func(vm, fid);
@@ -261,7 +302,7 @@ vm_call_func(struct vm *vm, func_id fid, struct object *args,
 	struct stg_func_object func_obj = {0};
 	func_obj.func = fid;
 
-	return vm_call_func_obj(vm, func_obj, args, num_args, ret);
+	return vm_call_func_obj(vm, ctx, func_obj, args, num_args, ret);
 }
 
 struct atom *

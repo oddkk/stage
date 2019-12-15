@@ -284,21 +284,37 @@ stg_register_func_type(struct stg_module *mod,
 }
 
 void *
-stg_func_ffi_cif(struct vm *vm, type_id func_tid, bool closure)
+stg_func_ffi_cif(struct vm *vm, type_id func_tid, enum func_flags flags)
 {
 	struct type *type = vm_get_type(vm, func_tid);
 	assert(type->base == &func_type_base);
 	struct stg_func_type *func_info = type->data;
 
-	void *cif;
+	void **final_cif;
 	size_t closure_offset;
-	if (closure) {
-		cif = func_info->ffi_cif_closure;
-		closure_offset = 1;
-	} else {
-		cif = func_info->ffi_cif;
-		closure_offset = 0;
+	switch (flags & (FUNC_HEAP | FUNC_CLOSURE)) {
+		default:
+			final_cif = &func_info->ffi_cif;
+			closure_offset = 0;
+			break;
+
+		case FUNC_HEAP:
+			final_cif = &func_info->ffi_cif_heap;
+			closure_offset = 1;
+			break;
+
+		case FUNC_CLOSURE:
+			final_cif = &func_info->ffi_cif_closure;
+			closure_offset = 1;
+			break;
+
+		case FUNC_HEAP | FUNC_CLOSURE:
+			final_cif = &func_info->ffi_cif_heap_closure;
+			closure_offset = 2;
+			break;
 	}
+
+	void *cif = *final_cif;
 
 	if (!cif) {
 		ffi_type **param_types; // [func_info->num_params];
@@ -308,9 +324,16 @@ stg_func_ffi_cif(struct vm *vm, type_id func_tid, bool closure)
 				func_info->num_params + closure_offset,
 				sizeof(ffi_type *));
 
-		if (closure) {
-			param_types[0] = &ffi_type_pointer;
+		size_t pre_param_i = 0;
+		if ((flags & FUNC_HEAP) != 0) {
+			param_types[pre_param_i] = &ffi_type_pointer;
+			pre_param_i += 1;
 		}
+		if ((flags & FUNC_CLOSURE) != 0) {
+			param_types[pre_param_i] = &ffi_type_pointer;
+			pre_param_i += 1;
+		}
+		assert(closure_offset == pre_param_i);
 
 		for (size_t i = 0; i < func_info->num_params; i++) {
 			struct type *param_type;
@@ -352,11 +375,7 @@ stg_func_ffi_cif(struct vm *vm, type_id func_tid, bool closure)
 			return NULL;
 		}
 
-		if (closure) {
-			func_info->ffi_cif_closure = cif;
-		} else {
-			func_info->ffi_cif = cif;
-		}
+		*final_cif = cif;
 	}
 
 	return cif;

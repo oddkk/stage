@@ -125,7 +125,10 @@ int main(int argc, char *argv[])
 	program_obj.data = program_obj_buffer;
 	program_obj.type = vm.program_object_type;
 
-	vm_call_func(&vm, vm.init_func, NULL, 0, &program_obj);
+	struct stg_exec exec_ctx;
+	exec_ctx = vm_init_exec_context(&vm);
+	vm_call_func(&vm, &exec_ctx, vm.init_func, NULL, 0, &program_obj);
+	vm_release_exec_context(&vm, &exec_ctx);
 
 	/*
 	print_obj_repr(&vm, program_obj);

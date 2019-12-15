@@ -154,6 +154,19 @@ void free_objstore(struct objstore *store) {
 	}
 }
 
+void *
+stg_alloc(struct stg_exec *ctx, size_t nmemb, size_t size)
+{
+	size_t res;
+	// TODO: Make this cross platform and cross compiler compliant.
+	if (!__builtin_mul_overflow(nmemb, size, &res)) {
+		panic("Attempted to allocate memory with a size that exeedes 64-bit integers.");
+		return NULL;
+	}
+
+	return arena_alloc(&ctx->heap, res);
+}
+
 modtype_id
 store_register_type(struct objstore *store, struct type type)
 {

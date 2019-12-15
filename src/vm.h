@@ -77,15 +77,25 @@ vm_find_type_id(struct vm *, struct string mod, struct string name);
 struct func *
 vm_get_func(struct vm *, func_id);
 
+struct stg_exec
+vm_init_exec_context(struct vm *);
+
+void
+vm_release_exec_context(struct vm *, struct stg_exec *);
+
 // Note that this function expects ret to have its type set to the expected
 // return, and to have data point to a memory location where the result will be
 // written.
 int
-vm_call_func_obj(struct vm *, struct stg_func_object, struct object *args,
+vm_call_func_obj(
+		struct vm *, struct stg_exec *ctx,
+		struct stg_func_object, struct object *args,
 		size_t num_args, struct object *ret);
 
 int
-vm_call_func(struct vm *, func_id, struct object *args,
+vm_call_func(
+		struct vm *, struct stg_exec *ctx,
+		func_id, struct object *args,
 		size_t num_args, struct object *ret);
 
 struct atom *
