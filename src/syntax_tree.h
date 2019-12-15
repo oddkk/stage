@@ -97,6 +97,7 @@ extern struct string st_node_names[ST_NODES_LEN];
 														\
 	case ST_NODE_VARIANT_DECL:							\
 		TREE_VISIT_NODE((node), VARIANT_DECL, items);	\
+		TREE_VISIT_NODE((node), VARIANT_DECL, params);	\
 		break;											\
 														\
 	case ST_NODE_VARIANT_ITEM:							\

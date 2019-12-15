@@ -2101,7 +2101,9 @@ ast_node_deep_copy_internal(
 		DCP_DLIST(variant.options, variant.num_options);
 		for (size_t i = 0; i < result->variant.num_options; i++) {
 			DCP_LIT(variant.options[i].name);
-			DCP_NODE(variant.options[i].data_type);
+			if (src->variant.options[i].data_type) {
+				DCP_NODE(variant.options[i].data_type);
+			}
 		}
 
 		DCP_LIT(variant.closure);

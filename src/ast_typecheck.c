@@ -410,7 +410,8 @@ ast_templ_body_preliminary_bind_slots(struct ast_context *ctx, size_t *num_error
 			break;
 
 		case AST_NODE_VARIANT:
-			panic("TODO: Preliminary bind for variant in templ body.");
+			target = ast_bind_slot_wildcard(
+					ctx, env, target, AST_SLOT_TYPE);
 			break;
 
 		default:

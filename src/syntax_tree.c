@@ -264,6 +264,38 @@ st_node_has_templ_params(struct st_node *node)
 }
 
 struct ast_node *
+st_node_create_template(struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct st_node *params_node, struct ast_node *node)
+{
+	struct st_tuple_members params;
+	st_node_unpack_tuple_nodes(
+			params_node, &params);
+
+	struct ast_node *templ_node;
+
+	templ_node = ast_init_node_templ(
+			ctx, env, AST_NODE_NEW,
+			node->loc, node);
+
+	for (size_t i = 0; i < params.num_members; i++) {
+		struct ast_node *type_node;
+
+		type_node = st_node_visit_expr(
+				ctx, mod, env, NULL, params.types[i]);
+
+		// TODO: Better location.
+		ast_node_templ_register_param(
+				ctx, env, templ_node, params.names[i],
+				type_node, node->loc);
+	}
+
+	free(params.names);
+	free(params.types);
+
+	return templ_node;
+}
+
+struct ast_node *
 st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_node *templ_node, struct st_node *node)
 {
@@ -567,32 +599,9 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 
 		if (node->type == ST_NODE_OBJECT_DECL &&
 				node->OBJECT_DECL.params) {
-			struct st_tuple_members params;
-			st_node_unpack_tuple_nodes(
-					node->OBJECT_DECL.params, &params);
-
-			struct ast_node *templ_node;
-
-			templ_node = ast_init_node_templ(
-					ctx, env, AST_NODE_NEW,
-					node->loc, struct_node);
-
-			for (size_t i = 0; i < params.num_members; i++) {
-				struct ast_node *type_node;
-
-				type_node = st_node_visit_expr(
-						ctx, mod, env, NULL, params.types[i]);
-
-				// TODO: Better location.
-				ast_node_templ_register_param(
-						ctx, env, templ_node, params.names[i],
-						type_node, node->loc);
-			}
-
-			free(params.names);
-			free(params.types);
-
-			return templ_node;
+			return st_node_create_template(
+					ctx, mod, env, node->OBJECT_DECL.params,
+					struct_node);
 		} else {
 			return struct_node;
 		}
@@ -704,11 +713,6 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 
 	case ST_NODE_VARIANT_DECL:
 	{
-		if (node->VARIANT_DECL.params) {
-			stg_error(ctx->err, node->loc,
-					"TODO: Variant templates.");
-		}
-
 		struct st_node *option;
 		option = node->VARIANT_DECL.items;
 		assert(option);
@@ -735,6 +739,12 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 					name, data_type);
 
 			option = option->next_sibling;
+		}
+
+		if (node->VARIANT_DECL.params) {
+			return st_node_create_template(
+					ctx, mod, env, node->VARIANT_DECL.params,
+					variant);
 		}
 
 		return variant;
