@@ -185,8 +185,44 @@ typedef void (*object_pack_func)(
 		struct vm *, void *data, void *out,
 		void **params, size_t num_params);
 
+typedef type_id (*object_pack_type_func)(
+		struct vm *, void *data, void **params, size_t num_params);
+
 typedef void (*object_unpack_func)(
 		struct vm *, void *data, void *out, void *obj, int param_id);
+
+typedef void (*object_can_unpack_func)(
+		struct vm *, void *data, void *out, void *obj);
+
+typedef int32_t ast_slot_id;
+struct ast_env;
+
+typedef void (*object_impose_constraints)(
+		struct vm *, void *data, struct ast_env *,
+		ast_slot_id ret_type_slot, ast_slot_id *param_slots);
+
+struct object_cons_param {
+	struct atom *name;
+	type_id type;
+};
+
+struct object_cons {
+	struct object_cons_param *params;
+	size_t num_params;
+
+	object_pack_func pack;
+	object_pack_type_func pack_type;
+	object_unpack_func unpack;
+
+	object_impose_constraints impose_type_constraints;
+
+	void *data;
+};
+
+ssize_t
+object_cons_find_param(
+		struct object_cons *cons,
+		struct atom *name);
 
 struct stg_exec {
 	struct arena heap;

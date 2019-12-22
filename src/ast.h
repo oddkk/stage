@@ -112,7 +112,7 @@ int
 ast_scope_insert(struct ast_scope *,
 		struct atom *name, ast_slot_id);
 
-enum ast_slot_kind {
+enum ast_env_slot_kind {
 	AST_SLOT_ERROR,
 
 	AST_SLOT_WILDCARD,
@@ -128,12 +128,59 @@ enum ast_slot_kind {
 };
 
 const char *
-ast_slot_name(enum ast_slot_kind kind);
+ast_slot_name(enum ast_env_slot_kind kind);
+
+enum ast_constraint_kind {
+	AST_SLOT_REQ_IS_OBJ,
+	AST_SLOT_REQ_IS_TYPE,
+	AST_SLOT_REQ_IS_FUNC_TYPE,
+	AST_SLOT_REQ_EQUALS,
+	AST_SLOT_REQ_TYPE,
+	AST_SLOT_REQ_MEMBER_NAMED,
+	AST_SLOT_REQ_MEMBER_INDEXED,
+	AST_SLOT_REQ_CONS,
+};
+
+enum ast_constraint_source {
+	AST_CONSTR_SRC_FUNC_DECL,
+	AST_CONSTR_SRC_TEMPL_PARAM_DECL,
+};
+
+struct ast_slot_constraint {
+	enum ast_constraint_kind kind;
+	enum ast_constraint_source source;
+	ast_slot_id target;
+
+	union {
+		union {
+			struct object obj;
+			type_id type;
+		} is;
+
+		ast_slot_id equals;
+
+		ast_slot_id type;
+
+		struct {
+			ast_slot_id slot;
+			union {
+				struct atom *name;
+				size_t index;
+			};
+		} member;
+
+		struct object_cons *cons;
+	};
+
+	struct {
+		struct stg_location loc;
+	} reason;
+};
 
 struct ast_env_slot {
 	ast_slot_id type;
 
-	enum ast_slot_kind kind;
+	enum ast_env_slot_kind kind;
 	union {
 		type_id const_type;
 		struct object const_object;
@@ -146,6 +193,18 @@ struct ast_env_slot {
 };
 
 struct ast_env {
+	size_t num_alloced_slots;
+
+	struct ast_slot_constraint **constraint_pages;
+	size_t last_page_num_used;
+	size_t num_pages;
+	size_t page_size;
+	size_t constraints_per_page;
+	// If this environment was copied from another, num_borrowed_pages will
+	// indicate how many of this env's pages was borrowed from the src.
+	size_t num_borrowed_pages;
+
+	// Old slot system
 	struct ast_env_slot *slots;
 	size_t num_slots;
 
@@ -234,6 +293,74 @@ struct ast_bind_result {
 
 struct ast_context
 ast_init_context(struct stg_error_context *, struct atom_table *, struct vm *);
+
+ast_slot_id
+ast_slot_alloc(struct ast_env *env);
+
+void
+ast_slot_require_is_obj(
+		struct ast_env *env, struct stg_location loc,
+		ast_slot_id target, struct object val);
+
+void
+ast_slot_require_is_type(
+		struct ast_env *env, struct stg_location loc,
+		ast_slot_id target, type_id val);
+
+void
+ast_slot_require_is_func_type(
+		struct ast_env *env, struct stg_location loc,
+		ast_slot_id target, ast_slot_id ret_type,
+		ast_slot_id *param_types, size_t num_params);
+
+void
+ast_slot_require_equals(
+		struct ast_env *env, struct stg_location loc,
+		ast_slot_id target, ast_slot_id slot);
+
+void
+ast_slot_require_type(
+		struct ast_env *env, struct stg_location loc,
+		ast_slot_id target, ast_slot_id type);
+
+void
+ast_slot_require_member_named(
+		struct ast_env *env, struct stg_location loc,
+		ast_slot_id target, struct atom *name, ast_slot_id member);
+
+void
+ast_slot_require_member_index(
+		struct ast_env *env, struct stg_location loc,
+		ast_slot_id target, size_t index, ast_slot_id member);
+
+void
+ast_slot_require_cons(
+		struct ast_env *env, struct stg_location loc,
+		ast_slot_id target, struct object_cons *def);
+
+enum ast_slot_result_state {
+	AST_SLOT_RESULT_ERROR = -1,
+
+	AST_SLOT_RESULT_FOUND_OBJ = 0,
+	AST_SLOT_RESULT_FOUND_TYPE = 1,
+	AST_SLOT_RESULT_UNKNOWN = 2,
+};
+
+struct ast_slot_result {
+	enum ast_slot_result_state result;
+	union {
+		type_id type;
+		struct object obj;
+	};
+};
+
+// out_result is expected to be an array of length env->num_alloced_slots.
+int
+ast_slot_try_solve(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_slot_result *out_result);
+
+
 
 ast_slot_id
 ast_bind_result_to_slot(struct ast_bind_result res);

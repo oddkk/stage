@@ -44,7 +44,7 @@ sub compile_project {
 	my $project_compile_out;
 
 	$project_compile_out = qx{
-	bison $src_dir/config_parser.y -t --report=all -o $src_dir/config_parser.y.re2c 2>&1
+	bison $src_dir/parser.y -t --report=all -o $src_dir/parser.y.re2c 2>&1
 	};
 	if (!return_code_success($?)) {
 		print colored(['red'], 'COMPILE FAIL') . "\n$project_compile_out\n";
@@ -52,7 +52,7 @@ sub compile_project {
 	}
 
 	$project_compile_out = qx{
-	re2c $src_dir/config_parser.y.re2c -o $src_dir/config_parser.y.c 2>&1
+	re2c $src_dir/parser.y.re2c -o $src_dir/parser.y.c 2>&1
 	};
 	if (!return_code_success($?)) {
 		print colored(['red'], 'COMPILE FAIL') . "\n$project_compile_out\n";
@@ -104,7 +104,7 @@ while (my $file = readdir($dir)) {
 
 		my $out_file = "$build_dir/$test_name";
 		my $compiler_out = qx{
-clang $color_arg -g -lm -lpthread -lssl -lcrypto -Wall -pedantic -I$src_dir $project_objects $test_dir/$file -o $out_file 2>&1
+clang $color_arg -g -lm -lpthread -ldl -lffi -lssl -lcrypto -Wall -pedantic -I$src_dir $project_objects $test_dir/$file -o $out_file 2>&1
 };
 		if (!return_code_success($?)) {
 			print colored(['red'], 'COMPILE FAIL') . "\n$compiler_out\n";
@@ -136,5 +136,5 @@ if ($test_cases > 0) {
 	print "No test cases.\n"
 }
 
-rmtree([$build_dir]);
+# rmtree([$build_dir]);
 exit 0;

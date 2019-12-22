@@ -45,6 +45,9 @@ void
 stg_msgv(struct stg_error_context *err, struct stg_location loc,
 		enum stg_error_level lvl, const char *fmt, va_list ap)
 {
+	if (!err) {
+		return;
+	}
 	struct stg_error msg = {0};
 
 	msg.level = lvl;

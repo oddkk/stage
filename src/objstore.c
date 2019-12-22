@@ -329,3 +329,16 @@ arena_string_append_obj_repr(struct string *str, struct vm *vm,
 	arena_string_append(mem, str, repr);
 }
 
+ssize_t
+object_cons_find_param(
+		struct object_cons *cons,
+		struct atom *name)
+{
+	for (size_t i = 0; i < cons->num_params; i++) {
+		if (cons->params[i].name == name) {
+			return i;
+		}
+	}
+
+	return -1;
+}
