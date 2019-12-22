@@ -43,7 +43,7 @@ ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot)
 }
 
 struct ast_node *
-ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
+ast_init_node_func(struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		struct atom **param_names, struct ast_node **param_types, size_t num_params,
 		struct ast_node *return_type, struct ast_node *body)
@@ -74,7 +74,7 @@ ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
 }
 
 struct ast_node *
-ast_init_node_func_native(struct ast_context *ctx, struct ast_env *env,
+ast_init_node_func_native(struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		struct atom **param_names, struct ast_node **param_types, size_t num_params,
 		struct ast_node *return_type, struct string native_func_name)
@@ -106,7 +106,7 @@ ast_init_node_func_native(struct ast_context *ctx, struct ast_env *env,
 
 struct ast_node *
 ast_init_node_templ(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		struct ast_node *body)
 {
@@ -127,7 +127,7 @@ ast_init_node_templ(
 
 struct ast_node *
 ast_init_node_call(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		struct ast_node *func,
 		struct ast_func_arg *args, size_t num_args)
@@ -158,7 +158,7 @@ ast_init_node_call(
 
 struct ast_node *
 ast_init_node_cons(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		struct ast_node *func,
 		struct ast_func_arg *args, size_t num_args)
@@ -189,7 +189,7 @@ ast_init_node_cons(
 
 struct ast_node *
 ast_init_node_func_type(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		struct ast_node **param_types, size_t num_params,
 		struct ast_node *ret_type)
@@ -220,7 +220,7 @@ ast_init_node_func_type(
 
 struct ast_node *
 ast_init_node_slot(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		ast_slot_id slot)
 {
@@ -241,7 +241,7 @@ ast_init_node_slot(
 
 struct ast_node *
 ast_init_node_access(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		struct ast_node *target, struct atom *name)
 {
@@ -265,7 +265,7 @@ ast_init_node_access(
 
 struct ast_node *
 ast_init_node_lit(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		struct object lit)
 {
@@ -287,7 +287,7 @@ ast_init_node_lit(
 
 struct ast_node *
 ast_init_node_lookup(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,
 		struct atom *name)
 {
@@ -310,7 +310,7 @@ ast_init_node_lookup(
 
 void
 ast_node_templ_register_param(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *templ, struct atom *name,
 		struct ast_node *type, struct stg_location loc)
 {
@@ -345,7 +345,7 @@ ast_node_templ_register_param(
 
 struct ast_node *
 ast_init_node_composite(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location loc)
 {
 	if (target == AST_NODE_NEW) {
@@ -365,7 +365,7 @@ ast_init_node_composite(
 
 int
 ast_node_composite_add_member(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct atom *name,
 		struct ast_node *type, int type_giving_bind)
 {
@@ -413,7 +413,7 @@ ast_node_composite_get_member(
 
 int
 ast_node_composite_bind(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *composite, struct ast_node *target,
 		struct ast_node *value, bool overridable)
 {
@@ -437,7 +437,7 @@ ast_node_composite_bind(
 
 void
 ast_node_composite_tag_bind_erroneous(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *composite, int bind_id)
 {
 	assert(bind_id < composite->composite.num_binds);
@@ -446,7 +446,7 @@ ast_node_composite_tag_bind_erroneous(
 
 void
 ast_node_composite_add_free_expr(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct ast_node *expr)
 {
 	assert(target && expr);
@@ -459,7 +459,7 @@ ast_node_composite_add_free_expr(
 
 struct ast_node *
 ast_init_node_variant(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location loc)
 {
 	if (target == AST_NODE_NEW) {
@@ -478,7 +478,7 @@ ast_init_node_variant(
 
 void
 ast_node_variant_add_option(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location loc,
 		struct atom *name, struct ast_node *data_type)
 {

@@ -906,84 +906,84 @@ ast_node_value(struct ast_context *, struct ast_env *, struct ast_node *);
 #define AST_NODE_NEW ((struct ast_node *)1)
 
 struct ast_node *
-ast_init_node_func(struct ast_context *ctx, struct ast_env *env,
+ast_init_node_func(struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct atom **param_names, struct ast_node **param_types, size_t num_params,
 		struct ast_node *return_type, struct ast_node *body);
 
 struct ast_node *
-ast_init_node_func_native(struct ast_context *ctx, struct ast_env *env,
+ast_init_node_func_native(struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct atom **param_names, struct ast_node **param_types, size_t num_params,
 		struct ast_node *return_type, struct string native_func_name);
 
 struct ast_node *
 ast_init_node_templ(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct ast_node *body);
 
 struct ast_node *
 ast_init_node_call(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct ast_node *func,
 		struct ast_func_arg *args, size_t num_args);
 
 struct ast_node *
 ast_init_node_cons(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct ast_node *func,
 		struct ast_func_arg *args, size_t num_args);
 
 struct ast_node *
 ast_init_node_func_type(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct ast_node **param_types, size_t num_params,
 		struct ast_node *ret_type);
 
 struct ast_node *
 ast_init_node_slot(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		ast_slot_id slot);
 
 struct ast_node *
 ast_init_node_access(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct ast_node *lhs, struct atom *name);
 
 struct ast_node *
 ast_init_node_lit(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct object);
 
 struct ast_node *
 ast_init_node_lookup(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct atom *name);
 
 void
 ast_node_templ_register_param(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *templ, struct atom *name,
 		struct ast_node *type, struct stg_location loc);
 
 struct ast_node *
 ast_init_node_composite(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location);
 
 #define AST_NO_TYPE_GIVING_BIND ((int)-1)
 
 int
 ast_node_composite_add_member(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct atom *name,
 		struct ast_node *type, int type_giving_bind);
 
@@ -994,29 +994,29 @@ ast_node_composite_get_member(
 
 int
 ast_node_composite_bind(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *composite, struct ast_node *target,
 		struct ast_node *value, bool overridable);
 
 void
 ast_node_composite_tag_bind_erroneous(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *composite, int bind_id);
 
 
 void
 ast_node_composite_add_free_expr(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct ast_node *expr);
 
 struct ast_node *
 ast_init_node_variant(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location);
 
 void
 ast_node_variant_add_option(
-		struct ast_context *ctx, struct ast_env *env,
+		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct atom *name, struct ast_node *data_type);
 
@@ -1027,18 +1027,18 @@ ast_node_substitute_slot(struct ast_node *,
 struct stg_native_module;
 
 int
-ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+ast_node_resolve_names(struct ast_context *ctx,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *node);
 
 int
-ast_composite_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+ast_composite_node_resolve_names(struct ast_context *ctx,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *comp, struct ast_node *node,
 		ast_member_id *local_members);
 
 int
-ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *env,
+ast_node_discover_potential_closures(struct ast_context *ctx,
 		struct ast_scope *scope, bool require_const, struct ast_node *node);
 
 enum ast_name_dep_requirement {
@@ -1198,7 +1198,7 @@ ast_namespace_add_free_expr(struct ast_context *, struct ast_module *,
 		struct ast_node *, struct ast_node *expr);
 
 struct ast_node *
-ast_namespace_add_ns(struct ast_context *, struct ast_env *,
+ast_namespace_add_ns(struct ast_context *,
 		struct ast_node *, struct atom *name);
 
 void

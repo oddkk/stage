@@ -63,7 +63,7 @@ ast_node_get_closure_target(struct ast_node *node)
 }
 
 static struct ast_name_ref
-ast_try_lookup_in_scope(struct ast_context *ctx, struct ast_env *env,
+ast_try_lookup_in_scope(struct ast_context *ctx,
 		struct ast_scope *scope, struct atom *name)
 {
 	for (size_t i = 0; i < scope->num_names; i++) {
@@ -76,7 +76,7 @@ ast_try_lookup_in_scope(struct ast_context *ctx, struct ast_env *env,
 }
 
 static struct ast_name_ref
-ast_resolve_lookup(struct ast_context *ctx, struct ast_env *env,
+ast_resolve_lookup(struct ast_context *ctx,
 		struct ast_scope *root_scope, bool require_const, struct atom *name,
 		bool allow_add_closure)
 {
@@ -85,7 +85,7 @@ ast_resolve_lookup(struct ast_context *ctx, struct ast_env *env,
 			scope = scope->parent) {
 		struct ast_name_ref ref =
 			ast_try_lookup_in_scope(
-				ctx, env, scope, name);
+				ctx, scope, name);
 
 		if (ref.kind != AST_NAME_REF_NOT_FOUND) {
 			return ref;
@@ -137,13 +137,13 @@ ast_resolve_lookup(struct ast_context *ctx, struct ast_env *env,
 }
 
 static int
-ast_closure_resolve_names(struct ast_context *ctx, struct ast_env *env,
+ast_closure_resolve_names(struct ast_context *ctx,
 		struct ast_scope *scope, bool require_const,
 		struct ast_closure_target *closure)
 {
 	for (size_t i = 0; i < closure->num_members; i++) {
 		struct ast_name_ref ref;
-		ref = ast_resolve_lookup(ctx, env, scope, require_const,
+		ref = ast_resolve_lookup(ctx, scope, require_const,
 					closure->members[i].name, false);
 		closure->members[i].ref = ref;
 	}
@@ -152,7 +152,7 @@ ast_closure_resolve_names(struct ast_context *ctx, struct ast_env *env,
 }
 
 int
-ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+ast_node_resolve_names(struct ast_context *ctx,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *node)
 {
@@ -179,17 +179,17 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				}
 
 				for (size_t i = 0; i < params_scope.num_names; i++) {
-					err += ast_node_resolve_names(ctx, env, native_mod,
+					err += ast_node_resolve_names(ctx, native_mod,
 							scope, true, node->func.params[i].type);
 				}
 
-				err += ast_node_resolve_names(ctx, env, native_mod,
+				err += ast_node_resolve_names(ctx, native_mod,
 						scope, true, node->func.return_type);
 
-				err += ast_node_resolve_names(ctx, env, native_mod,
+				err += ast_node_resolve_names(ctx, native_mod,
 						&params_scope, false, node->func.body);
 
-				err += ast_closure_resolve_names(ctx, env,
+				err += ast_closure_resolve_names(ctx,
 						scope, require_const,
 						&node->func.closure);
 			}
@@ -198,11 +198,11 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		case AST_NODE_FUNC_NATIVE:
 			{
 				for (size_t i = 0; i < node->func.num_params; i++) {
-					err += ast_node_resolve_names(ctx, env, native_mod,
+					err += ast_node_resolve_names(ctx, native_mod,
 							scope, true, node->func.params[i].type);
 				}
 
-				err += ast_node_resolve_names(ctx, env, native_mod,
+				err += ast_node_resolve_names(ctx, native_mod,
 						scope, true, node->func.return_type);
 
 				node->func.native.native_mod = native_mod;
@@ -235,21 +235,21 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
-			err += ast_node_resolve_names(ctx, env, native_mod,
+			err += ast_node_resolve_names(ctx, native_mod,
 					scope, require_const, node->call.func);
 			for (size_t i = 0; i < node->call.num_args; i++) {
-				err += ast_node_resolve_names(ctx, env, native_mod,
+				err += ast_node_resolve_names(ctx, native_mod,
 						scope, require_const, node->call.args[i].value);
 			}
 			break;
 
 		case AST_NODE_FUNC_TYPE:
 			err += ast_node_resolve_names(
-					ctx, env, native_mod, scope,
+					ctx, native_mod, scope,
 					true, node->func_type.ret_type);
 			for (size_t i = 0; i < node->func_type.num_params; i++) {
 				err += ast_node_resolve_names(
-						ctx, env, native_mod, scope,
+						ctx, native_mod, scope,
 						true, node->func_type.param_types[i]);
 			}
 			break;
@@ -273,22 +273,22 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 
 					if (node->templ.params[i].type) {
 						err += ast_node_resolve_names(
-								ctx, env, native_mod, scope, true,
+								ctx, native_mod, scope, true,
 								node->templ.params[i].type);
 					}
 				}
 
-				err += ast_node_resolve_names(ctx, env, native_mod,
+				err += ast_node_resolve_names(ctx, native_mod,
 						&templates_scope, require_const, node->templ.body);
 
-				err += ast_closure_resolve_names(ctx, env,
+				err += ast_closure_resolve_names(ctx,
 						scope, require_const,
 						&node->templ.closure);
 			}
 			break;
 
 		case AST_NODE_ACCESS:
-			err += ast_node_resolve_names(ctx, env, native_mod,
+			err += ast_node_resolve_names(ctx, native_mod,
 					scope, true, node->access.target);
 			// At this point we do not have type information, and thus can not
 			// resolve accesses.
@@ -304,7 +304,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			{
 				struct atom *name = node->lookup.name;
 				struct ast_name_ref res;
-				res = ast_resolve_lookup(ctx, env, scope,
+				res = ast_resolve_lookup(ctx, scope,
 						require_const, name, false);
 
 				node->lookup.ref = res;
@@ -318,7 +318,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 			break;
 
 		case AST_NODE_COMPOSITE:
-			err += ast_closure_resolve_names(ctx, env,
+			err += ast_closure_resolve_names(ctx,
 					scope, require_const,
 					&node->composite.closure);
 			break;
@@ -329,14 +329,14 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 				ast_scope_push_composite(&member_scope, scope);
 				member_scope.closure_target = node;
 
-				err += ast_closure_resolve_names(ctx, env,
+				err += ast_closure_resolve_names(ctx,
 						scope, require_const,
 						&node->variant.closure);
 
 				for (size_t i = 0; i < node->variant.num_options; i++) {
 					if (node->variant.options[i].data_type) {
 						err += ast_node_resolve_names(
-								ctx, env, native_mod, &member_scope,
+								ctx, native_mod, &member_scope,
 								true, node->variant.options[i].data_type);
 					}
 				}
@@ -348,7 +348,7 @@ ast_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 }
 
 int
-ast_composite_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
+ast_composite_node_resolve_names(struct ast_context *ctx,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *comp, struct ast_node *node,
 		ast_member_id *local_members)
@@ -375,47 +375,47 @@ ast_composite_node_resolve_names(struct ast_context *ctx, struct ast_env *env,
 		for (size_t i = 0; i < node->composite.num_members; i++) {
 			if (node->composite.members[i].type) {
 				err += ast_node_resolve_names(
-						ctx, env, native_mod, &member_scope, true,
+						ctx, native_mod, &member_scope, true,
 						node->composite.members[i].type);
 			}
 		}
 
 		for (size_t i = 0; i < node->composite.num_binds; i++) {
 			err += ast_node_resolve_names(
-					ctx, env, native_mod, &member_scope, false,
+					ctx, native_mod, &member_scope, false,
 					node->composite.binds[i].target);
 			err += ast_node_resolve_names(
-					ctx, env, native_mod, &member_scope, false,
+					ctx, native_mod, &member_scope, false,
 					node->composite.binds[i].value);
 		}
 
 		for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
 			err += ast_node_resolve_names(
-					ctx, env, native_mod, &member_scope, false,
+					ctx, native_mod, &member_scope, false,
 					node->composite.free_exprs[i]);
 		}
 
 		return err;
 	} else {
 		return ast_node_resolve_names(
-				ctx, env, native_mod, &member_scope,
+				ctx, native_mod, &member_scope,
 				require_const, node);
 	}
 }
 
 static void
-ast_closure_discover_potential_closures(struct ast_context *ctx, struct ast_env *env,
+ast_closure_discover_potential_closures(struct ast_context *ctx,
 		struct ast_scope *scope, bool require_const,
 		struct ast_closure_target *closure)
 {
 	for (size_t i = 0; i < closure->num_members; i++) {
-		ast_resolve_lookup(ctx, env, scope, require_const,
+		ast_resolve_lookup(ctx, scope, require_const,
 					closure->members[i].name, true);
 	}
 }
 
 int
-ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *env,
+ast_node_discover_potential_closures(struct ast_context *ctx,
 		struct ast_scope *scope, bool require_const, struct ast_node *node)
 {
 	int err = 0;
@@ -442,19 +442,19 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 
 				for (size_t i = 0; i < params_scope.num_names; i++) {
 					err += ast_node_discover_potential_closures(
-							ctx, env, scope, true,
+							ctx, scope, true,
 							node->func.params[i].type);
 				}
 
 				err += ast_node_discover_potential_closures(
-						ctx, env, scope, true,
+						ctx, scope, true,
 						node->func.return_type);
 
 				err += ast_node_discover_potential_closures(
-						ctx, env, &params_scope, false,
+						ctx, &params_scope, false,
 						node->func.body);
 
-				ast_closure_discover_potential_closures(ctx, env,
+				ast_closure_discover_potential_closures(ctx,
 						scope, require_const,
 						&node->func.closure);
 			}
@@ -464,12 +464,12 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 			{
 				for (size_t i = 0; i < node->func.num_params; i++) {
 					err += ast_node_discover_potential_closures(
-							ctx, env, scope, true,
+							ctx, scope, true,
 							node->func.params[i].type);
 				}
 
 				err += ast_node_discover_potential_closures(
-						ctx, env, scope, true,
+						ctx, scope, true,
 						node->func.return_type);
 			}
 			break;
@@ -477,22 +477,22 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
 			err += ast_node_discover_potential_closures(
-					ctx, env, scope, require_const,
+					ctx, scope, require_const,
 					node->call.func);
 			for (size_t i = 0; i < node->call.num_args; i++) {
 				err += ast_node_discover_potential_closures(
-						ctx, env, scope, require_const,
+						ctx, scope, require_const,
 						node->call.args[i].value);
 			}
 			break;
 
 		case AST_NODE_FUNC_TYPE:
 			err += ast_node_discover_potential_closures(
-					ctx, env, scope, true,
+					ctx, scope, true,
 					node->func_type.ret_type);
 			for (size_t i = 0; i < node->func_type.num_params; i++) {
 				err += ast_node_discover_potential_closures(
-						ctx, env, scope, true,
+						ctx, scope, true,
 						node->func_type.param_types[i]);
 			}
 			break;
@@ -516,22 +516,22 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 
 					if (node->templ.params[i].type) {
 						err += ast_node_discover_potential_closures(
-								ctx, env, scope, true,
+								ctx, scope, true,
 								node->templ.params[i].type);
 					}
 				}
 
-				err += ast_node_discover_potential_closures(ctx, env,
+				err += ast_node_discover_potential_closures(ctx,
 						&templates_scope, require_const, node->templ.body);
 
-				ast_closure_discover_potential_closures(ctx, env,
+				ast_closure_discover_potential_closures(ctx,
 						scope, require_const,
 						&node->templ.closure);
 			}
 			break;
 
 		case AST_NODE_ACCESS:
-			err += ast_node_discover_potential_closures(ctx, env,
+			err += ast_node_discover_potential_closures(ctx,
 					scope, true, node->access.target);
 			break;
 
@@ -544,7 +544,7 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 		case AST_NODE_LOOKUP:
 			{
 				struct atom *name = node->lookup.name;
-				ast_resolve_lookup(ctx, env, scope,
+				ast_resolve_lookup(ctx, scope,
 						require_const, name, true);
 			}
 			break;
@@ -570,26 +570,26 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 				for (size_t i = 0; i < node->composite.num_members; i++) {
 					if (node->composite.members[i].type) {
 						err += ast_node_discover_potential_closures(
-								ctx, env, &member_scope, true,
+								ctx, &member_scope, true,
 								node->composite.members[i].type);
 					}
 				}
 
 				for (size_t i = 0; i < node->composite.num_binds; i++) {
 					err += ast_node_discover_potential_closures(
-							ctx, env, &member_scope, false,
+							ctx, &member_scope, false,
 							node->composite.binds[i].target);
 					err += ast_node_discover_potential_closures(
-							ctx, env, &member_scope, false,
+							ctx, &member_scope, false,
 							node->composite.binds[i].value);
 				}
 
 				for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
-					err += ast_node_discover_potential_closures(ctx, env,
+					err += ast_node_discover_potential_closures(ctx,
 							&member_scope, false, node->composite.free_exprs[i]);
 				}
 
-				ast_closure_discover_potential_closures(ctx, env,
+				ast_closure_discover_potential_closures(ctx,
 						scope, require_const,
 						&node->composite.closure);
 			}
@@ -604,12 +604,12 @@ ast_node_discover_potential_closures(struct ast_context *ctx, struct ast_env *en
 				for (size_t i = 0; i < node->variant.num_options; i++) {
 					if (node->variant.options[i].data_type) {
 						err += ast_node_discover_potential_closures(
-								ctx, env, &member_scope, true,
+								ctx, &member_scope, true,
 								node->variant.options[i].data_type);
 					}
 				}
 
-				ast_closure_discover_potential_closures(ctx, env,
+				ast_closure_discover_potential_closures(ctx,
 						scope, require_const, &node->variant.closure);
 			}
 			break;

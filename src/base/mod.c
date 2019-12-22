@@ -87,8 +87,8 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 	int_obj.data = &ctx->types.integer;
 	int_obj = register_object(ctx->vm, &mod->store, int_obj);
 
-	int_type_expr = ast_init_node_lit(ctx, &mod->mod.env,
-			AST_NODE_NEW, STG_NO_LOC, int_obj);
+	int_type_expr = ast_init_node_lit(
+			ctx, AST_NODE_NEW, STG_NO_LOC, int_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
 			mod->mod.root, mod_atoms(mod, "int"), int_type_expr);
 
@@ -98,8 +98,8 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 	type_obj.data = &ctx->types.type;
 	type_obj = register_object(ctx->vm, &mod->store, type_obj);
 
-	type_type_expr = ast_init_node_lit(ctx, &mod->mod.env,
-			AST_NODE_NEW, STG_NO_LOC, type_obj);
+	type_type_expr = ast_init_node_lit(
+			ctx, AST_NODE_NEW, STG_NO_LOC, type_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
 			mod->mod.root, mod_atoms(mod, "type"), type_type_expr);
 
@@ -109,8 +109,8 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 	unit_obj.data = &ctx->types.unit;
 	unit_obj = register_object(ctx->vm, &mod->store, unit_obj);
 
-	unit_type_expr = ast_init_node_lit(ctx, &mod->mod.env,
-			AST_NODE_NEW, STG_NO_LOC, unit_obj);
+	unit_type_expr = ast_init_node_lit(
+			ctx, AST_NODE_NEW, STG_NO_LOC, unit_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
 			mod->mod.root, mod_atoms(mod, "Unit"), unit_type_expr);
 
@@ -120,8 +120,8 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 	string_obj.data = &ctx->types.string;
 	string_obj = register_object(ctx->vm, &mod->store, string_obj);
 
-	string_type_expr = ast_init_node_lit(ctx, &mod->mod.env,
-			AST_NODE_NEW, STG_NO_LOC, string_obj);
+	string_type_expr = ast_init_node_lit(
+			ctx, AST_NODE_NEW, STG_NO_LOC, string_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
 			mod->mod.root, mod_atoms(mod, "String"), string_type_expr);
 

@@ -1690,8 +1690,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				int err;
 				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->ast_env,
-						ctx->ast_mod->stg_mod->native_mod,
+						ctx->ast_ctx, ctx->ast_mod->stg_mod->native_mod,
 						NULL, true, ctx->root_node, mbr->type_node,
 						ctx->local_member_ids);
 				if (err) {
@@ -1709,8 +1708,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			{
 				int err;
 				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->ast_env,
-						ctx->ast_mod->stg_mod->native_mod,
+						ctx->ast_ctx, ctx->ast_mod->stg_mod->native_mod,
 						NULL, false, ctx->root_node,
 						job->bind->value.node,
 						ctx->local_member_ids);
@@ -1963,7 +1961,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			{
 				int err;
 				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->ast_env, NULL, NULL,
+						ctx->ast_ctx, NULL, NULL,
 						false, ctx->root_node, job->bind->target_node,
 						ctx->local_member_ids);
 				if (err) {

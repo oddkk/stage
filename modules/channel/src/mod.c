@@ -166,8 +166,8 @@ mod_channel_init(struct ast_context *ctx, struct stg_module *mod)
 		struct atom *cons_name = vm_atoms(ctx->vm, "Channel");
 
 		struct ast_node *expr;
-		expr = ast_init_node_lit(ctx, &ast_mod->env,
-				AST_NODE_NEW, STG_NO_LOC, res);
+		expr = ast_init_node_lit(
+				ctx, AST_NODE_NEW, STG_NO_LOC, res);
 
 		ast_namespace_add_decl(ctx, ast_mod, ast_mod->root,
 				cons_name, expr);

@@ -632,7 +632,7 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 					if (is_slot_func_type(ctx, &cons->env, cons->ret_type)) {
 						struct ast_node *func_cons;
 						func_cons = ast_init_node_cons(
-								ctx, env, AST_NODE_NEW,
+								ctx, AST_NODE_NEW,
 								node->call.func->loc,
 								node->call.func, NULL, 0);
 

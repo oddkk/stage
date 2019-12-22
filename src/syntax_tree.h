@@ -225,7 +225,6 @@ void st_print(struct st_node *node);
 void st_clean(struct st_node **tree);
 
 struct ast_node;
-struct ast_env;
 struct ast_context;
 struct ast_module;
 
@@ -234,10 +233,10 @@ st_node_has_templ_params(struct st_node *node);
 
 void
 st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *struct_node, struct st_node *stmt);
+		struct ast_node *struct_node, struct st_node *stmt);
 
 struct ast_node *
-st_node_visit_expr(struct ast_context *, struct ast_module *mod, struct ast_env *,
+st_node_visit_expr(struct ast_context *, struct ast_module *mod,
 		struct ast_node *templ_node, struct st_node *);
 
 #endif

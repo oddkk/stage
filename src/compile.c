@@ -194,7 +194,7 @@ job_parse_file(struct compile_ctx *ctx, job_parse_file_t *data)
 	stmt = node->MODULE.body;
 
 	while (stmt) {
-		st_node_visit_stmt(ctx->ast_ctx, data->mod, &data->mod->env, data->scope, stmt);
+		st_node_visit_stmt(ctx->ast_ctx, data->mod, data->scope, stmt);
 		stmt = stmt->next_sibling;
 	}
 
@@ -268,8 +268,8 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 				if (atom == vm_atoms(ctx->vm, "mod")) {
 					file_ns = dir_ns_stack[dir_ns_head];
 				} else {
-					file_ns = ast_namespace_add_ns(ctx->ast_ctx, &mod->env,
-							dir_ns_stack[dir_ns_head], atom);
+					file_ns = ast_namespace_add_ns(
+							ctx->ast_ctx, dir_ns_stack[dir_ns_head], atom);
 				}
 
 				if (num_unparsed_files) {
@@ -306,7 +306,8 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 					assert(dir_ns_head < DIR_NS_STACK_CAP - 1);
 					dir_ns_head += 1;
 					dir_ns_stack[dir_ns_head] =
-						ast_namespace_add_ns(ctx->ast_ctx, &mod->env,
+						ast_namespace_add_ns(
+								ctx->ast_ctx,
 								dir_ns_stack[dir_ns_head-1], atom);
 				}
 			}
@@ -481,8 +482,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				data->mod = &data->_tmp_module;
 				data->mod->env.store = &ctx->store;
 				data->mod->root = ast_init_node_composite(
-						ctx->ast_ctx, &data->mod->env,
-						AST_NODE_NEW, STG_NO_LOC);
+						ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC);
 
 				if (data->module_name != vm_atoms(ctx->vm, "base")) {
 					ast_module_add_dependency(ctx->ast_ctx, data->mod,
@@ -826,16 +826,16 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		mod_type_obj.type = ast_ctx->types.type;
 		mod_type_obj.data = &main_mod->type;
 
-		main_mod_ret = ast_init_node_lit(ast_ctx, &main_mod->env,
+		main_mod_ret = ast_init_node_lit(ast_ctx,
 				AST_NODE_NEW, STG_NO_LOC, mod_type_obj);
 
-		main_mod_cons_obj = ast_init_node_lit(ast_ctx, &main_mod->env,
+		main_mod_cons_obj = ast_init_node_lit(ast_ctx,
 				AST_NODE_NEW, STG_NO_LOC, mod_cons_obj);
 
-		main_mod_cons = ast_init_node_cons(ast_ctx, &main_mod->env,
+		main_mod_cons = ast_init_node_cons(ast_ctx,
 				AST_NODE_NEW, STG_NO_LOC, main_mod_cons_obj, NULL, 0);
 
-		main_mod_init_func = ast_init_node_func(ast_ctx, &main_mod->env,
+		main_mod_init_func = ast_init_node_func(ast_ctx,
 				AST_NODE_NEW, STG_NO_LOC,
 				NULL, NULL, 0,
 				main_mod_ret, main_mod_cons);

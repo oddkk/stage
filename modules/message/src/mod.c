@@ -233,8 +233,8 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 		struct atom *cons_name = vm_atoms(ast_ctx->vm, "Message");
 
 		struct ast_node *expr;
-		expr = ast_init_node_lit(ast_ctx, &ast_mod->env,
-				AST_NODE_NEW, STG_NO_LOC, res);
+		expr = ast_init_node_lit(
+				ast_ctx, AST_NODE_NEW, STG_NO_LOC, res);
 
 		ast_namespace_add_decl(ast_ctx, ast_mod, ast_mod->root,
 				cons_name, expr);
@@ -249,8 +249,8 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 		res = register_object(ast_ctx->vm, mod->mod.env.store, res);
 
 		struct ast_node *expr;
-		expr = ast_init_node_lit(ast_ctx, &mod->mod.env,
-				AST_NODE_NEW, STG_NO_LOC, res);
+		expr = ast_init_node_lit(
+				ast_ctx, AST_NODE_NEW, STG_NO_LOC, res);
 
 		struct atom *start_msg_name = vm_atoms(ast_ctx->vm, "onStart");
 
