@@ -98,6 +98,7 @@ ast_slot_alloc(struct ast_env *env)
 static struct ast_slot_constraint *
 ast_alloc_constraint(
 		struct ast_env *env, enum ast_constraint_kind kind,
+		enum ast_constraint_source source,
 		struct stg_location loc, ast_slot_id target)
 {
 	if (env->page_size == 0) {
@@ -140,6 +141,7 @@ ast_alloc_constraint(
 	memset(res, 0, sizeof(struct ast_slot_constraint));
 
 	res->kind = kind;
+	res->source = source;
 	res->target = target;
 	res->reason.loc = loc;
 
@@ -149,11 +151,12 @@ ast_alloc_constraint(
 void
 ast_slot_require_is_obj(
 		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
 		ast_slot_id target, struct object val)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_IS_OBJ, loc, target);
+			AST_SLOT_REQ_IS_OBJ, source, loc, target);
 
 	constr->is.obj = val;
 }
@@ -161,11 +164,12 @@ ast_slot_require_is_obj(
 void
 ast_slot_require_is_type(
 		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
 		ast_slot_id target, type_id val)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_IS_TYPE, loc, target);
+			AST_SLOT_REQ_IS_TYPE, source, loc, target);
 
 	constr->is.type = val;
 }
@@ -173,45 +177,48 @@ ast_slot_require_is_type(
 void
 ast_slot_require_is_func_type(
 		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id ret_type,
 		ast_slot_id *param_types, size_t num_params)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_IS_FUNC_TYPE, loc, target);
+			AST_SLOT_REQ_IS_FUNC_TYPE, source, loc, target);
 
 	ast_slot_require_member_index(
-			env, loc, target, 0, ret_type);
+			env, loc, source, target, 0, ret_type);
 	ast_slot_require_type(
-			env, loc, ret_type, AST_SLOT_TYPE);
+			env, loc, source, ret_type, AST_SLOT_TYPE);
 
 	for (size_t i = 0; i < num_params; i++) {
 		ast_slot_require_member_index(
-				env, loc, target, i+1, param_types[i]);
+				env, loc, source, target, i+1, param_types[i]);
 		ast_slot_require_type(
-				env, loc, param_types[i], AST_SLOT_TYPE);
+				env, loc, source, param_types[i], AST_SLOT_TYPE);
 	}
 }
 
 void
 ast_slot_require_equals(
 		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id slot)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_EQUALS, loc, target);
+			AST_SLOT_REQ_EQUALS, source, loc, target);
 
 	constr->equals = slot;
 }
 void
 ast_slot_require_type(
 		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id type)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_TYPE, loc, target);
+			AST_SLOT_REQ_TYPE, source, loc, target);
 
 	constr->type = type;
 }
@@ -219,11 +226,12 @@ ast_slot_require_type(
 void
 ast_slot_require_member_named(
 		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
 		ast_slot_id target, struct atom *name, ast_slot_id member)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_MEMBER_NAMED, loc, target);
+			AST_SLOT_REQ_MEMBER_NAMED, source, loc, target);
 
 	constr->member.slot = member;
 	constr->member.name = name;
@@ -232,11 +240,12 @@ ast_slot_require_member_named(
 void
 ast_slot_require_member_index(
 		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
 		ast_slot_id target, size_t index, ast_slot_id member)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_MEMBER_INDEXED, loc, target);
+			AST_SLOT_REQ_MEMBER_INDEXED, source, loc, target);
 
 	constr->member.slot = member;
 	constr->member.index = index;
@@ -245,11 +254,12 @@ ast_slot_require_member_index(
 void
 ast_slot_require_cons(
 		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
 		ast_slot_id target, struct object_cons *def)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_CONS, loc, target);
+			AST_SLOT_REQ_CONS, source, loc, target);
 
 	constr->cons = def;
 }

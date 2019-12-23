@@ -36,10 +36,12 @@ test_type_propagation(struct ast_context *ctx, struct stg_module *mod)
 
 	ast_slot_require_is_obj(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, int_obj);
 
 	ast_slot_require_type(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, obj_type_slot);
 
 	struct ast_slot_result result[env->num_alloced_slots];
@@ -81,10 +83,12 @@ test_value_mismatch(struct ast_context *ctx, struct stg_module *mod)
 
 	ast_slot_require_is_obj(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, int_obj_1);
 
 	ast_slot_require_is_obj(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, int_obj_2);
 
 
@@ -130,7 +134,8 @@ test_cons_impose_constraints(struct vm *vm, void *data,
 		struct ast_env *env, ast_slot_id ret_type_slot, ast_slot_id *param_slots)
 {
 	ast_slot_require_is_type(
-			env, STG_NO_LOC, param_slots[0], ret_type_slot);
+			env, STG_NO_LOC, AST_CONSTR_SRC_FUNC_DECL,
+			param_slots[0], ret_type_slot);
 }
 
 int
@@ -168,14 +173,17 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 
 	ast_slot_require_cons(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, &test_cons);
 
 	ast_slot_require_is_obj(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			param_slot, int_obj);
 
 	ast_slot_require_member_named(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, param_name, param_slot);
 
 
@@ -228,14 +236,17 @@ test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 
 	ast_slot_require_cons(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, &test_cons);
 
 	ast_slot_require_is_obj(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, int_obj);
 
 	ast_slot_require_member_named(
 			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, param_name, param_slot);
 
 
