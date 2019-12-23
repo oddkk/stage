@@ -650,64 +650,6 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			}
 			return result;
 
-		case AST_NODE_SLOT:
-			{
-				struct ast_env_slot slot;
-				slot = ast_env_slot(ctx, env,
-						ast_node_resolve_slot(env, &node->slot));
-
-				switch (slot.kind) {
-					case AST_SLOT_CONST:
-					case AST_SLOT_CONST_TYPE:
-					case AST_SLOT_CONS:
-					case AST_SLOT_CONS_ARRAY:
-						{
-							struct object obj;
-							int err;
-
-							err = ast_slot_pack(ctx, mod, env, node->slot, &obj);
-							if (err) {
-								panic("Failed to pack slot in gen bytecode.");
-								return AST_GEN_ERROR;
-							}
-
-							result.first = result.last =
-								bc_gen_load(bc_env, BC_VAR_NEW, obj);
-							result.out_var = result.first->load.target;
-						}
-						return result;
-
-					case AST_SLOT_PARAM:
-						{
-							struct object type_obj;
-							int err;
-
-							err = ast_slot_pack(ctx, mod, env, slot.type, &type_obj);
-							if (err) {
-								panic("Failed to pack slot type in gen bytecode.");
-								return AST_GEN_ERROR;
-							}
-
-							assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
-
-							type_id param_type;
-							param_type = *(type_id *)type_obj.data;
-
-							result.first = result.last = NULL;
-							result.out_var = bc_alloc_param(
-									bc_env, slot.param_index, param_type);
-						}
-						return result;
-
-					default:
-						panic("Invalid slot %s in bytecode gen.",
-								ast_slot_name(slot.kind));
-						return AST_GEN_ERROR;
-				}
-
-			}
-			break;
-
 		case AST_NODE_LOOKUP:
 			return ast_name_ref_gen_bytecode(
 					ctx, mod, env, info, bc_env,

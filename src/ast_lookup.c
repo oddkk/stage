@@ -294,9 +294,6 @@ ast_node_resolve_names(struct ast_context *ctx,
 			// resolve accesses.
 			break;
 
-		case AST_NODE_SLOT:
-			break;
-
 		case AST_NODE_LIT:
 			break;
 
@@ -533,9 +530,6 @@ ast_node_discover_potential_closures(struct ast_context *ctx,
 		case AST_NODE_ACCESS:
 			err += ast_node_discover_potential_closures(ctx,
 					scope, true, node->access.target);
-			break;
-
-		case AST_NODE_SLOT:
 			break;
 
 		case AST_NODE_LIT:

@@ -392,15 +392,6 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 					node->access.target, depth + 2);
 			break;
 
-		case AST_NODE_SLOT:
-			print_indent(depth);
-			printf("slot ");
-			print_slot(env, node->slot);
-			printf(": ");
-			print_slot(env, ast_node_type(ctx, env, node));
-			printf("\n");
-			break;
-
 		case AST_NODE_LIT:
 			print_indent(depth);
 			printf("lit ");
@@ -497,17 +488,11 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 					printf(" ");
 				}
 				printf("<");
-				ast_print_slot(ctx, env, node->slot);
+				ast_print_slot(ctx, env, node->templ.slot);
 				printf(">");
 			}
 			printf(") ->> ?");
 			printf(" => ");
-			break;
-
-		case AST_NODE_SLOT:
-			printf("<");
-			ast_print_slot(ctx, env, node->slot);
-			printf(">");
 			break;
 
 		case AST_NODE_LIT:

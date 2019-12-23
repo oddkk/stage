@@ -953,21 +953,6 @@ ast_node_bind_slots(struct ast_context *ctx, size_t *num_errors, struct ast_modu
 		}
 		break;
 
-	case AST_NODE_SLOT:
-		{
-			struct ast_bind_result bind_res;
-			bind_res = ast_try_union_slot(ctx, env, target, node->slot);
-			if (bind_res.code != AST_BIND_OK) {
-				ast_report_bind_error(
-						ctx, node->loc, bind_res);
-				*num_errors += 1;
-			} else {
-				target = bind_res.ok.result;
-			}
-			node->slot = target;
-		}
-		break;
-
 	case AST_NODE_LIT:
 		{
 			struct ast_bind_result bind_res;

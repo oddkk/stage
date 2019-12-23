@@ -19,7 +19,6 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_FUNC_TYPE:	return "FUNC_TYPE";
 		case AST_NODE_ACCESS:		return "ACCESS";
 		case AST_NODE_TEMPL:		return "TEMPL";
-		case AST_NODE_SLOT:			return "SLOT";
 		case AST_NODE_LIT:			return "LIT";
 		case AST_NODE_LOOKUP:		return "LOOKUP";
 
@@ -214,27 +213,6 @@ ast_init_node_func_type(
 	node->func_type.ret_type = ret_type;
 
 	node->func_type.slot = AST_BIND_NEW;
-
-	return node;
-}
-
-struct ast_node *
-ast_init_node_slot(
-		struct ast_context *ctx,
-		struct ast_node *node, struct stg_location loc,
-		ast_slot_id slot)
-{
-	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
-	}
-
-	assert(node);
-
-	memset(node, 0, sizeof(struct ast_node));
-	node->kind = AST_NODE_SLOT;
-	node->loc = loc;
-
-	node->slot = slot;
 
 	return node;
 }
@@ -520,10 +498,6 @@ ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *nod
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->access.slot)).type;
 
-		case AST_NODE_SLOT:
-			return ast_env_slot(ctx, env,
-					ast_node_resolve_slot(env, &node->slot)).type;
-
 		case AST_NODE_LIT:
 			return ast_env_slot(ctx, env,
 					ast_node_resolve_slot(env, &node->lit.slot)).type;
@@ -547,9 +521,6 @@ ast_slot_id
 ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
 {
 	switch (node->kind) {
-		case AST_NODE_SLOT:
-			return ast_node_resolve_slot(env, &node->slot);
-
 		case AST_NODE_LIT:
 			return ast_node_resolve_slot(env, &node->lit.slot);
 

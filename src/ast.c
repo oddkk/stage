@@ -487,11 +487,17 @@ ast_module_resolve_dependencies(struct ast_context *ctx,
 		struct ast_module_dependency *dep;
 		dep = &mod->dependencies[i];
 
+		struct object type_obj = {0};
+		type_obj.type = ctx->types.type;
+		type_obj.data = &dep->mod->type;
+
+		type_obj = register_object(
+				ctx->vm, mod->env.store, type_obj);
+
 		struct ast_node *type;
-		type = ast_init_node_slot(
-				ctx, AST_NODE_NEW, STG_NO_LOC,
-				ast_bind_slot_const_type(
-					ctx, &mod->env, AST_BIND_NEW, dep->mod->type));
+		type = ast_init_node_lit(
+				ctx, AST_NODE_NEW,
+				STG_NO_LOC, type_obj);
 
 		if (dep->mod->type == TYPE_UNSET) {
 			return -1;

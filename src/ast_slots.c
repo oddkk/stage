@@ -3711,10 +3711,6 @@ ast_node_deep_copy_internal(
 		DCP_SLOT(access.slot);
 		break;
 
-	case AST_NODE_SLOT:
-		DCP_SLOT(slot);
-		break;
-
 	case AST_NODE_LIT:
 		DCP_LIT(lit);
 		break;

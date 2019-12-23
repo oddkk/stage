@@ -625,7 +625,6 @@ enum ast_node_kind {
 	AST_NODE_CONS,
 	AST_NODE_ACCESS,
 	AST_NODE_TEMPL,
-	AST_NODE_SLOT,
 	AST_NODE_LIT,
 	AST_NODE_FUNC_TYPE,
 	AST_NODE_LOOKUP,
@@ -766,8 +765,6 @@ struct ast_node {
 			struct ast_closure_target closure;
 		} templ;
 
-		ast_slot_id slot;
-
 		struct {
 			struct object obj;
 			ast_slot_id slot;
@@ -861,8 +858,6 @@ ast_node_name(enum ast_node_kind);
 				VISIT_NODE((node)->templ.body);									\
 			}																	\
 			break;																\
-		case AST_NODE_SLOT:														\
-			break;																\
 		case AST_NODE_LIT:														\
 			break;																\
 		case AST_NODE_LOOKUP:													\
@@ -943,12 +938,6 @@ ast_init_node_func_type(
 		struct ast_node *target, struct stg_location,
 		struct ast_node **param_types, size_t num_params,
 		struct ast_node *ret_type);
-
-struct ast_node *
-ast_init_node_slot(
-		struct ast_context *ctx,
-		struct ast_node *target, struct stg_location,
-		ast_slot_id slot);
 
 struct ast_node *
 ast_init_node_access(
