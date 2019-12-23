@@ -49,12 +49,14 @@ test_type_propagation(struct ast_context *ctx, struct stg_module *mod)
 	err = ast_slot_try_solve(ctx, &mod->mod, env, result);
 	TEST_ASSERT(!err);
 
-	TEST_ASSERT(result[obj_slot].result == AST_SLOT_RESULT_FOUND_OBJ);
-	TEST_ASSERT(result[obj_slot].obj.type == ctx->types.integer);
-	TEST_ASSERT(*(int64_t *)result[obj_slot].obj.data == int_obj_val);
+	TEST_ASSERT(result[obj_slot].result == AST_SLOT_RESULT_FOUND_VALUE_OBJ);
+	TEST_ASSERT(result[obj_slot].value.obj.type == ctx->types.integer);
+	TEST_ASSERT(*(int64_t *)result[obj_slot].value.obj.data == int_obj_val);
+	TEST_ASSERT(result[obj_slot].type == ctx->types.integer);
 
-	TEST_ASSERT(result[obj_type_slot].result == AST_SLOT_RESULT_FOUND_TYPE);
-	TEST_ASSERT(result[obj_type_slot].type == ctx->types.integer);
+	TEST_ASSERT(result[obj_type_slot].result == AST_SLOT_RESULT_FOUND_VALUE_TYPE);
+	TEST_ASSERT(result[obj_type_slot].value.type == ctx->types.integer);
+	TEST_ASSERT(result[obj_type_slot].type == ctx->types.type);
 
 	return 0;
 }
@@ -171,7 +173,7 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 	int_obj.type = ctx->types.integer;
 	int_obj.data = &int_obj_val;
 
-	ast_slot_require_cons(
+	ast_slot_require_is_cons(
 			env, STG_NO_LOC,
 			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, &test_cons);
@@ -192,10 +194,10 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 	err = ast_slot_try_solve(ctx, &mod->mod, env, result);
 	TEST_ASSERT(!err);
 
-	TEST_ASSERT(result[obj_slot].result == AST_SLOT_RESULT_FOUND_OBJ);
-	TEST_ASSERT(result[obj_slot].obj.type == ctx->types.integer);
+	TEST_ASSERT(result[obj_slot].result == AST_SLOT_RESULT_FOUND_VALUE_OBJ);
+	TEST_ASSERT(result[obj_slot].value.obj.type == ctx->types.integer);
 
-	int64_t res_val = (*(int64_t *)result[obj_slot].obj.data);
+	int64_t res_val = (*(int64_t *)result[obj_slot].value.obj.data);
 
 	TEST_ASSERT(res_val == int_obj_val+2);
 
@@ -234,7 +236,7 @@ test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 	int_obj.type = ctx->types.integer;
 	int_obj.data = &int_obj_val;
 
-	ast_slot_require_cons(
+	ast_slot_require_is_cons(
 			env, STG_NO_LOC,
 			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, &test_cons);
@@ -255,10 +257,10 @@ test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 	err = ast_slot_try_solve(ctx, &mod->mod, env, result);
 	TEST_ASSERT(!err);
 
-	TEST_ASSERT(result[param_slot].result == AST_SLOT_RESULT_FOUND_OBJ);
-	TEST_ASSERT(result[param_slot].obj.type == ctx->types.integer);
+	TEST_ASSERT(result[param_slot].result == AST_SLOT_RESULT_FOUND_VALUE_OBJ);
+	TEST_ASSERT(result[param_slot].value.obj.type == ctx->types.integer);
 
-	int64_t res_val = (*(int64_t *)result[param_slot].obj.data);
+	int64_t res_val = (*(int64_t *)result[param_slot].value.obj.data);
 
 	TEST_ASSERT(res_val == int_obj_val-2);
 

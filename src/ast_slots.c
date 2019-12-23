@@ -149,6 +149,17 @@ ast_alloc_constraint(
 }
 
 void
+ast_slot_value_error(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target)
+{
+	struct ast_slot_constraint *constr;
+	constr = ast_alloc_constraint(env,
+			AST_SLOT_REQ_ERROR, source, loc, target);
+}
+
+void
 ast_slot_require_is_obj(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
@@ -252,16 +263,29 @@ ast_slot_require_member_index(
 }
 
 void
-ast_slot_require_cons(
+ast_slot_require_is_cons(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, struct object_cons *def)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
+			AST_SLOT_REQ_IS_CONS, source, loc, target);
+
+	constr->is_cons = def;
+}
+
+void
+ast_slot_require_cons(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target, ast_slot_id cons)
+{
+	struct ast_slot_constraint *constr;
+	constr = ast_alloc_constraint(env,
 			AST_SLOT_REQ_CONS, source, loc, target);
 
-	constr->cons = def;
+	constr->cons = cons;
 }
 
 void
@@ -923,6 +947,14 @@ ast_slot_solve_impose_constraint(
 	constr = ast_get_constraint(ctx, constr_id);
 
 	switch (constr->kind) {
+		case AST_SLOT_REQ_ERROR:
+			{
+				struct ast_slot_resolve *target;
+				target = ast_get_real_slot(ctx, constr->target);
+				target->flags |= AST_SLOT_HAS_ERROR;
+			}
+			break;
+
 		case AST_SLOT_REQ_EQUALS:
 			ast_slot_join(
 					ctx, constr->target, constr->equals);
@@ -940,10 +972,14 @@ ast_slot_solve_impose_constraint(
 					constr->target, constr->is.type);
 			break;
 
-		case AST_SLOT_REQ_CONS:
+		case AST_SLOT_REQ_IS_CONS:
 			ast_solve_apply_cons(
 					ctx, constr_id,
-					constr->target, constr->cons);
+					constr->target, constr->is_cons);
+			break;
+
+		case AST_SLOT_REQ_CONS:
+			panic("TODO: Cons");
 			break;
 
 		case AST_SLOT_REQ_TYPE:
@@ -1253,6 +1289,9 @@ ast_slot_verify_constraint(
 	target = ast_get_real_slot(ctx, constr->target);
 
 	switch (constr->kind) {
+		case AST_SLOT_REQ_ERROR:
+			return -1;
+
 		case AST_SLOT_REQ_IS_OBJ:
 			// TODO: Handle the case when the type of the object is type.
 			assert((target->flags & AST_SLOT_HAS_VALUE) != 0);
@@ -1526,20 +1565,25 @@ ast_slot_verify_constraint(
 			}
 			return 0;
 
-		case AST_SLOT_REQ_CONS:
+		case AST_SLOT_REQ_IS_CONS:
 			assert((target->flags & AST_SLOT_HAS_CONS) != 0);
 			if ((target->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
 				// TODO: Better error message.
 				stg_error(ctx->err, constr->reason.loc,
 						"Expected constructor, got function type constructor.");
 				return -1;
-			} else if (target->cons != constr->cons) {
+			} else if (target->cons != constr->is_cons) {
 				// TODO: Better error message.
 				stg_error(ctx->err, constr->reason.loc,
 						"Missmatching constructors.");
 				return -1;
 			}
 			return 0;
+
+		case AST_SLOT_REQ_CONS:
+			panic("TODO: Cons");
+			break;
+
 
 		case AST_SLOT_REQ_IS_FUNC_TYPE:
 			assert((target->flags & AST_SLOT_HAS_CONS) != 0);
@@ -1704,14 +1748,23 @@ ast_slot_try_solve(
 
 		if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
 			if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
-				res->result = AST_SLOT_RESULT_FOUND_TYPE;
-				res->type = slot->value.type;
+				res->result = AST_SLOT_RESULT_FOUND_VALUE_TYPE;
+				res->value.type = slot->value.type;
+				res->type = ctx->type;
 			} else {
-				res->result = AST_SLOT_RESULT_FOUND_OBJ;
-				res->obj = slot->value.obj;
+				res->result = AST_SLOT_RESULT_FOUND_VALUE_OBJ;
+				res->value.obj = slot->value.obj;
+				res->type = res->value.obj.type;
 			}
 		} else {
-			res->result = AST_SLOT_RESULT_UNKNOWN;
+			int err;
+			err = ast_slot_try_get_type(
+					ctx, slot_id, &res->type);
+			if (err) {
+				res->result = AST_SLOT_RESULT_UNKNOWN;
+			} else {
+				res->result = AST_SLOT_RESULT_FOUND_TYPE;
+			}
 		}
 	}
 

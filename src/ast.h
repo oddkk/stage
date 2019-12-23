@@ -131,6 +131,8 @@ const char *
 ast_slot_name(enum ast_env_slot_kind kind);
 
 enum ast_constraint_kind {
+	AST_SLOT_REQ_ERROR,
+
 	AST_SLOT_REQ_IS_OBJ,
 	AST_SLOT_REQ_IS_TYPE,
 	AST_SLOT_REQ_IS_FUNC_TYPE,
@@ -138,12 +140,20 @@ enum ast_constraint_kind {
 	AST_SLOT_REQ_TYPE,
 	AST_SLOT_REQ_MEMBER_NAMED,
 	AST_SLOT_REQ_MEMBER_INDEXED,
+	AST_SLOT_REQ_IS_CONS,
 	AST_SLOT_REQ_CONS,
 };
 
 enum ast_constraint_source {
+	AST_CONSTR_SRC_DT_DECL,
 	AST_CONSTR_SRC_FUNC_DECL,
 	AST_CONSTR_SRC_TEMPL_PARAM_DECL,
+	AST_CONSTR_SRC_CLOSURE,
+	AST_CONSTR_SRC_CALL_ARG,
+	AST_CONSTR_SRC_CONS_ARG,
+	AST_CONSTR_SRC_ACCESS,
+	AST_CONSTR_SRC_LIT,
+	AST_CONSTR_SRC_LOOKUP,
 };
 
 struct ast_slot_constraint {
@@ -169,7 +179,9 @@ struct ast_slot_constraint {
 			};
 		} member;
 
-		struct object_cons *cons;
+		struct object_cons *is_cons;
+
+		ast_slot_id cons;
 	};
 
 	struct {
@@ -298,6 +310,13 @@ ast_slot_id
 ast_slot_alloc(struct ast_env *env);
 
 void
+ast_slot_value_error(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target);
+
+
+void
 ast_slot_require_is_obj(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
@@ -341,25 +360,33 @@ ast_slot_require_member_index(
 		ast_slot_id target, size_t index, ast_slot_id member);
 
 void
-ast_slot_require_cons(
+ast_slot_require_is_cons(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, struct object_cons *def);
 
+void
+ast_slot_require_cons(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target, ast_slot_id cons);
+
 enum ast_slot_result_state {
 	AST_SLOT_RESULT_ERROR = -1,
 
-	AST_SLOT_RESULT_FOUND_OBJ = 0,
-	AST_SLOT_RESULT_FOUND_TYPE = 1,
-	AST_SLOT_RESULT_UNKNOWN = 2,
+	AST_SLOT_RESULT_FOUND_TYPE = 0,
+	AST_SLOT_RESULT_FOUND_VALUE_OBJ = 1,
+	AST_SLOT_RESULT_FOUND_VALUE_TYPE = 2,
+	AST_SLOT_RESULT_UNKNOWN = 3,
 };
 
 struct ast_slot_result {
 	enum ast_slot_result_state result;
+	type_id type;
 	union {
 		type_id type;
 		struct object obj;
-	};
+	} value;
 };
 
 // out_result is expected to be an array of length env->num_alloced_slots.
@@ -707,6 +734,7 @@ struct ast_templ_node_data;
 struct ast_node {
 	enum ast_node_kind kind;
 	type_id type;
+	ast_slot_id typecheck_slot;
 	struct stg_location loc;
 
 	union {
