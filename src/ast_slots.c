@@ -466,7 +466,7 @@ ast_get_constraint(struct solve_context *ctx, ast_constraint_id constr)
 }
 
 static inline struct ast_slot_resolve *
-ast_get_slot(struct solve_context *ctx, ast_slot_id slot)
+ast_get_real_slot(struct solve_context *ctx, ast_slot_id slot)
 {
 	assert(slot < ctx->num_slots && slot >= 0);
 	return &ctx->slots[slot];
@@ -483,9 +483,9 @@ ast_slot_resolve_subst(struct solve_context *ctx, ast_slot_id slot)
 }
 
 static inline struct ast_slot_resolve *
-ast_get_real_slot(struct solve_context *ctx, ast_slot_id slot)
+ast_get_slot(struct solve_context *ctx, ast_slot_id slot)
 {
-	return ast_get_slot(ctx, ast_slot_resolve_subst(ctx, slot));
+	return ast_get_real_slot(ctx, ast_slot_resolve_subst(ctx, slot));
 }
 
 static inline bool
@@ -822,7 +822,7 @@ ast_solve_apply_type(
 			constr_id, slot, type_id);
 #endif
 	struct ast_slot_resolve *res;
-	res = ast_get_real_slot(ctx, slot);
+	res = ast_get_slot(ctx, slot);
 
 	ast_slot_id old_type;
 
@@ -874,7 +874,7 @@ ast_solve_apply_member(struct solve_context *ctx,
 	}
 #endif
 	struct ast_slot_resolve *slot;
-	slot = ast_get_real_slot(ctx, slot_id);
+	slot = ast_get_slot(ctx, slot_id);
 
 	ssize_t mbr_i;
 	mbr_i = ast_slot_find_member(slot, ref);
@@ -962,8 +962,8 @@ ast_slot_join(
 	struct ast_slot_resolve *to_slot, *from_slot;
 	assert(to >= 0 && from >= 0);
 
-	to_slot   = ast_get_slot(ctx, to);
-	from_slot = ast_get_slot(ctx, from);
+	to_slot   = ast_get_real_slot(ctx, to);
+	from_slot = ast_get_real_slot(ctx, from);
 
 	assert((to_slot->flags & AST_SLOT_HAS_SUBST) == 0 &&
 			(from_slot->flags & AST_SLOT_HAS_SUBST) == 0);
@@ -1130,7 +1130,7 @@ ast_slot_solve_impose_constraint(
 		case AST_SLOT_REQ_ERROR:
 			{
 				struct ast_slot_resolve *target;
-				target = ast_get_real_slot(ctx, constr->target);
+				target = ast_get_slot(ctx, constr->target);
 				target->flags |= AST_SLOT_HAS_ERROR;
 			}
 			break;
@@ -1202,7 +1202,7 @@ static bool
 ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 {
 	struct ast_slot_resolve *slot;
-	slot = ast_get_slot(ctx, slot_id);
+	slot = ast_get_real_slot(ctx, slot_id);
 
 	if ((slot->flags & AST_SLOT_HAS_SUBST) != 0) {
 		return false;
@@ -1572,7 +1572,7 @@ ast_slot_verify_constraint(
 				}
 
 				struct ast_slot_resolve *type_slot;
-				type_slot = ast_get_real_slot(ctx, target->type);
+				type_slot = ast_get_slot(ctx, target->type);
 			}
 			return 0;
 
@@ -1858,7 +1858,7 @@ ast_slot_try_solve(
 	memset(out_result, 0, sizeof(struct ast_slot_result) * ctx->num_slots);
 	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
 		struct ast_slot_resolve *slot;
-		slot = ast_get_slot(ctx, slot_id);
+		slot = ast_get_real_slot(ctx, slot_id);
 
 		struct ast_slot_result *res;
 		res = &out_result[slot_id];
@@ -1912,7 +1912,7 @@ ast_slot_try_solve(
 	// subst target.
 	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
 		struct ast_slot_resolve *slot;
-		slot = ast_get_slot(ctx, slot_id);
+		slot = ast_get_real_slot(ctx, slot_id);
 
 		struct ast_slot_result *res;
 		res = &out_result[slot_id];
