@@ -1468,89 +1468,72 @@ ast_slot_verify_constraint(
 	constr = ast_get_constraint(ctx, constr_id);
 
 	struct ast_slot_resolve *target;
-	target = ast_get_real_slot(ctx, constr->target);
+	target = ast_get_slot(ctx, constr->target);
 
 	switch (constr->kind) {
 		case AST_SLOT_REQ_ERROR:
 			return -1;
 
 		case AST_SLOT_REQ_IS_OBJ:
-			// TODO: Handle the case when the type of the object is type.
-			assert((target->flags & AST_SLOT_HAS_VALUE) != 0);
-			if ((target->flags & AST_SLOT_VALUE_IS_TYPE) != 0 ||
-					!obj_equals(ctx->vm, constr->is.obj, target->value.obj)) {
-				struct string exp_str, got_str;
+		case AST_SLOT_REQ_IS_TYPE:
+			{
+				assert((target->flags & AST_SLOT_HAS_VALUE) != 0);
 
-				struct object exp_obj = {0};
-
-				if ((target->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
-					exp_obj.type = ctx->type;
-					exp_obj.data = &target->value.type;
+				struct object expected = {0};
+				if (constr->kind == AST_SLOT_REQ_IS_TYPE) {
+					expected.type = ctx->type;
+					expected.data = &constr->is.type;
 				} else {
-					exp_obj = target->value.obj;
+					expected = constr->is.obj;
 				}
 
-				exp_str = obj_repr_to_alloced_string(
-						ctx->vm, exp_obj);
-				got_str = obj_repr_to_alloced_string(
-						ctx->vm, constr->is.obj);
+				struct object got = {0};
+				int err;
+				err = ast_slot_try_get_value(
+						ctx, constr->target, TYPE_UNSET, &got);
+				if (err) {
+					// TODO: Error message.
+					stg_error(ctx->err, constr->reason.loc,
+							"Failed to resolve this value.");
+					return -1;
+				}
 
-				stg_error(ctx->err, constr->reason.loc,
-						"Expected value '%.*s', got '%.*s'",
-						LIT(exp_str), LIT(got_str));
+				if (!obj_equals(ctx->vm, expected, got)) {
+					struct string exp_str, got_str;
+					const char *value_kind_expectation;
 
-				free(exp_str.text);
-				free(got_str.text);
+					if (expected.type == ctx->type && got.type == ctx->type) {
+						type_id expected_type = *(type_id *)expected.data;
+						type_id got_type = *(type_id *)got.data;
 
-				target->flags |= AST_SLOT_HAS_ERROR;
+						exp_str = type_repr_to_alloced_string(
+								ctx->vm, vm_get_type(ctx->vm, expected_type));
+						got_str = type_repr_to_alloced_string(
+								ctx->vm, vm_get_type(ctx->vm, got_type));
+						value_kind_expectation = "type";
+					} else if (expected.type == ctx->type && got.type != ctx->type) {
+						type_id expected_type = *(type_id *)expected.data;
 
-				return -1;
-			}
-			break;
+						exp_str = type_repr_to_alloced_string(
+								ctx->vm, vm_get_type(ctx->vm, expected_type));
+						got_str = obj_repr_to_alloced_string(
+								ctx->vm, got);
+						value_kind_expectation = "type";
+					} else {
+						exp_str = obj_repr_to_alloced_string(
+								ctx->vm, expected);
+						got_str = obj_repr_to_alloced_string(
+								ctx->vm, got);
+						value_kind_expectation = "value";
+					}
 
-		case AST_SLOT_REQ_IS_TYPE:
-			assert((target->flags & AST_SLOT_HAS_VALUE) != 0);
-			if ((target->flags & AST_SLOT_VALUE_IS_TYPE) == 0) {
-				struct string exp_str, got_str;
+					stg_error(ctx->err, constr->reason.loc,
+							"Expected %s '%.*s', got '%.*s'.",
+							value_kind_expectation,
+							LIT(exp_str), LIT(got_str));
 
-				struct object got_obj = {0};
-
-				got_obj.type = ctx->type;
-				got_obj.data = &constr->is.type;
-
-				exp_str = obj_repr_to_alloced_string(
-						ctx->vm, target->value.obj);
-				got_str = obj_repr_to_alloced_string(
-						ctx->vm, got_obj);
-
-				stg_error(ctx->err, constr->reason.loc,
-						"Expected object '%.*s', got '%.*s'",
-						LIT(exp_str), LIT(got_str));
-
-				free(exp_str.text);
-				free(got_str.text);
-
-				target->flags |= AST_SLOT_HAS_ERROR;
-
-				return -1;
-			} else if (!type_equals(ctx->vm, constr->is.type, target->value.type)) {
-				struct string exp_str, got_str;
-
-				exp_str = type_repr_to_alloced_string(
-						ctx->vm, vm_get_type(ctx->vm, target->value.type));
-				got_str = type_repr_to_alloced_string(
-						ctx->vm, vm_get_type(ctx->vm, constr->is.type));
-
-				stg_error(ctx->err, constr->reason.loc,
-						"Expected type '%.*s', got '%.*s'",
-						LIT(exp_str), LIT(got_str));
-
-				free(exp_str.text);
-				free(got_str.text);
-
-				target->flags |= AST_SLOT_HAS_ERROR;
-
-				return -1;
+					return -1;
+				}
 			}
 			return 0;
 
