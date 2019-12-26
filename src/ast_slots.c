@@ -1862,9 +1862,10 @@ ast_slot_try_solve(
 
 		struct ast_slot_result *res;
 		res = &out_result[slot_id];
+		res->result = 0;
 
 		if ((slot->flags & AST_SLOT_HAS_ERROR) != 0) {
-			res->result = AST_SLOT_RESULT_ERROR;
+			res->result = AST_SLOT_RES_ERROR;
 			num_errors += 1;
 			continue;
 		}
@@ -1876,11 +1877,11 @@ ast_slot_try_solve(
 
 		if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
 			if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
-				res->result = AST_SLOT_RESULT_FOUND_VALUE_TYPE;
+				res->result |= AST_SLOT_RES_VALUE_FOUND_TYPE;
 				res->value.type = slot->value.type;
 				res->type = ctx->type;
 			} else {
-				res->result = AST_SLOT_RESULT_FOUND_VALUE_OBJ;
+				res->result |= AST_SLOT_RES_VALUE_FOUND_OBJ;
 				res->value.obj = slot->value.obj;
 				res->type = res->value.obj.type;
 			}
@@ -1889,10 +1890,21 @@ ast_slot_try_solve(
 			err = ast_slot_try_get_type(
 					ctx, slot_id, &res->type);
 			if (err) {
-				res->result = AST_SLOT_RESULT_UNKNOWN;
+				res->result |= AST_SLOT_RES_VALUE_UNKNOWN;
 			} else {
-				res->result = AST_SLOT_RESULT_FOUND_TYPE;
+				res->result |= AST_SLOT_RES_TYPE_FOUND;
 			}
+		}
+
+		if ((slot->flags & AST_SLOT_HAS_CONS) != 0) {
+			if ((slot->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
+				res->result |= AST_SLOT_RES_CONS_FOUND_FUNC_TYPE;
+			} else {
+				res->result |= AST_SLOT_RES_CONS_FOUND_FUNC_TYPE;
+				res->cons = slot->cons;
+			}
+		} else {
+			res->result |= AST_SLOT_RES_CONS_UNKNOWN;
 		}
 	}
 

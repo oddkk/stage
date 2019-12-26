@@ -427,13 +427,33 @@ _ast_slot_require_cons(
 		AST_SLOT_DEBUG_PARAM);
 
 enum ast_slot_result_state {
-	AST_SLOT_RESULT_ERROR = -1,
+	AST_SLOT_RES_ERROR                  = 0x0,
 
-	AST_SLOT_RESULT_FOUND_TYPE = 0,
-	AST_SLOT_RESULT_FOUND_VALUE_OBJ = 1,
-	AST_SLOT_RESULT_FOUND_VALUE_TYPE = 2,
-	AST_SLOT_RESULT_UNKNOWN = 3,
+	AST_SLOT_RES_VALUE_UNKNOWN          = 0x01,
+	AST_SLOT_RES_TYPE_FOUND             = 0x02,
+	AST_SLOT_RES_VALUE_FOUND_OBJ        = 0x03,
+	AST_SLOT_RES_VALUE_FOUND_TYPE       = 0x04,
+
+	AST_SLOT_RES_VALUE_MASK             = 0x07,
+
+	AST_SLOT_RES_CONS_UNKNOWN           = 0x10,
+	AST_SLOT_RES_CONS_FOUND             = 0x20,
+	AST_SLOT_RES_CONS_FOUND_FUNC_TYPE   = 0x30,
+
+	AST_SLOT_RES_CONS_MASK              = 0x30,
 };
+
+static inline enum ast_slot_result_state
+ast_slot_value_result(enum ast_slot_result_state state)
+{
+	return state & AST_SLOT_RES_VALUE_MASK;
+}
+
+static inline enum ast_slot_result_state
+ast_slot_cons_result(enum ast_slot_result_state state)
+{
+	return state & AST_SLOT_RES_CONS_MASK;
+}
 
 struct ast_slot_result {
 	enum ast_slot_result_state result;
@@ -442,6 +462,8 @@ struct ast_slot_result {
 		type_id type;
 		struct object obj;
 	} value;
+
+	struct object_cons *cons;
 };
 
 // out_result is expected to be an array of length env->num_alloced_slots.
