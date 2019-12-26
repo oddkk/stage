@@ -85,7 +85,7 @@ base_func_pack(struct ast_context *ctx, struct ast_module *mod,
 		err = ast_slot_pack(ctx, mod, &mod->env,
 				param_array->members[i], &param_type_obj);
 		if (err) {
-			ast_print_slot(ctx, &mod->env, param_array->members[i]);
+			// ast_print_slot(ctx, &mod->env, param_array->members[i]);
 			printf("\nFailed to pack func param type.\n");
 			return OBJ_NONE;
 		}

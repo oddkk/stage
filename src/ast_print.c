@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "vm.h"
 
+/*
 void
 ast_print_slot_internal(struct ast_context *ctx, struct ast_env *env,
 		ast_slot_id slot_id, bool print_type)
@@ -165,6 +166,7 @@ ast_env_print(struct vm *vm, struct ast_env *env)
 		printf("\n");
 	}
 }
+*/
 
 static void
 print_indent(int depth)
@@ -423,8 +425,12 @@ ast_print(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
 }
 
 void
-ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
+ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *node,
+		bool print_type_slot)
 {
+	if (print_type_slot) {
+		printf("<%i>", node->typecheck_slot);
+	}
 	switch (node->kind) {
 		case AST_NODE_FUNC:
 		case AST_NODE_FUNC_NATIVE:
@@ -432,14 +438,14 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 			for (size_t i = 0; i < node->func.num_params; i++) {
 				printf("%s%.*s: ", (i != 0) ? ", " : "",
 						ALIT(node->func.params[i].name));
-				ast_print_node(ctx, env, node->func.params[i].type);
+				ast_print_node(ctx, env, node->func.params[i].type, print_type_slot);
 			}
 			printf(") -> ");
-			ast_print_node(ctx, env, node->func.return_type);
+			ast_print_node(ctx, env, node->func.return_type, print_type_slot);
 			printf(" => ");
 
 			if (node->kind == AST_NODE_FUNC) {
-				ast_print_node(ctx, env, node->func.body);
+				ast_print_node(ctx, env, node->func.body, print_type_slot);
 			} else {
 				printf("@native(\"%.*s\")", LIT(node->func.native.name));
 			}
@@ -447,7 +453,7 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
-			ast_print_node(ctx, env, node->call.func);
+			ast_print_node(ctx, env, node->call.func, print_type_slot);
 			printf((node->kind == AST_NODE_CALL) ? "(" : "[");
 			for (size_t i = 0; i < node->call.num_args; i++) {
 				if (i != 0) {
@@ -456,7 +462,7 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 				if (node->call.args[i].name) {
 					printf("%.*s=", ALIT(node->call.args[i].name));
 				}
-				ast_print_node(ctx, env, node->call.args[i].value);
+				ast_print_node(ctx, env, node->call.args[i].value, print_type_slot);
 			}
 			printf((node->kind == AST_NODE_CALL) ? ")" : "]");
 			break;
@@ -467,14 +473,14 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 				if (i != 0) {
 					printf(", ");
 				}
-				ast_print_node(ctx, env, node->func_type.param_types[i]);
+				ast_print_node(ctx, env, node->func_type.param_types[i], print_type_slot);
 			}
 			printf(") -> ");
-			ast_print_node(ctx, env, node->func_type.ret_type);
+			ast_print_node(ctx, env, node->func_type.ret_type, print_type_slot);
 			break;
 
 		case AST_NODE_ACCESS:
-			ast_print_node(ctx, env, node->access.target);
+			ast_print_node(ctx, env, node->access.target, print_type_slot);
 			printf(".%.*s", ALIT(node->access.name));
 			break;
 
@@ -484,11 +490,11 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 				printf("%s%.*s: ", (i != 0) ? ", " : "",
 						ALIT(node->templ.params[i].name));
 				if (node->type) {
-					ast_print_node(ctx, env, node->templ.params[i].type);
+					ast_print_node(ctx, env, node->templ.params[i].type, print_type_slot);
 					printf(" ");
 				}
 				printf("<");
-				ast_print_slot(ctx, env, node->templ.slot);
+				print_slot(env, node->templ.slot);
 				printf(">");
 			}
 			printf(") ->> ?");

@@ -17,8 +17,6 @@
 // If 1, slot 0 will be set to error to debug uninitialized slots.
 #define AST_DEBUG_OFFSET_SLOTS 0
 
-#define AST_DEBUG_SLOT_SOLVE 0
-
 const char *
 ast_slot_name(enum ast_env_slot_kind kind) {
 	switch (kind) {
@@ -95,11 +93,18 @@ ast_slot_alloc(struct ast_env *env)
 	return new_slot;
 }
 
+#if AST_DEBUG_SLOT_SOLVE
+#	define PASS_DEBUG_PARAM , constr_loc
+#else
+#	define PASS_DEBUG_PARAM
+#endif
+
 static struct ast_slot_constraint *
 ast_alloc_constraint(
 		struct ast_env *env, enum ast_constraint_kind kind,
 		enum ast_constraint_source source,
-		struct stg_location loc, ast_slot_id target)
+		struct stg_location loc, ast_slot_id target
+		AST_SLOT_DEBUG_PARAM)
 {
 	if (env->page_size == 0) {
 		env->page_size = sysconf(_SC_PAGESIZE);
@@ -144,146 +149,165 @@ ast_alloc_constraint(
 	res->source = source;
 	res->target = target;
 	res->reason.loc = loc;
+#if AST_DEBUG_SLOT_SOLVE
+	res->reason.impose_loc = constr_loc;
+#endif
 
 	return res;
 }
 
 void
-ast_slot_value_error(
+_ast_slot_value_error(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
-		ast_slot_id target)
+		ast_slot_id target
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_ERROR, source, loc, target);
+			AST_SLOT_REQ_ERROR, source, loc, target
+			PASS_DEBUG_PARAM);
 }
 
 void
-ast_slot_require_is_obj(
+_ast_slot_require_is_obj(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
-		ast_slot_id target, struct object val)
+		ast_slot_id target, struct object val
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_IS_OBJ, source, loc, target);
+			AST_SLOT_REQ_IS_OBJ, source, loc, target
+			PASS_DEBUG_PARAM);
 
 	constr->is.obj = val;
 }
 
 void
-ast_slot_require_is_type(
+_ast_slot_require_is_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
-		ast_slot_id target, type_id val)
+		ast_slot_id target, type_id val
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_IS_TYPE, source, loc, target);
+			AST_SLOT_REQ_IS_TYPE, source, loc, target
+			PASS_DEBUG_PARAM);
 
 	constr->is.type = val;
 }
 
 void
-ast_slot_require_is_func_type(
+_ast_slot_require_is_func_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id ret_type,
-		ast_slot_id *param_types, size_t num_params)
+		ast_slot_id *param_types, size_t num_params
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_IS_FUNC_TYPE, source, loc, target);
+			AST_SLOT_REQ_IS_FUNC_TYPE, source, loc, target
+			PASS_DEBUG_PARAM);
 
 	ast_slot_require_member_index(
 			env, loc, source, target, 0, ret_type);
-	ast_slot_require_type(
-			env, loc, source, ret_type, AST_SLOT_TYPE);
 
 	for (size_t i = 0; i < num_params; i++) {
 		ast_slot_require_member_index(
 				env, loc, source, target, i+1, param_types[i]);
-		ast_slot_require_type(
-				env, loc, source, param_types[i], AST_SLOT_TYPE);
 	}
 }
 
 void
-ast_slot_require_equals(
+_ast_slot_require_equals(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
-		ast_slot_id target, ast_slot_id slot)
+		ast_slot_id target, ast_slot_id slot
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_EQUALS, source, loc, target);
+			AST_SLOT_REQ_EQUALS, source, loc, target
+			PASS_DEBUG_PARAM);
 
 	constr->equals = slot;
 }
 void
-ast_slot_require_type(
+_ast_slot_require_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
-		ast_slot_id target, ast_slot_id type)
+		ast_slot_id target, ast_slot_id type
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_TYPE, source, loc, target);
+			AST_SLOT_REQ_TYPE, source, loc, target
+			PASS_DEBUG_PARAM);
 
 	constr->type = type;
 }
 
 void
-ast_slot_require_member_named(
+_ast_slot_require_member_named(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
-		ast_slot_id target, struct atom *name, ast_slot_id member)
+		ast_slot_id target, struct atom *name, ast_slot_id member
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_MEMBER_NAMED, source, loc, target);
+			AST_SLOT_REQ_MEMBER_NAMED, source, loc, target
+			PASS_DEBUG_PARAM);
 
 	constr->member.slot = member;
 	constr->member.name = name;
 }
 
 void
-ast_slot_require_member_index(
+_ast_slot_require_member_index(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
-		ast_slot_id target, size_t index, ast_slot_id member)
+		ast_slot_id target, size_t index, ast_slot_id member
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_MEMBER_INDEXED, source, loc, target);
+			AST_SLOT_REQ_MEMBER_INDEXED, source, loc, target
+			PASS_DEBUG_PARAM);
 
 	constr->member.slot = member;
 	constr->member.index = index;
 }
 
 void
-ast_slot_require_is_cons(
+_ast_slot_require_is_cons(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
-		ast_slot_id target, struct object_cons *def)
+		ast_slot_id target, struct object_cons *def
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_IS_CONS, source, loc, target);
+			AST_SLOT_REQ_IS_CONS, source, loc, target
+			PASS_DEBUG_PARAM);
 
 	constr->is_cons = def;
 }
 
 void
-ast_slot_require_cons(
+_ast_slot_require_cons(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
-		ast_slot_id target, ast_slot_id cons)
+		ast_slot_id target, ast_slot_id cons
+		AST_SLOT_DEBUG_PARAM)
 {
 	struct ast_slot_constraint *constr;
 	constr = ast_alloc_constraint(env,
-			AST_SLOT_REQ_CONS, source, loc, target);
+			AST_SLOT_REQ_CONS, source, loc, target
+			PASS_DEBUG_PARAM);
 
 	constr->cons = cons;
 }
@@ -316,16 +340,6 @@ ast_env_copy(struct ast_env *dest, struct ast_env *src)
 		dest->constraint_pages[dest->num_pages - 1] = last_page;
 	}
 }
-
-enum ast_slot_resolve_kind {
-	AST_SLOT_RES_UNKNOWN,
-	AST_SLOT_RES_ERROR,
-	AST_SLOT_RES_CONST,
-	AST_SLOT_RES_CONST_TYPE,
-	AST_SLOT_RES_CONS,
-	AST_SLOT_RES_CONS_ARRAY,
-	AST_SLOT_RES_SUBST,
-};
 
 enum ast_slot_state_flags {
 	AST_SLOT_HAS_ERROR      = (1<<0),
@@ -392,14 +406,22 @@ struct solve_context {
 static const char *
 ast_constraint_source_name(enum ast_constraint_source source)
 {
+#define SRC_NAME(name) case AST_CONSTR_SRC_##name: return #name;
 	switch (source) {
-		case AST_CONSTR_SRC_FUNC_DECL:
-			return "func decl";
-		case AST_CONSTR_SRC_TEMPL_PARAM_DECL:
-			return "param decl";
+		SRC_NAME(EXPECTED);
+		SRC_NAME(DT_DECL);
+		SRC_NAME(FUNC_DECL);
+		SRC_NAME(TEMPL_PARAM_DECL);
+		SRC_NAME(CLOSURE);
+		SRC_NAME(CALL_ARG);
+		SRC_NAME(CONS_ARG);
+		SRC_NAME(ACCESS);
+		SRC_NAME(LIT);
+		SRC_NAME(LOOKUP);
 	}
 	return "(unknown)";
 }
+
 #endif
 
 static inline size_t
@@ -453,6 +475,146 @@ is_more_authorative(struct ast_slot_constraint *lhs, struct ast_slot_constraint 
 {
 	return lhs->source < rhs->source;
 }
+
+#if AST_DEBUG_SLOT_SOLVE
+static void
+ast_print_constraint(
+		struct solve_context *ctx,
+		ast_constraint_id constr_id)
+{
+	struct ast_slot_constraint *constr;
+	constr = ast_get_constraint(ctx, constr_id);
+
+	printf("%s:%zu ",
+			constr->reason.impose_loc.filename,
+			constr->reason.impose_loc.line);
+
+	switch (constr->kind) {
+		case AST_SLOT_REQ_ERROR:
+			printf("error %i", constr->target);
+			break;
+
+		case AST_SLOT_REQ_IS_OBJ:
+			printf("is obj %i = ", constr->target);
+			print_obj_repr(ctx->vm, constr->is.obj);
+			break;
+
+		case AST_SLOT_REQ_IS_TYPE:
+			printf("is type %i = ", constr->target);
+			print_type_repr(ctx->vm,
+					vm_get_type(ctx->vm, constr->is.type));
+			break;
+
+		case AST_SLOT_REQ_IS_FUNC_TYPE:
+			printf("is func type %i", constr->target);
+			break;
+
+		case AST_SLOT_REQ_EQUALS:
+			printf("equals %i = %i",
+					constr->target, constr->equals);
+			break;
+
+		case AST_SLOT_REQ_TYPE:
+			printf("type typeof(%i) = %i",
+					constr->target, constr->type);
+			break;
+
+		case AST_SLOT_REQ_MEMBER_NAMED:
+			printf("member named %i.%.*s = %i",
+					constr->target, ALIT(constr->member.name),
+					constr->member.slot);
+			break;
+
+		case AST_SLOT_REQ_MEMBER_INDEXED:
+			printf("member indexed %i[%zu] = %i",
+					constr->target, constr->member.index,
+					constr->member.slot);
+			break;
+
+		case AST_SLOT_REQ_IS_CONS:
+			printf("is cons %i = %p",
+					constr->target, (void *)constr->is_cons);
+			break;
+
+		case AST_SLOT_REQ_CONS:
+			printf("cons %i = %i",
+					constr->target, constr->cons);
+			break;
+	}
+	printf("\n");
+}
+
+static void
+ast_print_slot(
+		struct solve_context *ctx,
+		ast_slot_id slot_id)
+{
+	struct ast_slot_resolve *slot;
+	slot = ast_get_real_slot(ctx, slot_id);
+
+	printf("%i:", slot_id);
+	if ((slot->flags & AST_SLOT_HAS_SUBST) != 0) {
+		printf(" subst %i\n", slot->subst);
+		return;
+	}
+	if ((slot->flags & AST_SLOT_HAS_ERROR) != 0) {
+		printf(" (error)");
+	}
+
+	printf("\n -value: ");
+	if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
+		printf("[%i] ", slot->authority.value);
+		if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
+			printf("type(");
+			print_type_repr(ctx->vm, vm_get_type(ctx->vm, slot->value.type));
+			printf(")");
+		} else {
+			print_obj_repr(ctx->vm, slot->value.obj);
+		}
+	} else {
+		printf("none");
+	}
+
+	printf("\n -cons: ");
+	if ((slot->flags & AST_SLOT_HAS_CONS) != 0) {
+		printf("[%i] ", slot->authority.cons);
+		if ((slot->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
+			printf("func");
+		} else {
+			printf("%p", (void *)slot->cons);
+		}
+	} else {
+		printf("none");
+	}
+
+	printf("\n -type: ");
+	if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
+		printf("[%i] %i", slot->authority.type, slot->type);
+	} else {
+		printf("none");
+	}
+
+	printf("\n -members:\n");
+	if (slot->num_members == 0) {
+		printf("    (none)");
+	}
+	for (size_t i = 0; i < slot->num_members; i++) {
+		if (slot->members[i].ref.named) {
+			printf("    '%.*s': [%i] %i\n",
+					ALIT(slot->members[i].ref.name),
+					slot->members[i].authority,
+					slot->members[i].slot);
+		} else {
+			printf("    %zu: [%i] %i\n",
+					slot->members[i].ref.index,
+					slot->members[i].authority,
+					slot->members[i].slot);
+		}
+	}
+
+	printf("\n");
+}
+#endif
 
 static ast_slot_id
 ast_slot_join(
@@ -1197,6 +1359,8 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				made_change |= ast_solve_apply_value_type(
 						ctx, slot->authority.value,
 						slot_id, res);
+			} else {
+				printf("Not all args are set for func type.\n");
 			}
 
 		} else {
@@ -1624,6 +1788,15 @@ ast_slot_try_solve(
 
 #if AST_DEBUG_SLOT_SOLVE
 	printf("====== begin solve slots ======\n");
+	printf("Constraints:\n");
+	{
+		size_t num_constraints = ast_env_num_constraints(ctx);
+		for (size_t constr_id = 0; constr_id < num_constraints; constr_id++) {
+			ast_print_constraint(ctx, constr_id);
+		}
+	}
+
+	printf("\n");
 #endif
 
 	size_t num_applied_constraints = 0;
@@ -1654,74 +1827,11 @@ ast_slot_try_solve(
 	}
 
 #if AST_DEBUG_SLOT_SOLVE
-		printf("final slots (%zu slot%s):\n", ctx->num_slots,
-				(ctx->num_slots == 1) ? "" : "s");
+	printf("final slots (%zu slot%s):\n", ctx->num_slots,
+			(ctx->num_slots == 1) ? "" : "s");
 
 	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
-		struct ast_slot_resolve *slot;
-		slot = ast_get_slot(ctx, slot_id);
-
-		printf("%i:", slot_id);
-		if ((slot->flags & AST_SLOT_HAS_SUBST) != 0) {
-			printf(" subst %i\n", slot->subst);
-			continue;
-		}
-		if ((slot->flags & AST_SLOT_HAS_ERROR) != 0) {
-			printf(" (error)");
-		}
-
-		printf("\n -value: ");
-		if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
-			printf("[%i] ", slot->authority.value);
-			if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
-				printf("type(");
-				print_type_repr(ctx->vm, vm_get_type(ctx->vm, slot->value.type));
-				printf(")");
-			} else {
-				print_obj_repr(ctx->vm, slot->value.obj);
-			}
-		} else {
-			printf("none");
-		}
-
-		printf("\n -cons: ");
-		if ((slot->flags & AST_SLOT_HAS_CONS) != 0) {
-			printf("[%i] ", slot->authority.cons);
-			if ((slot->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
-				printf("func");
-			} else {
-				printf("%p", (void *)slot->cons);
-			}
-		} else {
-			printf("none");
-		}
-
-		printf("\n -type: ");
-		if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
-			printf("[%i] %i", slot->authority.type, slot->type);
-		} else {
-			printf("none");
-		}
-
-		printf("\n -members:\n");
-		if (slot->num_members == 0) {
-			printf("    (none)");
-		}
-		for (size_t i = 0; i < slot->num_members; i++) {
-			if (slot->members[i].ref.named) {
-				printf("    '%.*s': [%i] %i\n",
-						ALIT(slot->members[i].ref.name),
-						slot->members[i].authority,
-						slot->members[i].slot);
-			} else {
-				printf("    %zu: [%i] %i\n",
-						slot->members[i].ref.index,
-						slot->members[i].authority,
-						slot->members[i].slot);
-			}
-		}
-
-		printf("\n");
+		ast_print_slot(ctx, slot_id);
 	}
 #endif
 
