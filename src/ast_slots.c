@@ -750,7 +750,7 @@ ast_solve_apply_value_obj(
 		ast_constraint_id constr_id, ast_slot_id slot, struct object obj)
 {
 	if (obj.type == ctx->type) {
-		type_id tid = *(type_id *)obj.type;
+		type_id tid = *(type_id *)obj.data;
 		return ast_solve_apply_value_type(
 				ctx, constr_id, slot, tid);
 	}
@@ -847,7 +847,7 @@ ast_slot_find_member(
 		struct ast_slot_resolve *slot,
 		struct ast_slot_member_ref ref)
 {
-	for (size_t i = 0; slot->num_members; i++) {
+	for (size_t i = 0; i < slot->num_members; i++) {
 		if (slot->members[i].ref.named == ref.named) {
 			if (( slot->members[i].ref.named && slot->members[i].ref.name  == ref.name) ||
 				(!slot->members[i].ref.named && slot->members[i].ref.index == ref.index)) {
@@ -1330,7 +1330,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 					continue;
 				}
 
-				if (slot->members[i].ref.index > max_param_i) {
+				if ((ssize_t)slot->members[i].ref.index > max_param_i) {
 					max_param_i = slot->members[i].ref.index;
 				}
 			}
