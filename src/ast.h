@@ -237,6 +237,9 @@ struct ast_env {
 	struct objstore *store;
 };
 
+void
+ast_env_free(struct ast_env *env);
+
 struct vm;
 
 struct ast_context {

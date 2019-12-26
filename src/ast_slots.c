@@ -82,6 +82,24 @@ ast_try_determine_object_def(
 	return obj_def;
 }
 
+void
+ast_env_free(struct ast_env *env)
+{
+	if (env->constraint_pages) {
+		for (size_t i = env->num_borrowed_pages; i < env->num_pages; i++) {
+			int err;
+			err = munmap(env->constraint_pages[i], env->page_size);
+			if (err) {
+				perror("munmap");
+			}
+		}
+
+		free(env->constraint_pages);
+		env->constraint_pages = NULL;
+	}
+}
+
+
 ast_slot_id
 ast_slot_alloc(struct ast_env *env)
 {
@@ -1899,6 +1917,8 @@ ast_slot_try_solve(
 #if AST_DEBUG_SLOT_SOLVE
 	printf("======  end solve slots  ======\n");
 #endif
+
+	ast_env_free(ctx->env);
 
 	return num_errors;
 }
