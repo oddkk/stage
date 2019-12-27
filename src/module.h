@@ -81,9 +81,4 @@ stg_register_type(struct stg_module *, struct type);
 func_id
 stg_register_func(struct stg_module *, struct func);
 
-struct ast_object_def *
-stg_create_simple_object_def(struct ast_context *ctx,
-		struct ast_module *mod, struct ast_object_def *,
-		struct object_decons);
-
 #endif
