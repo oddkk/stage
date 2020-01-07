@@ -1801,8 +1801,18 @@ ast_slot_try_solve(
 	size_t num_constraints = ast_env_num_constraints(ctx);
 	for (ast_constraint_id constr_id = 0;
 			constr_id < num_constraints; constr_id++) {
-		ast_slot_verify_constraint(
+		int err;
+		err = ast_slot_verify_constraint(
 				ctx, constr_id);
+		if (err < 0) {
+			struct ast_slot_constraint *constr;
+			constr = ast_get_constraint(ctx, constr_id);
+
+			struct ast_slot_resolve *target;
+			target = ast_get_slot(ctx, constr->target);
+
+			target->flags |= AST_SLOT_HAS_ERROR;
+		}
 	}
 
 #if AST_DEBUG_SLOT_SOLVE
