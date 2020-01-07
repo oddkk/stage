@@ -124,8 +124,21 @@ ast_alloc_constraint(
 	return res;
 }
 
+#if AST_DEBUG_SLOT_SOLVE
+#	undef ast_slot_value_error
+#	undef ast_slot_require_is_obj
+#	undef ast_slot_require_is_type
+#	undef ast_slot_require_is_func_type
+#	undef ast_slot_require_is_cons
+#	undef ast_slot_require_cons
+#	undef ast_slot_require_equals
+#	undef ast_slot_require_type
+#	undef ast_slot_require_member_named
+#	undef ast_slot_require_member_index
+#endif
+
 void
-_ast_slot_value_error(
+ast_slot_value_error(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target
@@ -138,7 +151,7 @@ _ast_slot_value_error(
 }
 
 void
-_ast_slot_require_is_obj(
+ast_slot_require_is_obj(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, struct object val
@@ -153,7 +166,7 @@ _ast_slot_require_is_obj(
 }
 
 void
-_ast_slot_require_is_type(
+ast_slot_require_is_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, type_id val
@@ -168,7 +181,7 @@ _ast_slot_require_is_type(
 }
 
 void
-_ast_slot_require_is_func_type(
+ast_slot_require_is_func_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id ret_type,
@@ -181,16 +194,18 @@ _ast_slot_require_is_func_type(
 			PASS_DEBUG_PARAM);
 
 	ast_slot_require_member_index(
-			env, loc, source, target, 0, ret_type);
+			env, loc, source, target, 0, ret_type
+			PASS_DEBUG_PARAM);
 
 	for (size_t i = 0; i < num_params; i++) {
 		ast_slot_require_member_index(
-				env, loc, source, target, i+1, param_types[i]);
+				env, loc, source, target, i+1, param_types[i]
+				PASS_DEBUG_PARAM);
 	}
 }
 
 void
-_ast_slot_require_equals(
+ast_slot_require_equals(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id slot
@@ -204,7 +219,7 @@ _ast_slot_require_equals(
 	constr->equals = slot;
 }
 void
-_ast_slot_require_type(
+ast_slot_require_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id type
@@ -219,7 +234,7 @@ _ast_slot_require_type(
 }
 
 void
-_ast_slot_require_member_named(
+ast_slot_require_member_named(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, struct atom *name, ast_slot_id member
@@ -235,7 +250,7 @@ _ast_slot_require_member_named(
 }
 
 void
-_ast_slot_require_member_index(
+ast_slot_require_member_index(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, size_t index, ast_slot_id member
@@ -251,7 +266,7 @@ _ast_slot_require_member_index(
 }
 
 void
-_ast_slot_require_is_cons(
+ast_slot_require_is_cons(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, struct object_cons *def
@@ -266,7 +281,7 @@ _ast_slot_require_is_cons(
 }
 
 void
-_ast_slot_require_cons(
+ast_slot_require_cons(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id cons

@@ -265,56 +265,33 @@ ast_slot_alloc(struct ast_env *env);
 
 #if AST_DEBUG_SLOT_SOLVE
 #	define AST_SLOT_DEBUG_PARAM , struct ast_constraint_loc constr_loc
-#	define AST_SLOT_DEBUG_ARG (struct ast_constraint_loc){.filename=__FILE__, .line=__LINE__}
-
-#	define ast_slot_value_error(...)          _ast_slot_value_error(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_is_obj(...)       _ast_slot_require_is_obj(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_is_type(...)      _ast_slot_require_is_type(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_is_func_type(...) _ast_slot_require_is_func_type(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_is_cons(...)      _ast_slot_require_is_cons(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_cons(...)         _ast_slot_require_cons(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_equals(...)       _ast_slot_require_equals(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_type(...)         _ast_slot_require_type(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_member_named(...) _ast_slot_require_member_named(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_member_index(...) _ast_slot_require_member_index(__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #else
 #	define AST_SLOT_DEBUG_PARAM
-
-#	define ast_slot_value_error          _ast_slot_value_error
-#	define ast_slot_require_is_obj       _ast_slot_require_is_obj
-#	define ast_slot_require_is_type      _ast_slot_require_is_type
-#	define ast_slot_require_is_func_type _ast_slot_require_is_func_type
-#	define ast_slot_require_is_cons      _ast_slot_require_is_cons
-#	define ast_slot_require_cons         _ast_slot_require_cons
-#	define ast_slot_require_equals       _ast_slot_require_equals
-#	define ast_slot_require_type         _ast_slot_require_type
-#	define ast_slot_require_member_named _ast_slot_require_member_named
-#	define ast_slot_require_member_index _ast_slot_require_member_index
 #endif
 
 void
-_ast_slot_value_error(
+ast_slot_value_error(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target
 		AST_SLOT_DEBUG_PARAM);
 
 void
-_ast_slot_require_is_obj(
+ast_slot_require_is_obj(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, struct object val
 		AST_SLOT_DEBUG_PARAM);
 
 void
-_ast_slot_require_is_type(
+ast_slot_require_is_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, type_id val
 		AST_SLOT_DEBUG_PARAM);
 
 void
-_ast_slot_require_is_func_type(
+ast_slot_require_is_func_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id ret_type,
@@ -322,46 +299,61 @@ _ast_slot_require_is_func_type(
 		AST_SLOT_DEBUG_PARAM);
 
 void
-_ast_slot_require_equals(
+ast_slot_require_equals(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id slot
 		AST_SLOT_DEBUG_PARAM);
 
 void
-_ast_slot_require_type(
+ast_slot_require_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id type
 		AST_SLOT_DEBUG_PARAM);
 
 void
-_ast_slot_require_member_named(
+ast_slot_require_member_named(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, struct atom *name, ast_slot_id member
 		AST_SLOT_DEBUG_PARAM);
 
 void
-_ast_slot_require_member_index(
+ast_slot_require_member_index(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, size_t index, ast_slot_id member
 		AST_SLOT_DEBUG_PARAM);
 
 void
-_ast_slot_require_is_cons(
+ast_slot_require_is_cons(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, struct object_cons *def
 		AST_SLOT_DEBUG_PARAM);
 
 void
-_ast_slot_require_cons(
+ast_slot_require_cons(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, ast_slot_id cons
 		AST_SLOT_DEBUG_PARAM);
+
+#if AST_DEBUG_SLOT_SOLVE
+#	define AST_SLOT_DEBUG_ARG (struct ast_constraint_loc){.filename=__FILE__, .line=__LINE__}
+
+#	define ast_slot_value_error(...)          ast_slot_value_error (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_is_obj(...)       ast_slot_require_is_obj (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_is_type(...)      ast_slot_require_is_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_is_func_type(...) ast_slot_require_is_func_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_is_cons(...)      ast_slot_require_is_cons (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_cons(...)         ast_slot_require_cons (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_equals(...)       ast_slot_require_equals (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_type(...)         ast_slot_require_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_member_named(...) ast_slot_require_member_named (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_member_index(...) ast_slot_require_member_index (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#endif
 
 enum ast_slot_result_state {
 	AST_SLOT_RES_ERROR                  = 0x0,
