@@ -260,19 +260,26 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
+		case AST_NODE_INST:
 			print_indent(depth);
 			if (node->kind == AST_NODE_CALL) {
 				printf("call: ");
 				print_slot(env, node->call.ret_type);
 				printf("\n");
-			} else {
+			} else if (node->kind == AST_NODE_CALL) {
 				printf("cons: ");
 				print_slot(env, node->call.ret_type);
 				printf("\n");
 				print_indent(depth + 1);
-				printf("cons slot ");
-				print_slot(env, node->call.cons);
+				printf("cons %p\n", (void *)node->call.cons);
+			} else {
+				printf("inst: ");
+				print_slot(env, node->call.ret_type);
 				printf("\n");
+				print_indent(depth + 1);
+				printf("inst %p, cons %p\n",
+						(void *)node->call.inst,
+						(void *)node->call.inst->cons);
 			}
 
 			print_indent(depth + 1);
@@ -385,7 +392,7 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("access '%.*s' ", ALIT(node->access.name));
 			print_slot(env, node->access.slot);
 			printf(": ");
-			print_slot(env, ast_node_type(ctx, env, node));
+			// print_slot(env, ast_node_type(ctx, env, node));
 			printf("\n");
 
 			print_indent(depth + 1);
@@ -399,7 +406,7 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("lit ");
 			print_slot(env, node->lit.slot);
 			printf(": ");
-			print_slot(env, ast_node_type(ctx, env, node));
+			// print_slot(env, ast_node_type(ctx, env, node));
 			printf(" = ");
 			print_obj_repr(ctx->vm, node->lit.obj);
 			printf("\n");
@@ -410,7 +417,7 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("lookup '%.*s' ", ALIT(node->lookup.name));
 			print_slot(env, node->lookup.slot);
 			printf(": ");
-			print_slot(env, ast_node_type(ctx, env, node));
+			// print_slot(env, ast_node_type(ctx, env, node));
 			printf(" (");
 			ast_print_name_ref(node->lookup.ref);
 			printf(")\n");
@@ -453,8 +460,12 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
+		case AST_NODE_INST:
 			ast_print_node(ctx, env, node->call.func, print_type_slot);
-			printf((node->kind == AST_NODE_CALL) ? "(" : "[");
+			printf((node->kind == AST_NODE_CALL)
+					? "("
+					: ((node->kind == AST_NODE_CONS)
+						? "[" : "{"));
 			for (size_t i = 0; i < node->call.num_args; i++) {
 				if (i != 0) {
 					printf(", ");
@@ -464,7 +475,10 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 				}
 				ast_print_node(ctx, env, node->call.args[i].value, print_type_slot);
 			}
-			printf((node->kind == AST_NODE_CALL) ? ")" : "]");
+			printf((node->kind == AST_NODE_CALL)
+					? ")"
+					: ((node->kind == AST_NODE_CONS)
+						? "]" : "}"));
 			break;
 
 		case AST_NODE_FUNC_TYPE:

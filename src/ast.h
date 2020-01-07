@@ -45,39 +45,6 @@ ast_print_name_ref(struct ast_name_ref);
 
 struct ast_node;
 struct ast_module;
-struct ast_object_def;
-
-struct ast_object_arg {
-	struct atom *name;
-	ast_slot_id slot;
-};
-
-struct ast_object_bind {
-	ast_slot_id target;
-	ast_slot_id value;
-};
-
-struct ast_object {
-	struct ast_object_def *def;
-	struct ast_object_arg *args;
-	size_t num_present_args;
-
-	// def_bind is a list of (target, value)-pairs. The list an unrolled
-	// version of the value params of the binds of the def. That means each
-	// target in def will appear num_value_params consecutive times, once for
-	// each value_param, in the same order as in def.
-	struct ast_object_bind *def_binds;
-};
-
-struct ast_array {
-	ast_slot_id member_type;
-	ast_slot_id member_count;
-	ast_slot_id *members;
-	size_t num_members;
-};
-
-ssize_t
-ast_object_lookup_arg(struct ast_object *obj, struct atom *arg_name);
 
 struct ast_scope_name {
 	struct atom *name;
@@ -203,21 +170,6 @@ struct ast_slot_constraint {
 	} reason;
 };
 
-struct ast_env_slot {
-	ast_slot_id type;
-
-	enum ast_env_slot_kind kind;
-	union {
-		type_id const_type;
-		struct object const_object;
-		int64_t param_index;
-		struct ast_object cons;
-		struct ast_array cons_array;
-
-		ast_slot_id subst;
-	};
-};
-
 struct ast_env {
 	size_t num_alloced_slots;
 
@@ -229,10 +181,6 @@ struct ast_env {
 	// If this environment was copied from another, num_borrowed_pages will
 	// indicate how many of this env's pages was borrowed from the src.
 	size_t num_borrowed_pages;
-
-	// Old slot system
-	struct ast_env_slot *slots;
-	size_t num_slots;
 
 	struct objstore *store;
 };
@@ -247,12 +195,6 @@ struct ast_context {
 
 	struct {
 		struct atom *type;
-
-		struct atom *func_cons_arg_ret;
-		struct atom *func_cons_arg_params;
-
-		struct atom *array_cons_arg_type;
-		struct atom *array_cons_arg_count;
 	} atoms;
 
 	struct {
@@ -262,11 +204,6 @@ struct ast_context {
 		type_id string;
 		type_id integer;
 	} types;
-
-	struct {
-		struct ast_object_def *func;
-		struct ast_object_def *array;
-	} cons;
 
 	// TODO: Get rid of dependency on vm?
 	struct vm *vm;
@@ -473,221 +410,7 @@ ast_slot_try_solve(
 		struct ast_env *env, struct ast_slot_result *out_result);
 
 
-
-ast_slot_id
-ast_bind_result_to_slot(struct ast_bind_result res);
-
-ast_slot_id
-ast_bind_require_ok(struct ast_bind_result res);
-
-struct ast_bind_result
-ast_try_bind_slot_error(struct ast_context *,
-		struct ast_env *, ast_slot_id target);
-
-struct ast_bind_result
-ast_try_bind_slot_wildcard(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		ast_slot_id type);
-
-struct ast_bind_result
-ast_try_bind_slot_const(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		struct object);
-
-struct ast_bind_result
-ast_try_bind_slot_const_type(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		type_id);
-
-struct ast_bind_result
-ast_try_bind_slot_param(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		int64_t param_index, ast_slot_id type);
-
-struct ast_bind_result
-ast_try_bind_slot_templ(struct ast_context *ctx,
-		struct ast_env *env, ast_slot_id target,
-		ast_slot_id type);
-
-struct ast_bind_result
-ast_try_bind_slot_closure(struct ast_context *ctx,
-		struct ast_env *env, ast_slot_id target,
-		ast_slot_id type);
-
-struct ast_bind_result
-ast_try_bind_slot_cons(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		struct ast_object_def *);
-
-struct ast_bind_result
-ast_try_bind_slot_cons_array(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		ast_slot_id *members, size_t num_members, ast_slot_id member_type);
-
-struct ast_bind_result
-ast_try_union_slot(struct ast_context *, struct ast_env *,
-		ast_slot_id target, ast_slot_id src_slot);
-
-
-ast_slot_id
-ast_bind_slot_error(struct ast_context *,
-		struct ast_env *, ast_slot_id target);
-
-ast_slot_id
-ast_bind_slot_wildcard(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		ast_slot_id type);
-
-ast_slot_id
-ast_bind_slot_const(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		struct object);
-
-ast_slot_id
-ast_bind_slot_const_type(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		type_id);
-
-ast_slot_id
-ast_bind_slot_param(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		int64_t param_index, ast_slot_id type);
-
-ast_slot_id
-ast_bind_slot_templ(struct ast_context *ctx,
-		struct ast_env *env, ast_slot_id target,
-		ast_slot_id type);
-
-ast_slot_id
-ast_bind_slot_member(struct ast_context *ctx,
-		struct ast_env *env, ast_slot_id target,
-		ast_slot_id type);
-
-ast_slot_id
-ast_bind_slot_closure(struct ast_context *ctx,
-		struct ast_env *env, ast_slot_id target,
-		ast_slot_id type);
-
-ast_slot_id
-ast_bind_slot_cons(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		struct ast_object_def *);
-
-ast_slot_id
-ast_bind_slot_cons_array(struct ast_context *,
-		struct ast_env *, ast_slot_id target,
-		ast_slot_id *members, size_t num_members, ast_slot_id member_type);
-
-ast_slot_id
-ast_unpack_arg_named(struct ast_context *, struct ast_env *,
-		ast_slot_id obj, ast_slot_id target, struct atom *name);
-
-struct ast_bind_result
-ast_try_unpack_arg_named(struct ast_context *, struct ast_env *,
-		ast_slot_id obj, ast_slot_id target, struct atom *name);
-
-ast_slot_id
-ast_union_slot(struct ast_context *, struct ast_env *,
-		ast_slot_id target, ast_slot_id src_slot);
-
-
-ast_slot_id
-ast_copy_slot(struct ast_context *,
-		struct ast_env *dest, ast_slot_id target,
-		struct ast_env *src,  ast_slot_id src_slot);
-
-void
-ast_substitute(struct ast_context *, struct ast_env *,
-		ast_slot_id new_slot, ast_slot_id target);
-
-struct ast_env_slot
-ast_env_slot(struct ast_context *, struct ast_env *, ast_slot_id);
-
-bool
-ast_object_def_from_cons(struct ast_context *, struct ast_env *,
-		struct ast_object_def *out, ast_slot_id);
-
-void
-ast_env_print(struct vm *vm, struct ast_env *);
-
-// void
-// ast_print_slot(struct ast_context *, struct ast_env *, ast_slot_id);
-
-struct ast_object_def_param {
-	int param_id;
-	struct atom *name;
-	type_id type;
-	ast_slot_id slot;
-};
-
-enum ast_object_def_bind_kind {
-	AST_OBJECT_DEF_BIND_VALUE,
-	AST_OBJECT_DEF_BIND_PACK,
-	AST_OBJECT_DEF_BIND_CONST,
-};
-
-struct ast_object_def_bind {
-	enum ast_object_def_bind_kind kind;
-
-	ast_member_id target;
-	ast_member_id *value_params;
-	size_t num_value_params;
-
-	func_id unpack_func;
-
-	struct stg_location loc;
-
-	union {
-		struct {
-			bool overridable;
-			func_id func;
-		} value;
-		struct ast_object_def *pack;
-		struct object const_value;
-	};
-};
-
-typedef struct object (*ast_object_unpack)(
-		struct ast_context *, struct ast_env *,
-		struct ast_object_def *, int param_id, struct object);
-
-typedef struct object (*ast_object_pack)(
-		struct ast_context *, struct ast_module *, struct ast_env *,
-		struct ast_object_def *, ast_slot_id);
-
-typedef bool (*ast_object_can_unpack)(
-		struct ast_context *, struct ast_env *,
-		struct ast_object_def *, struct object obj);
-
-struct ast_object_def {
-	struct ast_object_def_param *params;
-	size_t num_params;
-	struct ast_env env;
-
-	struct ast_object_def_bind *binds;
-	size_t num_binds;
-
-	ast_slot_id ret_type;
-
-	ast_object_can_unpack can_unpack;
-
-	ast_object_unpack unpack;
-	ast_object_pack pack;
-
-	object_pack_func pack_func;
-	object_unpack_func unpack_func;
-
-	void *data;
-};
-
-struct ast_object_def *
-ast_object_def_register(struct objstore *);
-
-void
-ast_object_def_finalize(struct ast_object_def *,
-		struct ast_object_def_param *params, size_t num_params,
-		ast_slot_id ret_type);
-
+/*
 size_t
 ast_object_def_num_descendant_members(
 		struct ast_context *ctx, struct ast_module *mod,
@@ -706,35 +429,14 @@ ast_object_def_order_binds(
 		struct ast_object_def_bind *extra_binds,
 		size_t num_extra_binds,
 		int *out_bind_order);
-
-typedef struct object (*ast_array_unpack)(
-		struct ast_context *, struct ast_env *,
-		struct ast_array_def *, size_t member_id, struct object);
-
-typedef struct object (*ast_array_pack)(
-		struct ast_context *, struct ast_module *, struct ast_env *,
-		struct ast_array_def *, ast_slot_id);
-
-struct ast_array_def {
-	ast_array_unpack unpack;
-	ast_array_pack pack;
-
-	void *data;
-};
-
-int
-ast_slot_pack(struct ast_context *, struct ast_module *,
-		struct ast_env *, ast_slot_id obj, struct object *out);
-
-int
-ast_slot_pack_type(struct ast_context *, struct ast_module *,
-		struct ast_env *, ast_slot_id obj, type_id *out);
+*/
 
 enum ast_node_kind {
 	AST_NODE_FUNC,
 	AST_NODE_FUNC_NATIVE,
 	AST_NODE_CALL,
 	AST_NODE_CONS,
+	AST_NODE_INST,
 	AST_NODE_ACCESS,
 	AST_NODE_TEMPL,
 	AST_NODE_LIT,
@@ -846,8 +548,13 @@ struct ast_node {
 
 			ast_slot_id ret_type;
 
-			// Used only for cons.
-			ast_slot_id cons;
+			union {
+				// Used only for cons.
+				struct object_cons *cons;
+
+				// Used only for inst.
+				struct object_inst *inst;
+			};
 		} call;
 
 		struct {
@@ -855,6 +562,8 @@ struct ast_node {
 			size_t num_params;
 			
 			struct ast_node *ret_type;
+
+			type_id func_type;
 
 			ast_slot_id slot;
 		} func_type;
@@ -873,7 +582,7 @@ struct ast_node {
 
 			ast_slot_id slot;
 
-			struct ast_object_def *def;
+			struct object_cons *cons;
 
 			struct ast_closure_target closure;
 		} templ;
@@ -947,6 +656,7 @@ ast_node_name(enum ast_node_kind);
 			break;																\
 		case AST_NODE_CALL:														\
 		case AST_NODE_CONS:														\
+		case AST_NODE_INST:														\
 			VISIT_NODE((node)->call.func);										\
 			for (size_t i = 0; i < (node)->call.num_args; i++) {				\
 				VISIT_NODE((node)->call.args[i].value);							\
@@ -1001,15 +711,6 @@ ast_node_name(enum ast_node_kind);
 			}																	\
 			break;																\
 	}} while (0);
-
-ast_slot_id
-ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot);
-
-ast_slot_id
-ast_node_type(struct ast_context *, struct ast_env *, struct ast_node *);
-
-ast_slot_id
-ast_node_value(struct ast_context *, struct ast_env *, struct ast_node *);
 
 #define AST_NODE_NEW ((struct ast_node *)1)
 
@@ -1088,11 +789,6 @@ ast_node_composite_add_member(
 		struct ast_context *ctx,
 		struct ast_node *target, struct atom *name,
 		struct ast_node *type, int type_giving_bind);
-
-ast_slot_id
-ast_node_composite_get_member(
-		struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *target, struct atom *name);
 
 int
 ast_node_composite_bind(
@@ -1190,7 +886,7 @@ struct ast_node *
 ast_node_deep_copy(struct ast_context *ctx, struct ast_env *dest_env,
 		struct ast_env *src_env, struct ast_node *src);
 
-struct ast_object_def *
+struct object_cons *
 ast_node_create_templ(struct ast_context *ctx, struct ast_module *,
 		struct ast_env *env, struct ast_node *templ_node,
 		struct ast_typecheck_dep *deps, size_t num_deps);

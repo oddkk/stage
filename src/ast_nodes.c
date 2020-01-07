@@ -16,6 +16,7 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_FUNC_NATIVE:	return "FUNC_NATIVE";
 		case AST_NODE_CALL:			return "CALL";
 		case AST_NODE_CONS:			return "CONS";
+		case AST_NODE_INST:			return "INST";
 		case AST_NODE_FUNC_TYPE:	return "FUNC_TYPE";
 		case AST_NODE_ACCESS:		return "ACCESS";
 		case AST_NODE_TEMPL:		return "TEMPL";
@@ -27,18 +28,6 @@ ast_node_name(enum ast_node_kind kind)
 	}
 
 	return "(invalid)";
-}
-
-ast_slot_id
-ast_node_resolve_slot(struct ast_env *env, ast_slot_id *slot)
-{
-	assert(*slot < (ast_slot_id)env->num_slots);
-	while (*slot >= 0 && env->slots[*slot].kind == AST_SLOT_SUBST) {
-		assert(*slot < (ast_slot_id)env->num_slots);
-		*slot = env->slots[*slot].subst;
-	}
-
-	return *slot;
 }
 
 struct ast_node *
@@ -148,7 +137,7 @@ ast_init_node_call(
 	node->call.args = calloc(sizeof(struct ast_func_arg), num_args);
 	memcpy(node->call.args, args, sizeof(struct ast_func_arg) * num_args);
 	node->call.num_args = num_args;
-	node->call.cons = AST_SLOT_NOT_FOUND;
+	node->call.cons = NULL;
 
 	node->call.ret_type = AST_BIND_NEW;
 
@@ -179,7 +168,7 @@ ast_init_node_cons(
 	node->call.args = calloc(sizeof(struct ast_func_arg), num_args);
 	memcpy(node->call.args, args, sizeof(struct ast_func_arg) * num_args);
 	node->call.num_args = num_args;
-	node->call.cons = AST_SLOT_NOT_FOUND;
+	node->call.cons = NULL;
 
 	node->call.ret_type = AST_BIND_NEW;
 
@@ -380,15 +369,6 @@ ast_node_composite_add_member(
 	return 0;
 }
 
-ast_slot_id
-ast_node_composite_get_member(
-		struct ast_context *ctx, struct ast_env *env,
-		struct ast_node *target, struct atom *name)
-{
-	return ast_unpack_arg_named(ctx, env,
-			target->composite.cons, AST_BIND_NEW, name);
-}
-
 int
 ast_node_composite_bind(
 		struct ast_context *ctx,
@@ -472,88 +452,6 @@ ast_node_variant_add_option(
 			target->variant.options,
 			target->variant.num_options,
 			&option);
-}
-
-
-ast_slot_id
-ast_node_type(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
-{
-	switch (node->kind) {
-		case AST_NODE_FUNC_NATIVE:
-		case AST_NODE_FUNC:
-			return ast_node_resolve_slot(env, &node->func.type);
-
-		case AST_NODE_CALL:
-		case AST_NODE_CONS:
-			return node->call.ret_type;
-
-		case AST_NODE_FUNC_TYPE:
-			return AST_SLOT_TYPE;
-
-		case AST_NODE_TEMPL:
-			return ast_env_slot(ctx, env,
-					ast_node_resolve_slot(env, &node->templ.slot)).type;
-
-		case AST_NODE_ACCESS:
-			return ast_env_slot(ctx, env,
-					ast_node_resolve_slot(env, &node->access.slot)).type;
-
-		case AST_NODE_LIT:
-			return ast_env_slot(ctx, env,
-					ast_node_resolve_slot(env, &node->lit.slot)).type;
-
-		case AST_NODE_LOOKUP:
-			return ast_env_slot(ctx, env,
-					ast_node_resolve_slot(env, &node->lookup.slot)).type;
-
-		case AST_NODE_COMPOSITE:
-			return AST_SLOT_TYPE;
-
-		case AST_NODE_VARIANT:
-			return AST_SLOT_TYPE;
-	}
-
-	panic("Invalid ast node.");
-	return AST_BIND_FAILED;
-}
-
-ast_slot_id
-ast_node_value(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
-{
-	switch (node->kind) {
-		case AST_NODE_LIT:
-			return ast_node_resolve_slot(env, &node->lit.slot);
-
-		case AST_NODE_LOOKUP:
-			return ast_node_resolve_slot(env, &node->lookup.slot);
-
-		case AST_NODE_ACCESS:
-			return ast_node_resolve_slot(env, &node->access.slot);
-
-		case AST_NODE_FUNC_TYPE:
-			return ast_node_resolve_slot(env, &node->func_type.slot);
-
-		case AST_NODE_FUNC_NATIVE:
-		case AST_NODE_FUNC:
-		case AST_NODE_CALL:
-			panic("TODO: eval");
-			break;
-
-		case AST_NODE_CONS:
-			return ast_node_resolve_slot(env, &node->call.cons);
-
-		case AST_NODE_TEMPL:
-			return ast_node_resolve_slot(env, &node->templ.slot);
-
-		case AST_NODE_COMPOSITE:
-			return ast_node_resolve_slot(env, &node->composite.ret_value);
-
-		case AST_NODE_VARIANT:
-			return ast_node_resolve_slot(env, &node->variant.ret_value);
-	}
-
-	panic("Invalid ast node.");
-	return AST_BIND_FAILED;
 }
 
 // Appends the reference to the provided list if the reference is found. If the
@@ -687,6 +585,7 @@ ast_node_find_named_dependencies(
 	return err;
 }
 
+/*
 struct ast_templ_cons_inst {
 	struct object *params;
 	struct object result;
@@ -1007,3 +906,4 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 
 	return def;
 }
+*/

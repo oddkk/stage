@@ -18,7 +18,6 @@ struct stg_module;
 struct stg_module_info;
 
 struct stg_native_module;
-struct ast_object_def;
 struct bc_instr_store;
 
 struct vm {
@@ -42,11 +41,6 @@ struct vm {
 		type_id string;
 		type_id boolean;
 	} default_types;
-
-	struct {
-		struct ast_object_def *func;
-		struct ast_object_def *array;
-	} default_cons;
 
 	func_id init_func;
 	type_id program_object_type;

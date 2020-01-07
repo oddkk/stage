@@ -14,9 +14,16 @@
 // For mmap
 #include <sys/mman.h>
 
-#define AST_DT_DEBUG_JOBS 0
+#define AST_DT_DEBUG_JOBS 1
 
 typedef int ast_dt_job_id;
+typedef int ast_dt_bind_id;
+typedef int ast_dt_expr_id;
+
+struct ast_dt_mbr_id {
+	ast_member_id local_member;
+	int descendant;
+};
 
 struct ast_dt_expr_jobs {
 	ast_dt_job_id resolve_names;
@@ -24,60 +31,38 @@ struct ast_dt_expr_jobs {
 	ast_dt_job_id codegen;
 };
 
-struct ast_dt_bind {
-	struct ast_node *target_node;
+struct ast_dt_expr {
+	bool constant;
+	struct object const_value;
 
-	union {
-		ast_member_id single_target;
-		ast_member_id *multiple_targets;
-	};
-	int *target_descendent_id;
+	struct {
+		struct ast_node *node;
+		func_id func;
+	} value;
 
-	// A function for eatch target that, given this bind's value, returns the
-	// appropriate value for that target.
-	func_id *target_unpack_func;
-	func_id _single_target_unpack_func;
-
-	size_t num_targets;
-
-	type_id target_type;
-
-	// The targets that are found by l-expr during BIND_TARGET_RESOLVE_NAMES.
-	// These members will be expanded to only contain terminal nodes that are
-	// stored in single_target or multiple_targets.
-	ast_member_id *explicit_targets;
-	size_t num_explicit_targets;
-
-	bool is_type_giving;
-
-	// TODO: For now there is no support for multiple explicit targets.
-	// Therefore we just use this field as pointer target for explicit_targets,
-	// and set num_explicit_targets to 1 in BIND_TARGET_RESOLVE_NAMES.
-	ast_member_id _single_explicit_target;
-
-	bool overridable;
-
-	enum ast_object_def_bind_kind kind;
-	union {
-		struct {
-			struct ast_node *node;
-			func_id func;
-		} value;
-		struct ast_object_def *pack;
-		struct object const_value;
-	};
+	type_id type;
 
 	struct stg_location loc;
 
 	ast_member_id *member_deps;
 	size_t num_member_deps;
 
+	struct ast_dt_expr_jobs value_jobs;
+};
+
+struct ast_dt_bind {
+	struct ast_node *target_node;
+	ast_member_id target;
+	ast_dt_expr_id expr;
+
+	bool overridable;
+
 	struct {
 		ast_dt_job_id resolve_names;
 		ast_dt_job_id resolve;
 	} target_jobs;
-	struct ast_dt_expr_jobs value_jobs;
-	struct ast_dt_bind *next_alloced;
+
+	struct stg_location loc;
 };
 
 struct ast_dt_dependency;
@@ -93,8 +78,12 @@ struct ast_dt_member {
 	struct ast_node *type_node;
 
 	struct stg_location decl_loc;
-	struct ast_dt_bind *bound;
-	struct ast_dt_bind *overridden_bind;
+
+	ast_dt_bind_id bound;
+	int bound_unpack_id;
+
+	ast_dt_bind_id typegiving_bind;
+	ast_dt_bind_id overridden_bind;
 
 	enum ast_dt_member_flags flags;
 	union {
@@ -112,11 +101,6 @@ struct ast_dt_member {
 	struct object const_value;
 
 	ast_member_id persistant_id;
-
-	// Used as part of the terminal_nodes linked list until after the member
-	// has been sorted. Then next becomes the id of the next member in the
-	// topological order. The index of another member.
-	ast_member_id next;
 };
 
 struct ast_dt_dependency {
@@ -133,9 +117,9 @@ enum ast_dt_job_kind {
 	AST_DT_JOB_MBR_TYPE_EVAL,
 	AST_DT_JOB_MBR_CONST_EVAL,
 
-	AST_DT_JOB_BIND_RESOLVE_NAMES,
-	AST_DT_JOB_BIND_RESOLVE_TYPES,
-	AST_DT_JOB_BIND_CODEGEN,
+	AST_DT_JOB_EXPR_RESOLVE_NAMES,
+	AST_DT_JOB_EXPR_RESOLVE_TYPES,
+	AST_DT_JOB_EXPR_CODEGEN,
 
 	AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES,
 	AST_DT_JOB_BIND_TARGET_RESOLVE,
@@ -164,7 +148,9 @@ struct ast_dt_job {
 		ast_member_id member;
 
 		// For AST_DT_JOB_EXPR_BIND and AST_DT_JOB_EXPR_TARGET
-		struct ast_dt_bind *bind;
+		ast_dt_expr_id expr;
+
+		ast_dt_bind_id bind;
 
 		// Used when the job is not allocated.
 		ast_dt_job_id free_list;
@@ -172,28 +158,31 @@ struct ast_dt_job {
 };
 
 struct ast_dt_context {
-	struct ast_dt_member *members;
-	size_t num_members;
-
 	struct ast_node *root_node;
 	// An array of the ids of all local members, in the same order as
 	// root_node->composite.members. The lenght is root_node->composite.num_members.
 	ast_member_id *local_member_ids;
 
-	struct ast_dt_bind *alloced_binds;
-
-	// A linked list of all nodes with no incoming edges. The index of another
-	// member.
-	ast_member_id terminal_nodes;
-	size_t unvisited_edges;
+	size_t page_size;
 
 	struct ast_dt_job **job_pages;
 	size_t num_job_pages;
-	size_t page_size;
 	ast_dt_job_id free_list;
 	// A linked list of nodes that have no incoming edges.
 	ast_dt_job_id terminal_jobs;
 	size_t unvisited_job_deps;
+
+	struct ast_dt_expr **expr_pages;
+	size_t num_expr_pages;
+	size_t num_expr_alloced;
+
+	struct ast_dt_bind **bind_pages;
+	size_t num_bind_pages;
+	size_t num_bind_alloced;
+
+	struct ast_dt_member **member_pages;
+	size_t num_member_pages;
+	size_t num_member_alloced;
 
 	ast_dt_job_id target_names_resolved;
 
@@ -223,13 +212,37 @@ get_job(struct ast_dt_context *ctx, ast_dt_job_id id)
 	return &ctx->job_pages[id / jobs_per_page][id % jobs_per_page];
 }
 
+static inline struct ast_dt_expr *
+get_expr(struct ast_dt_context *ctx, ast_dt_expr_id id)
+{
+	assert(ctx->page_size > 0);
+	size_t exprs_per_page = ctx->page_size / sizeof(struct ast_dt_expr);
+	assert(id >= 0 && id < ctx->num_expr_alloced);
+
+	return &ctx->expr_pages[id / exprs_per_page][id % exprs_per_page];
+}
+
+static inline struct ast_dt_bind *
+get_bind(struct ast_dt_context *ctx, ast_dt_bind_id id)
+{
+	assert(ctx->page_size > 0);
+	size_t binds_per_page = ctx->page_size / sizeof(struct ast_dt_bind);
+	assert(id >= 0 && id < ctx->num_bind_alloced);
+
+	return &ctx->bind_pages[id / binds_per_page][id % binds_per_page];
+}
+
 static inline struct ast_dt_member *
 get_member(struct ast_dt_context *ctx, ast_member_id id)
 {
-	assert(id < ctx->num_members);
-	return &ctx->members[id];
+	assert(ctx->page_size > 0);
+	size_t members_per_page = ctx->page_size / sizeof(struct ast_dt_member);
+	assert(id >= 0 && id < ctx->num_member_alloced);
+
+	return &ctx->member_pages[id / members_per_page][id % members_per_page];
 }
 
+/*
 static inline ast_member_id *
 ast_dt_get_bind_targets(struct ast_dt_bind *bind)
 {
@@ -240,6 +253,170 @@ ast_dt_get_bind_targets(struct ast_dt_bind *bind)
 	} else {
 		return bind->multiple_targets;
 	}
+}
+*/
+
+static inline ast_member_id
+ast_dt_member_get_descendant(struct ast_dt_context *ctx,
+		ast_member_id mbr_id, size_t descendant_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+	if ((mbr->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
+		return mbr->first_child + descendant_id;
+	} else {
+		return mbr_id + descendant_id;
+	}
+}
+
+static ast_dt_expr_id
+ast_dt_alloc_expr(struct ast_dt_context *ctx)
+{
+	if (ctx->page_size == 0) {
+		ctx->page_size = sysconf(_SC_PAGESIZE);
+	}
+
+	const size_t exprs_per_page =
+		ctx->page_size / sizeof(struct ast_dt_expr);
+
+	if ((ctx->num_expr_alloced + exprs_per_page) / exprs_per_page > ctx->num_expr_pages) {
+		size_t new_size = (ctx->num_expr_pages + 1) * sizeof(struct ast_dt_expr *);
+		struct ast_dt_expr **new_pages = realloc(ctx->expr_pages, new_size);
+
+		if (!new_pages) {
+			perror("realloc");
+			return -1;
+		}
+
+		ctx->expr_pages = new_pages;
+
+		struct ast_dt_expr *new_exprs;
+		new_exprs = mmap(
+				NULL, ctx->page_size,
+				PROT_READ|PROT_WRITE,
+				MAP_PRIVATE|MAP_ANONYMOUS,
+				-1, 0);
+
+		new_pages[ctx->num_expr_pages] = new_exprs;
+
+		if (new_pages[ctx->num_expr_pages] == MAP_FAILED) {
+			perror("mmap");
+			return -1;
+		}
+
+		ctx->num_expr_pages += 1;
+	}
+
+	ast_dt_expr_id res;
+	res = ctx->num_expr_alloced;
+	ctx->num_expr_alloced += 1;
+
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, res);
+
+	memset(expr, 0, sizeof(struct ast_dt_expr));
+
+	return res;
+}
+
+static ast_dt_expr_id
+ast_dt_alloc_bind(struct ast_dt_context *ctx)
+{
+	if (ctx->page_size == 0) {
+		ctx->page_size = sysconf(_SC_PAGESIZE);
+	}
+
+	const size_t binds_per_page =
+		ctx->page_size / sizeof(struct ast_dt_bind);
+
+	if ((ctx->num_bind_alloced + binds_per_page) / binds_per_page > ctx->num_bind_pages) {
+		size_t new_size = (ctx->num_bind_pages + 1) * sizeof(struct ast_dt_bind *);
+		struct ast_dt_bind **new_pages = realloc(ctx->bind_pages, new_size);
+
+		if (!new_pages) {
+			perror("realloc");
+			return -1;
+		}
+
+		ctx->bind_pages = new_pages;
+
+		struct ast_dt_bind *new_binds;
+		new_binds = mmap(
+				NULL, ctx->page_size,
+				PROT_READ|PROT_WRITE,
+				MAP_PRIVATE|MAP_ANONYMOUS,
+				-1, 0);
+
+		new_pages[ctx->num_bind_pages] = new_binds;
+
+		if (new_pages[ctx->num_bind_pages] == MAP_FAILED) {
+			perror("mmap");
+			return -1;
+		}
+
+		ctx->num_bind_pages += 1;
+	}
+
+	ast_dt_bind_id res;
+	res = ctx->num_bind_alloced;
+	ctx->num_bind_alloced += 1;
+
+	struct ast_dt_bind *bind;
+	bind = get_bind(ctx, res);
+
+	memset(bind, 0, sizeof(struct ast_dt_bind));
+
+	return res;
+}
+
+static ast_dt_expr_id
+ast_dt_alloc_member(struct ast_dt_context *ctx)
+{
+	if (ctx->page_size == 0) {
+		ctx->page_size = sysconf(_SC_PAGESIZE);
+	}
+
+	const size_t members_per_page =
+		ctx->page_size / sizeof(struct ast_dt_member);
+
+	if ((ctx->num_member_alloced + members_per_page) / members_per_page > ctx->num_member_pages) {
+		size_t new_size = (ctx->num_member_pages + 1) * sizeof(struct ast_dt_member *);
+		struct ast_dt_member **new_pages = realloc(ctx->member_pages, new_size);
+
+		if (!new_pages) {
+			perror("realloc");
+			return -1;
+		}
+
+		ctx->member_pages = new_pages;
+
+		struct ast_dt_member *new_members;
+		new_members = mmap(
+				NULL, ctx->page_size,
+				PROT_READ|PROT_WRITE,
+				MAP_PRIVATE|MAP_ANONYMOUS,
+				-1, 0);
+
+		new_pages[ctx->num_member_pages] = new_members;
+
+		if (new_pages[ctx->num_member_pages] == MAP_FAILED) {
+			perror("mmap");
+			return -1;
+		}
+
+		ctx->num_member_pages += 1;
+	}
+
+	ast_member_id res;
+	res = ctx->num_member_alloced;
+	ctx->num_member_alloced += 1;
+
+	struct ast_dt_member *member;
+	member = get_member(ctx, res);
+
+	memset(member, 0, sizeof(struct ast_dt_member));
+
+	return res;
 }
 
 static inline void
@@ -353,8 +530,23 @@ ast_dt_job_type(struct ast_dt_context *ctx,
 }
 
 static ast_dt_job_id
+ast_dt_job_expr(struct ast_dt_context *ctx,
+		ast_dt_expr_id expr, enum ast_dt_job_kind kind)
+{
+	ast_dt_job_id job_id;
+	job_id = ast_dt_alloc_job(ctx);
+
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+	job->kind = kind;
+	job->expr = expr;
+
+	return job_id;
+}
+
+static ast_dt_job_id
 ast_dt_job_bind(struct ast_dt_context *ctx,
-		struct ast_dt_bind *bind, enum ast_dt_job_kind kind)
+		ast_dt_bind_id bind, enum ast_dt_job_kind kind)
 {
 	ast_dt_job_id job_id;
 	job_id = ast_dt_alloc_job(ctx);
@@ -399,12 +591,12 @@ ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
 			return "MBR TPE EVAL";
 		case AST_DT_JOB_MBR_CONST_EVAL:
 			return "MBR CONST EVAL";
-		case AST_DT_JOB_BIND_RESOLVE_NAMES:
-			return "BND VAL NAMES";
-		case AST_DT_JOB_BIND_RESOLVE_TYPES:
-			return "BND VAL TYPES";
-		case AST_DT_JOB_BIND_CODEGEN:
-			return "BND VAL CODEGEN";
+		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
+			return "EXP VAL NAMES";
+		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
+			return "EXP VAL TYPES";
+		case AST_DT_JOB_EXPR_CODEGEN:
+			return "EXP VAL CODEGEN";
 		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
 			return "BND TAR NAMES";
 		case AST_DT_JOB_BIND_TARGET_RESOLVE:
@@ -451,14 +643,35 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 			}
 			break;
 
-		case AST_DT_JOB_BIND_RESOLVE_NAMES:
-		case AST_DT_JOB_BIND_RESOLVE_TYPES:
-		case AST_DT_JOB_BIND_CODEGEN:
+		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
+		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
+		case AST_DT_JOB_EXPR_CODEGEN:
+			{
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, job->expr);
+
+				printf("expr ");
+				if (expr->constant) {
+				} else if (expr->value.node) {
+					ast_print_node(ctx->ast_ctx, ctx->ast_env,
+							expr->value.node, false);
+				} else {
+					printf("func %lu", expr->value.func);
+				}
+			}
+			break;
+
 		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
 		case AST_DT_JOB_BIND_TARGET_RESOLVE:
+			{
+				struct ast_dt_bind *bind;
+				bind = get_bind(ctx, job->bind);
 				printf("bind ");
-				ast_print_node(ctx->ast_ctx, ctx->ast_env,
-						job->bind->target_node);
+				if (bind->target_node) {
+					ast_print_node(ctx->ast_ctx, ctx->ast_env,
+							bind->target_node, false);
+				}
+			}
 			break;
 	}
 	printf(")");
@@ -517,328 +730,156 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 
 static void
 ast_dt_bind_to_member(struct ast_dt_context *ctx,
-		struct ast_dt_bind *bind, ast_member_id mbr_id)
+		ast_member_id mbr_id, ast_dt_bind_id bind_id,
+		int unpack_id, bool typegiving)
 {
 	struct ast_dt_member *member;
 	member = get_member(ctx, mbr_id);
-	if (member->bound) {
-		if (!member->bound->overridable && !bind->overridable) {
-			stg_error(ctx->ast_ctx->err, bind->loc,
+
+	struct ast_dt_bind *new_bind;
+	new_bind = get_bind(ctx, bind_id);
+
+	if (typegiving) {
+		if (member->typegiving_bind >= 0) {
+			struct ast_dt_bind *prev_bind;
+			prev_bind = get_bind(ctx, member->typegiving_bind);
+
+			stg_error(ctx->ast_ctx->err, new_bind->loc,
+					"'%.*s' has multiple typegiving binds.", ALIT(member->name));
+			stg_error(ctx->ast_ctx->err, prev_bind->loc,
+					"Also has a typegiving bind from here.");
+		} else {
+			member->typegiving_bind = bind_id;
+		}
+	}
+
+	if (member->bound >= 0) {
+		struct ast_dt_bind *prev_bind;
+		prev_bind = get_bind(ctx, member->bound);
+
+		if (!prev_bind->overridable && !new_bind->overridable) {
+			stg_error(ctx->ast_ctx->err, new_bind->loc,
 					"'%.*s' is bound multiple times.", ALIT(member->name));
-			stg_appendage(ctx->ast_ctx->err,
-					member->bound->loc, "Also bound here.");
+			stg_appendage(ctx->ast_ctx->err, prev_bind->loc,
+					"Also bound here.");
 			ctx->num_errors += 1;
 			return;
 		}
 
-		if (member->bound->overridable && bind->overridable) {
-			stg_error(ctx->ast_ctx->err, bind->loc,
+		if (prev_bind->overridable && new_bind->overridable) {
+			stg_error(ctx->ast_ctx->err, new_bind->loc,
 					"'%.*s' has multiple default binds.", ALIT(member->name));
-			stg_appendage(ctx->ast_ctx->err,
-					member->bound->loc, "Also bound here.");
+			stg_appendage(ctx->ast_ctx->err, prev_bind->loc,
+					"Also bound here.");
 			ctx->num_errors += 1;
 			return;
 		}
 
-		if (bind->overridable) {
-			member->overridden_bind = bind;
+		if (new_bind->overridable) {
+			member->overridden_bind = bind_id;
 		} else {
 			member->overridden_bind = member->bound;
-			member->bound = bind;
+			member->bound = bind_id;
 		}
 	} else {
-		member->bound = bind;
+		member->bound = bind_id;
 	}
 }
 
-static struct ast_dt_bind *
-ast_dt_register_bind(struct ast_dt_context *ctx,
-		struct stg_location loc, struct ast_node *target,
-		struct ast_node *value, bool overridable)
+static ast_dt_expr_id
+ast_dt_register_expr(struct ast_dt_context *ctx,
+		struct ast_node *value)
 {
-	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
+	ast_dt_expr_id expr_i;
+	expr_i = ast_dt_alloc_expr(ctx);
 
-	new_bind->target_node = target;
-	new_bind->kind = AST_OBJECT_DEF_BIND_VALUE;
-	new_bind->value.node = value;
-	new_bind->overridable = overridable;
-	new_bind->loc = loc;
-	new_bind->target_type = TYPE_UNSET;
+	struct ast_dt_expr *new_expr;
+	new_expr = get_expr(ctx, expr_i);
 
-	new_bind->next_alloced = ctx->alloced_binds;
-	ctx->alloced_binds = new_bind;
+	new_expr->constant = false;
+	new_expr->value.node = value;
+	new_expr->value.func = FUNC_UNSET;
+	new_expr->type = TYPE_UNSET;
+	new_expr->loc = value->loc;
 
-	new_bind->value_jobs.resolve_names =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_RESOLVE_NAMES);
+	new_expr->value_jobs.resolve_names =
+		ast_dt_job_expr(ctx, expr_i,
+				AST_DT_JOB_EXPR_RESOLVE_NAMES);
 
-	new_bind->value_jobs.resolve_types =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_RESOLVE_TYPES);
+	new_expr->value_jobs.resolve_types =
+		ast_dt_job_expr(ctx, expr_i,
+				AST_DT_JOB_EXPR_RESOLVE_TYPES);
 
-	new_bind->value_jobs.codegen =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_CODEGEN);
-
-	ast_dt_job_dependency(ctx,
-			new_bind->value_jobs.resolve_names,
-			new_bind->value_jobs.resolve_types);
+	new_expr->value_jobs.codegen =
+		ast_dt_job_expr(ctx, expr_i,
+				AST_DT_JOB_EXPR_CODEGEN);
 
 	ast_dt_job_dependency(ctx,
-			new_bind->value_jobs.resolve_types,
-			new_bind->value_jobs.codegen);
-
-	new_bind->target_jobs.resolve_names =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES);
-
-	new_bind->target_jobs.resolve =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_TARGET_RESOLVE);
+			new_expr->value_jobs.resolve_names,
+			new_expr->value_jobs.resolve_types);
 
 	ast_dt_job_dependency(ctx,
-			new_bind->target_jobs.resolve_names,
-			new_bind->target_jobs.resolve);
+			new_expr->value_jobs.resolve_types,
+			new_expr->value_jobs.codegen);
 
-	ast_dt_job_dependency(ctx,
-			new_bind->target_jobs.resolve,
-			new_bind->value_jobs.resolve_types);
-
-	ast_dt_job_dependency(ctx,
-			new_bind->target_jobs.resolve_names,
-			ctx->target_names_resolved);
-
-	return new_bind;
+	return expr_i;
 }
 
-static struct ast_dt_bind *
-ast_dt_register_typegiving_bind(struct ast_dt_context *ctx,
-		struct stg_location loc, struct ast_node *target,
-		ast_member_id target_member, struct ast_node *value,
-		bool overridable)
+static ast_dt_expr_id
+ast_dt_register_expr_func(struct ast_dt_context *ctx,
+		struct stg_location loc, func_id value_func)
 {
-	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
+	ast_dt_expr_id expr_i;
+	expr_i = ast_dt_alloc_expr(ctx);
 
-	new_bind->_single_explicit_target = target_member;
-	new_bind->explicit_targets = &new_bind->_single_explicit_target;
-	new_bind->num_explicit_targets = 1;
-	new_bind->is_type_giving = true;
+	struct ast_dt_expr *new_expr;
+	new_expr = get_expr(ctx, expr_i);
 
-	new_bind->target_node = target;
-	new_bind->kind = AST_OBJECT_DEF_BIND_VALUE;
-	new_bind->value.node = value;
-	new_bind->overridable = overridable;
-	new_bind->loc = loc;
-	new_bind->target_type = TYPE_UNSET;
+	new_expr->constant = false;
+	new_expr->value.node = NULL;
+	new_expr->value.func = value_func;
+	new_expr->loc = loc;
 
-	new_bind->next_alloced = ctx->alloced_binds;
-	ctx->alloced_binds = new_bind;
+	struct func *func;
+	func = vm_get_func(ctx->ast_ctx->vm, value_func);
 
+	struct type *func_type;
+	func_type = vm_get_type(ctx->ast_ctx->vm, func->type);
 
-	new_bind->value_jobs.resolve_names =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_RESOLVE_NAMES);
+	struct stg_func_type *func_info;
+	func_info = func_type->data;
 
-	new_bind->value_jobs.resolve_types =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_RESOLVE_TYPES);
+	new_expr->type = func_info->return_type;
 
-	new_bind->value_jobs.codegen =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_CODEGEN);
+	new_expr->value_jobs.resolve_names = -1;
+	new_expr->value_jobs.resolve_types = -1;
+	new_expr->value_jobs.codegen = -1;
 
-	ast_dt_job_dependency(ctx,
-			new_bind->value_jobs.resolve_names,
-			new_bind->value_jobs.resolve_types);
-
-	ast_dt_job_dependency(ctx,
-			new_bind->value_jobs.resolve_types,
-			new_bind->value_jobs.codegen);
-
-	new_bind->target_jobs.resolve_names =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES);
-	new_bind->target_jobs.resolve =
-		ast_dt_job_bind(ctx, new_bind,
-				AST_DT_JOB_BIND_TARGET_RESOLVE);
-
-	ast_dt_job_dependency(ctx,
-			new_bind->value_jobs.resolve_types,
-			new_bind->target_jobs.resolve);
-
-	struct ast_dt_member *mbr;
-	mbr = get_member(ctx, target_member);
-
-	assert(mbr->type_resolved < 0);
-	mbr->type_resolved = new_bind->target_jobs.resolve;
-
-	ast_dt_job_dependency(ctx,
-			mbr->type_resolved,
-			mbr->const_resolved);
-
-	ast_dt_job_dependency(ctx,
-			new_bind->value_jobs.codegen,
-			mbr->const_resolved);
-
-	return new_bind;
+	return expr_i;
 }
 
-static struct ast_dt_bind *
-ast_dt_register_bind_func(struct ast_dt_context *ctx,
-		struct stg_location loc, ast_member_id target,
-		func_id unpack_func, func_id func,
-		ast_member_id *value_params, size_t num_value_params,
-		bool overridable)
+static ast_dt_expr_id
+ast_dt_register_expr_const(struct ast_dt_context *ctx,
+		struct stg_location loc, struct object obj)
 {
-	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
+	ast_dt_expr_id expr_i;
+	expr_i = ast_dt_alloc_expr(ctx);
 
+	struct ast_dt_expr *new_expr;
+	new_expr = get_expr(ctx, expr_i);
 
-	new_bind->num_targets = 1;
-	new_bind->single_target = target;
-	new_bind->_single_target_unpack_func = unpack_func;
-	new_bind->target_unpack_func = &new_bind->_single_target_unpack_func;
-	new_bind->kind = AST_OBJECT_DEF_BIND_VALUE;
-	new_bind->value.func = func;
-	new_bind->overridable = overridable;
-	new_bind->member_deps = value_params;
-	new_bind->num_member_deps = num_value_params;
+	new_expr->constant = true;
+	new_expr->const_value = obj;
+	new_expr->value.node = NULL;
+	new_expr->value.func = FUNC_UNSET;
+	new_expr->loc = loc;
+	new_expr->type = obj.type;
 
-	// TODO: Could/should we set this based on the provided function here?
-	new_bind->target_type = TYPE_UNSET;
+	new_expr->value_jobs.resolve_names = -1;
+	new_expr->value_jobs.resolve_types = -1;
+	new_expr->value_jobs.codegen = -1;
 
-	for (size_t i = 0; i < num_value_params; i++) {
-		assert(value_params[i] >= 0);
-	}
-
-	new_bind->value_jobs.resolve_names = -1;
-	new_bind->value_jobs.resolve_types = -1;
-	new_bind->value_jobs.codegen = -1;
-	new_bind->target_jobs.resolve_names = -1;
-	new_bind->target_jobs.resolve = -1;
-
-	new_bind->loc = loc;
-
-	new_bind->next_alloced = ctx->alloced_binds;
-	ctx->alloced_binds = new_bind;
-
-	ast_dt_bind_to_member(
-			ctx, new_bind, target);
-
-	return new_bind;
-}
-
-static struct ast_dt_bind *
-ast_dt_register_bind_const(struct ast_dt_context *ctx,
-		struct stg_location loc, ast_member_id target,
-		func_id unpack_func, struct object value,
-		bool overridable)
-{
-	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
-
-	new_bind->num_targets = 1;
-	new_bind->single_target = target;
-	new_bind->_single_target_unpack_func = unpack_func;
-	new_bind->target_unpack_func = &new_bind->_single_target_unpack_func;
-	new_bind->kind = AST_OBJECT_DEF_BIND_CONST;
-	new_bind->const_value = value;
-	new_bind->overridable = overridable;
-	new_bind->member_deps = NULL;
-	new_bind->num_member_deps = 0;
-
-	// TODO: Could/should we set this based on the provided function here?
-	new_bind->target_type = TYPE_UNSET;
-
-	new_bind->value_jobs.resolve_names = -1;
-	new_bind->value_jobs.resolve_types = -1;
-	new_bind->value_jobs.codegen = -1;
-	new_bind->target_jobs.resolve_names = -1;
-	new_bind->target_jobs.resolve = -1;
-
-	new_bind->loc = loc;
-
-	new_bind->next_alloced = ctx->alloced_binds;
-	ctx->alloced_binds = new_bind;
-
-	ast_dt_bind_to_member(
-			ctx, new_bind, target);
-
-	struct ast_dt_member *member;
-	member = get_member(ctx, target);
-
-	assert_type_equals(ctx->ast_ctx->vm,
-			member->type, new_bind->const_value.type);
-
-	return new_bind;
-}
-
-static struct ast_dt_bind *
-ast_dt_register_bind_pack(struct ast_dt_context *ctx,
-		struct stg_location loc, ast_member_id target,
-		func_id unpack_func, struct ast_object_def *pack,
-		ast_member_id *value_params, size_t num_value_params)
-{
-	struct ast_dt_bind *new_bind = calloc(1, sizeof(struct ast_dt_bind));
-
-	new_bind->num_targets = 1;
-	new_bind->single_target = target;
-	new_bind->_single_target_unpack_func = unpack_func;
-	new_bind->target_unpack_func = &new_bind->_single_target_unpack_func;
-	new_bind->kind = AST_OBJECT_DEF_BIND_PACK;
-	new_bind->pack = pack;
-	new_bind->overridable = false;
-	new_bind->member_deps = value_params;
-	new_bind->num_member_deps = num_value_params;
-
-	// TODO: Could/should we set this based on the provided function here?
-	new_bind->target_type = TYPE_UNSET;
-
-	new_bind->value_jobs.resolve_names = -1;
-	new_bind->value_jobs.resolve_types = -1;
-	new_bind->value_jobs.codegen = -1;
-	new_bind->target_jobs.resolve_names = -1;
-	new_bind->target_jobs.resolve = -1;
-
-	new_bind->loc = loc;
-
-	new_bind->next_alloced = ctx->alloced_binds;
-	ctx->alloced_binds = new_bind;
-
-	struct ast_dt_member *member;
-	member = get_member(ctx, target);
-
-	for (size_t i = 0; i < num_value_params; i++) {
-		assert(value_params[i] >= 0);
-		struct ast_dt_member *dep;
-		dep = get_member(ctx, value_params[i]);
-		ast_dt_job_dependency(ctx,
-				dep->type_resolved,
-				new_bind->value_jobs.resolve_types);
-		ast_dt_job_dependency(ctx,
-				dep->const_resolved,
-				member->const_resolved);
-	}
-
-
-	type_id type;
-	int err;
-	err = ast_slot_pack_type(
-			ctx->ast_ctx, ctx->ast_mod, &pack->env,
-			pack->ret_type, &type);
-	if (err) {
-		printf("Failed to pack return type for pack bind.\n");
-		return new_bind;
-	}
-
-	assert_type_equals(ctx->ast_ctx->vm,
-			member->type, type);
-
-	if (member->bound) {
-		panic("Object with obj_def was already bound.");
-	} else {
-		member->bound = new_bind;
-	}
-
-	return new_bind;
+	return expr_i;
 }
 
 static ast_member_id
@@ -846,33 +887,29 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 		struct atom *name, struct stg_location decl_loc,
 		struct ast_node *type_expr)
 {
-	struct ast_dt_member new_mbr = {0};
-
-	new_mbr.name = name;
-	new_mbr.decl_loc = decl_loc;
-	new_mbr.next = ctx->terminal_nodes;
-	new_mbr.flags |= AST_DT_MEMBER_IS_LOCAL;
-	new_mbr.first_child = -1;
-	new_mbr.persistant_id = -1;
-	new_mbr.type_node = type_expr;
-
-	new_mbr.type_resolved = -1;
-	new_mbr.const_resolved = -1;
-
-	new_mbr.type_jobs.resolve_names = -1;
-	new_mbr.type_jobs.resolve_types = -1;
-	new_mbr.type_jobs.codegen = -1;
-
 	ast_member_id mbr_id;
-	mbr_id = dlist_append(
-			ctx->members,
-			ctx->num_members,
-			&new_mbr);
-
-	ctx->terminal_nodes = mbr_id;
+	mbr_id = ast_dt_alloc_member(ctx);
 
 	struct ast_dt_member *mbr;
 	mbr = get_member(ctx, mbr_id);
+
+	mbr->name = name;
+	mbr->decl_loc = decl_loc;
+	mbr->flags |= AST_DT_MEMBER_IS_LOCAL;
+	mbr->first_child = -1;
+	mbr->persistant_id = -1;
+	mbr->type_node = type_expr;
+
+	mbr->bound = -1;
+	mbr->typegiving_bind = -1;
+	mbr->overridden_bind = -1;
+
+	mbr->type_resolved = -1;
+	mbr->const_resolved = -1;
+
+	mbr->type_jobs.resolve_names = -1;
+	mbr->type_jobs.resolve_types = -1;
+	mbr->type_jobs.codegen = -1;
 
 	if (type_expr) {
 		mbr->type_jobs.resolve_names =
@@ -918,36 +955,31 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 }
 
 static ast_member_id
-ast_dt_register_descendent_member(struct ast_dt_context *ctx,
+ast_dt_register_descendant_member(struct ast_dt_context *ctx,
 		struct atom *name, struct stg_location decl_loc,
 		type_id type, ast_member_id anscestor_id)
 {
-	struct ast_dt_member new_mbr = {0};
-
-	new_mbr.name = name;
-	new_mbr.decl_loc = decl_loc;
-	new_mbr.type = type;
-	new_mbr.next = ctx->terminal_nodes;
-
-	// Not local
-	new_mbr.flags &= ~AST_DT_MEMBER_IS_LOCAL;
-	new_mbr.anscestor_local_member = anscestor_id;
-	new_mbr.persistant_id = -1;
-
-	new_mbr.type_jobs.resolve_names = -1;
-	new_mbr.type_jobs.resolve_types = -1;
-	new_mbr.type_jobs.codegen = -1;
-
-	new_mbr.type_resolved = -1;
-
 	ast_member_id mbr_id;
-	mbr_id = dlist_append(
-			ctx->members,
-			ctx->num_members,
-			&new_mbr);
+	mbr_id = ast_dt_alloc_member(ctx);
 
 	struct ast_dt_member *mbr;
 	mbr = get_member(ctx, mbr_id);
+
+	mbr->name = name;
+	mbr->decl_loc = decl_loc;
+	mbr->type = type;
+
+	// Not local
+	mbr->flags &= ~AST_DT_MEMBER_IS_LOCAL;
+	mbr->anscestor_local_member = anscestor_id;
+	mbr->persistant_id = -1;
+
+	mbr->bound = -1;
+	mbr->type_jobs.resolve_names = -1;
+	mbr->type_jobs.resolve_types = -1;
+	mbr->type_jobs.codegen = -1;
+
+	mbr->type_resolved = -1;
 
 	mbr->const_resolved =
 		ast_dt_job_type(ctx, mbr_id,
@@ -965,9 +997,157 @@ ast_dt_register_descendent_member(struct ast_dt_context *ctx,
 		anscestor->first_child = mbr_id;
 	}
 
-	ctx->terminal_nodes = mbr_id;
-
 	return mbr_id;
+}
+
+static ast_dt_bind_id
+ast_dt_register_bind(struct ast_dt_context *ctx,
+		struct ast_node *target_node, ast_dt_expr_id expr_id)
+{
+	ast_dt_bind_id bind_id;
+	bind_id = ast_dt_alloc_bind(ctx);
+
+	struct ast_dt_bind *bind;
+	bind = get_bind(ctx, bind_id);
+
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	bind->target_node = target_node;
+	bind->target = -1;
+	bind->expr = expr_id;
+
+	bind->target_jobs.resolve_names =
+		ast_dt_job_bind(ctx, bind_id,
+				AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES);
+
+	bind->target_jobs.resolve =
+		ast_dt_job_bind(ctx, bind_id,
+				AST_DT_JOB_BIND_TARGET_RESOLVE);
+
+	ast_dt_job_dependency(ctx,
+			bind->target_jobs.resolve_names,
+			bind->target_jobs.resolve);
+
+	ast_dt_job_dependency(ctx,
+			bind->target_jobs.resolve,
+			expr->value_jobs.resolve_types);
+
+	ast_dt_job_dependency(ctx,
+			bind->target_jobs.resolve_names,
+			ctx->target_names_resolved);
+
+	return bind_id;
+}
+
+static ast_dt_bind_id
+ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
+		ast_member_id mbr_id, ast_dt_expr_id expr_id,
+		int unpack_id, bool typegiving)
+{
+	ast_dt_bind_id bind_id;
+	bind_id = ast_dt_alloc_bind(ctx);
+
+	struct ast_dt_bind *bind;
+	bind = get_bind(ctx, bind_id);
+
+	bind->target_node = NULL;
+	bind->expr = expr_id;
+	bind->target = mbr_id;
+
+	bind->target_jobs.resolve_names = -1;
+	bind->target_jobs.resolve = -1;
+
+	if (typegiving) {
+		struct ast_dt_expr *expr;
+		expr = get_expr(ctx, expr_id);
+
+		bind->target_jobs.resolve =
+			ast_dt_job_bind(ctx, bind_id,
+					AST_DT_JOB_BIND_TARGET_RESOLVE);
+
+		ast_dt_job_dependency(ctx,
+				expr->value_jobs.resolve_types,
+				bind->target_jobs.resolve);
+
+		struct ast_dt_member *member;
+		member = get_member(ctx, mbr_id);
+
+		assert(member->type_resolved < 0);
+		member->type_resolved = bind->target_jobs.resolve;
+	}
+
+	ast_dt_bind_to_member(
+			ctx, mbr_id, bind_id, unpack_id, typegiving);
+
+	return bind_id;
+}
+
+static int
+ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
+		struct object *out)
+{
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	if (expr->constant) {
+		*out = expr->const_value;
+		return 0;
+	}
+
+	struct object dep_member_obj[expr->num_member_deps];
+	bool is_const = true;
+
+	for (size_t i = 0; i < expr->num_member_deps; i++) {
+		assert(expr->member_deps[i] >= 0);
+
+		struct ast_dt_member *dep_mbr;
+		dep_mbr = get_member(ctx, expr->member_deps[i]);
+
+		if ((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+			is_const = false;
+		}
+
+		dep_member_obj[i] = dep_mbr->const_value;
+	}
+
+	if (!is_const) {
+		return 1;
+	}
+
+	if (expr->value.func == FUNC_UNSET) {
+		return -2;
+	}
+
+	assert(expr->type != TYPE_UNSET);
+
+	struct type *ret_type;
+	ret_type = vm_get_type(ctx->ast_ctx->vm, expr->type);
+
+	func_id fid;
+	fid = expr->value.func;
+
+	uint8_t buffer[ret_type->size];
+	struct object obj = {0};
+	obj.type = expr->value.node->type;
+	obj.data = buffer;
+
+	int err;
+	err = vm_call_func(
+			ctx->ast_ctx->vm, NULL, fid, dep_member_obj,
+			expr->num_member_deps, &obj);
+	if (err) {
+		printf("Failed to evaluate constant member.\n");
+		return -3;
+	}
+
+	expr->const_value =
+		register_object(ctx->ast_ctx->vm,
+				ctx->ast_env->store, obj);
+	expr->constant = true;
+	*out = expr->const_value;
+
+	return 0;
 }
 
 static ast_member_id
@@ -1020,8 +1200,8 @@ ast_dt_resolve_l_expr(struct ast_dt_context *ctx, struct ast_node *node)
 					param_type = vm_get_type(ctx->ast_ctx->vm,
 							mbr_type->obj_def->params[i].type);
 					if (param_type->obj_def) {
-						param_id += ast_object_def_num_descendant_members(
-								ctx->ast_ctx, ctx->ast_mod, param_type->obj_def);
+						param_id += object_cons_num_descendants(
+								ctx->ast_ctx->vm, param_type->obj_def);
 					}
 				}
 
@@ -1081,6 +1261,35 @@ ast_dt_l_expr_members(struct ast_dt_context *ctx, struct ast_node *node,
 	}
 }
 
+int
+ast_dt_l_expr_member(struct ast_dt_context *ctx, struct ast_node *node,
+		ast_member_id *out_member)
+{
+	switch (node->kind) {
+		case AST_NODE_LOOKUP:
+			if (node->lookup.ref.kind != AST_NAME_REF_MEMBER) {
+				// TODO: We can delay this message until after typecheck to
+				// have the error indicate if the member was a closure or
+				// not found at all.
+				stg_error(ctx->ast_ctx->err, node->loc,
+						"This member does not exist.");
+				return -1;
+			}
+			*out_member = node->lookup.ref.member;
+			return 0;
+
+		case AST_NODE_ACCESS:
+			return ast_dt_l_expr_member(
+					ctx, node->access.target,
+					out_member);
+
+		default:
+			stg_error(ctx->ast_ctx->err, node->loc,
+					"Bind targets may only contain names and accesses.");
+			return -1;
+	}
+}
+
 static void
 ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 {
@@ -1105,36 +1314,38 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 
 		if (mbr->type_giving_bind >= 0) {
 			type_giving_for[mbr->type_giving_bind] = members[i];
+		} else {
+			assert(mbr->type);
 		}
 	}
 
 	for (size_t i = 0; i < node->composite.num_binds; i++) {
-		if (node->composite.binds[i].erroneous) {
+		struct ast_datatype_bind *bind;
+		bind = &node->composite.binds[i];
+		if (bind->erroneous) {
 			// TODO: Maby we should register the bind, but tag it as erroneous,
 			// to allow typechecking and reporting of potential errors.
 			continue;
 		}
 
+		ast_dt_expr_id expr_id;
+		expr_id = ast_dt_register_expr(ctx,
+					bind->value);
+
 		if (type_giving_for[i] >= 0) {
-			ast_dt_register_typegiving_bind(ctx,
-					node->composite.binds[i].loc,
-					node->composite.binds[i].target,
-					type_giving_for[i],
-					node->composite.binds[i].value,
-					node->composite.binds[i].overridable);
+			ast_dt_register_explicit_bind(
+					ctx, type_giving_for[i], expr_id, 0, true);
 		} else {
-			ast_dt_register_bind(ctx,
-					node->composite.binds[i].loc,
-					node->composite.binds[i].target,
-					node->composite.binds[i].value,
-					node->composite.binds[i].overridable);
+			ast_dt_register_bind(
+					ctx, bind->target, expr_id);
 		}
 	}
 
+	// Make sure all the members we just created have some job that will
+	// resolve their types.
 	for (size_t i = 0; i < node->composite.num_members; i++) {
 		struct ast_dt_member *mbr;
 		mbr = get_member(ctx, members[i]);
-
 		assert(mbr->type_resolved >= 0);
 	}
 }
@@ -1154,7 +1365,7 @@ ast_dt_populate_descendants(struct ast_dt_context *ctx, ast_member_id local_ansc
 	parent_type = vm_get_type(ctx->ast_ctx->vm, parent->type);
 
 	if (parent_type->obj_def) {
-		struct ast_object_def *def;
+		struct object_cons *def;
 		def = parent_type->obj_def;
 
 		for (size_t i = 0; i < def->num_params; i++) {
@@ -1162,7 +1373,7 @@ ast_dt_populate_descendants(struct ast_dt_context *ctx, ast_member_id local_ansc
 			ast_slot_id param_mbr_id;
 
 			assert(TYPE_VALID(def->params[i].type));
-			param_mbr_id = ast_dt_register_descendent_member(
+			param_mbr_id = ast_dt_register_descendant_member(
 					ctx, def->params[i].name, STG_NO_LOC,
 					def->params[i].type, local_anscestor);
 
@@ -1183,46 +1394,62 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 	struct type *parent_type;
 	parent_type = vm_get_type(ctx->ast_ctx->vm, parent->type);
 
-	if (parent_type->obj_def) {
-		struct ast_object_def *def;
-		def = parent_type->obj_def;
+	if (parent_type->obj_inst) {
+		struct object_inst *def;
+		def = parent_type->obj_inst;
 
-		for (size_t i = 0; i < def->num_binds; i++) {
-			ast_member_id *deps;
-			deps = calloc(def->binds[i].num_value_params, sizeof(ast_member_id));
-			for (size_t j = 0; j < def->binds[i].num_value_params; j++) {
-				deps[j] = parent->first_child + def->binds[i].value_params[j];
+		for (size_t expr_i = 0; expr_i < def->num_exprs; expr_i++) {
+			struct object_inst_expr *expr;
+			expr = &def->exprs[expr_i];
+
+			size_t num_binds = 0;
+			for (size_t bind_i = 0; bind_i < def->num_binds; bind_i++) {
+				if (def->binds[bind_i].expr_id == expr_i) {
+					num_binds += 1;
+				}
 			}
 
-			ast_member_id mbr_id;
-			mbr_id = parent->first_child + def->binds[i].target;
+			if (num_binds == 0) {
+				printf("TODO: Treat free expressions as bindless expressions.");
+				continue;
+			}
 
-			switch (def->binds[i].kind) {
-				case AST_OBJECT_DEF_BIND_VALUE:
-					ast_dt_register_bind_func(ctx,
-							def->binds[i].loc,
-							mbr_id, def->binds[i].unpack_func,
-							def->binds[i].value.func,
-							deps, def->binds[i].num_value_params,
-							def->binds[i].value.overridable);
-					break;
+			ast_member_id *deps;
+			deps = calloc(expr->num_deps, sizeof(ast_member_id));
+			for (size_t j = 0; j < expr->num_deps; j++) {
+				deps[j] = parent->first_child + expr->deps[j];
+			}
 
-				case AST_OBJECT_DEF_BIND_CONST:
-					ast_dt_register_bind_const(ctx,
-							def->binds[i].loc,
-							mbr_id, def->binds[i].unpack_func,
-							def->binds[i].const_value, false);
-					break;
+			ast_member_id targets[num_binds];
+			size_t unpack_ids[num_binds];
 
-				case AST_OBJECT_DEF_BIND_PACK:
-					ast_dt_register_bind_pack(ctx,
-							def->binds[i].loc,
-							mbr_id, def->binds[i].unpack_func,
-							def->binds[i].pack,
-							deps, def->binds[i].num_value_params);
-					break;
+			size_t target_i = 0;
+			for (size_t bind_i = 0; bind_i < def->num_binds; bind_i++) {
+				if (def->binds[bind_i].expr_id == expr_i) {
+					targets[target_i] = parent->first_child + def->binds[bind_i].target_id;
+					unpack_ids[target_i] = def->binds[bind_i].unpack_id;
+					target_i += 1;
+				}
+			}
+			assert(target_i == num_binds);
+
+			ast_dt_expr_id expr_id;
+
+			if (expr->constant) {
+				expr_id = ast_dt_register_expr_const(ctx,
+						expr->loc, expr->const_value);
+			} else {
+				expr_id = ast_dt_register_expr_func(ctx,
+						expr->loc, expr->func);
+			}
+
+			for (size_t target_i = 0; target_i < num_binds; target_i++) {
+				ast_dt_register_explicit_bind(ctx,
+						targets[target_i], expr_id,
+						unpack_ids[target_i], false);
 			}
 		}
+
 	}
 }
 
@@ -1271,7 +1498,7 @@ ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
 }
 
 static inline size_t
-ast_dt_member_num_descendents(
+ast_dt_member_num_descendants(
 		struct ast_dt_context *ctx, ast_member_id mbr_id)
 {
 	struct ast_dt_member *mbr;
@@ -1283,20 +1510,20 @@ ast_dt_member_num_descendents(
 	type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
 
 	if (type->obj_def) {
-		return ast_object_def_num_descendant_members(
-				ctx->ast_ctx, ctx->ast_mod, type->obj_def) + 1;
+		return object_cons_num_descendants(
+				ctx->ast_ctx->vm, type->obj_def) + 1;
 	} else {
 		return 1;
 	}
 }
 
-// Returns the number of descendent members this memeber has (including
+// Returns the number of descendant members this memeber has (including
 // itself).
 int
 ast_dt_find_terminal_members(
 		struct ast_dt_context *ctx, ast_member_id mbr_id,
-		ast_member_id **out_members, int **out_descendent_members, size_t *out_num_members,
-		size_t descendent_id)
+		ast_member_id **out_members, int **out_descendant_members, size_t *out_num_members,
+		size_t descendant_id)
 {
 	struct ast_dt_member *mbr;
 	mbr = get_member(ctx, mbr_id);
@@ -1314,65 +1541,27 @@ ast_dt_find_terminal_members(
 			first_child = mbr_id + 1;
 		}
 
-		int num_descendents = 0;
+		int num_descendants = 0;
 		for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
-			num_descendents += ast_dt_find_terminal_members(
-					ctx, first_child + num_descendents,
-					out_members, out_descendent_members, out_num_members,
-					1 + descendent_id + num_descendents);
+			num_descendants += ast_dt_find_terminal_members(
+					ctx, first_child + num_descendants,
+					out_members, out_descendant_members, out_num_members,
+					1 + descendant_id + num_descendants);
 		}
 
-		return num_descendents + 1;
+		return num_descendants + 1;
 	} else {
 		dlist_append(
 				*out_members,
 				*out_num_members,
 				&mbr_id);
-		if (out_descendent_members) {
-			*out_descendent_members = realloc(
-					*out_descendent_members,
+		if (out_descendant_members) {
+			*out_descendant_members = realloc(
+					*out_descendant_members,
 					sizeof(int) * (*out_num_members));
-			(*out_descendent_members)[*out_num_members-1] = descendent_id;
+			(*out_descendant_members)[*out_num_members-1] = descendant_id;
 		}
 		return 1;
-	}
-}
-
-static void
-ast_dt_bind_typecheck_dep(struct ast_dt_context *ctx,
-		struct ast_typecheck_dep *dep)
-{
-	if (!dep->determined) {
-		return;
-	}
-
-	if (dep->lookup_failed) {
-		dep->value = ast_bind_slot_wildcard(
-				ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
-				ast_bind_slot_wildcard(
-					ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
-					AST_SLOT_TYPE));
-		return;
-	}
-
-	dep->value = AST_BIND_FAILED;
-
-	switch (dep->req) {
-		case AST_NAME_DEP_REQUIRE_VALUE:
-			dep->value =
-				ast_bind_slot_const(
-						ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
-						dep->val);
-			break;
-
-		case AST_NAME_DEP_REQUIRE_TYPE:
-			dep->value =
-				ast_bind_slot_closure(
-						ctx->ast_ctx, ctx->ast_env, AST_BIND_NEW,
-						ast_bind_slot_const_type(
-							ctx->ast_ctx, ctx->ast_env,
-							AST_BIND_NEW, dep->type));
-			break;
 	}
 }
 
@@ -1415,14 +1604,9 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 			size_t offset = 0;
 			for (size_t i = 0; i < num_children; i++) {
 				children[i] = mbr->first_child + offset;
-				offset += ast_dt_member_num_descendents(ctx, children[i]);
+				offset += ast_dt_member_num_descendants(ctx, children[i]);
 			}
 		}
-
-		struct ast_dt_bind *bind;
-		bind = ast_dt_register_bind_pack(ctx,
-				mbr->decl_loc, mbr_id, FUNC_UNSET, mbr_type->obj_def,
-				children, num_children);
 	}
 
 	return 0;
@@ -1541,8 +1725,6 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 						body_deps[i].determined = true;
 						body_deps[i].type = dep_mbr->type;
 					}
-
-					ast_dt_bind_typecheck_dep(ctx, &body_deps[i]);
 				}
 				break;
 
@@ -1573,8 +1755,6 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 							body_deps[i].type = cls->type;
 							break;
 					}
-
-					ast_dt_bind_typecheck_dep(ctx, &body_deps[i]);
 				} else {
 					body_deps[i].ref = deps[i].ref;
 					body_deps[i].req = deps[i].req;
@@ -1607,64 +1787,6 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 	}
 
 	return 0;
-}
-
-static int
-ast_dt_unpack_descendent(struct ast_dt_context *ctx,
-		struct object obj, size_t descendent,
-		struct object *out)
-{
-	if (descendent == 0) {
-		*out = register_object(
-				ctx->ast_ctx->vm,
-				ctx->ast_env->store, obj);
-		return 0;
-	}
-
-	struct type *type;
-	type = vm_get_type(ctx->ast_ctx->vm, obj.type);
-
-	struct ast_object_def *def;
-	def = type->obj_def;
-	// If descendent is not 0 it is implied that it must be a child of this
-	// member. If this member does not have a obj_def it can not have children.
-	assert(def);
-
-	size_t offset = 1;
-	for (size_t i = 0; i < def->num_params; i++) {
-		struct type *mbr_type;
-		mbr_type = vm_get_type(ctx->ast_ctx->vm,
-				def->params[i].type);
-
-		size_t num_desc;
-		if (mbr_type->obj_def) {
-			num_desc = ast_object_def_num_descendant_members(
-					ctx->ast_ctx, ctx->ast_mod, mbr_type->obj_def);
-		} else {
-			num_desc = 1;
-		}
-
-		assert(descendent >= offset);
-		if (descendent >= offset + num_desc) {
-			offset += num_desc;
-			continue;
-		}
-
-		uint8_t buffer[mbr_type->size];
-		assert(def->unpack_func);
-		def->unpack_func(ctx->ast_ctx->vm,
-				def->data, buffer, obj.data,
-				def->params[i].param_id);
-
-		struct object mbr = {0};
-		mbr.data = buffer;
-		mbr.type = def->params[i].type;
-
-		return ast_dt_unpack_descendent(ctx,
-				mbr, descendent - offset, out);
-	}
-
-	return -1;
 }
 
 static inline int
@@ -1704,13 +1826,16 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			return 0;
 
-		case AST_DT_JOB_BIND_RESOLVE_NAMES:
+		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
 			{
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, job->expr);
+
 				int err;
 				err = ast_composite_node_resolve_names(
 						ctx->ast_ctx, ctx->ast_mod->stg_mod->native_mod,
 						NULL, false, ctx->root_node,
-						job->bind->value.node,
+						expr->value.node,
 						ctx->local_member_ids);
 				if (err) {
 					printf("Failed to resolve names.\n");
@@ -1718,8 +1843,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				}
 
 				ast_dt_find_named_dependencies(
-						ctx, job->bind->value_jobs.resolve_types,
-						AST_NAME_DEP_REQUIRE_TYPE, job->bind->value.node);
+						ctx, expr->value_jobs.resolve_types,
+						AST_NAME_DEP_REQUIRE_TYPE, expr->value.node);
 			}
 			return 0;
 
@@ -1739,16 +1864,22 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			return 0;
 
-		case AST_DT_JOB_BIND_RESOLVE_TYPES:
+		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
 			{
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, job->expr);
+
 				int err;
 				err = ast_dt_expr_typecheck(
-						ctx, job->bind->value.node,
+						ctx, expr->value.node,
 						AST_NAME_DEP_REQUIRE_TYPE,
-						job->bind->target_type);
+						expr->type);
 				if (err) {
 					return -1;
 				}
+
+				assert(expr->type == TYPE_UNSET);
+				expr->type = expr->value.node->type;
 			}
 			return 0;
 
@@ -1810,277 +1941,191 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				mbr = get_member(ctx, job->member);
 				assert(mbr->type != TYPE_UNSET);
 
-				bool is_const = true;
-
-				struct ast_dt_bind *bind;
-				bind = mbr->bound;
-
-				if (!bind) {
+				if (mbr->bound < 0) {
 					return 0;
 				}
 
-				struct object dep_member_obj[bind->num_member_deps];
+				struct ast_dt_bind *bind;
+				bind = get_bind(ctx, mbr->bound);
 
-				for (size_t i = 0; i < bind->num_member_deps; i++) {
-					assert(bind->member_deps[i] >= 0);
-
-					struct ast_dt_member *dep_mbr;
-					dep_mbr = get_member(ctx, bind->member_deps[i]);
-
-					if ((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
-						is_const = false;
-					}
-
-					dep_member_obj[i] = dep_mbr->const_value;
+				if (bind->overridable) {
+					return 0;
 				}
 
-				if (is_const && !bind->overridable) {
-					struct object const_value;
-					switch (mbr->bound->kind) {
-						case AST_OBJECT_DEF_BIND_VALUE:
-							{
-								struct type *ret_type;
-								ret_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, bind->expr);
 
-								func_id fid;
-								fid = mbr->bound->value.func;
-								assert(fid != FUNC_UNSET);
-
-								uint8_t buffer[ret_type->size];
-								struct object obj = {0};
-								obj.type = bind->value.node->type;
-								obj.data = buffer;
-
-								int err;
-								err = vm_call_func(
-										ctx->ast_ctx->vm, NULL, fid, dep_member_obj,
-										bind->num_member_deps, &obj);
-								if (err) {
-									printf("Failed to evaluate constant member.\n");
-									return -1;
-								}
-								const_value =
-									register_object(ctx->ast_ctx->vm, ctx->ast_env->store, obj);
-							}
-							break;
-
-						case AST_OBJECT_DEF_BIND_PACK:
-							{
-								struct ast_object_def *def;
-								def = bind->pack;
-								assert(def);
-
-								struct type *ret_type;
-								ret_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
-
-								assert(bind->num_member_deps == def->num_params);
-
-								void *dep_member_val[bind->num_member_deps];
-								for (size_t i = 0; i < bind->num_member_deps; i++) {
-									assert_type_equals(ctx->ast_ctx->vm,
-											dep_member_obj[i].type, def->params[i].type);
-									dep_member_val[i] = dep_member_obj[i].data;
-								}
-
-								uint8_t value_buffer[ret_type->size];
-
-								def->pack_func(
-										ctx->ast_ctx->vm,
-										def->data, value_buffer,
-										dep_member_val, def->num_params);
-
-								struct object val = {0};
-								val.type = mbr->type;
-								val.data = value_buffer;
-
-								const_value = register_object(
-										ctx->ast_ctx->vm, ctx->ast_env->store, val);
-
-								// ast_dt_eval_pack_bind_value(
-								// 		ctx, mbr->bound);
-							}
-							break;
-
-						case AST_OBJECT_DEF_BIND_CONST:
-							const_value = mbr->bound->const_value;
-							break;
-					}
-
-					int descendent_id = -1;
-
-					if (mbr->bound->target_descendent_id) {
-						ast_member_id *targets;
-						targets = ast_dt_get_bind_targets(mbr->bound);
-						for (size_t i = 0; i < mbr->bound->num_targets; i++) {
-							if (targets[i] == job->member) {
-								descendent_id = mbr->bound->target_descendent_id[i];
-							}
-						}
-
-						assert(descendent_id >= 0);
-					} else {
-						assert(mbr->bound->num_targets == 1);
-						descendent_id = 0;
-					}
-
-					int err;
-					err = ast_dt_unpack_descendent(
-							ctx, const_value, descendent_id,
-							&mbr->const_value);
-
-					assert_type_equals(ctx->ast_ctx->vm,
-							mbr->type, mbr->const_value.type);
-
-					mbr->flags |= AST_DT_MEMBER_IS_CONST;
+				struct object const_value;
+				int err;
+				err = ast_dt_try_eval_expr_const(
+						ctx, bind->expr, &const_value);
+				if (err) {
+					return err < 0;
 				}
+
+				err = object_unpack(
+						ctx->ast_ctx->vm, const_value,
+						mbr->bound_unpack_id, &mbr->const_value);
+
+				assert_type_equals(ctx->ast_ctx->vm,
+						mbr->type, mbr->const_value.type);
+
+				mbr->flags |= AST_DT_MEMBER_IS_CONST;
 			}
 			return 0;
 
-		case AST_DT_JOB_BIND_CODEGEN:
+		case AST_DT_JOB_EXPR_CODEGEN:
 			{
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, job->expr);
+
 				ast_member_id *dep_members = NULL;
 				size_t num_dep_members = 0;
 
 				func_id fid;
 				fid = ast_dt_expr_codegen(
-						ctx, job->bind->value.node,
+						ctx, expr->value.node,
 						AST_NAME_DEP_REQUIRE_TYPE,
 						&dep_members, &num_dep_members);
 				if (fid == FUNC_UNSET) {
 					return -1;
 				}
 
-				job->bind->num_member_deps = num_dep_members;
-				job->bind->member_deps = dep_members;
+				expr->num_member_deps = num_dep_members;
+				expr->member_deps = dep_members;
 
-				job->bind->value.func = fid;
+				expr->value.func = fid;
 			}
 			return 0;
 
 		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
 			{
+				struct ast_dt_bind *bind;
+				bind = get_bind(ctx, job->bind);
+
 				int err;
 				err = ast_composite_node_resolve_names(
 						ctx->ast_ctx, NULL, NULL,
-						false, ctx->root_node, job->bind->target_node,
+						false, ctx->root_node, bind->target_node,
 						ctx->local_member_ids);
 				if (err) {
 					return -1;
 				}
 
-
-				job->bind->explicit_targets = NULL;
-				job->bind->num_explicit_targets = 0;
-
-				err = ast_dt_l_expr_members(
-						ctx, job->bind->target_node,
-						&job->bind->explicit_targets,
-						&job->bind->num_explicit_targets);
+				ast_member_id target;
+				err = ast_dt_l_expr_member(
+						ctx, bind->target_node, &target);
 				if (err) {
 					return -1;
 				}
 
-				if (!job->bind->is_type_giving) {
-					for (size_t i = 0; i < job->bind->num_explicit_targets; i++) {
-						ast_member_id mbr_id;
-						mbr_id = job->bind->explicit_targets[i];
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, target);
 
-						struct ast_dt_member *mbr;
-						mbr = get_member(ctx, mbr_id);
-
-						ast_dt_job_dependency(ctx,
-								mbr->type_resolved,
-								job->bind->target_jobs.resolve);
-					}
-				}
-
-				for (size_t i = 0; i < job->bind->num_explicit_targets; i++) {
-					ast_member_id mbr_id;
-					mbr_id = job->bind->explicit_targets[i];
-
-					struct ast_dt_member *mbr;
-					mbr = get_member(ctx, mbr_id);
-
-					// We place this dependency to ensure the member can get
-					// all its dependencies from bind target resolve before its
-					// const resolved is dispatched.
+				if (mbr->typegiving_bind == job->bind) {
 					ast_dt_job_dependency(ctx,
-							job->bind->target_jobs.resolve,
-							mbr->const_resolved);
+							mbr->type_resolved,
+							bind->target_jobs.resolve);
+					bind->target = target;
 				}
+
+				// We place this dependency to ensure the member can get
+				// all its dependencies from bind target resolve before its
+				// const resolved is dispatched.
+				ast_dt_job_dependency(ctx,
+						bind->target_jobs.resolve,
+						mbr->const_resolved);
 			}
 			return 0;
 
 		case AST_DT_JOB_BIND_TARGET_RESOLVE:
 			{
-				// TODO: Multiple targets
-				assert(job->bind->num_explicit_targets == 1);
-				assert(job->bind->kind == AST_OBJECT_DEF_BIND_VALUE);
+				struct ast_dt_bind *bind;
+				bind = get_bind(ctx, job->bind);
 
-				if (job->bind->is_type_giving) {
-					assert(job->bind->num_explicit_targets == 1);
-					assert(job->bind->value.node->type != TYPE_UNSET);
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, bind->expr);
 
-					job->bind->target_type = job->bind->value.node->type;
+				if (bind->target >= 0) {
+					struct ast_dt_member *mbr;
+					mbr = get_member(ctx, bind->target);
+
+					assert(mbr->typegiving_bind == job->bind);
+					assert(expr->type != TYPE_UNSET);
 
 					ast_try_set_local_member_type(ctx,
-							job->bind->explicit_targets[0],
-							job->bind->value.node->type);
+							bind->target, expr->type);
+
+				} else {
+					// We run resolve_l_bind here because at this point all types
+					// of the targets should have been resolved.
+					ast_member_id target;
+					target = ast_dt_resolve_l_expr(
+							ctx, bind->target_node);
+
+					if (target < 0) {
+						return -1;
+					}
+
+					bind->target = target;
+
+					size_t num_descendants;
+					num_descendants = ast_dt_member_num_descendants(
+							ctx, bind->target);
+
+					for (size_t i = 0; i < num_descendants; i++) {
+						ast_member_id desc_id;
+						desc_id = ast_dt_member_get_descendant(
+								ctx, bind->target, i);
+						ast_dt_bind_to_member(
+								ctx, desc_id, job->bind, i, false);
+
+						struct ast_dt_member *desc;
+						desc = get_member(ctx, desc_id);
+
+						ast_dt_job_dependency(ctx,
+								expr->value_jobs.codegen,
+								desc->const_resolved);
+					}
 				}
 
-				// We run resolve_l_expr here because at this point all types
-				// of the targets should have been resolved.
-				ast_member_id target;
-				target = ast_dt_resolve_l_expr(
-						ctx, job->bind->target_node);
-
-				if (target < 0) {
-					return -1;
-				}
-
-				type_id target_type;
-				target_type = get_member(ctx, target)->type;
-
-				job->bind->target_type = target_type;
-
+				/*
 				ast_member_id *targets = NULL;
-				int *descendent_ids = NULL;
+				int *descendant_ids = NULL;
 				size_t num_targets = 0;
 
 				ast_dt_find_terminal_members(
 						ctx, target, &targets,
-						&descendent_ids, &num_targets, 0);
+						&descendant_ids, &num_targets, 0);
 
 				assert(num_targets > 0);
 
 				if (num_targets == 1) {
-					job->bind->single_target = targets[0];
+					bind->single_target = targets[0];
 					free(targets);
 				} else {
-					job->bind->multiple_targets = targets;
+					bind->multiple_targets = targets;
 				}
-				job->bind->num_targets = num_targets;
-				job->bind->target_descendent_id = descendent_ids;
+				bind->num_targets = num_targets;
+				bind->target_descendant_id = descendant_ids;
 
-				job->bind->target_unpack_func =
-					calloc(job->bind->num_targets, sizeof(func_id));
-
-				targets = ast_dt_get_bind_targets(job->bind);
+				// TODO: Get all descending members.
+				targets = ast_dt_get_bind_targets(bind);
 
 				type_id bind_value_type = TYPE_UNSET;
-				switch (job->bind->kind) {
+				switch (bind->kind) {
 					case AST_OBJECT_DEF_BIND_VALUE:
-						bind_value_type = job->bind->value.node->type;
+						bind_value_type = bind->value.node->type;
 						break;
 
 					case AST_OBJECT_DEF_BIND_PACK:
 						// TODO: Resolve the type from pack.
-						assert(job->bind->num_targets == 1);
-						bind_value_type = get_member(ctx, job->bind->single_target)->type;
+						assert(bind->num_targets == 1);
+						bind_value_type = get_member(ctx, bind->single_target)->type;
 						break;
 
 					case AST_OBJECT_DEF_BIND_CONST:
-						bind_value_type = job->bind->const_value.type;
+						bind_value_type = bind->const_value.type;
 						break;
 				}
 				// assert(bind_value_type != TYPE_UNSET);
@@ -2090,34 +2135,17 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 							bind_value_type, target_type);
 				}
 
-				for (size_t i = 0; i < job->bind->num_targets; i++) {
-					struct bc_env *bc_env;
-					bc_env = ast_gen_value_unpack_func(
-							ctx->ast_ctx, ctx->ast_mod, ctx->ast_env,
-							target_type, descendent_ids[i]);
-
-					struct func func = {0};
-					func.type = stg_register_func_type(ctx->ast_mod->stg_mod,
-							get_member(ctx, targets[i])->type,
-							&target_type, 1);
-
-					func.kind = FUNC_BYTECODE;
-					func.bytecode = bc_env;
-
-					job->bind->target_unpack_func[i] =
-						stg_register_func(ctx->ast_mod->stg_mod, func);
-				}
-
-				for (size_t i = 0; i < job->bind->num_targets; i++) {
+				for (size_t i = 0; i < bind->num_targets; i++) {
 					struct ast_dt_member *mbr;
 					mbr = get_member(ctx, targets[i]);
 					ast_dt_bind_to_member(
-							ctx, job->bind, targets[i]);
+							ctx, bind, targets[i], 0, false);
 
 					ast_dt_job_dependency(ctx,
-							job->bind->value_jobs.codegen,
+							bind->value_jobs.codegen,
 							mbr->const_resolved);
 				}
+				*/
 			}
 			return 0;
 
@@ -2183,33 +2211,56 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			break;
 
-		case AST_DT_JOB_BIND_RESOLVE_NAMES:
-			assert(job->bind->value_jobs.resolve_names == job_id);
-			job->bind->value_jobs.resolve_names = -1;
+		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
+			{
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, job->expr);
+				assert(expr->value_jobs.resolve_names == job_id);
+				expr->value_jobs.resolve_names = -1;
+			}
 			break;
-		case AST_DT_JOB_BIND_RESOLVE_TYPES:
-			assert(job->bind->value_jobs.resolve_types == job_id);
-			job->bind->value_jobs.resolve_types = -1;
+		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
+			{
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, job->expr);
+				assert(expr->value_jobs.resolve_types == job_id);
+				expr->value_jobs.resolve_types = -1;
+			}
 			break;
-		case AST_DT_JOB_BIND_CODEGEN:
-			assert(job->bind->value_jobs.codegen == job_id);
-			job->bind->value_jobs.codegen = -1;
+		case AST_DT_JOB_EXPR_CODEGEN:
+			{
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, job->expr);
+				assert(expr->value_jobs.codegen == job_id);
+				expr->value_jobs.codegen = -1;
+			}
 			break;
 
 		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
-			assert(job->bind->target_jobs.resolve_names == job_id);
-			job->bind->target_jobs.resolve_names = -1;
+			{
+				struct ast_dt_bind *bind;
+				bind = get_bind(ctx, job->expr);
+				assert(bind->target_jobs.resolve_names == job_id);
+				bind->target_jobs.resolve_names = -1;
+			}
 			break;
 		case AST_DT_JOB_BIND_TARGET_RESOLVE:
-			assert(job->bind->target_jobs.resolve == job_id);
-			job->bind->target_jobs.resolve = -1;
-			if (job->bind->is_type_giving) {
-				struct ast_dt_member *mbr;
-				assert(job->bind->num_explicit_targets == 1);
-				mbr = get_member(ctx, job->bind->explicit_targets[0]);
+			{
+				struct ast_dt_bind *bind;
+				bind = get_bind(ctx, job->expr);
+				assert(bind->target_jobs.resolve == job_id);
+				bind->target_jobs.resolve = -1;
+				// TODO: Remove the job from any target having this bind as
+				// typegiving.
+				//
+				// if (bind->is_type_giving) {
+				// 	struct ast_dt_member *mbr;
+				// 	assert(bind->num_explicit_targets == 1);
+				// 	mbr = get_member(ctx, bind->explicit_targets[0]);
 
-				assert(mbr->type_resolved == job_id);
-				mbr->type_resolved = -1;
+				// 	assert(mbr->type_resolved == job_id);
+				// 	mbr->type_resolved = -1;
+				// }
 			}
 			break;
 
@@ -2327,8 +2378,8 @@ ast_dt_num_descendant_members(struct ast_dt_context *ctx,
 	member_type = vm_get_type(ctx->ast_ctx->vm, type);
 
 	if (member_type->obj_def) {
-		return ast_object_def_num_descendant_members(
-				ctx->ast_ctx, mod, member_type->obj_def);
+		return object_cons_num_descendants(
+				ctx->ast_ctx->vm, member_type->obj_def);
 	} else {
 		return 0;
 	}
@@ -2340,7 +2391,7 @@ ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 	struct ast_dt_member *mbr = get_member(ctx, mbr_id);
 
 	if ((mbr->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
-		assert(mbr->persistant_id >= 0 && mbr->persistant_id < ctx->num_members);
+		assert(mbr->persistant_id >= 0 && mbr->persistant_id < ctx->num_member_alloced);
 		return mbr->persistant_id;
 	} else {
 		struct ast_dt_member *local_anscestor;
@@ -2354,7 +2405,7 @@ ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 		result = 1 + local_anscestor->persistant_id +
 			(mbr_id - local_anscestor->first_child);
 
-		assert(result >= 0 && result < ctx->num_members);
+		assert(result >= 0 && result < ctx->num_member_alloced);
 
 		return result;
 	}
@@ -2370,6 +2421,7 @@ struct ast_dt_local_member {
 struct ast_dt_composite_info {
 	struct ast_dt_local_member *members;
 	size_t num_members;
+	type_id type;
 };
 
 static struct string
@@ -2433,6 +2485,14 @@ ast_dt_pack_func(struct vm *vm, void *data, void *out,
 	}
 }
 
+static type_id
+ast_dt_pack_type_func(struct vm *vm, void *data,
+		void **params, size_t num_params)
+{
+	struct ast_dt_composite_info *info = data;
+	return info->type;
+}
+
 static void
 ast_dt_unpack_func(
 		struct vm *vm, void *data, void *out,
@@ -2459,34 +2519,23 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 {
 	struct ast_node *comp = ctx->root_node;
 
-	struct ast_object_def *def;
-	def = ast_object_def_register(mod->env.store);
-	def->pack_func   = ast_dt_pack_func;
-	def->unpack_func = ast_dt_unpack_func;
+	struct object_cons *def;
+	def = calloc(1, sizeof(struct object_cons));
+	def->pack      = ast_dt_pack_func;
+	def->pack_type = ast_dt_pack_type_func;
+	def->unpack    = ast_dt_unpack_func;
 
 	struct ast_dt_local_member *local_members;
 	local_members = calloc(comp->composite.num_members,
 			sizeof(struct ast_dt_local_member));
 
-	struct ast_object_def_param *params;
+	struct object_cons_param *params;
 	params = calloc(comp->composite.num_members,
-			sizeof(struct ast_object_def_param));
-
-	size_t num_bound_members = 0;
-	for (ast_member_id mbr = 0; mbr < ctx->num_members; mbr++) {
-		if (get_member(ctx, mbr)->bound) {
-			num_bound_members += 1;
-		}
-	}
-	struct ast_object_def_bind *binds;
-	binds = calloc(num_bound_members,
-			sizeof(struct ast_object_def_bind));
+			sizeof(struct object_cons_param));
 
 	size_t offset = 0;
 	ast_member_id cumulative_persistant_id = 0;
 	for (size_t i = 0; i < comp->composite.num_members; i++) {
-		params[i].param_id = i;
-		params[i].name = comp->composite.members[i].name;
 		local_members[i].name = comp->composite.members[i].name;
 		local_members[i].location = offset;
 
@@ -2496,11 +2545,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 		struct ast_dt_member *mbr;
 		mbr = get_member(ctx, mbr_id);
 
+		params[i].name = comp->composite.members[i].name;
 		params[i].type = mbr->type;
-		params[i].slot =
-			ast_bind_slot_wildcard(ctx->ast_ctx, &def->env, AST_BIND_NEW,
-					ast_bind_slot_const_type(ctx->ast_ctx, &def->env, AST_BIND_NEW,
-						mbr->type));
 
 		mbr->persistant_id = cumulative_persistant_id;
 		cumulative_persistant_id += 1 +
@@ -2522,94 +2568,73 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 	def->params = params;
 	def->num_params = comp->composite.num_members;
 
+	size_t num_bound_members = 0;
+	for (ast_member_id mbr = 0; mbr < ctx->num_member_alloced; mbr++) {
+		if (get_member(ctx, mbr)->bound >= 0) {
+			num_bound_members += 1;
+		}
+	}
+	struct object_inst_bind *binds;
+	binds = calloc(num_bound_members,
+			sizeof(struct object_inst_bind));
+
+	struct object_inst_expr *exprs;
+	exprs = calloc(ctx->num_expr_alloced,
+			sizeof(struct object_inst_expr));
+
+	struct object_inst *inst;
+	inst = calloc(1, sizeof(struct object_inst));
+
+	for (ast_dt_expr_id expr_i = 0;
+			expr_i < ctx->num_expr_alloced; expr_i++) {
+		struct ast_dt_expr *expr;
+		expr = get_expr(ctx, expr_i);
+
+		if (expr->constant) {
+			exprs[expr_i].constant = true;
+			exprs[expr_i].const_value = expr->const_value;
+		} else {
+			assert(expr->value.func != FUNC_UNSET);
+			exprs[expr_i].constant = false;
+			exprs[expr_i].func = expr->value.func;
+		}
+
+		exprs[expr_i].num_deps = expr->num_member_deps;
+		exprs[expr_i].deps = calloc(exprs[expr_i].num_deps,
+				sizeof(size_t));
+
+		for (size_t i = 0; i < expr->num_member_deps; i++) {
+			exprs[expr_i].deps[i] =
+				ast_dt_calculate_persistant_id(
+						ctx, expr->member_deps[i]);
+		}
+	}
+
 	size_t bind_i = 0;
-	for (size_t mbr_i = 0; mbr_i < ctx->num_members; mbr_i++) {
+	for (size_t mbr_i = 0; mbr_i < ctx->num_member_alloced; mbr_i++) {
 		struct ast_dt_member *mbr = get_member(ctx, mbr_i);
 
-		if (!mbr->bound) {
+		if (mbr->bound < 0) {
 			continue;
 		}
 
-		binds[bind_i].kind = mbr->bound->kind;
-		switch (mbr->bound->kind) {
-			case AST_OBJECT_DEF_BIND_VALUE:
-				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0 &&
-						!mbr->bound->overridable) {
-					binds[bind_i].kind = AST_OBJECT_DEF_BIND_CONST;
-					binds[bind_i].const_value = mbr->const_value;
-				} else {
-					assert(mbr->bound->value.func  != FUNC_UNSET);
-					binds[bind_i].value.func        = mbr->bound->value.func;
-					binds[bind_i].value.overridable = mbr->bound->overridable;
-				}
-				break;
+		struct ast_dt_bind *bind;
+		bind = get_bind(ctx, mbr->bound);
 
-			case AST_OBJECT_DEF_BIND_CONST:
-				binds[bind_i].const_value = mbr->bound->const_value;
-				break;
-
-			case AST_OBJECT_DEF_BIND_PACK:
-				assert(mbr->bound->num_targets == 1);
-				if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0 &&
-						!mbr->bound->overridable) {
-					binds[bind_i].kind = AST_OBJECT_DEF_BIND_CONST;
-					binds[bind_i].const_value = mbr->const_value;
-				} else {
-					assert(mbr->bound->pack);
-					binds[bind_i].pack = mbr->bound->pack;
-				}
-				break;
-		}
-
-		for (size_t i = 0; i < mbr->bound->num_member_deps; i++) {
-			mbr->bound->member_deps[i] =
-				ast_dt_calculate_persistant_id(
-						ctx, mbr->bound->member_deps[i]);
-		}
-
-		binds[bind_i].unpack_func = FUNC_UNSET;
-		ast_member_id *targets;
-		targets = ast_dt_get_bind_targets(mbr->bound);
-		for (size_t i = 0; i < mbr->bound->num_targets; i++) {
-			if (targets[i] == mbr_i) {
-				binds[bind_i].unpack_func = mbr->bound->target_unpack_func[i];
-				break;
-			}
-		}
-		if (binds[bind_i].unpack_func == FUNC_UNSET) {
-			assert(mbr->bound->num_targets == 1);
-
-			struct bc_env *bc_env;
-			bc_env = ast_gen_value_unpack_func(
-					ctx->ast_ctx, ctx->ast_mod, ctx->ast_env,
-					mbr->type, 0);
-
-			struct func func = {0};
-			func.type = stg_register_func_type(ctx->ast_mod->stg_mod,
-					mbr->type, &mbr->type, 1);
-
-			func.kind = FUNC_BYTECODE;
-			func.bytecode = bc_env;
-
-			binds[bind_i].unpack_func =
-				stg_register_func(ctx->ast_mod->stg_mod, func);
-		}
-
-		binds[bind_i].value_params     = mbr->bound->member_deps;
-		binds[bind_i].num_value_params = mbr->bound->num_member_deps;
-		binds[bind_i].target =
+		binds[bind_i].target_id =
 			ast_dt_calculate_persistant_id(
 					ctx, mbr_i);
-
-		binds[bind_i].loc = mbr->bound->loc;
+		binds[bind_i].loc = bind->loc;
+		binds[bind_i].expr_id = bind->expr;
+		binds[bind_i].unpack_id = mbr->bound_unpack_id;
 
 		bind_i += 1;
 	}
 
 	assert(bind_i == num_bound_members);
 
-	def->binds = binds;
-	def->num_binds = num_bound_members;
+	inst->binds = binds;
+	inst->num_binds = num_bound_members;
 
 	struct ast_dt_composite_info *info;
 	info = calloc(1, sizeof(struct ast_dt_composite_info));
@@ -2628,8 +2653,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 	type_id result;
 	result = stg_register_type(mod->stg_mod, dt_type);
 
-	def->ret_type = ast_bind_slot_const_type(
-			ctx->ast_ctx, &def->env, AST_BIND_NEW, result);
+	info->type = result;
 
 	return result;
 }
@@ -2648,7 +2672,6 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	dt_ctx.ast_env = env;
 	dt_ctx.ast_mod = mod;
 	dt_ctx.root_node = comp;
-	dt_ctx.terminal_nodes = -1;
 	dt_ctx.terminal_jobs  = -1;
 
 	dt_ctx.closures = closures;
@@ -2673,7 +2696,6 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 #if AST_DT_DEBUG_JOBS
 		printf("One or more jobs failed when resolving datastructure.\n");
 #endif
-		return TYPE_UNSET;
 	}
 
 	type_id result = TYPE_UNSET;
@@ -2682,15 +2704,39 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		result = ast_dt_composite_make_type(&dt_ctx, mod);
 	}
 
-	free(dt_ctx.members);
+	for (size_t i = 0; i < dt_ctx.num_member_pages; i++) {
+		int err;
+		err = munmap(dt_ctx.member_pages[i], dt_ctx.page_size);
+		if (err) {
+			perror("munmap");
+		}
+	}
+	free(dt_ctx.member_pages);
 	free(dt_ctx.local_member_ids);
 
-	for (struct ast_dt_bind *bind = dt_ctx.alloced_binds;
-			bind != NULL;) {
-		struct ast_dt_bind *this_bind = bind;
-		bind = bind->next_alloced;
-		free(this_bind);
+	for (size_t expr_i = 0; expr_i < dt_ctx.num_expr_alloced; expr_i++) {
+		struct ast_dt_expr *expr;
+		expr = get_expr(&dt_ctx, expr_i);
+		free(expr->member_deps);
 	}
+
+	for (size_t i = 0; i < dt_ctx.num_expr_pages; i++) {
+		int err;
+		err = munmap(dt_ctx.expr_pages[i], dt_ctx.page_size);
+		if (err) {
+			perror("munmap");
+		}
+	}
+	free(dt_ctx.expr_pages);
+
+	for (size_t i = 0; i < dt_ctx.num_bind_pages; i++) {
+		int err;
+		err = munmap(dt_ctx.bind_pages[i], dt_ctx.page_size);
+		if (err) {
+			perror("munmap");
+		}
+	}
+	free(dt_ctx.bind_pages);
 
 	for (size_t i = 0; i < dt_ctx.num_job_pages; i++) {
 		int err;
@@ -2834,9 +2880,6 @@ ast_dt_finalize_variant(
 		body_deps[i].lookup_failed = closure_values[i].lookup_failed;
 		body_deps[i].determined = true;
 		body_deps[i].val = closure_values[i].value;
-
-		body_deps[i].value = ast_bind_slot_const(
-				ctx, env, AST_BIND_NEW, body_deps[i].val);
 	}
 
 	for (size_t i = 0; i < num_options; i++) {

@@ -65,9 +65,6 @@ stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
 	struct ast_context tmp_ctx;
 	tmp_ctx = ast_init_context(NULL, &mod->vm->atom_table, mod->vm);
 
-	base_bootstrap_register_array(&tmp_ctx, mod);
-	base_bootstrap_register_func(&tmp_ctx, mod);
-
 	return 0;
 }
 

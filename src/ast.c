@@ -15,51 +15,18 @@ ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, s
 
 	ctx.atoms.type                 = atom_create(atom_table, STR("Type"));
 
-	ctx.atoms.func_cons_arg_ret    = atom_create(atom_table, STR("ret"));
-	ctx.atoms.func_cons_arg_params = atom_create(atom_table, STR("params"));
-
-	ctx.atoms.array_cons_arg_type  = atom_create(atom_table, STR("T"));
-	ctx.atoms.array_cons_arg_count = atom_create(atom_table, STR("N"));
-
 	ctx.types.unit = vm->default_types.unit;
 	ctx.types.type = vm->default_types.type;
 	ctx.types.cons = vm->default_types.cons;
 	ctx.types.string = vm->default_types.string;
 	ctx.types.integer = vm->default_types.integer;
 
-	ctx.cons.func = vm->default_cons.func;
-	ctx.cons.array = vm->default_cons.array;
-
 	ctx.vm = vm;
 
 	return ctx;
 }
 
-struct ast_object_def *
-ast_object_def_register(struct objstore *store)
-{
-	struct ast_object_def *obj;
-
-	obj = calloc(1, sizeof(struct ast_object_def));
-	obj->env.store = store;
-
-	return obj;
-}
-
-void
-ast_object_def_finalize(struct ast_object_def *obj,
-		struct ast_object_def_param *params, size_t num_params,
-		ast_slot_id ret_type)
-{
-	assert(obj != NULL);
-
-	obj->num_params = num_params;
-	obj->params = calloc(sizeof(struct ast_object_def_param), num_params);
-	memcpy(obj->params, params, sizeof(struct ast_object_def_param) * num_params);
-
-	obj->ret_type = ret_type;
-}
-
+/*
 size_t
 ast_object_def_num_descendant_members(
 		struct ast_context *ctx, struct ast_module *mod,
@@ -94,7 +61,9 @@ ast_object_def_num_descendant_members(
 
 	return count;
 }
+*/
 
+/*
 struct ast_object_def_order_binds_context {
 	size_t total_num_binds;
 	struct ast_object_def_bind **binds;
@@ -279,102 +248,7 @@ ast_object_def_order_binds(
 
 	return bctx.errors != 0;
 }
-
-int
-ast_slot_pack(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, ast_slot_id obj, struct object *out)
-{
-	struct ast_env_slot slot = ast_env_slot(ctx, env, obj);
-
-	switch (slot.kind) {
-		case AST_SLOT_ERROR:
-		case AST_SLOT_PARAM:
-		case AST_SLOT_TEMPL:
-		case AST_SLOT_CLOSURE:
-		case AST_SLOT_WILDCARD:
-			printf("Tried to pack slot of kind %s.\n",
-					ast_slot_name(slot.kind));
-			return -1;
-
-		case AST_SLOT_CONST_TYPE:
-			{
-				struct object tmp_obj;
-				tmp_obj.type = ctx->types.type;
-				tmp_obj.data = &slot.const_type;
-
-				*out = register_object(ctx->vm, env->store, tmp_obj);
-				return 0;
-			}
-
-		case AST_SLOT_CONST:
-			*out = slot.const_object;
-			return 0;
-
-
-		case AST_SLOT_CONS:
-			if (!slot.cons.def) {
-				// TODO: Try to resolve def from type.
-				printf("Cons is missing a def.");
-				return -1;
-			}
-
-			*out = slot.cons.def->pack(ctx, mod, env,
-					slot.cons.def, obj);
-			return 0;
-
-		case AST_SLOT_CONS_ARRAY:
-			{
-				struct object array_type_obj;
-
-				int err;
-				err = ast_slot_pack(ctx, mod, env, slot.type, &array_type_obj);
-				if (err) {
-					printf("Failed to pack array type.");
-					return -1;
-				}
-
-				type_id array_type_id;
-				array_type_id = *(type_id *)array_type_obj.data;
-
-				struct type *array_type;
-				array_type = vm_get_type(ctx->vm, array_type_id);
-
-				if (!array_type->base->array_def) {
-					// TODO: Try to resolve def from type.
-					printf("Cons array is missing a def.");
-					return -1;
-				}
-
-				*out = array_type->base->array_def->pack(ctx, mod, env,
-						array_type->base->array_def, obj);
-			}
-			return 0;
-
-		case AST_SLOT_SUBST:
-			return ast_slot_pack(ctx, mod, env, slot.subst, out);
-	}
-
-	panic("Got invalid slot kind in ast_slot_pack.");
-	return -1;
-}
-
-int
-ast_slot_pack_type(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, ast_slot_id obj, type_id *out)
-{
-	int err;
-	struct object type_obj;
-	err = ast_slot_pack(ctx, mod, env, obj, &type_obj);
-	if (err) {
-		return err;
-	}
-
-	assert_type_equals(ctx->vm, type_obj.type, ctx->types.type);
-
-	*out = *(type_id *)type_obj.data;
-
-	return 0;
-}
+*/
 
 int
 ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,

@@ -235,6 +235,7 @@ ast_node_resolve_names(struct ast_context *ctx,
 
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
+		case AST_NODE_INST:
 			err += ast_node_resolve_names(ctx, native_mod,
 					scope, require_const, node->call.func);
 			for (size_t i = 0; i < node->call.num_args; i++) {
@@ -473,6 +474,7 @@ ast_node_discover_potential_closures(struct ast_context *ctx,
 
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
+		case AST_NODE_INST:
 			err += ast_node_discover_potential_closures(
 					ctx, scope, require_const,
 					node->call.func);

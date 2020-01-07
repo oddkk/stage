@@ -8,63 +8,44 @@
 
 static struct type_base channel_type_base;
 
-#define CHANNEL_TYPE_PARAM_TYPE 0
-
-static struct object
-channel_type_unpack(struct ast_context *ctx, struct ast_env *env,
-		struct ast_object_def *def, int param_id, struct object obj)
+static void
+channel_type_unpack(struct vm *vm, void *data,
+		void *out, void *obj, int param_id)
 {
-	assert_type_equals(ctx->vm, obj.type, ctx->types.type);
-	struct type *type = vm_get_type(ctx->vm, *(type_id *)obj.data);
+	assert(param_id == 0);
+
+	struct type *type;
+	type = vm_get_type(
+			vm, *(type_id *)obj);
 	assert(type->base == &channel_type_base);
 
 	struct cnl_channel_type_info *info =
 		(struct cnl_channel_type_info *)type->data;
 
-	if (param_id == CHANNEL_TYPE_PARAM_TYPE) {
-		struct object res = {0};
-
-		res.type = ctx->types.type;
-		res.data = &info->type;
-
-		return res;
-	}
-
-	panic("Invalid param %i requested from Channel.", param_id);
-	return OBJ_NONE;
+	memcpy(out, &info->type, sizeof(type_id));
 }
 
-static struct object
-channel_type_pack(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_object_def *def, ast_slot_id obj_slot)
+static void
+channel_type_pack(struct vm *vm, void *data,
+		void *out, void **params, size_t num_params)
 {
-	int err;
+	struct stg_module *mod = data;
 
-	ast_slot_id cnl_type_slot;
-	cnl_type_slot =
-		ast_unpack_arg_named(ctx, &mod->env, obj_slot,
-				AST_BIND_NEW, vm_atoms(ctx->vm, "T"));
+	assert(num_params == 1);
 
-	struct object cnl_type_obj;
-	err = ast_slot_pack(ctx, mod, env,
-			cnl_type_slot, &cnl_type_obj);
-	if (err) {
-		printf("Failed to pack array member type slot.\n");
-		return OBJ_NONE;
-	}
-
-	assert_type_equals(ctx->vm, cnl_type_obj.type, ctx->types.type);
-
-	type_id cnl_type = *(type_id *)cnl_type_obj.data;
-
+	type_id cnl_type = *(type_id *)params[0];
 	type_id res;
-	res = cnl_register_channel_type(mod->stg_mod, cnl_type);
+	res = cnl_register_channel_type(mod, cnl_type);
 
-	struct object type_obj = {0};
-	type_obj.type = ctx->types.type;
-	type_obj.data = &res;
+	memcpy(out, &res, sizeof(type_id));
+}
 
-	return register_object(ctx->vm, env->store, type_obj);
+static type_id
+channel_type_pack_type(struct vm *vm,
+		void *data, void **params, size_t num_params)
+{
+	assert(num_params == 1);
+	return vm->default_types.type;
 }
 
 static bool
@@ -105,7 +86,7 @@ static struct type_base channel_type_base = {
 
 struct cnl_context {
 	struct channel_system sys;
-	struct ast_object_def *channel_type_cons;
+	struct object_cons *channel_type_cons;
 };
 
 type_id
@@ -136,23 +117,20 @@ mod_channel_init(struct ast_context *ctx, struct stg_module *mod)
 	mod->data = cctx;
 
 	{
-		struct ast_object_def *cnl_type_def =
-			ast_object_def_register(&mod->store);
+		struct object_cons *cnl_type_def;
+		cnl_type_def = calloc(1, sizeof(struct object_cons));
 
-		ast_slot_id arg_type = ast_bind_slot_templ(
-				ctx, &cnl_type_def->env, AST_BIND_NEW, AST_SLOT_TYPE);
+		cnl_type_def->num_params = 1;
+		cnl_type_def->params = calloc(1, sizeof(struct object_cons_param));
 
+		cnl_type_def->params[0].name = vm_atoms(ctx->vm, "T");
+		cnl_type_def->params[0].type = ctx->types.type;
 
-		struct ast_object_def_param cnl_type_params[] = {
-			{CHANNEL_TYPE_PARAM_TYPE, vm_atoms(ctx->vm, "T"), ctx->types.type, arg_type},
-		};
+		cnl_type_def->pack      = channel_type_pack;
+		cnl_type_def->pack_type = channel_type_pack_type;
+		cnl_type_def->unpack    = channel_type_unpack;
 
-		ast_object_def_finalize(cnl_type_def,
-				cnl_type_params, ARRAY_LENGTH(cnl_type_params),
-				AST_SLOT_TYPE);
-
-		cnl_type_def->pack   = channel_type_pack;
-		cnl_type_def->unpack = channel_type_unpack;
+		cnl_type_def->data = mod;
 
 		cctx->channel_type_cons = cnl_type_def;
 

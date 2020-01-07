@@ -339,6 +339,39 @@ ast_node_constraints(
 				return ret_slot;
 			}
 
+		case AST_NODE_INST:
+			{
+				ast_slot_id res_slot, cons_slot;
+				res_slot = ast_slot_alloc(env);
+				cons_slot = ast_node_constraints(
+						ctx, mod, env, deps, num_deps,
+						node->call.func);
+
+				// TODO: Bind object_inst.
+				/*
+				ast_slot_require_cons_inst(
+						env, node->loc, AST_CONSTR_SRC_CONS_ARG,
+						res_slot, cons_slot);
+				*/
+
+
+				for (size_t i = 0; i < node->call.num_args; i++) {
+					ast_slot_id arg_slot;
+					arg_slot = ast_node_constraints(
+							ctx, mod, env, deps, num_deps,
+							node->call.args[i].value);
+
+					ast_slot_require_member_named(
+							env, node->call.args[i].value->loc,
+							AST_CONSTR_SRC_CONS_ARG, res_slot,
+							node->call.args[i].name, arg_slot);
+
+				}
+
+				node->typecheck_slot = res_slot;
+				return res_slot;
+			}
+
 		case AST_NODE_CONS:
 			{
 				ast_slot_id res_slot, cons_slot;
@@ -426,10 +459,11 @@ ast_node_constraints(
 					body_deps[num_deps+i].value = param_slot;
 				}
 
-				if (!node->templ.def) {
-					node->templ.def = ast_node_create_templ(
-							ctx, mod, env, node, body_deps, num_deps);
-					assert(node->templ.def);
+				if (!node->templ.cons) {
+					// TODO: Implement creating templates.
+					// node->templ.cons = ast_node_create_templ(
+					//		ctx, mod, env, node, body_deps, num_deps);
+					assert(node->templ.cons);
 				}
 
 				ast_slot_id res_slot;
@@ -437,7 +471,7 @@ ast_node_constraints(
 
 				struct object cons_obj = {0};
 				cons_obj.type = ctx->types.cons;
-				cons_obj.data = &node->templ.def;
+				cons_obj.data = &node->templ.cons;
 				cons_obj = register_object(
 						ctx->vm, env->store, cons_obj);
 

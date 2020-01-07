@@ -4,6 +4,7 @@
 #include "intdef.h"
 #include "atom.h"
 #include "utils.h"
+#include "errors.h"
 
 typedef unsigned int obj_id;
 typedef uint64_t type_id;
@@ -28,8 +29,7 @@ struct scope;
 struct object;
 struct objstore;
 struct stg_module;
-struct ast_array_def;
-struct ast_object_def;
+struct object_cons;
 
 // TYPE_UNSET
 #define TYPE_SUBTYPES_END ((type_id)0)
@@ -55,8 +55,9 @@ typedef struct _ffi_type ffi_type;
 struct type {
 	struct atom *name;
 	struct type_base *base;
-	struct ast_object_def *obj_def;
-	struct ast_object_def *type_def;
+	struct object_cons *obj_def;
+	struct object_inst *obj_inst;
+	struct object_cons *type_def;
 	ffi_type *ffi_type;
 	void *data;
 
@@ -219,10 +220,120 @@ struct object_cons {
 	void *data;
 };
 
+struct object_inst_bind {
+	// Pre-order index of the cons' descendant that is the target of this bind.
+	size_t target_id;
+
+	// Pre-order index of the expression's member that is the value of this
+	// bind.
+	size_t unpack_id;
+
+	// The object inst's expression that is the value of this bind.
+	size_t expr_id;
+
+	struct stg_location loc;
+};
+
+struct object_inst_expr {
+	bool constant;
+	union {
+		func_id func;
+		struct object const_value;
+	};
+
+	// A list of expressions that must be evaluated before this expression.
+	size_t *deps;
+	size_t num_deps;
+
+	bool overridable;
+
+	struct stg_location loc;
+};
+
+struct object_inst {
+	struct object_cons *cons;
+
+	struct object_inst_bind *binds;
+	size_t num_binds;
+
+	struct object_inst_expr *exprs;
+	size_t num_exprs;
+};
+
 ssize_t
 object_cons_find_param(
 		struct object_cons *cons,
 		struct atom *name);
+
+size_t
+object_cons_num_descendants(
+		struct vm *, struct object_cons *);
+
+// out_local_descendent_ids is expected to be an array of length
+// cons->num_params.
+void
+object_cons_local_descendent_ids(
+		struct vm *, struct object_cons *cons,
+		int *out_local_descendent_ids);
+
+int
+object_unpack(
+		struct vm *, struct object obj,
+		size_t unpack_id, struct object *out);
+
+int
+object_cons_descendant_type(
+		struct vm *, type_id type,
+		size_t unpack_id, type_id *out);
+
+enum object_inst_action_op {
+	OBJ_INST_EXPR,
+	OBJ_INST_BIND,
+	OBJ_INST_PACK,
+};
+
+struct object_inst_action {
+	enum object_inst_action_op op;
+	union {
+		struct {
+			int id;
+
+			size_t *deps;
+			size_t num_deps;
+		} expr;
+
+		struct {
+			int expr_id;
+			int member_id;
+			int unpack_id;
+		} bind;
+
+		struct {
+			int member_id;
+		} pack;
+	};
+};
+
+struct object_inst_extra_expr {
+	type_id type;
+
+	size_t *deps;
+	size_t num_deps;
+
+	bool overridable;
+
+	struct stg_location loc;
+};
+
+// TODO: More descriptive name.
+// The expressions in extra_expressions will have ids from inst->num_exprs to
+// inst->num_exprs+num_extra_exprs.
+int
+object_inst_order(
+		struct vm *vm, struct object_inst *inst,
+		struct object_inst_extra_expr *extra_exprs, size_t num_extra_exprs,
+		struct object_inst_bind       *extra_binds, size_t num_extra_binds,
+		struct object_inst_action **out_actions, size_t *out_num_actions);
 
 struct stg_exec {
 	struct arena heap;

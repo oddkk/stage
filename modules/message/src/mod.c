@@ -9,63 +9,44 @@
 
 static struct type_base message_type_base;
 
-#define MESSAGE_TYPE_PARAM_TYPE 0
-
-static struct object
-message_type_unpack(struct ast_context *ctx, struct ast_env *env,
-		struct ast_object_def *def, int param_id, struct object obj)
+static void
+message_type_unpack(struct vm *vm, void *data,
+		void *out, void *obj, int param_id)
 {
-	assert_type_equals(ctx->vm, obj.type, ctx->types.type);
-	struct type *type = vm_get_type(ctx->vm, *(type_id *)obj.data);
+	assert(param_id == 0);
+
+	struct type *type;
+	type = vm_get_type(
+			vm, *(type_id *)obj);
 	assert(type->base == &message_type_base);
 
 	struct msg_message_type_info *info =
 		(struct msg_message_type_info *)type->data;
 
-	if (param_id == MESSAGE_TYPE_PARAM_TYPE) {
-		struct object res = {0};
-
-		res.type = ctx->types.type;
-		res.data = &info->type;
-
-		return res;
-	}
-
-	panic("Invalid param %i requested from Channel.", param_id);
-	return OBJ_NONE;
+	memcpy(out, &info->type, sizeof(type_id));
 }
 
-static struct object
-message_type_pack(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_object_def *def, ast_slot_id obj_slot)
+static void
+message_type_pack(struct vm *vm, void *data,
+		void *out, void **params, size_t num_params)
 {
-	int err;
+	struct stg_module *mod = data;
 
-	ast_slot_id msg_type_slot;
-	msg_type_slot =
-		ast_unpack_arg_named(ctx, &mod->env, obj_slot,
-				AST_BIND_NEW, vm_atoms(ctx->vm, "T"));
+	assert(num_params == 1);
 
-	struct object msg_type_obj;
-	err = ast_slot_pack(ctx, mod, env,
-			msg_type_slot, &msg_type_obj);
-	if (err) {
-		printf("Failed to pack array member type slot.\n");
-		return OBJ_NONE;
-	}
-
-	assert_type_equals(ctx->vm, msg_type_obj.type, ctx->types.type);
-
-	type_id msg_type = *(type_id *)msg_type_obj.data;
-
+	type_id msg_type = *(type_id *)params[0];
 	type_id res;
-	res = msg_register_message_type(mod->stg_mod, msg_type);
+	res = msg_register_message_type(mod, msg_type);
 
-	struct object type_obj = {0};
-	type_obj.type = ctx->types.type;
-	type_obj.data = &res;
+	memcpy(out, &res, sizeof(type_id));
+}
 
-	return register_object(ctx->vm, env->store, type_obj);
+static type_id
+message_type_pack_type(struct vm *vm,
+		void *data, void **params, size_t num_params)
+{
+	assert(num_params == 1);
+	return vm->default_types.type;
 }
 
 static bool
@@ -106,7 +87,7 @@ static struct type_base message_type_base = {
 
 struct msg_context {
 	struct msg_system sys;
-	struct ast_object_def *message_type_cons;
+	struct object_cons *message_type_cons;
 
 	msg_node_id on_start_msg;
 	func_id endpoint_cons_func;
@@ -203,23 +184,19 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 	}
 
 	{
-		struct ast_object_def *msg_type_def;
-		msg_type_def = ast_object_def_register(&mod->store);
+		struct object_cons *msg_type_def;
+		msg_type_def = calloc(1, sizeof(struct object_cons));
+		msg_type_def->num_params = 1;
+		msg_type_def->params = calloc(
+				msg_type_def->num_params,
+				sizeof(struct object_cons_param));
 
-		ast_slot_id arg_type = ast_bind_slot_templ(
-				ast_ctx, &msg_type_def->env, AST_BIND_NEW, AST_SLOT_TYPE);
+		msg_type_def->params[0].name = vm_atoms(ast_ctx->vm, "T");
+		msg_type_def->params[0].type = ast_ctx->types.type;
 
-
-		struct ast_object_def_param msg_type_params[] = {
-			{MESSAGE_TYPE_PARAM_TYPE, vm_atoms(ast_ctx->vm, "T"), ast_ctx->types.type, arg_type},
-		};
-
-		ast_object_def_finalize(msg_type_def,
-				msg_type_params, ARRAY_LENGTH(msg_type_params),
-				AST_SLOT_TYPE);
-
-		msg_type_def->pack   = message_type_pack;
-		msg_type_def->unpack = message_type_unpack;
+		msg_type_def->pack      = message_type_pack;
+		msg_type_def->pack_type = message_type_pack_type;
+		msg_type_def->unpack    = message_type_unpack;
 
 		ctx->message_type_cons = msg_type_def;
 

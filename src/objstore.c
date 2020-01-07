@@ -342,3 +342,157 @@ object_cons_find_param(
 
 	return -1;
 }
+
+size_t
+object_cons_num_descendants(
+		struct vm *vm, struct object_cons *cons)
+{
+	size_t count = 0;
+	count += cons->num_params;
+
+	for (size_t i = 0; i < cons->num_params; i++) {
+		struct type *member_type;
+		member_type = vm_get_type(
+				vm, cons->params[i].type);
+
+		if (member_type->obj_def) {
+			count += object_cons_num_descendants(
+					vm, member_type->obj_def);
+		}
+	}
+
+	return count;
+}
+
+void
+object_cons_local_descendent_ids(
+		struct vm *vm, struct object_cons *cons,
+		int *out_local_descendent_ids)
+{
+	size_t count = 0;
+	for (size_t i = 0; i < cons->num_params; i++) {
+		out_local_descendent_ids[i] = count;
+
+		struct type *member_type;
+		member_type = vm_get_type(
+				vm, cons->params[i].type);
+
+		if (member_type->obj_def) {
+			count += object_cons_num_descendants(
+					vm, member_type->obj_def);
+		}
+	}
+}
+
+int
+object_unpack(
+		struct vm *vm, struct object obj,
+		size_t unpack_id, struct object *out)
+{
+	if (unpack_id == 0) {
+		*out = obj;
+		return 0;
+	}
+
+	struct type *type;
+	type = vm_get_type(vm, obj.type);
+
+	struct object_cons *def;
+	def = type->obj_def;
+	// If unpack_id is not 0 it is implied that it must be a child of this
+	// member. If this member does not have a obj_def it can not have children.
+	assert(def);
+
+	size_t offset = 1;
+	for (size_t i = 0; i < def->num_params; i++) {
+		struct type *mbr_type;
+		mbr_type = vm_get_type(
+				vm, def->params[i].type);
+
+		size_t num_desc;
+		if (mbr_type->obj_def) {
+			num_desc = object_cons_num_descendants(
+					vm, mbr_type->obj_def);
+		} else {
+			num_desc = 1;
+		}
+
+		assert(unpack_id >= offset);
+		if (unpack_id >= offset + num_desc) {
+			offset += num_desc;
+			continue;
+		}
+
+		uint8_t buffer[mbr_type->size];
+		assert(def->unpack);
+		def->unpack(vm, def->data, buffer, obj.data, i);
+
+		struct object mbr = {0};
+		mbr.data = buffer;
+		mbr.type = def->params[i].type;
+
+		return object_unpack(vm,
+				mbr, unpack_id - offset, out);
+	}
+
+	return -1;
+}
+
+int
+object_cons_descendant_type(
+		struct vm *vm, type_id tid,
+		size_t unpack_id, type_id *out)
+{
+	if (unpack_id == 0) {
+		*out = tid;
+		return 0;
+	}
+
+	struct type *type;
+	type = vm_get_type(vm, tid);
+
+	struct object_cons *def;
+	def = type->obj_def;
+	// If unpack_id is not 0 it is implied that it must be a child of this
+	// member. If this member does not have a obj_def it can not have children.
+	assert(def);
+
+	size_t offset = 1;
+	for (size_t i = 0; i < def->num_params; i++) {
+		struct type *mbr_type;
+		mbr_type = vm_get_type(
+				vm, def->params[i].type);
+
+		size_t num_desc;
+		if (mbr_type->obj_def) {
+			num_desc = object_cons_num_descendants(
+					vm, mbr_type->obj_def);
+		} else {
+			num_desc = 1;
+		}
+
+		assert(unpack_id >= offset);
+		if (unpack_id >= offset + num_desc) {
+			offset += num_desc;
+			continue;
+		}
+
+		return object_cons_descendant_type(
+				vm, def->params[i].type,
+				unpack_id - offset, out);
+	}
+
+	return -1;
+}
+
+int
+object_inst_order(
+		struct vm *vm, struct object_inst *inst,
+		struct object_inst_extra_expr *extra_exprs, size_t num_extra_exprs,
+		struct object_inst_bind       *extra_binds, size_t num_extra_binds,
+		struct object_inst_action **out_actions, size_t *out_num_actions)
+{
+	panic("TODO: object_inst_order");
+
+	return -1;
+}
