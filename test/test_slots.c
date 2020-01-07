@@ -8,7 +8,7 @@
 #define TEST_ASSERT(expr)							\
 	do {											\
 		if (!(expr)) {								\
-			fprintf(stderr,							\
+			fprintf(stdout,							\
 					__FILE__ ":%i: "				\
 					"Assertion '" #expr "' failed!\n",\
 					__LINE__);						\
@@ -49,12 +49,14 @@ test_type_propagation(struct ast_context *ctx, struct stg_module *mod)
 	err = ast_slot_try_solve(ctx, &mod->mod, env, result);
 	TEST_ASSERT(!err);
 
-	TEST_ASSERT(result[obj_slot].result == AST_SLOT_RESULT_FOUND_VALUE_OBJ);
+	TEST_ASSERT(ast_slot_value_result(result[obj_slot].result) ==
+			AST_SLOT_RES_VALUE_FOUND_OBJ);
 	TEST_ASSERT(result[obj_slot].value.obj.type == ctx->types.integer);
 	TEST_ASSERT(*(int64_t *)result[obj_slot].value.obj.data == int_obj_val);
 	TEST_ASSERT(result[obj_slot].type == ctx->types.integer);
 
-	TEST_ASSERT(result[obj_type_slot].result == AST_SLOT_RESULT_FOUND_VALUE_TYPE);
+	TEST_ASSERT(ast_slot_value_result(result[obj_type_slot].result) ==
+			AST_SLOT_RES_VALUE_FOUND_TYPE);
 	TEST_ASSERT(result[obj_type_slot].value.type == ctx->types.integer);
 	TEST_ASSERT(result[obj_type_slot].type == ctx->types.type);
 
@@ -99,7 +101,7 @@ test_value_mismatch(struct ast_context *ctx, struct stg_module *mod)
 	err = ast_slot_try_solve(ctx, &mod->mod, env, result);
 	TEST_ASSERT(err);
 
-	TEST_ASSERT(result[obj_slot].result == AST_SLOT_RESULT_ERROR);
+	TEST_ASSERT(result[obj_slot].result == AST_SLOT_RES_ERROR);
 
 	return 0;
 }
@@ -194,8 +196,10 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 	err = ast_slot_try_solve(ctx, &mod->mod, env, result);
 	TEST_ASSERT(!err);
 
-	TEST_ASSERT(result[obj_slot].result == AST_SLOT_RESULT_FOUND_VALUE_OBJ);
+	TEST_ASSERT(result[obj_slot].result ==
+			(AST_SLOT_RES_VALUE_FOUND_OBJ|AST_SLOT_RES_CONS_FOUND));
 	TEST_ASSERT(result[obj_slot].value.obj.type == ctx->types.integer);
+	TEST_ASSERT(result[obj_slot].cons == &test_cons);
 
 	int64_t res_val = (*(int64_t *)result[obj_slot].value.obj.data);
 
@@ -257,7 +261,8 @@ test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 	err = ast_slot_try_solve(ctx, &mod->mod, env, result);
 	TEST_ASSERT(!err);
 
-	TEST_ASSERT(result[param_slot].result == AST_SLOT_RESULT_FOUND_VALUE_OBJ);
+	TEST_ASSERT(ast_slot_value_result(result[param_slot].result) ==
+			AST_SLOT_RES_VALUE_FOUND_OBJ);
 	TEST_ASSERT(result[param_slot].value.obj.type == ctx->types.integer);
 
 	int64_t res_val = (*(int64_t *)result[param_slot].value.obj.data);

@@ -1871,7 +1871,7 @@ ast_slot_try_solve(
 			if ((slot->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
 				res->result |= AST_SLOT_RES_CONS_FOUND_FUNC_TYPE;
 			} else {
-				res->result |= AST_SLOT_RES_CONS_FOUND_FUNC_TYPE;
+				res->result |= AST_SLOT_RES_CONS_FOUND;
 				res->cons = slot->cons;
 			}
 		} else {
