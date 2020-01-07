@@ -509,7 +509,6 @@ ast_print_constraint(
 					constr->target, constr->cons);
 			break;
 	}
-	printf("\n");
 }
 
 static void
@@ -1410,10 +1409,34 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 	return made_change;
 }
 
+#if AST_DEBUG_SLOT_SOLVE
+__attribute__((__format__ (__printf__, 4, 5))) static void
+ast_slot_verify_fail(
+		struct solve_context *ctx, ast_constraint_id constr_id,
+		struct stg_location loc, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	stg_msgv(ctx->err, loc, STG_ERROR, fmt, ap);
+
+	printf("%i [", constr_id);
+	ast_print_constraint(ctx, constr_id);
+	printf("] validation failed: ");
+	vprintf(fmt, ap);
+	printf("\n");
+
+	va_end(ap);
+}
+#endif
+
 int
 ast_slot_verify_constraint(
 		struct solve_context *ctx, ast_constraint_id constr_id)
 {
+#if AST_DEBUG_SLOT_SOLVE
+#define stg_error(err, loc, ...) \
+	ast_slot_verify_fail(ctx, constr_id, loc, __VA_ARGS__)
+#endif
 	struct ast_slot_constraint *constr;
 	constr = ast_get_constraint(ctx, constr_id);
 
@@ -1713,6 +1736,10 @@ ast_slot_verify_constraint(
 	}
 
 	return -1;
+
+#if AST_DEBUG_SLOT_SOLVE
+#undef stg_error
+#endif
 }
 
 int
@@ -1744,6 +1771,7 @@ ast_slot_try_solve(
 		size_t num_constraints = ast_env_num_constraints(ctx);
 		for (size_t constr_id = 0; constr_id < num_constraints; constr_id++) {
 			ast_print_constraint(ctx, constr_id);
+			printf("\n");
 		}
 	}
 
