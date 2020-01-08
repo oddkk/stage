@@ -165,9 +165,10 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 	test_cons.unpack = test_cons_unpack;
 	test_cons.impose_type_constraints = test_cons_impose_constraints;
 
-	ast_slot_id obj_slot, param_slot;
+	ast_slot_id obj_slot, cons_slot, param_slot;
 
 	obj_slot   = ast_slot_alloc(env);
+	cons_slot  = ast_slot_alloc(env);
 	param_slot = ast_slot_alloc(env);
 
 	int64_t int_obj_val = 1;
@@ -175,10 +176,20 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 	int_obj.type = ctx->types.integer;
 	int_obj.data = &int_obj_val;
 
-	ast_slot_require_is_cons(
+	struct object_cons *test_cons_ptr = &test_cons;
+	struct object cons_obj = {0};
+	cons_obj.type = ctx->types.cons;
+	cons_obj.data = &test_cons_ptr;
+
+	ast_slot_require_is_obj(
 			env, STG_NO_LOC,
 			AST_CONSTR_SRC_FUNC_DECL,
-			obj_slot, &test_cons);
+			cons_slot, cons_obj);
+
+	ast_slot_require_cons(
+			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
+			obj_slot, cons_slot);
 
 	ast_slot_require_is_obj(
 			env, STG_NO_LOC,
@@ -209,6 +220,63 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 }
 
 int
+test_value_cons_propagate(struct ast_context *ctx, struct stg_module *mod)
+{
+	struct ast_env _env = {0};
+	struct ast_env *env = &_env;
+
+	env->store = &mod->store;
+
+	struct atom *param_name;
+	param_name = vm_atoms(ctx->vm, "a");
+
+	struct object_cons test_cons = {0};
+	struct object_cons_param test_cons_params[] = {
+		{param_name, ctx->types.integer},
+	};
+
+	test_cons.params = test_cons_params;
+	test_cons.num_params = sizeof(test_cons_params) / sizeof(struct object_cons_param);
+	test_cons.pack = test_cons_pack;
+	test_cons.pack_type = test_cons_pack_type;
+	test_cons.unpack = test_cons_unpack;
+	test_cons.impose_type_constraints = test_cons_impose_constraints;
+
+	struct object_cons *test_cons_ptr = &test_cons;
+
+	ast_slot_id obj_slot, cons_slot;
+
+	obj_slot  = ast_slot_alloc(env);
+	cons_slot = ast_slot_alloc(env);
+
+	struct object cons_obj = {0};
+	cons_obj.type = ctx->types.cons;
+	cons_obj.data = &test_cons_ptr;
+
+	ast_slot_require_cons(
+			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
+			obj_slot, cons_slot);
+
+	ast_slot_require_is_obj(
+			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
+			cons_slot, cons_obj);
+
+
+	struct ast_slot_result result[env->num_alloced_slots];
+	int err;
+	err = ast_slot_try_solve(ctx, &mod->mod, env, result);
+	TEST_ASSERT(!err);
+
+	TEST_ASSERT(ast_slot_cons_result(result[obj_slot].result) ==
+			AST_SLOT_RES_CONS_FOUND);
+	TEST_ASSERT(result[obj_slot].cons == &test_cons);
+
+	return 0;
+}
+
+int
 test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 {
 	struct ast_env _env = {0};
@@ -230,9 +298,10 @@ test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 	test_cons.unpack = test_cons_unpack;
 	test_cons.impose_type_constraints = test_cons_impose_constraints;
 
-	ast_slot_id obj_slot, param_slot;
+	ast_slot_id obj_slot, cons_slot, param_slot;
 
 	obj_slot   = ast_slot_alloc(env);
+	cons_slot  = ast_slot_alloc(env);
 	param_slot = ast_slot_alloc(env);
 
 	int64_t int_obj_val = 3;
@@ -240,10 +309,20 @@ test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 	int_obj.type = ctx->types.integer;
 	int_obj.data = &int_obj_val;
 
-	ast_slot_require_is_cons(
+	struct object_cons *test_cons_ptr = &test_cons;
+	struct object cons_obj = {0};
+	cons_obj.type = ctx->types.cons;
+	cons_obj.data = &test_cons_ptr;
+
+	ast_slot_require_is_obj(
 			env, STG_NO_LOC,
 			AST_CONSTR_SRC_FUNC_DECL,
-			obj_slot, &test_cons);
+			cons_slot, cons_obj);
+
+	ast_slot_require_cons(
+			env, STG_NO_LOC,
+			AST_CONSTR_SRC_FUNC_DECL,
+			obj_slot, cons_slot);
 
 	ast_slot_require_is_obj(
 			env, STG_NO_LOC,
@@ -301,6 +380,7 @@ int main()
 	res += test_type_propagation(&ctx, mod);
 	res += test_value_mismatch(&ctx, mod);
 	res += test_value_pack(&ctx, mod);
+	res += test_value_cons_propagate(&ctx, mod);
 	res += test_value_unpack(&ctx, mod);
 
 	return res;

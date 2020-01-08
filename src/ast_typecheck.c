@@ -677,8 +677,7 @@ ast_node_resolve_types(
 						break;
 
 					case AST_SLOT_RES_CONS_FOUND:
-						// TODO: Assign the constructor to the node.
-						// node->cons.cons = res->cons;
+						node->call.cons = res->cons;
 						break;
 
 					case AST_SLOT_RES_CONS_FOUND_FUNC_TYPE:

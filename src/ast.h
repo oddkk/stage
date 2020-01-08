@@ -4,7 +4,7 @@
 #include "errors.h"
 #include "objstore.h"
 
-#define AST_DEBUG_SLOT_SOLVE 1
+#define AST_DEBUG_SLOT_SOLVE 0
 
 typedef int32_t ast_slot_id;
 #define AST_SLOT_TYPE ((ast_slot_id)-1)
@@ -109,7 +109,6 @@ enum ast_constraint_kind {
 	AST_SLOT_REQ_TYPE,
 	AST_SLOT_REQ_MEMBER_NAMED,
 	AST_SLOT_REQ_MEMBER_INDEXED,
-	AST_SLOT_REQ_IS_CONS,
 	AST_SLOT_REQ_CONS,
 };
 
@@ -327,13 +326,6 @@ ast_slot_require_member_index(
 		AST_SLOT_DEBUG_PARAM);
 
 void
-ast_slot_require_is_cons(
-		struct ast_env *env, struct stg_location loc,
-		enum ast_constraint_source source,
-		ast_slot_id target, struct object_cons *def
-		AST_SLOT_DEBUG_PARAM);
-
-void
 ast_slot_require_cons(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
@@ -347,7 +339,6 @@ ast_slot_require_cons(
 #	define ast_slot_require_is_obj(...)       ast_slot_require_is_obj (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_is_type(...)      ast_slot_require_is_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_is_func_type(...) ast_slot_require_is_func_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_is_cons(...)      ast_slot_require_is_cons (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_cons(...)         ast_slot_require_cons (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_equals(...)       ast_slot_require_equals (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_type(...)         ast_slot_require_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
