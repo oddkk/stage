@@ -347,12 +347,9 @@ ast_node_constraints(
 						ctx, mod, env, deps, num_deps,
 						node->call.func);
 
-				// TODO: Bind object_inst.
-				/*
-				ast_slot_require_cons_inst(
+				ast_slot_require_inst(
 						env, node->loc, AST_CONSTR_SRC_CONS_ARG,
 						res_slot, cons_slot);
-				*/
 
 
 				for (size_t i = 0; i < node->call.num_args; i++) {
@@ -684,6 +681,38 @@ ast_node_resolve_types(
 						stg_error(ctx->err, node->loc,
 								"Expected constructor, got function type constructor.");
 
+						errors += 1;
+						break;
+
+					default:
+						panic("Invalid slot bind result.");
+						break;
+				}
+				break;
+
+			case AST_NODE_INST:
+				switch (ast_slot_cons_result(res->result)) {
+					case AST_SLOT_RES_CONS_UNKNOWN:
+						stg_error(ctx->err, node->loc,
+								"Not enough type information to resolve the "
+								"object instantiation of this expression.");
+						errors += 1;
+						break;
+
+					case AST_SLOT_RES_CONS_FOUND:
+						stg_error(ctx->err, node->loc,
+								"Expected object instantiation, got constructor.");
+						errors += 1;
+						break;
+
+					case AST_SLOT_RES_CONS_FOUND_INST:
+						node->call.inst = res->inst;
+						break;
+
+					case AST_SLOT_RES_CONS_FOUND_FUNC_TYPE:
+						stg_error(ctx->err, node->loc,
+								"Expected object instantiation, got function "
+								"type constructor.");
 						errors += 1;
 						break;
 

@@ -1395,6 +1395,7 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 	parent_type = vm_get_type(ctx->ast_ctx->vm, parent->type);
 
 	if (parent_type->obj_inst) {
+		assert(parent_type->obj_inst->cons == parent_type->obj_def);
 		struct object_inst *def;
 		def = parent_type->obj_inst;
 
@@ -2636,6 +2637,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 
 	inst->binds = binds;
 	inst->num_binds = num_bound_members;
+	inst->cons = def;
 
 	struct ast_dt_composite_info *info;
 	info = calloc(1, sizeof(struct ast_dt_composite_info));

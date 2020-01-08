@@ -92,6 +92,7 @@ enum ast_constraint_kind {
 	AST_SLOT_REQ_MEMBER_NAMED,
 	AST_SLOT_REQ_MEMBER_INDEXED,
 	AST_SLOT_REQ_CONS,
+	AST_SLOT_REQ_INST,
 };
 
 enum ast_constraint_source {
@@ -140,6 +141,7 @@ struct ast_slot_constraint {
 		struct object_cons *is_cons;
 
 		ast_slot_id cons;
+		ast_slot_id inst;
 	};
 
 	struct {
@@ -182,6 +184,7 @@ struct ast_context {
 		type_id unit;
 		type_id type;
 		type_id cons;
+		type_id inst;
 		type_id string;
 		type_id integer;
 	} types;
@@ -266,6 +269,13 @@ ast_slot_require_cons(
 		ast_slot_id target, ast_slot_id cons
 		AST_SLOT_DEBUG_PARAM);
 
+void
+ast_slot_require_inst(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target, ast_slot_id inst
+		AST_SLOT_DEBUG_PARAM);
+
 #if AST_DEBUG_SLOT_SOLVE
 #	define AST_SLOT_DEBUG_ARG (struct ast_constraint_loc){.filename=__FILE__, .line=__LINE__}
 
@@ -274,6 +284,7 @@ ast_slot_require_cons(
 #	define ast_slot_require_is_type(...)      ast_slot_require_is_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_is_func_type(...) ast_slot_require_is_func_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_cons(...)         ast_slot_require_cons (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_inst(...)         ast_slot_require_inst (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_equals(...)       ast_slot_require_equals (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_type(...)         ast_slot_require_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_member_named(...) ast_slot_require_member_named (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
@@ -292,9 +303,10 @@ enum ast_slot_result_state {
 
 	AST_SLOT_RES_CONS_UNKNOWN           = 0x10,
 	AST_SLOT_RES_CONS_FOUND             = 0x20,
-	AST_SLOT_RES_CONS_FOUND_FUNC_TYPE   = 0x30,
+	AST_SLOT_RES_CONS_FOUND_INST        = 0x30,
+	AST_SLOT_RES_CONS_FOUND_FUNC_TYPE   = 0x40,
 
-	AST_SLOT_RES_CONS_MASK              = 0x30,
+	AST_SLOT_RES_CONS_MASK              = 0x70,
 };
 
 static inline enum ast_slot_result_state
@@ -317,7 +329,10 @@ struct ast_slot_result {
 		struct object obj;
 	} value;
 
-	struct object_cons *cons;
+	union {
+		struct object_cons *cons;
+		struct object_inst *inst;
+	};
 };
 
 // out_result is expected to be an array of length env->num_alloced_slots.

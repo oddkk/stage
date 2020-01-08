@@ -37,6 +37,7 @@ struct vm {
 		type_id unit;
 		type_id type;
 		type_id cons;
+		type_id inst;
 		type_id integer;
 		type_id string;
 		type_id boolean;

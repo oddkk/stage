@@ -106,6 +106,7 @@ ast_alloc_constraint(
 #	undef ast_slot_require_is_type
 #	undef ast_slot_require_is_func_type
 #	undef ast_slot_require_cons
+#	undef ast_slot_require_inst
 #	undef ast_slot_require_equals
 #	undef ast_slot_require_type
 #	undef ast_slot_require_member_named
@@ -256,6 +257,21 @@ ast_slot_require_cons(
 }
 
 void
+ast_slot_require_inst(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target, ast_slot_id inst
+		AST_SLOT_DEBUG_PARAM)
+{
+	struct ast_slot_constraint *constr;
+	constr = ast_alloc_constraint(env,
+			AST_SLOT_REQ_INST, source, loc, target
+			PASS_DEBUG_PARAM);
+
+	constr->inst = inst;
+}
+
+void
 ast_env_copy(struct ast_env *dest, struct ast_env *src)
 {
 	*dest = *src;
@@ -289,9 +305,10 @@ enum ast_slot_state_flags {
 	AST_SLOT_HAS_SUBST      = (1<<1),
 	AST_SLOT_HAS_CONS       = (1<<2),
 	AST_SLOT_IS_FUNC_TYPE   = (1<<3),
-	AST_SLOT_HAS_TYPE       = (1<<4),
-	AST_SLOT_HAS_VALUE      = (1<<5),
-	AST_SLOT_VALUE_IS_TYPE  = (1<<6),
+	AST_SLOT_IS_INST        = (1<<4),
+	AST_SLOT_HAS_TYPE       = (1<<5),
+	AST_SLOT_HAS_VALUE      = (1<<6),
+	AST_SLOT_VALUE_IS_TYPE  = (1<<7),
 };
 
 typedef int32_t ast_constraint_id;
@@ -337,6 +354,8 @@ struct ast_slot_resolve {
 struct solve_context {
 	type_id type;
 	type_id cons;
+	type_id inst;
+
 	struct vm *vm;
 	struct stg_error_context *err;
 	struct ast_module *mod;
@@ -478,6 +497,11 @@ ast_print_constraint(
 			printf("cons %i = %i",
 					constr->target, constr->cons);
 			break;
+
+		case AST_SLOT_REQ_INST:
+			printf("inst %i = %i",
+					constr->target, constr->inst);
+			break;
 	}
 }
 
@@ -517,6 +541,8 @@ ast_print_slot(
 		printf("[%i] ", slot->authority.cons);
 		if ((slot->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
 			printf("func");
+		} else if ((slot->flags & AST_SLOT_IS_INST) != 0) {
+			printf("inst %i", slot->cons);
 		} else {
 			printf("%i", slot->cons);
 		}
@@ -693,11 +719,12 @@ ast_solve_apply_value_obj(
 static bool
 ast_solve_apply_cons(
 		struct solve_context *ctx,
-		ast_constraint_id constr_id, ast_slot_id slot, ast_slot_id cons)
+		ast_constraint_id constr_id, ast_slot_id slot,
+		ast_slot_id cons, bool is_inst)
 {
 #if AST_DEBUG_SLOT_SOLVE
-	printf("%3i apply cons %i = %i",
-			constr_id, slot, cons);
+	printf("%3i apply %s %i = %i",
+			constr_id, is_inst ? "inst" : "cons", slot, cons);
 #endif
 	struct ast_slot_resolve *res;
 	res = ast_get_slot(ctx, slot);
@@ -718,6 +745,11 @@ ast_solve_apply_cons(
 			AST_SLOT_PARAM_CONS)) {
 		res->cons = new_cons;
 		res->flags &= ~AST_SLOT_IS_FUNC_TYPE;
+		if (is_inst) {
+			res->flags |= AST_SLOT_IS_INST;
+		} else {
+			res->flags &= ~AST_SLOT_IS_INST;
+		}
 	}
 
 	return old_cons != res->cons;
@@ -738,6 +770,7 @@ ast_solve_apply_func_type(
 		struct ast_slot_resolve *res = ast_get_slot(ctx, slot);
 		res->cons = 0;
 		res->flags |= AST_SLOT_IS_FUNC_TYPE;
+		res->flags &= ~AST_SLOT_IS_INST;
 		return true;
 	}
 	return false;
@@ -923,7 +956,8 @@ ast_slot_join(
 		} else {
 			ast_solve_apply_cons(
 					ctx, from_slot->authority.cons,
-					to, from_slot->cons);
+					to, from_slot->cons,
+					(from_slot->flags & AST_SLOT_IS_INST) != 0);
 		}
 	}
 
@@ -962,6 +996,8 @@ enum ast_slot_get_error {
 	AST_SLOT_GET_NO_TYPE_SLOT = 2,
 	AST_SLOT_GET_NO_CONS_SLOT = 3,
 	AST_SLOT_GET_IS_FUNC_TYPE_CONS = 4,
+	AST_SLOT_GET_IS_CONS = 5,
+	AST_SLOT_GET_IS_INST = 6,
 	AST_SLOT_GET_TYPE_ERROR = -1,
 };
 
@@ -1071,6 +1107,23 @@ ast_slot_try_get_value_cons(
 }
 
 static enum ast_slot_get_error
+ast_slot_try_get_value_inst(
+		struct solve_context *ctx, ast_slot_id slot_id,
+		struct object_inst **out_inst)
+{
+	int err;
+	struct object obj;
+	err = ast_slot_try_get_value(ctx, slot_id, ctx->inst, &obj);
+	if (err) {
+		return err;
+	}
+
+	assert_type_equals(ctx->vm, obj.type, ctx->inst);
+	*out_inst = *(struct object_inst **)obj.data;
+	return AST_SLOT_GET_OK;
+}
+
+static enum ast_slot_get_error
 ast_slot_try_get_cons(
 		struct solve_context *ctx, ast_slot_id slot_id,
 		struct object_cons **out_cons)
@@ -1078,13 +1131,45 @@ ast_slot_try_get_cons(
 	struct ast_slot_resolve *slot;
 	slot = ast_get_slot(ctx, slot_id);
 
-	if ((slot->flags & (AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) ==
-			(AST_SLOT_HAS_CONS)) {
+	enum ast_slot_state_flags cons_flags;
+	cons_flags = slot->flags & (
+			  AST_SLOT_HAS_CONS
+			| AST_SLOT_IS_INST
+			| AST_SLOT_IS_FUNC_TYPE);
+
+	if (cons_flags == (AST_SLOT_HAS_CONS)) {
 		return ast_slot_try_get_value_cons(
 				ctx, slot->cons, out_cons);
-	} else if ((slot->flags & (AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) ==
-			(AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) {
+	} else if (cons_flags == (AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) {
 		return AST_SLOT_GET_IS_FUNC_TYPE_CONS;
+	} else if (cons_flags == (AST_SLOT_HAS_CONS|AST_SLOT_IS_INST)) {
+		return AST_SLOT_GET_IS_INST;
+	} else {
+		return AST_SLOT_GET_NO_CONS_SLOT;
+	}
+}
+
+static enum ast_slot_get_error
+ast_slot_try_get_inst(
+		struct solve_context *ctx, ast_slot_id slot_id,
+		struct object_inst **out_inst)
+{
+	struct ast_slot_resolve *slot;
+	slot = ast_get_slot(ctx, slot_id);
+
+	enum ast_slot_state_flags cons_flags;
+	cons_flags = slot->flags & (
+			  AST_SLOT_HAS_CONS
+			| AST_SLOT_IS_INST
+			| AST_SLOT_IS_FUNC_TYPE);
+
+	if (cons_flags == (AST_SLOT_HAS_CONS|AST_SLOT_IS_INST)) {
+		return ast_slot_try_get_value_inst(
+				ctx, slot->cons, out_inst);
+	} else if (cons_flags == (AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) {
+		return AST_SLOT_GET_IS_FUNC_TYPE_CONS;
+	} else if (cons_flags == (AST_SLOT_HAS_CONS)) {
+		return AST_SLOT_GET_IS_CONS;
 	} else {
 		return AST_SLOT_GET_NO_CONS_SLOT;
 	}
@@ -1126,7 +1211,13 @@ ast_slot_solve_impose_constraint(
 		case AST_SLOT_REQ_CONS:
 			ast_solve_apply_cons(
 					ctx, constr_id,
-					constr->target, constr->cons);
+					constr->target, constr->cons, false);
+			break;
+
+		case AST_SLOT_REQ_INST:
+			ast_solve_apply_cons(
+					ctx, constr_id,
+					constr->target, constr->inst, true);
 			break;
 
 		case AST_SLOT_REQ_TYPE:
@@ -1753,9 +1844,28 @@ ast_slot_verify_constraint(
 				stg_error(ctx->err, constr->reason.loc,
 						"Expected constructor, got function type constructor.");
 				return -1;
+			} else if ((target->flags & AST_SLOT_IS_INST) != 0) {
+				// TODO: Better error message.
+				stg_error(ctx->err, constr->reason.loc,
+						"Expected constructor, got object instantiation.");
+				return -1;
 			}
 			return 0;
 
+		case AST_SLOT_REQ_INST:
+			assert((target->flags & AST_SLOT_HAS_CONS) != 0);
+			if ((target->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
+				// TODO: Better error message.
+				stg_error(ctx->err, constr->reason.loc,
+						"Expected object instantiation, got function type constructor.");
+				return -1;
+			} else if ((target->flags & AST_SLOT_IS_INST) == 0) {
+				// TODO: Better error message.
+				stg_error(ctx->err, constr->reason.loc,
+						"Expected object instantiation, got constructor.");
+				return -1;
+			}
+			return 0;
 
 		case AST_SLOT_REQ_IS_FUNC_TYPE:
 			assert((target->flags & AST_SLOT_HAS_CONS) != 0);
@@ -1792,6 +1902,7 @@ ast_slot_try_solve(
 	ctx->mod = mod;
 	ctx->type = ast_ctx->types.type;
 	ctx->cons = ast_ctx->types.cons;
+	ctx->inst = ast_ctx->types.inst;
 	ctx->env = &_env;
 	ctx->num_slots = ctx->env->num_alloced_slots;
 
@@ -1907,6 +2018,17 @@ ast_slot_try_solve(
 		if ((slot->flags & AST_SLOT_HAS_CONS) != 0) {
 			if ((slot->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
 				res->result |= AST_SLOT_RES_CONS_FOUND_FUNC_TYPE;
+			} else if ((slot->flags & AST_SLOT_IS_INST) != 0) {
+				int err;
+				err = ast_slot_try_get_inst(
+						ctx, slot_id, &res->inst);
+				if (err > 0) {
+					res->result |= AST_SLOT_RES_CONS_UNKNOWN;
+				} else if (err < 0) {
+					error = true;
+				} else {
+					res->result |= AST_SLOT_RES_CONS_FOUND_INST;
+				}
 			} else {
 				int err;
 				err = ast_slot_try_get_cons(

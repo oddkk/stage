@@ -483,7 +483,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 						extra_binds, node->call.num_args,
 						&actions, &num_actions);
 				if (err) {
-					printf("Failed to instantiate object.");
+					printf("Failed to instantiate object.\n");
 					return AST_GEN_ERROR;
 				}
 
