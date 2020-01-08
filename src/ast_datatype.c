@@ -1427,7 +1427,13 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 			size_t target_i = 0;
 			for (size_t bind_i = 0; bind_i < def->num_binds; bind_i++) {
 				if (def->binds[bind_i].expr_id == expr_i) {
-					targets[target_i] = parent->first_child + def->binds[bind_i].target_id;
+					if (def->binds[bind_i].target_id == 0) {
+						targets[target_i] = parent_id;
+					} else {
+						// Subtract 1 to compansate for def's object being at 0
+						// and the first member at 1.
+						targets[target_i] = parent->first_child + def->binds[bind_i].target_id-1;
+					}
 					unpack_ids[target_i] = def->binds[bind_i].unpack_id;
 					target_i += 1;
 				}
@@ -2611,6 +2617,9 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 		}
 	}
 
+	inst->exprs = exprs;
+	inst->num_exprs = ctx->num_expr_alloced;
+
 	size_t bind_i = 0;
 	for (size_t mbr_i = 0; mbr_i < ctx->num_member_alloced; mbr_i++) {
 		struct ast_dt_member *mbr = get_member(ctx, mbr_i);
@@ -2622,8 +2631,9 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 		struct ast_dt_bind *bind;
 		bind = get_bind(ctx, mbr->bound);
 
+		// Add one to compansate for the datatype object being target 0.
 		binds[bind_i].target_id =
-			ast_dt_calculate_persistant_id(
+			1 + ast_dt_calculate_persistant_id(
 					ctx, mbr_i);
 		binds[bind_i].loc = bind->loc;
 		binds[bind_i].expr_id = bind->expr;

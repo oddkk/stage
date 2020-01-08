@@ -495,8 +495,9 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					expr_vars[i] = BC_VAR_NEW;
 				}
 
+				// The resulting object itself gets member id 0.
 				const size_t num_desc_members =
-					object_cons_num_descendants(
+					1 + object_cons_num_descendants(
 							ctx->vm, inst->cons);
 				bc_var member_vars[num_desc_members];
 
@@ -504,16 +505,15 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					member_vars[i] = BC_VAR_NEW;
 				}
 
-				for (size_t i = 0; i < num_actions; i++) {
+				for (size_t act_i = 0; act_i < num_actions; act_i++) {
 					struct object_inst_action *act;
-					act = &actions[i];
+					act = &actions[act_i];
 
 					switch (act->op) {
 						case OBJ_INST_EXPR:
 							{
 								assert(act->expr.id < num_exprs);
-								assert(expr_vars[act->expr.id] != BC_VAR_NEW);
-								assert(act->expr.num_deps == 0);
+								assert(expr_vars[act->expr.id] == BC_VAR_NEW);
 
 								int expr_id = act->expr.id;
 
@@ -526,8 +526,8 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 										instr = bc_gen_load(
 												bc_env, BC_VAR_NEW,
 												expr->const_value);
-										assert(expr_vars[i] == BC_VAR_NEW);
-										expr_vars[i] = instr->load.target;
+										assert(expr_vars[expr_id] == BC_VAR_NEW);
+										expr_vars[expr_id] = instr->load.target;
 										append_bc_instr(&result, instr);
 									} else {
 										for (size_t i = 0; i < act->expr.num_deps; i++) {
@@ -560,6 +560,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 									expr = ast_node_gen_bytecode(
 											ctx, mod, env, info, bc_env,
 											node->call.args[expr_id].value);
+									AST_GEN_EXPECT_OK(expr);
 
 									append_bc_instrs(&result, expr);
 									assert(expr_vars[expr_id] == BC_VAR_NEW);
@@ -633,29 +634,9 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 				free(actions);
 
-				int local_param_ids[inst->cons->num_params];
-				object_cons_local_descendent_ids(
-						ctx->vm, inst->cons, local_param_ids);
-
-				for (size_t i = 0; i < inst->cons->num_params; i++) {
-					int param_id = local_param_ids[i];
-					assert(param_id < num_desc_members);
-					assert(member_vars[param_id] != BC_VAR_NEW);
-
-					append_bc_instr(&result,
-							bc_gen_push_arg(
-								bc_env, member_vars[param_id]));
-				}
-
-				struct bc_instr *pack_instr;
-				pack_instr =
-					bc_gen_pack(
-							bc_env, BC_VAR_NEW,
-							inst->cons->pack, inst->cons->data,
-							node->type);
-				append_bc_instr(&result, pack_instr);
-
-				result.out_var = pack_instr->pack.target;
+				// The top level object has ID 0.
+				assert(member_vars[0] != BC_VAR_NEW);
+				result.out_var = member_vars[0];
 			}
 			return result;
 

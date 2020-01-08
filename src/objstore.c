@@ -356,7 +356,7 @@ object_cons_num_descendants(
 				vm, cons->params[i].type);
 
 		if (member_type->obj_def) {
-			count += 1 + object_cons_num_descendants(
+			count += object_cons_num_descendants(
 					vm, member_type->obj_def);
 		}
 	}
@@ -381,6 +381,8 @@ object_cons_local_descendent_ids(
 			count += object_cons_num_descendants(
 					vm, member_type->obj_def);
 		}
+
+		count += 1;
 	}
 }
 
@@ -418,8 +420,8 @@ object_unpack(
 		}
 
 		assert(unpack_id >= offset);
-		if (unpack_id >= offset + num_desc) {
-			offset += num_desc;
+		if (unpack_id > offset + num_desc) {
+			offset += num_desc + 1;
 			continue;
 		}
 
@@ -468,12 +470,12 @@ object_cons_descendant_type(
 			num_desc = object_cons_num_descendants(
 					vm, mbr_type->obj_def);
 		} else {
-			num_desc = 1;
+			num_desc = 0;
 		}
 
 		assert(unpack_id >= offset);
-		if (unpack_id >= offset + num_desc) {
-			offset += num_desc;
+		if (unpack_id > offset + num_desc) {
+			offset += num_desc + 1;
 			continue;
 		}
 
@@ -747,7 +749,9 @@ obj_inst_expr_emit_actions(
 		struct object_inst_bind *bind;
 		bind = get_bind(ctx, target->bind);
 
-		for (ssize_t i = target->num_descendants+1; i >= 0; i--) {
+		// Note that we iterate through the target->num_descendants+1 members
+		// from target to include the target itself.
+		for (ssize_t i = target->num_descendants; i >= 0; i--) {
 			obj_member_id desc_id = target_id + i;
 			struct obj_inst_member *desc;
 			desc = get_member(ctx, desc_id);
@@ -766,8 +770,13 @@ obj_inst_expr_emit_actions(
 				act.bind.expr_id = bind->expr_id;
 				act.bind.member_id = desc_id;
 				act.bind.unpack_id = desc->unpack_id;
+				obj_inst_emit_action(ctx, act);
+
+				desc->action_emitted = true;
 			}
 		}
+
+		target_id = target->next_expr_target;
 	}
 }
 
@@ -872,6 +881,13 @@ object_inst_order(
 		}
 	}
 
+	for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+		struct obj_inst_expr *expr;
+		expr = get_expr(ctx, expr_i);
+
+		expr->first_target = -1;
+	}
+
 	for (size_t bind_i = 0; bind_i < ctx->num_binds; bind_i++) {
 		struct object_inst_bind *bind;
 		bind = get_bind(ctx, bind_i);
@@ -879,14 +895,19 @@ object_inst_order(
 		struct obj_inst_expr *expr;
 		expr = get_expr(ctx, bind->expr_id);
 
-
 		struct obj_inst_member *target;
 		target = get_member(ctx, bind->target_id);
 
 		for (size_t i = 0; i < target->num_descendants+1; i++) {
+			obj_member_id desc_id = bind->target_id+i;
+			struct obj_inst_member *desc;
+			desc = get_member(ctx, desc_id);
+
 			object_inst_bind_single(ctx,
-					bind->target_id+i,
-					bind->unpack_id+i, bind_i);
+					desc_id, bind->unpack_id+i, bind_i);
+
+			desc->next_expr_target = expr->first_target;
+			expr->first_target = desc_id;
 		}
 	}
 
@@ -894,7 +915,7 @@ object_inst_order(
 		struct obj_inst_member *mbr;
 		mbr = get_member(ctx, mbr_i);
 
-		if (mbr->bind < 0) {
+		if (mbr->bind < 0 && mbr->num_descendants == 0) {
 			printf("Missing bind.\n");
 			ctx->num_errors += 1;
 		}
@@ -924,8 +945,6 @@ object_inst_order(
 		} else {
 			expr->next_terminal = expr_i + 1;
 		}
-
-		expr->first_target = -1;
 	}
 	if (ctx->num_exprs > 0) {
 		ctx->first_terminal_expr = 0;
@@ -1031,6 +1050,17 @@ object_inst_order(
 		printf("One or more loops detected when resolving expression order.\n");
 		free(ctx->actions);
 		return -1;
+	}
+
+	// Note that we iterate through the ctx->num_desc_members+1 members to
+	// include the final object.
+	for (ssize_t mbr_id = ctx->num_desc_members; mbr_id >= 0; mbr_id--) {
+		struct obj_inst_member *mbr;
+		mbr = get_member(ctx, mbr_id);
+		if (mbr->num_descendants > 0 && !mbr->action_emitted) {
+			obj_inst_try_emit_pack(ctx, mbr_id);
+		}
+		assert(mbr->action_emitted);
 	}
 
 	*out_actions = ctx->actions;
