@@ -231,6 +231,8 @@ struct object_inst_bind {
 	// The object inst's expression that is the value of this bind.
 	size_t expr_id;
 
+	bool overridable;
+
 	struct stg_location loc;
 };
 
@@ -241,17 +243,16 @@ struct object_inst_expr {
 		struct object const_value;
 	};
 
-	// A list of expressions that must be evaluated before this expression.
+	// A list of members that must be evaluated before this expression.
 	size_t *deps;
 	size_t num_deps;
-
-	bool overridable;
 
 	struct stg_location loc;
 };
 
 struct object_inst {
 	struct object_cons *cons;
+	type_id type;
 
 	struct object_inst_bind *binds;
 	size_t num_binds;
@@ -319,8 +320,6 @@ struct object_inst_extra_expr {
 
 	size_t *deps;
 	size_t num_deps;
-
-	bool overridable;
 
 	struct stg_location loc;
 };

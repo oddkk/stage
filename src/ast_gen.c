@@ -441,6 +441,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			{
 				struct object_inst *inst;
 				inst = node->call.inst;
+				assert(inst);
 
 				struct object_inst_bind       extra_binds[node->call.num_args];
 				struct object_inst_extra_expr extra_exprs[node->call.num_args];
@@ -454,6 +455,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					extra_binds[i].unpack_id = 0;
 					extra_binds[i].expr_id = inst->num_exprs + i;
 					extra_binds[i].loc = node->call.args[i].value->loc;
+					extra_binds[i].overridable = false;
 
 					extra_binds[i].target_id = -1;
 					for (size_t mbr_i = 0; mbr_i < inst->cons->num_params; mbr_i++) {
@@ -466,7 +468,6 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 					extra_exprs[i].deps = NULL;
 					extra_exprs[i].num_deps = 0;
-					extra_exprs[i].overridable = false;
 					extra_exprs[i].loc = node->call.args[i].value->loc;
 
 					extra_exprs[i].type = node->call.args[i].value->type;

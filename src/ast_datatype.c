@@ -2627,6 +2627,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 		binds[bind_i].loc = bind->loc;
 		binds[bind_i].expr_id = bind->expr;
 		binds[bind_i].unpack_id = mbr->bound_unpack_id;
+		binds[bind_i].overridable = bind->overridable;
 
 		bind_i += 1;
 	}
@@ -2646,7 +2647,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 
 	struct type dt_type = {0};
 	dt_type.base = &ast_dt_composite_base;
-	dt_type.obj_def = def;
+	dt_type.obj_def  = def;
+	dt_type.obj_inst = inst;
 	dt_type.size = offset;
 	dt_type.data = info;
 
@@ -2654,6 +2656,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 	result = stg_register_type(mod->stg_mod, dt_type);
 
 	info->type = result;
+	inst->type = result;
 
 	return result;
 }

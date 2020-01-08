@@ -356,7 +356,7 @@ object_cons_num_descendants(
 				vm, cons->params[i].type);
 
 		if (member_type->obj_def) {
-			count += object_cons_num_descendants(
+			count += 1 + object_cons_num_descendants(
 					vm, member_type->obj_def);
 		}
 	}
@@ -485,6 +485,292 @@ object_cons_descendant_type(
 	return -1;
 }
 
+typedef int obj_member_id;
+typedef int obj_expr_id;
+typedef int obj_bind_id;
+typedef int obj_unpack_id;
+
+struct obj_inst_member {
+	type_id type;
+	size_t num_descendants;
+
+	obj_bind_id bind;
+	obj_unpack_id unpack_id;
+	obj_bind_id overridden_bind;
+	obj_member_id next_expr_target;
+	bool action_emitted;
+};
+
+struct obj_inst_expr {
+	type_id type;
+
+	size_t *mbr_deps;
+	size_t num_mbr_deps;
+
+	obj_member_id first_target;
+
+	obj_expr_id next_terminal;
+	obj_expr_id *expr_deps;
+	size_t num_expr_deps;
+	size_t num_incoming_deps;
+
+	struct stg_location loc;
+};
+
+struct object_inst_context {
+	struct vm *vm;
+
+	// Note that members, like unpack id, starts with 0 being the top-level
+	// object, with descendants from 1.
+	struct obj_inst_member *members;
+	size_t num_desc_members;
+
+	struct obj_inst_expr *exprs;
+	size_t num_exprs;
+
+	size_t num_unvisited_deps;
+	obj_expr_id first_terminal_expr;
+
+	struct object_inst_bind *binds;
+	size_t num_binds;
+
+	struct object_inst_action *actions;
+	size_t num_actions;
+	size_t action_i;
+
+	size_t num_errors;
+};
+
+static inline struct obj_inst_member *
+get_member(struct object_inst_context *ctx, obj_member_id id)
+{
+	assert(id < ctx->num_desc_members+1);
+	return &ctx->members[id];
+}
+
+static inline struct object_inst_bind *
+get_bind(struct object_inst_context *ctx, obj_bind_id id)
+{
+	assert(id < ctx->num_binds);
+	return &ctx->binds[id];
+}
+
+static inline struct obj_inst_expr *
+get_expr(struct object_inst_context *ctx, obj_expr_id id)
+{
+	assert(id < ctx->num_exprs);
+	return &ctx->exprs[id];
+}
+
+static int
+object_inst_bind_single(struct object_inst_context *ctx,
+		size_t target_id, size_t unpack_id, size_t bind_id)
+{
+	struct obj_inst_member *target;
+	target = get_member(ctx, target_id);
+
+	struct object_inst_bind *new_bind;
+	new_bind = get_bind(ctx, bind_id);
+
+	struct obj_inst_expr *expr;
+	expr = get_expr(ctx, new_bind->expr_id);
+
+	int err;
+	type_id expr_member_type;
+	err = object_cons_descendant_type(
+			ctx->vm, expr->type, unpack_id,
+			&expr_member_type);
+	assert(!err);
+
+	assert_type_equals(ctx->vm, target->type, expr_member_type);
+
+	if (target->bind < 0) {
+		target->bind = bind_id;
+		target->unpack_id = unpack_id;
+	} else {
+		struct object_inst_bind *prev_bind;
+		prev_bind = get_bind(ctx, target->bind);
+
+		if (!prev_bind->overridable && !new_bind->overridable) {
+			// TODO: Report error.
+			printf("Bound multiple times.\n");
+			ctx->num_errors += 1;
+			return -1;
+		}
+
+		if (prev_bind->overridable && new_bind->overridable) {
+			// TODO: Report error.
+			printf("Multiple overridable binds.\n");
+			ctx->num_errors += 1;
+			return -1;
+		}
+
+		if (new_bind->overridable) {
+			target->overridden_bind = bind_id;
+		} else {
+			target->overridden_bind = target->bind;
+			target->bind = bind_id;
+			target->unpack_id = unpack_id;
+		}
+	}
+
+	return 0;
+}
+
+static void
+obj_inst_remove_terminal_expr(
+		struct object_inst_context *ctx, obj_expr_id expr_id)
+{
+	struct obj_inst_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	obj_expr_id *iter = &ctx->first_terminal_expr;
+	while (*iter >= 0) {
+		if (*iter == expr_id) {
+			*iter = expr->next_terminal;
+			expr->next_terminal = -1;
+			return;
+		}
+
+		struct obj_inst_expr *iter_expr;
+		iter_expr = get_expr(ctx, *iter);
+		iter = &iter_expr->next_terminal;
+	}
+
+	panic("Attempted to remove expression that was not found in terminal expressions.");
+}
+
+static void
+obj_inst_emit_action(
+		struct object_inst_context *ctx,
+		struct object_inst_action act)
+{
+	assert(ctx->actions);
+	assert(ctx->action_i < ctx->num_actions);
+	ctx->actions[ctx->action_i] = act;
+	ctx->action_i += 1;
+}
+
+static int
+obj_inst_try_emit_pack(
+		struct object_inst_context *ctx,
+		obj_member_id mbr_id)
+{
+	struct obj_inst_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	assert(mbr->num_descendants > 0);
+
+	if (mbr->action_emitted) {
+		return 0;
+	}
+
+	int res = 0;
+
+	for (size_t i = 1; i < mbr->num_descendants+1; i++) {
+		obj_member_id desc_id;
+		desc_id = mbr_id + i;
+
+		struct obj_inst_member *desc;
+		desc = get_member(ctx, desc_id);
+
+		if (desc->num_descendants > 0 && !desc->action_emitted) {
+			int err;
+			err = obj_inst_try_emit_pack(ctx, desc_id);
+			if (err) {
+				res = -1;
+			}
+		}
+
+		if (!desc->action_emitted) {
+			res = -1;
+		}
+	}
+
+	if (res) {
+		return res;
+	}
+
+	{
+		struct object_inst_action act = {0};
+		act.op = OBJ_INST_PACK;
+		act.pack.member_id = mbr_id;
+		obj_inst_emit_action(ctx, act);
+	}
+
+	mbr->action_emitted = true;
+
+	return 0;
+}
+
+static void
+obj_inst_expr_emit_actions(
+		struct object_inst_context *ctx, obj_expr_id expr_id)
+{
+	struct obj_inst_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	// Emit pack actions for all non-terminal members required by this
+	// expression, and ensure all binds for all dependencies have been emitted.
+	// The packs are issued here and not together with the binds because the
+	// pack might depend on expressions that have not yet been emitted.
+	for (size_t i = 0; i < expr->num_mbr_deps; i++) {
+		obj_member_id dep_id = expr->mbr_deps[i];
+		struct obj_inst_member *dep;
+		dep = get_member(ctx, dep_id);
+
+		if (dep->num_descendants > 0 && !dep->action_emitted) {
+			int err;
+			err = obj_inst_try_emit_pack(ctx, dep_id);
+			assert(!err);
+		}
+
+		assert(dep->action_emitted);
+	}
+
+	{
+		struct object_inst_action expr_act = {0};
+		expr_act.op = OBJ_INST_EXPR;
+		expr_act.expr.id = expr_id;
+		expr_act.expr.deps = expr->mbr_deps;
+		expr_act.expr.num_deps = expr->num_mbr_deps;
+		obj_inst_emit_action(ctx, expr_act);
+	}
+
+	obj_member_id target_id = expr->first_target;
+
+	// Emit bind actions for all terminal members touched by this expression.
+	while (target_id >= 0) {
+		struct obj_inst_member *target;
+		target = get_member(ctx, target_id);
+
+		struct object_inst_bind *bind;
+		bind = get_bind(ctx, target->bind);
+
+		for (ssize_t i = target->num_descendants+1; i >= 0; i--) {
+			obj_member_id desc_id = target_id + i;
+			struct obj_inst_member *desc;
+			desc = get_member(ctx, desc_id);
+
+			if (desc->bind != target->bind) {
+				continue;
+			}
+
+			if (desc->action_emitted) {
+				continue;
+			}
+
+			if (desc->num_descendants == 0) {
+				struct object_inst_action act = {0};
+				act.op = OBJ_INST_BIND;
+				act.bind.expr_id = bind->expr_id;
+				act.bind.member_id = desc_id;
+				act.bind.unpack_id = desc->unpack_id;
+			}
+		}
+	}
+}
+
 int
 object_inst_order(
 		struct vm *vm, struct object_inst *inst,
@@ -492,7 +778,262 @@ object_inst_order(
 		struct object_inst_bind       *extra_binds, size_t num_extra_binds,
 		struct object_inst_action **out_actions, size_t *out_num_actions)
 {
-	panic("TODO: object_inst_order");
+	struct object_inst_context _ctx = {0};
+	struct object_inst_context *ctx = &_ctx;
 
-	return -1;
+	ctx->vm = vm;
+
+	ctx->num_exprs = inst->num_exprs + num_extra_exprs;
+	ctx->num_binds = inst->num_binds + num_extra_binds;
+	ctx->num_desc_members =
+		object_cons_num_descendants(vm, inst->cons);
+
+	struct obj_inst_expr _exprs[ctx->num_exprs];
+	ctx->exprs = _exprs;
+	memset(ctx->exprs, 0, sizeof(struct obj_inst_expr) * ctx->num_exprs);
+
+	struct object_inst_bind _binds[ctx->num_binds];
+	ctx->binds = _binds;
+	memset(ctx->binds, 0, sizeof(struct object_inst_bind) * ctx->num_binds);
+
+	struct obj_inst_member _members[ctx->num_desc_members+1];
+	ctx->members = _members;
+	memset(ctx->members, 0, sizeof(struct obj_inst_member) * (ctx->num_desc_members+1));
+
+	{
+		size_t offset = 0;
+		for (size_t i = 0; i < inst->num_exprs; i++) {
+			struct object_inst_expr *expr;
+			expr = &inst->exprs[i];
+			if (expr->constant) {
+				ctx->exprs[offset+i].type = expr->const_value.type;
+			} else {
+				struct func *func;
+				func = vm_get_func(vm, expr->func);
+				assert(stg_type_is_func(vm, func->type));
+
+				struct type *func_type;
+				func_type = vm_get_type(vm, func->type);
+
+				struct stg_func_type *func_info;
+				func_info = func_type->data;
+
+				ctx->exprs[offset+i].type = func_info->return_type;
+			}
+
+			ctx->exprs[offset+i].mbr_deps = expr->deps;
+			ctx->exprs[offset+i].num_mbr_deps = expr->num_deps;
+		}
+
+		offset += inst->num_exprs;
+
+		for (size_t i = 0; i < num_extra_exprs; i++) {
+			ctx->exprs[offset+i].type = extra_exprs[i].type;
+			ctx->exprs[offset+i].mbr_deps = extra_exprs[i].deps;
+			ctx->exprs[offset+i].num_mbr_deps = extra_exprs[i].num_deps;
+			ctx->exprs[offset+i].loc = extra_exprs[i].loc;
+		}
+	}
+
+	{
+		size_t offset = 0;
+		for (size_t i = 0; i < inst->num_binds; i++) {
+			ctx->binds[offset+i] = inst->binds[i];
+		}
+
+		offset += inst->num_binds;
+
+		for (size_t i = 0; i < num_extra_binds; i++) {
+			ctx->binds[offset+i] = extra_binds[i];
+		}
+	}
+
+	// Determine what bind is assigned to each member.
+	for (size_t i = 0; i < ctx->num_desc_members+1; i++) {
+		ctx->members[i].bind = -1;
+		ctx->members[i].overridden_bind = -1;
+
+		int err;
+		// TODO: This is really inefficient. We can determine all types and
+		// number of descendants in a single pass.
+		err = object_cons_descendant_type(
+				vm, inst->type, i, &ctx->members[i].type);
+		assert(!err);
+
+		struct type *type;
+		type = vm_get_type(vm, ctx->members[i].type);
+
+		if (type->obj_def) {
+			ctx->members[i].num_descendants =
+				object_cons_num_descendants(
+						vm, type->obj_def);
+		} else {
+			ctx->members[i].num_descendants = 0;
+		}
+	}
+
+	for (size_t bind_i = 0; bind_i < ctx->num_binds; bind_i++) {
+		struct object_inst_bind *bind;
+		bind = get_bind(ctx, bind_i);
+
+		struct obj_inst_expr *expr;
+		expr = get_expr(ctx, bind->expr_id);
+
+
+		struct obj_inst_member *target;
+		target = get_member(ctx, bind->target_id);
+
+		for (size_t i = 0; i < target->num_descendants+1; i++) {
+			object_inst_bind_single(ctx,
+					bind->target_id+i,
+					bind->unpack_id+i, bind_i);
+		}
+	}
+
+	for (size_t mbr_i = 0; mbr_i < ctx->num_desc_members+1; mbr_i++) {
+		struct obj_inst_member *mbr;
+		mbr = get_member(ctx, mbr_i);
+
+		if (mbr->bind < 0) {
+			printf("Missing bind.\n");
+			ctx->num_errors += 1;
+		}
+	}
+
+	if (ctx->num_errors > 0) {
+		return -1;
+	}
+
+	size_t num_total_dependencies = 0;
+	for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+		struct obj_inst_expr *expr;
+		expr = get_expr(ctx, expr_i);
+
+		num_total_dependencies += expr->num_mbr_deps;
+	}
+
+	// Set up for topological sort by finding dependencies between expressions.
+	obj_expr_id _expr_deps[num_total_dependencies];
+
+	for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+		struct obj_inst_expr *expr;
+		expr = get_expr(ctx, expr_i);
+
+		if (expr_i+1 == ctx->num_exprs) {
+			expr->next_terminal = -1;
+		} else {
+			expr->next_terminal = expr_i + 1;
+		}
+
+		expr->first_target = -1;
+	}
+	if (ctx->num_exprs > 0) {
+		ctx->first_terminal_expr = 0;
+	} else {
+		ctx->first_terminal_expr = -1;
+	}
+
+	{
+		size_t offset = 0;
+		for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+			struct obj_inst_expr *expr;
+			expr = get_expr(ctx, expr_i);
+
+			obj_expr_id *deps;
+			deps = &_expr_deps[offset];
+			size_t num_deps = 0;
+
+			for (size_t dep_i = 0; dep_i < expr->num_mbr_deps; dep_i++) {
+				struct obj_inst_member *mbr;
+				mbr = get_member(ctx, expr->mbr_deps[dep_i]);
+
+				struct object_inst_bind *bind;
+				bind = get_bind(ctx, mbr->bind);
+
+				obj_expr_id dep_expr_id;
+				dep_expr_id = bind->expr_id;
+
+				bool found = false;
+				for (size_t i = 0; i < num_deps; i++) {
+					if (deps[i] == dep_expr_id) {
+						found = true;
+						break;
+					}
+				}
+
+				if (!found) {
+					deps[num_deps] = dep_expr_id;
+					num_deps += 1;
+
+					struct obj_inst_expr *dep_expr;
+					dep_expr = get_expr(ctx, dep_expr_id);
+
+					if (dep_expr->num_incoming_deps == 0) {
+						obj_inst_remove_terminal_expr(
+								ctx, dep_expr_id);
+					}
+
+					dep_expr->num_incoming_deps += 1;
+					ctx->num_unvisited_deps += 1;
+				}
+			}
+
+			expr->num_expr_deps = num_deps;
+			expr->expr_deps = deps;
+
+			offset += num_deps;
+		}
+	}
+
+	// There is one action for each descendant member to pack or bind it, plus
+	// one action per expression to evaluate it.
+	ctx->num_actions =
+		ctx->num_desc_members+1 +
+		ctx->num_exprs;
+
+	ctx->actions = calloc(ctx->num_actions, sizeof(struct object_inst_action));
+
+	ctx->action_i = 0;
+
+	// Sort the expressions by dependencies.
+	while (ctx->first_terminal_expr >= 0) {
+		obj_expr_id expr_id = ctx->first_terminal_expr;
+		struct obj_inst_expr *expr;
+		expr = get_expr(ctx, expr_id);
+
+		ctx->first_terminal_expr = expr->next_terminal;
+
+		obj_inst_expr_emit_actions(
+				ctx, expr_id);
+
+		// Make sure each expression is visited at most once.
+		assert(expr->num_incoming_deps == 0);
+		expr->num_incoming_deps = -1;
+
+		for (size_t dep_i = 0; dep_i < expr->num_expr_deps; dep_i++) {
+			obj_expr_id dep_id = expr->expr_deps[dep_i];
+			struct obj_inst_expr *dep;
+			dep = get_expr(ctx, dep_id);
+
+			assert(dep->num_incoming_deps > 0);
+			dep->num_incoming_deps -= 1;
+			ctx->num_unvisited_deps -= 1;
+
+			if (dep->num_incoming_deps == 0) {
+				assert(dep->next_terminal < 0);
+				dep->next_terminal = ctx->first_terminal_expr;
+				ctx->first_terminal_expr = dep_id;
+			}
+		}
+	}
+
+	if (ctx->num_unvisited_deps > 0) {
+		printf("One or more loops detected when resolving expression order.\n");
+		free(ctx->actions);
+		return -1;
+	}
+
+	*out_actions = ctx->actions;
+	*out_num_actions = ctx->action_i;
+	return 0;
 }
