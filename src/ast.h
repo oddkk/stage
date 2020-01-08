@@ -730,6 +730,13 @@ ast_init_node_cons(
 		struct ast_func_arg *args, size_t num_args);
 
 struct ast_node *
+ast_init_node_inst(
+		struct ast_context *ctx,
+		struct ast_node *target, struct stg_location,
+		struct ast_node *func,
+		struct ast_func_arg *args, size_t num_args);
+
+struct ast_node *
 ast_init_node_func_type(
 		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,

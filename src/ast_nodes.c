@@ -176,6 +176,37 @@ ast_init_node_cons(
 }
 
 struct ast_node *
+ast_init_node_inst(
+		struct ast_context *ctx,
+		struct ast_node *node, struct stg_location loc,
+		struct ast_node *func,
+		struct ast_func_arg *args, size_t num_args)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(
+		node &&
+		(args || num_args == 0)
+	);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_INST;
+	node->loc = loc;
+
+	node->call.func = func;
+	node->call.args = calloc(sizeof(struct ast_func_arg), num_args);
+	memcpy(node->call.args, args, sizeof(struct ast_func_arg) * num_args);
+	node->call.num_args = num_args;
+	node->call.cons = NULL;
+
+	node->call.ret_type = AST_BIND_NEW;
+
+	return node;
+}
+
+struct ast_node *
 ast_init_node_func_type(
 		struct ast_context *ctx,
 		struct ast_node *node, struct stg_location loc,

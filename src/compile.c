@@ -809,7 +809,7 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 
 	{
 		struct ast_node *main_mod_init_func;
-		struct ast_node *main_mod_cons;
+		struct ast_node *main_mod_inst;
 		struct ast_node *main_mod_cons_obj;
 		struct ast_node *main_mod_ret;
 
@@ -832,18 +832,19 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		main_mod_cons_obj = ast_init_node_lit(ast_ctx,
 				AST_NODE_NEW, STG_NO_LOC, mod_cons_obj);
 
-		main_mod_cons = ast_init_node_cons(ast_ctx,
+		main_mod_inst = ast_init_node_inst(ast_ctx,
 				AST_NODE_NEW, STG_NO_LOC, main_mod_cons_obj, NULL, 0);
 
 		main_mod_init_func = ast_init_node_func(ast_ctx,
 				AST_NODE_NEW, STG_NO_LOC,
 				NULL, NULL, 0,
-				main_mod_ret, main_mod_cons);
+				main_mod_ret, main_mod_inst);
 
 		int err;
 		err = ast_node_typecheck(ast_ctx, main_mod, &main_mod->env,
 				main_mod_init_func, NULL, 0, TYPE_UNSET);
 		if (err) {
+			print_errors(&ctx.err);
 			printf("Failed typechecking initialize function for main module.\n");
 			return -1;
 		}
@@ -852,6 +853,8 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		bc_env = ast_func_gen_bytecode(ast_ctx, main_mod,
 				&main_mod->env, NULL, NULL, 0, main_mod_init_func);
 		if (!bc_env) {
+			print_errors(&ctx.err);
+			printf("Failed codegen for main module.\n");
 			return -1;
 		}
 

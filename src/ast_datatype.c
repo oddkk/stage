@@ -14,7 +14,7 @@
 // For mmap
 #include <sys/mman.h>
 
-#define AST_DT_DEBUG_JOBS 1
+#define AST_DT_DEBUG_JOBS 0
 
 typedef int ast_dt_job_id;
 typedef int ast_dt_bind_id;
