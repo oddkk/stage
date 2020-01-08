@@ -8,30 +8,6 @@
 #include <unistd.h>
 #include <sys/mman.h>
 
-/*
-static struct ast_object_def *
-ast_try_determine_object_def(
-		struct ast_context *ctx, struct ast_env *env,
-		struct object obj, struct ast_object_def *obj_def,
-		struct ast_object_def *target_def)
-{
-	if (!obj_def && !target_def) {
-		return NULL;
-	}
-
-	if (target_def && obj_def != target_def) {
-		if (target_def->can_unpack &&
-				target_def->can_unpack(ctx, env, target_def, obj)) {
-			return target_def;
-		} else {
-			return NULL;
-		}
-	}
-
-	return obj_def;
-}
-*/
-
 void
 ast_env_free(struct ast_env *env)
 {

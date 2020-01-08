@@ -81,24 +81,6 @@ int
 ast_scope_insert(struct ast_scope *,
 		struct atom *name, ast_slot_id);
 
-enum ast_env_slot_kind {
-	AST_SLOT_ERROR,
-
-	AST_SLOT_WILDCARD,
-	AST_SLOT_CONST_TYPE,
-	AST_SLOT_CONST,
-	AST_SLOT_PARAM,
-	AST_SLOT_CLOSURE,
-	AST_SLOT_TEMPL,
-	AST_SLOT_CONS,
-	AST_SLOT_CONS_ARRAY,
-
-	AST_SLOT_SUBST,
-};
-
-const char *
-ast_slot_name(enum ast_env_slot_kind kind);
-
 enum ast_constraint_kind {
 	AST_SLOT_REQ_ERROR,
 
@@ -206,54 +188,6 @@ struct ast_context {
 
 	// TODO: Get rid of dependency on vm?
 	struct vm *vm;
-};
-
-enum ast_bind_result_code {
-	AST_BIND_OK = 0,
-	AST_BIND_TYPE_MISMATCH,
-	AST_BIND_VALUE_MISMATCH,
-
-	// A value mismatch with two types.
-	AST_BIND_TYPE_VALUE_MISMATCH,
-	AST_BIND_ARRAY_LENGTH_MISMATCH,
-	AST_BIND_OBJ_HAS_NO_MEMBERS,
-	AST_BIND_TYPE_HAS_NO_MEMBERS,
-	AST_BIND_OBJ_MISSING_MEMBER,
-	AST_BIND_COMPILER_ERROR,
-};
-
-struct ast_bind_result {
-	enum ast_bind_result_code code;
-
-	union {
-		struct {
-			ast_slot_id result;
-		} ok;
-
-		struct {
-			type_id old, new;
-		} type_mismatch;
-
-		struct {
-			struct object old, new;
-		} value_mismatch;
-
-		struct {
-			size_t old, new;
-		} array_length_mismatch;
-
-		struct {
-			type_id obj_type;
-		} obj_no_members;
-
-		struct {
-			struct atom *name;
-		} obj_missing_member;
-
-		struct {
-			type_id obj_type;
-		} type_no_members;
-	};
 };
 
 struct ast_context
