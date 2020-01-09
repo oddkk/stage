@@ -589,6 +589,159 @@ ast_node_find_named_dependencies(
 	return err;
 }
 
+struct ast_node *
+ast_node_deep_copy(
+		struct ast_context *ctx, struct ast_node *src)
+{
+	struct ast_node *result;
+	result = calloc(1, sizeof(struct ast_node));
+
+#define DCP_NODE(name)                               \
+	do {                                             \
+	result->name =                                   \
+		ast_node_deep_copy(                 \
+				ctx, src->name);  \
+	} while (0);
+
+#define DCP_LIT(name)                                \
+	do { result->name = src->name; } while (0);
+
+#define DCP_DLIST(array_name, count_name)            \
+	do {                                             \
+		DCP_LIT(count_name);                         \
+		if ((result->count_name) > 0) {              \
+			result->array_name = calloc(             \
+					result->count_name,              \
+					sizeof(*result->array_name));    \
+		} else {                                     \
+			result->array_name = NULL;               \
+		}                                            \
+	} while (0);
+
+	DCP_LIT(kind);
+	DCP_LIT(type);
+	DCP_LIT(loc);
+
+	switch (src->kind) {
+	case AST_NODE_FUNC_NATIVE:
+	case AST_NODE_FUNC:
+		if (src->kind == AST_NODE_FUNC_NATIVE) {
+			DCP_LIT(func.native);
+		} else {
+			DCP_NODE(func.body);
+			DCP_LIT(func.closure);
+		}
+		DCP_DLIST(func.params, func.num_params);
+		for (size_t i = 0; i < result->func.num_params; i++) {
+			DCP_LIT(func.params[i].name);
+			DCP_NODE(func.params[i].type);
+		}
+
+		DCP_NODE(func.return_type);
+		DCP_LIT(func.instance);
+		DCP_LIT(func.closure);
+		break;
+
+		break;
+
+	case AST_NODE_CONS:
+	case AST_NODE_INST:
+		DCP_LIT(call.cons);
+		// fallthrough
+
+	case AST_NODE_CALL:
+		DCP_DLIST(call.args, call.num_args);
+		for (size_t i = 0; i < result->call.num_args; i++) {
+			DCP_LIT(call.args[i].name);
+			DCP_NODE(call.args[i].value);
+		}
+
+		DCP_NODE(call.func);
+		break;
+
+	case AST_NODE_FUNC_TYPE:
+		DCP_DLIST(func_type.param_types, func_type.num_params);
+		for (size_t i = 0; i < result->func_type.num_params; i++) {
+			DCP_NODE(func_type.param_types[i]);
+		}
+		DCP_NODE(func_type.ret_type);
+		break;
+
+	case AST_NODE_TEMPL:
+		DCP_NODE(templ.body);
+
+		DCP_DLIST(templ.params, templ.num_params);
+		for (size_t i = 0; i < result->templ.num_params; i++) {
+			DCP_LIT(templ.params[i].name);
+			if (src->templ.params[i].type) {
+				DCP_NODE(templ.params[i].type);
+			} else {
+				result->templ.params[i].type = NULL;
+			}
+			DCP_LIT(templ.params[i].loc);
+		}
+
+		DCP_LIT(templ.cons);
+
+		DCP_LIT(templ.closure);
+		break;
+
+	case AST_NODE_ACCESS:
+		DCP_LIT(access.name);
+		DCP_NODE(access.target);
+		break;
+
+	case AST_NODE_LIT:
+		DCP_LIT(lit);
+		break;
+
+	case AST_NODE_LOOKUP:
+		DCP_LIT(lookup.name);
+		DCP_LIT(lookup.ref);
+		break;
+
+	case AST_NODE_COMPOSITE:
+		DCP_DLIST(composite.members, composite.num_members);
+		for (size_t i = 0; i < result->composite.num_members; i++) {
+			DCP_LIT(composite.members[i].name);
+			DCP_NODE(composite.members[i].type);
+		}
+
+		DCP_DLIST(composite.binds, composite.num_binds);
+		for (size_t i = 0; i < result->composite.num_binds; i++) {
+			DCP_NODE(composite.binds[i].target);
+			DCP_NODE(composite.binds[i].value);
+			DCP_LIT(composite.binds[i].overridable);
+		}
+
+		DCP_DLIST(composite.free_exprs, composite.num_free_exprs);
+		for (size_t i = 0; i < result->composite.num_free_exprs; i++) {
+			DCP_NODE(composite.free_exprs[i]);
+		}
+
+		DCP_LIT(composite.closure);
+		break;
+
+	case AST_NODE_VARIANT:
+		DCP_DLIST(variant.options, variant.num_options);
+		for (size_t i = 0; i < result->variant.num_options; i++) {
+			DCP_LIT(variant.options[i].name);
+			if (src->variant.options[i].data_type) {
+				DCP_NODE(variant.options[i].data_type);
+			}
+		}
+
+		DCP_LIT(variant.closure);
+		break;
+	}
+
+#undef DCP_NODE
+#undef DCP_LIT
+#undef DCP_DLIST
+
+	return result;
+}
+
 /*
 struct ast_templ_cons_inst {
 	struct object *params;

@@ -795,10 +795,8 @@ struct ast_typecheck_dep *
 ast_find_dep(struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_name_ref ref);
 
-// Defined in ast_slots.c
 struct ast_node *
-ast_node_deep_copy(struct ast_context *ctx, struct ast_env *dest_env,
-		struct ast_env *src_env, struct ast_node *src);
+ast_node_deep_copy(struct ast_context *ctx, struct ast_node *src);
 
 struct object_cons *
 ast_node_create_templ(struct ast_context *ctx, struct ast_module *,
