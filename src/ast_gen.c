@@ -618,6 +618,8 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 												bc_env, member_vars[param_id]));
 								}
 
+								assert(mbr_cons->pack);
+
 								struct bc_instr *pack_instr;
 								pack_instr =
 									bc_gen_pack(
@@ -645,6 +647,12 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				struct object_cons *def;
 				def = node->call.cons;
 				assert(def);
+
+				if (!def->pack) {
+					stg_error(ctx->err, node->loc,
+							"This object must be packed compile time.");
+					return AST_GEN_ERROR;
+				}
 
 				if (node->call.num_args != def->num_params) {
 					stg_error(ctx->err, node->loc,

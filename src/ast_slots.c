@@ -361,6 +361,7 @@ struct solve_context {
 	struct ast_module *mod;
 	struct ast_env *env;
 	struct ast_slot_resolve *slots;
+	struct ast_context *ast_ctx;
 	size_t num_slots;
 };
 
@@ -1504,10 +1505,16 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			if (all_args_set) {
 				struct object res = {0};
 
-				assert(cons->pack_type);
-				res.type = cons->pack_type(
-						ctx->vm, cons->data,
-						arg_data, cons->num_params);
+				assert(cons->pack_type || cons->ct_pack_type);
+				if (cons->pack_type) {
+					res.type = cons->pack_type(
+							ctx->vm, cons->data,
+							arg_data, cons->num_params);
+				} else {
+					res.type = cons->ct_pack_type(
+							ctx->ast_ctx, ctx->mod->stg_mod,
+							cons->data, arg_data, cons->num_params);
+				}
 
 				assert(res.type != TYPE_UNSET);
 
@@ -1518,10 +1525,17 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				memset(buffer, 0, res_type->size);
 				res.data = buffer;
 
-				assert(cons->pack);
-				cons->pack(
-						ctx->vm, cons->data, buffer,
-						arg_data, cons->num_params);
+				assert(cons->pack || cons->ct_pack);
+				if (cons->pack) {
+					cons->pack(
+							ctx->vm, cons->data, buffer,
+							arg_data, cons->num_params);
+				} else {
+					cons->ct_pack(
+							ctx->ast_ctx, ctx->mod->stg_mod,
+							cons->data, buffer,
+							arg_data, cons->num_params);
+				}
 
 				res = register_object(
 						ctx->vm, ctx->env->store, res);
@@ -1904,6 +1918,7 @@ ast_slot_try_solve(
 	ctx->cons = ast_ctx->types.cons;
 	ctx->inst = ast_ctx->types.inst;
 	ctx->env = &_env;
+	ctx->ast_ctx = ast_ctx;
 	ctx->num_slots = ctx->env->num_alloced_slots;
 
 	struct ast_slot_resolve _slots[ctx->num_slots];
