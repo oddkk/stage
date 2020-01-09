@@ -487,6 +487,8 @@ object_cons_descendant_type(
 	return -1;
 }
 
+#define OBJ_DEBUG_ACTIONS 0
+
 typedef int obj_member_id;
 typedef int obj_expr_id;
 typedef int obj_bind_id;
@@ -589,6 +591,10 @@ object_inst_bind_single(struct object_inst_context *ctx,
 	if (target->bind < 0) {
 		target->bind = bind_id;
 		target->unpack_id = unpack_id;
+#if OBJ_DEBUG_ACTIONS
+		printf("bind %zu = %zu[%zu]\n",
+				target_id, bind_id, unpack_id);
+#endif
 	} else {
 		struct object_inst_bind *prev_bind;
 		prev_bind = get_bind(ctx, target->bind);
@@ -609,10 +615,18 @@ object_inst_bind_single(struct object_inst_context *ctx,
 
 		if (new_bind->overridable) {
 			target->overridden_bind = bind_id;
+#if OBJ_DEBUG_ACTIONS
+			printf("no bind %zu != %zu[%zu] (overridden by %i)\n",
+					target_id, bind_id, unpack_id, target->bind);
+#endif
 		} else {
 			target->overridden_bind = target->bind;
 			target->bind = bind_id;
 			target->unpack_id = unpack_id;
+#if OBJ_DEBUG_ACTIONS
+			printf("bind %zu = %zu[%zu] (overriding %i)\n",
+					target_id, bind_id, unpack_id, target->overridden_bind);
+#endif
 		}
 	}
 
@@ -701,6 +715,9 @@ obj_inst_try_emit_pack(
 	}
 
 	mbr->action_emitted = true;
+#if OBJ_DEBUG_ACTIONS
+	printf("Emit pack %i\n", mbr_id);
+#endif
 
 	return 0;
 }
@@ -737,6 +754,9 @@ obj_inst_expr_emit_actions(
 		expr_act.expr.deps = expr->mbr_deps;
 		expr_act.expr.num_deps = expr->num_mbr_deps;
 		obj_inst_emit_action(ctx, expr_act);
+#if OBJ_DEBUG_ACTIONS
+		printf("Emit expr %i\n", expr_id);
+#endif
 	}
 
 	obj_member_id target_id = expr->first_target;
@@ -773,6 +793,9 @@ obj_inst_expr_emit_actions(
 				obj_inst_emit_action(ctx, act);
 
 				desc->action_emitted = true;
+#if OBJ_DEBUG_ACTIONS
+				printf("Emit bind %i\n", desc_id);
+#endif
 			}
 		}
 
