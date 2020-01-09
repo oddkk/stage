@@ -1337,50 +1337,47 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				obj = slot->value.obj;
 			}
 
-			for (size_t i = 0; i < slot->num_members; i++) {
-				if (!slot->members[i].ref.named) {
-					printf("Expected named members, got indexed one.\n");
-					continue;
+			struct object_cons *cons;
+			int err;
+			err = ast_slot_try_get_value_cons(
+					ctx, slot->cons, &cons);
+			if (!err) {
+				for (size_t i = 0; i < slot->num_members; i++) {
+					if (!slot->members[i].ref.named) {
+						printf("Expected named members, got indexed one.\n");
+						continue;
+					}
+
+					ssize_t param_i;
+					param_i = object_cons_find_param(
+							cons, slot->members[i].ref.name);
+					if (param_i < 0) {
+						printf("Cons does not have member %.*s.\n",
+								ALIT(slot->members[i].ref.name));
+						continue;
+					}
+					assert(param_i < cons->num_params);
+
+					struct object res = {0};
+					res.type = cons->params[i].type;
+
+					struct type *param_type;
+					param_type = vm_get_type(ctx->vm, res.type);
+
+					uint8_t buffer[param_type->size];
+					memset(buffer, 0, param_type->size);
+					res.data = buffer;
+
+					assert(cons->unpack);
+					cons->unpack(ctx->vm, cons->data,
+							res.data, obj.data, param_i);
+
+					res = register_object(ctx->vm, ctx->env->store, res);
+
+					made_change |= ast_solve_apply_value_obj(
+							ctx, slot->authority.value,
+							slot->members[i].slot, res);
 				}
-
-				struct object_cons *cons;
-				int err;
-				err = ast_slot_try_get_value_cons(
-						ctx, slot->cons, &cons);
-				if (err) {
-					printf("Failed to resolve cons.\n");
-					continue;
-				}
-
-				ssize_t param_i;
-				param_i = object_cons_find_param(
-						cons, slot->members[i].ref.name);
-				if (param_i < 0) {
-					printf("Cons does not have member %.*s.\n",
-							ALIT(slot->members[i].ref.name));
-					continue;
-				}
-				assert(param_i < cons->num_params);
-
-				struct object res = {0};
-				res.type = cons->params[i].type;
-
-				struct type *param_type;
-				param_type = vm_get_type(ctx->vm, res.type);
-
-				uint8_t buffer[param_type->size];
-				memset(buffer, 0, param_type->size);
-				res.data = buffer;
-
-				assert(cons->unpack);
-				cons->unpack(ctx->vm, cons->data,
-						res.data, obj.data, param_i);
-
-				res = register_object(ctx->vm, ctx->env->store, res);
-
-				made_change |= ast_solve_apply_value_obj(
-						ctx, slot->authority.value,
-						slot->members[i].slot, res);
 			}
 		}
 	}
@@ -1455,7 +1452,6 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			err = ast_slot_try_get_value_cons(
 					ctx, slot->cons, &cons);
 			if (err) {
-				printf("Failed to resolve cons.\n");
 				return false;
 			}
 
