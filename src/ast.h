@@ -786,8 +786,8 @@ struct ast_typecheck_dep {
 };
 
 int
-ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *node,
+ast_node_typecheck(struct ast_context *ctx,
+		struct ast_module *mod, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		type_id expected_type);
 
@@ -829,39 +829,34 @@ struct ast_gen_info {
 
 	struct object *templ_values;
 	size_t num_templ_values;
-
-	struct object *templ_objs;
-	size_t num_templ_objs;
 };
 
 struct ast_gen_bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_gen_info *info,
-		struct bc_env *bc_env, struct ast_node *node);
+		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node);
 
 struct bc_env *
 ast_func_gen_bytecode(
-		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
+		struct ast_context *ctx, struct ast_module *mod,
 		struct ast_typecheck_closure *closures, bc_closure *closure_refs,
 		size_t num_closures, struct ast_node *node);
 
 struct bc_env *
 ast_composite_bind_gen_bytecode(
-		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
+		struct ast_context *ctx, struct ast_module *mod,
 		ast_member_id *members, type_id *member_types,
 		struct object *const_member_values, size_t num_members,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr);
 
 struct bc_env *
 ast_type_expr_gen_bytecode(
-		struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *expr,
+		struct ast_context *ctx, struct ast_module *mod, struct ast_node *expr,
 		struct ast_typecheck_closure *closures, size_t num_closures);
 
 struct bc_env *
 ast_gen_value_unpack_func(
 		struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, type_id value_type, size_t descendent);
+		type_id value_type, size_t descendent);
 void
 ast_print(struct ast_context *, struct ast_node *);
 

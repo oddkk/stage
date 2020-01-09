@@ -1666,7 +1666,7 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 
 	struct bc_env *bc_env;
 	bc_env = ast_composite_bind_gen_bytecode(
-				ctx->ast_ctx, ctx->ast_mod, ctx->ast_env,
+				ctx->ast_ctx, ctx->ast_mod,
 				dep_members, dep_member_types,
 				dep_member_const, num_dep_members,
 				ctx->closures, ctx->num_closures, node);
@@ -1787,7 +1787,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 	}
 
 	err = ast_node_typecheck(
-			ctx->ast_ctx, ctx->ast_mod, ctx->ast_env, node,
+			ctx->ast_ctx, ctx->ast_mod, node,
 			body_deps, num_deps, expected_type);
 	if (err) {
 		return -1;
@@ -2904,7 +2904,7 @@ ast_dt_finalize_variant(
 		if (options[i].data_type) {
 			int err;
 			err = ast_node_typecheck(
-					ctx, mod, env,
+					ctx, mod,
 					options[i].data_type,
 					body_deps, num_closures,
 					ctx->types.type);
@@ -2918,7 +2918,7 @@ ast_dt_finalize_variant(
 
 			struct bc_env *type_expr_bc;
 			type_expr_bc = ast_type_expr_gen_bytecode(
-					ctx, mod, env, options[i].data_type,
+					ctx, mod, options[i].data_type,
 					closure_values, num_closures);
 
 			if (!type_expr_bc) {

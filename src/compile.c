@@ -841,7 +841,7 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 				main_mod_ret, main_mod_inst);
 
 		int err;
-		err = ast_node_typecheck(ast_ctx, main_mod, &main_mod->env,
+		err = ast_node_typecheck(ast_ctx, main_mod,
 				main_mod_init_func, NULL, 0, TYPE_UNSET);
 		if (err) {
 			print_errors(&ctx.err);
@@ -851,7 +851,7 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 
 		struct bc_env *bc_env;
 		bc_env = ast_func_gen_bytecode(ast_ctx, main_mod,
-				&main_mod->env, NULL, NULL, 0, main_mod_init_func);
+				NULL, NULL, 0, main_mod_init_func);
 		if (!bc_env) {
 			print_errors(&ctx.err);
 			printf("Failed codegen for main module.\n");

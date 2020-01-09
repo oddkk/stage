@@ -734,13 +734,13 @@ ast_node_resolve_types(
 }
 
 int
-ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *outer_env, struct ast_node *node,
+ast_node_typecheck(struct ast_context *ctx,
+		struct ast_module *mod, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		type_id expected_type)
 {
 	struct ast_env env = {0};
-	env.store = outer_env->store;
+	env.store = mod->env.store;
 
 	struct ast_typecheck_dep body_deps[num_deps];
 	memcpy(body_deps, deps, num_deps * sizeof(struct ast_typecheck_dep));
