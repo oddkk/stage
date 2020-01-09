@@ -390,13 +390,11 @@ struct ast_func_arg {
 struct ast_func_param {
 	struct atom *name;
 	struct ast_node *type;
-	ast_slot_id slot;
 };
 
 struct ast_template_param {
 	struct atom *name;
 	struct ast_node *type;
-	ast_slot_id slot;
 	struct stg_location loc;
 };
 
@@ -414,9 +412,6 @@ struct ast_datatype_member {
 	// If this member is not explicitly typed a bind must be specified to
 	// determine the members type.
 	int type_giving_bind;
-
-	// TODO: Is this necessary? It was added to allow it to be printed.
-	ast_slot_id slot;
 };
 
 struct ast_datatype_bind {
@@ -462,10 +457,6 @@ struct ast_node {
 			size_t num_params;
 
 			struct ast_node *return_type;
-			ast_slot_id return_type_slot;
-
-			ast_slot_id type;
-			ast_slot_id slot;
 			func_id instance;
 
 			struct ast_closure_target closure;
@@ -477,8 +468,6 @@ struct ast_node {
 
 			struct ast_func_arg *args;
 			size_t num_args;
-
-			ast_slot_id ret_type;
 
 			union {
 				// Used only for cons.
@@ -496,14 +485,11 @@ struct ast_node {
 			struct ast_node *ret_type;
 
 			type_id func_type;
-
-			ast_slot_id slot;
 		} func_type;
 
 		struct {
 			struct atom *name;
 			struct ast_node *target;
-			ast_slot_id slot;
 		} access;
 
 		struct {
@@ -512,8 +498,6 @@ struct ast_node {
 			struct ast_template_param *params;
 			size_t num_params;
 
-			ast_slot_id slot;
-
 			struct object_cons *cons;
 
 			struct ast_closure_target closure;
@@ -521,14 +505,11 @@ struct ast_node {
 
 		struct {
 			struct object obj;
-			ast_slot_id slot;
 		} lit;
 
 		struct {
 			struct atom *name;
 			struct ast_name_ref ref;
-
-			ast_slot_id slot;
 		} lookup;
 
 		struct {
@@ -541,10 +522,6 @@ struct ast_node {
 			struct ast_node **free_exprs;
 			size_t num_free_exprs;
 
-			ast_slot_id cons;
-
-			ast_slot_id ret_value;
-
 			struct ast_closure_target closure;
 
 			type_id type;
@@ -553,8 +530,6 @@ struct ast_node {
 		struct {
 			struct ast_datatype_variant *options;
 			size_t num_options;
-
-			ast_slot_id ret_value;
 
 			struct ast_closure_target closure;
 
@@ -890,10 +865,10 @@ ast_gen_value_unpack_func(
 		struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, type_id value_type, size_t descendent);
 void
-ast_print(struct ast_context *, struct ast_env *, struct ast_node *);
+ast_print(struct ast_context *, struct ast_node *);
 
 void
-ast_print_node(struct ast_context *, struct ast_env *, struct ast_node *,
+ast_print_node(struct ast_context *, struct ast_node *,
 		bool print_type_slot);
 
 enum ast_module_name_kind {

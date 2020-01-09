@@ -805,7 +805,7 @@ ast_node_typecheck(struct ast_context *ctx, struct ast_module *mod,
 
 #if AST_DEBUG_SLOT_SOLVE
 	printf("Solving ");
-	ast_print_node(ctx, &env, node, true);
+	ast_print_node(ctx, node, true);
 	printf("\n");
 #endif
 

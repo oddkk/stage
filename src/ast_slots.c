@@ -2093,19 +2093,6 @@ ast_node_deep_copy_internal(
 				ctx, dest_env, src_env, src->name);  \
 	} while (0);
 
-#define DCP_SLOT(name)                               \
-	do {                                             \
-		if (src->name < 0) {                         \
-			result->name = src->name;                \
-		} else {                                     \
-			/*result->name =                           \
-				ast_bind_result_to_slot(             \
-					ast_union_slot_internal(ctx,     \
-							dest_env, AST_BIND_NEW,  \
-							src_env,  src->name));*/   \
-		}                                            \
-	} while (0);
-
 #define DCP_LIT(name)                                \
 	do { result->name = src->name; } while (0);
 
@@ -2122,6 +2109,7 @@ ast_node_deep_copy_internal(
 	} while (0);
 
 	DCP_LIT(kind);
+	DCP_LIT(type);
 	DCP_LIT(loc);
 
 	switch (src->kind) {
@@ -2137,13 +2125,9 @@ ast_node_deep_copy_internal(
 		for (size_t i = 0; i < result->func.num_params; i++) {
 			DCP_LIT(func.params[i].name);
 			DCP_NODE(func.params[i].type);
-			DCP_SLOT(func.params[i].slot);
 		}
 
 		DCP_NODE(func.return_type);
-		DCP_SLOT(func.return_type_slot);
-		DCP_SLOT(func.type);
-		DCP_SLOT(func.slot);
 		DCP_LIT(func.instance);
 		DCP_LIT(func.closure);
 		break;
@@ -2163,7 +2147,6 @@ ast_node_deep_copy_internal(
 		}
 
 		DCP_NODE(call.func);
-		DCP_SLOT(call.ret_type);
 		break;
 
 	case AST_NODE_FUNC_TYPE:
@@ -2180,7 +2163,6 @@ ast_node_deep_copy_internal(
 		DCP_DLIST(templ.params, templ.num_params);
 		for (size_t i = 0; i < result->templ.num_params; i++) {
 			DCP_LIT(templ.params[i].name);
-			DCP_SLOT(templ.params[i].slot);
 			if (src->templ.params[i].type) {
 				DCP_NODE(templ.params[i].type);
 			} else {
@@ -2189,7 +2171,6 @@ ast_node_deep_copy_internal(
 			DCP_LIT(templ.params[i].loc);
 		}
 
-		DCP_SLOT(templ.slot);
 		DCP_LIT(templ.cons);
 
 		DCP_LIT(templ.closure);
@@ -2198,7 +2179,6 @@ ast_node_deep_copy_internal(
 	case AST_NODE_ACCESS:
 		DCP_LIT(access.name);
 		DCP_NODE(access.target);
-		DCP_SLOT(access.slot);
 		break;
 
 	case AST_NODE_LIT:
@@ -2207,7 +2187,6 @@ ast_node_deep_copy_internal(
 
 	case AST_NODE_LOOKUP:
 		DCP_LIT(lookup.name);
-		DCP_SLOT(lookup.slot);
 		DCP_LIT(lookup.ref);
 		break;
 
@@ -2231,8 +2210,6 @@ ast_node_deep_copy_internal(
 		}
 
 		DCP_LIT(composite.closure);
-
-		DCP_SLOT(composite.ret_value);
 		break;
 
 	case AST_NODE_VARIANT:
@@ -2245,13 +2222,10 @@ ast_node_deep_copy_internal(
 		}
 
 		DCP_LIT(variant.closure);
-
-		DCP_SLOT(variant.ret_value);
 		break;
 	}
 
 #undef DCP_NODE
-#undef DCP_SLOT
 #undef DCP_LIT
 #undef DCP_DLIST
 

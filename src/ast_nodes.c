@@ -51,12 +51,8 @@ ast_init_node_func(struct ast_context *ctx,
 
 	for (size_t i = 0; i < num_params; i++) {
 		node->func.params[i].name = param_names[i];
-		node->func.params[i].slot = AST_BIND_NEW;
 		node->func.params[i].type = param_types[i];
 	}
-
-	node->func.type = AST_BIND_NEW;
-	node->func.return_type_slot = AST_BIND_NEW;
 
 	return node;
 }
@@ -82,12 +78,8 @@ ast_init_node_func_native(struct ast_context *ctx,
 
 	for (size_t i = 0; i < num_params; i++) {
 		node->func.params[i].name = param_names[i];
-		node->func.params[i].slot = AST_BIND_NEW;
 		node->func.params[i].type = param_types[i];
 	}
-
-	node->func.type = AST_BIND_NEW;
-	node->func.return_type_slot = AST_BIND_NEW;
 
 	return node;
 }
@@ -139,8 +131,6 @@ ast_init_node_call(
 	node->call.num_args = num_args;
 	node->call.cons = NULL;
 
-	node->call.ret_type = AST_BIND_NEW;
-
 	return node;
 }
 
@@ -169,8 +159,6 @@ ast_init_node_cons(
 	memcpy(node->call.args, args, sizeof(struct ast_func_arg) * num_args);
 	node->call.num_args = num_args;
 	node->call.cons = NULL;
-
-	node->call.ret_type = AST_BIND_NEW;
 
 	return node;
 }
@@ -201,8 +189,6 @@ ast_init_node_inst(
 	node->call.num_args = num_args;
 	node->call.cons = NULL;
 
-	node->call.ret_type = AST_BIND_NEW;
-
 	return node;
 }
 
@@ -232,8 +218,6 @@ ast_init_node_func_type(
 
 	node->func_type.ret_type = ret_type;
 
-	node->func_type.slot = AST_BIND_NEW;
-
 	return node;
 }
 
@@ -255,7 +239,6 @@ ast_init_node_access(
 
 	node->access.target = target;
 	node->access.name = name;
-	node->access.slot = AST_BIND_NEW;
 
 	return node;
 }
@@ -278,7 +261,6 @@ ast_init_node_lit(
 	node->loc = loc;
 
 	node->lit.obj = lit;
-	node->lit.slot = AST_BIND_NEW;
 
 	return node;
 }
@@ -300,7 +282,6 @@ ast_init_node_lookup(
 	node->loc = loc;
 
 	node->lookup.name = name;
-	node->lookup.slot = AST_BIND_NEW;
 	node->lookup.ref.kind = AST_NAME_REF_NOT_FOUND;
 
 	return node;
@@ -332,7 +313,6 @@ ast_node_templ_register_param(
 
 	tmpl_param.name = name;
 	tmpl_param.loc = loc;
-	tmpl_param.slot = AST_BIND_NEW;
 	tmpl_param.type = type;
 
 	dlist_append(
@@ -353,10 +333,6 @@ ast_init_node_composite(
 	memset(target, 0, sizeof(struct ast_node));
 	target->kind = AST_NODE_COMPOSITE;
 	target->loc = loc;
-
-	target->composite.cons = AST_BIND_NEW;
-
-	target->composite.ret_value = AST_BIND_NEW;
 
 	return target;
 }
@@ -389,8 +365,6 @@ ast_node_composite_add_member(
 	}
 
 	assert(new_member.type || new_member.type_giving_bind >= 0);
-
-	new_member.slot = AST_BIND_NEW;
 
 	dlist_append(
 			target->composite.members,
@@ -459,7 +433,6 @@ ast_init_node_variant(
 	target->kind = AST_NODE_VARIANT;
 	target->loc = loc;
 
-	target->variant.ret_value = AST_BIND_NEW;
 	target->variant.type = TYPE_UNSET;
 
 	return target;

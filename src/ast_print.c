@@ -5,181 +5,12 @@
 #include "utils.h"
 #include "vm.h"
 
-/*
-void
-ast_print_slot_internal(struct ast_context *ctx, struct ast_env *env,
-		ast_slot_id slot_id, bool print_type)
-{
-	struct ast_env_slot slot; 
-	slot = ast_env_slot(ctx, env, slot_id);
-
-	switch (slot.kind) {
-		case AST_SLOT_ERROR:
-			printf("(error)");
-			break;
-
-		case AST_SLOT_WILDCARD:
-			printf("?");
-			break;
-
-		case AST_SLOT_CONST_TYPE:
-			print_type_repr(ctx->vm, vm_get_type(ctx->vm, slot.const_type));
-			break;
-
-		case AST_SLOT_CONST:
-			print_obj_repr(ctx->vm, slot.const_object);
-			break;
-
-		case AST_SLOT_PARAM:
-			printf("param[%li]", slot.param_index);
-			break;
-
-		case AST_SLOT_TEMPL:
-			printf("(templ)");
-			break;
-
-		case AST_SLOT_CLOSURE:
-			printf("closure");
-			break;
-
-
-		case AST_SLOT_CONS:
-			printf("%p{", (void *)slot.cons.def);
-			for (size_t j = 0; j < slot.cons.num_present_args; j++) {
-				if (j != 0)
-					printf(", ");
-				printf("%.*s=", ALIT(slot.cons.args[j].name));
-				ast_print_slot_internal(ctx, env, slot.cons.args[j].slot, true);
-			}
-			printf("}");
-			break;
-
-		case AST_SLOT_CONS_ARRAY:
-			// printf("Array<type=");
-			// ast_print_slot_internal(ctx, env, slot.cons_array.member_type, print_type);
-			// printf("count=");
-			// ast_print_slot_internal(ctx, env, slot.cons_array.member_count, print_type);
-			// printf(">[");
-			printf("[");
-			for (size_t j = 0; j < slot.cons_array.num_members; j++) {
-				if (j != 0)
-					printf(", ");
-				ast_print_slot_internal(ctx, env, slot.cons_array.members[j], false);
-			}
-			printf("]");
-			break;
-
-		case AST_SLOT_SUBST:
-			ast_print_slot_internal(ctx, env, slot.subst, print_type);
-			break;
-	}
-
-	if (print_type) {
-		printf(":");
-		ast_print_slot_internal(ctx, env, slot.type, false);
-	}
-}
-
-void
-ast_print_slot(struct ast_context *ctx, struct ast_env *env, ast_slot_id slot_id)
-{
-	if (!ctx) {
-		printf("(no ctx)");
-		return;
-	}
-	ast_print_slot_internal(ctx, env, slot_id, true);
-}
-
-void
-ast_env_print(struct vm *vm, struct ast_env *env)
-{
-	printf("|#  |type |kind      |\n");
-	printf("|---|-----|----------|\n");
-
-	for (size_t i = 0; i < env->num_slots; i++) {
-		struct ast_env_slot *slot;
-
-		slot = &env->slots[i];
-
-		const char *kind_name;
-
-		kind_name = ast_slot_name(slot->kind);
-
-		printf("|%3zu|%5i|%-10s|", i,
-				slot->type, kind_name);
-
-		switch (slot->kind) {
-			case AST_SLOT_ERROR:
-				break;
-
-			case AST_SLOT_WILDCARD:
-				break;
-
-			case AST_SLOT_CONST_TYPE:
-				print_type_repr(vm, vm_get_type(vm, slot->const_type));
-				printf(" (%li)", slot->const_type);
-				break;
-
-			case AST_SLOT_CONST:
-				print_obj_repr(vm, slot->const_object);
-				break;
-
-			case AST_SLOT_PARAM:
-				printf("index=%li", slot->param_index);
-				break;
-
-			case AST_SLOT_TEMPL:
-				break;
-
-			case AST_SLOT_CLOSURE:
-				break;
-
-			case AST_SLOT_CONS:
-				printf("Cons(");
-				for (size_t j = 0; j < slot->cons.num_present_args; j++) {
-					if (j != 0)
-						printf(", ");
-					printf("%.*s=%i",
-							ALIT(slot->cons.args[j].name),
-							slot->cons.args[j].slot);
-				}
-				printf(")");
-				break;
-
-			case AST_SLOT_CONS_ARRAY:
-				printf("[");
-				for (size_t j = 0; j < slot->cons_array.num_members; j++) {
-					if (j != 0)
-						printf(", ");
-					printf("%i", slot->cons_array.members[j]);
-				}
-				printf("] type-slot=%i count-slot=%i",
-						slot->cons_array.member_type,
-						slot->cons_array.member_count);
-				break;
-
-			case AST_SLOT_SUBST:
-				printf("%i", slot->subst);
-				break;
-		}
-
-		printf("\n");
-	}
-}
-*/
-
 static void
 print_indent(int depth)
 {
 	for (int i = 0; i < depth; ++i) {
 		printf("  ");
 	}
-}
-
-static void
-print_slot(struct ast_env *env, ast_slot_id slot)
-{
-	printf("%i", slot);
 }
 
 void
@@ -209,7 +40,7 @@ ast_print_name_ref(struct ast_name_ref ref)
 }
 
 static void
-ast_print_internal_closure(struct ast_context *ctx, struct ast_env *env,
+ast_print_internal_closure(struct ast_context *ctx,
 		struct ast_closure_target *closure, unsigned int depth)
 {
 	print_indent(depth);
@@ -223,34 +54,31 @@ ast_print_internal_closure(struct ast_context *ctx, struct ast_env *env,
 }
 
 void
-ast_print_internal(struct ast_context *ctx, struct ast_env *env,
+ast_print_internal(struct ast_context *ctx,
 		struct ast_node *node, unsigned int depth)
 {
 	switch (node->kind) {
 		case AST_NODE_FUNC:
 		case AST_NODE_FUNC_NATIVE:
 			print_indent(depth);
-			printf("func");
-
-			printf(" %i\n", node->func.type);
+			printf("func\n");
 
 			for (size_t i = 0; i < node->func.num_params; i++) {
 				print_indent(depth + 1);
-				printf("param %li '%.*s' %i type\n", i,
-						ALIT(node->func.params[i].name),
-						node->func.params[i].slot);
-				ast_print_internal(ctx, env, node->func.params[i].type, depth + 2);
+				printf("param %li '%.*s' type\n", i,
+						ALIT(node->func.params[i].name));
+				ast_print_internal(ctx, node->func.params[i].type, depth + 2);
 			}
 
 			print_indent(depth + 1);
-			printf("return type %i\n", node->func.return_type_slot);
-			ast_print_internal(ctx, env, node->func.return_type, depth + 2);
+			printf("return type\n");
+			ast_print_internal(ctx, node->func.return_type, depth + 2);
 
 			if (node->kind == AST_NODE_FUNC) {
 				print_indent(depth + 1);
 				printf("body\n");
-				ast_print_internal(ctx, env, node->func.body, depth + 2);
-				ast_print_internal_closure(ctx, env,
+				ast_print_internal(ctx, node->func.body, depth + 2);
+				ast_print_internal_closure(ctx,
 						&node->func.closure, depth + 1);
 			} else if (node->kind == AST_NODE_FUNC_NATIVE) {
 				print_indent(depth + 1);
@@ -263,19 +91,13 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 		case AST_NODE_INST:
 			print_indent(depth);
 			if (node->kind == AST_NODE_CALL) {
-				printf("call: ");
-				print_slot(env, node->call.ret_type);
-				printf("\n");
+				printf("call:\n");
 			} else if (node->kind == AST_NODE_CALL) {
-				printf("cons: ");
-				print_slot(env, node->call.ret_type);
-				printf("\n");
+				printf("cons:\n");
 				print_indent(depth + 1);
 				printf("cons %p\n", (void *)node->call.cons);
 			} else {
-				printf("inst: ");
-				print_slot(env, node->call.ret_type);
-				printf("\n");
+				printf("inst:\n");
 				print_indent(depth + 1);
 				printf("inst %p, cons %p\n",
 						(void *)node->call.inst,
@@ -284,12 +106,12 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 
 			print_indent(depth + 1);
 			printf("target\n");
-			ast_print_internal(ctx, env, node->call.func, depth + 2);
+			ast_print_internal(ctx, node->call.func, depth + 2);
 
 			for (size_t i = 0; i < node->call.num_args; i++) {
 				print_indent(depth + 1);
 				printf("arg %li '%.*s' value\n", i, ALIT(node->call.args[i].name));
-				ast_print_internal(ctx, env, node->call.args[i].value, depth + 2);
+				ast_print_internal(ctx, node->call.args[i].value, depth + 2);
 			}
 			break;
 
@@ -299,11 +121,11 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			for (size_t i = 0; i < node->func_type.num_params; i++) {
 				print_indent(depth+1);
 				printf("param %zu type:\n", i);
-				ast_print_internal(ctx, env, node->func_type.param_types[i], depth+2);
+				ast_print_internal(ctx, node->func_type.param_types[i], depth+2);
 			}
 			print_indent(depth+1);
 			printf("return type:\n");
-			ast_print_internal(ctx, env, node->func_type.ret_type, depth+2);
+			ast_print_internal(ctx, node->func_type.ret_type, depth+2);
 			break;
 
 		case AST_NODE_TEMPL:
@@ -313,11 +135,10 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			printf("params:\n");
 			for (size_t i = 0; i < node->templ.num_params; i++) {
 				print_indent(depth + 2);
-				printf("'%.*s' = ", ALIT(node->templ.params[i].name));
-				print_slot(env, node->templ.params[i].slot);
+				printf("'%.*s'", ALIT(node->templ.params[i].name));
 				if (node->templ.params[i].type) {
 					printf(" type\n");
-					ast_print_internal(ctx, env,
+					ast_print_internal(ctx,
 							node->templ.params[i].type, depth+3);
 				} else {
 					printf("\n");
@@ -325,23 +146,19 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			}
 			print_indent(depth + 1);
 			printf("body:\n");
-			ast_print_internal(ctx, env, node->templ.body, depth + 2);
+			ast_print_internal(ctx, node->templ.body, depth + 2);
 			break;
 
 		case AST_NODE_COMPOSITE:
 			print_indent(depth);
-			printf("composite (");
-			print_slot(env, node->composite.ret_value);
-			printf("):\n");
+			printf("composite:\n");
 			for (size_t i = 0; i < node->composite.num_members; i++) {
 				print_indent(depth + 1);
-				printf("%.*s (", ALIT(node->composite.members[i].name));
-				print_slot(env, node->composite.members[i].slot);
-				printf("):\n");
+				printf("%.*s:\n", ALIT(node->composite.members[i].name));
 				print_indent(depth + 2);
 				printf("type:\n");
 				if (node->composite.members[i].type) {
-					ast_print_internal(ctx, env, node->composite.members[i].type, depth + 3);
+					ast_print_internal(ctx, node->composite.members[i].type, depth + 3);
 				} else {
 					print_indent(depth + 3);
 					printf("(no type)\n");
@@ -353,24 +170,24 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 			for (size_t i = 0; i < node->composite.num_binds; i++) {
 				print_indent(depth + 2);
 				printf("- target:\n");
-				ast_print_internal(ctx, env,
+				ast_print_internal(ctx,
 						node->composite.binds[i].target, depth + 4);
 				print_indent(depth + 2);
 				printf("  value%s:\n",
 						node->composite.binds[i].overridable
 						? " (overridable)" : "");
-				ast_print_internal(ctx, env,
+				ast_print_internal(ctx,
 						node->composite.binds[i].value, depth + 4);
 			}
 
 			print_indent(depth + 1);
 			printf("free exprs:\n");
 			for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
-				ast_print_internal(ctx, env,
+				ast_print_internal(ctx,
 						node->composite.free_exprs[i], depth + 3);
 			}
 
-			ast_print_internal_closure(ctx, env,
+			ast_print_internal_closure(ctx,
 					&node->composite.closure, depth + 1);
 			break;
 
@@ -382,43 +199,31 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 				printf("%.*s:\n", ALIT(node->variant.options[i].name));
 				print_indent(depth + 2);
 				printf("type:\n");
-				ast_print_internal(ctx, env,
+				ast_print_internal(ctx,
 						node->variant.options[i].data_type, depth + 3);
 			}
 			break;
 
 		case AST_NODE_ACCESS:
 			print_indent(depth);
-			printf("access '%.*s' ", ALIT(node->access.name));
-			print_slot(env, node->access.slot);
-			printf(": ");
-			// print_slot(env, ast_node_type(ctx, env, node));
-			printf("\n");
+			printf("access '%.*s':\n", ALIT(node->access.name));
 
 			print_indent(depth + 1);
 			printf("target\n");
-			ast_print_internal(ctx, env,
+			ast_print_internal(ctx,
 					node->access.target, depth + 2);
 			break;
 
 		case AST_NODE_LIT:
 			print_indent(depth);
-			printf("lit ");
-			print_slot(env, node->lit.slot);
-			printf(": ");
-			// print_slot(env, ast_node_type(ctx, env, node));
-			printf(" = ");
+			printf("lit: ");
 			print_obj_repr(ctx->vm, node->lit.obj);
 			printf("\n");
 			break;
 
 		case AST_NODE_LOOKUP:
 			print_indent(depth);
-			printf("lookup '%.*s' ", ALIT(node->lookup.name));
-			print_slot(env, node->lookup.slot);
-			printf(": ");
-			// print_slot(env, ast_node_type(ctx, env, node));
-			printf(" (");
+			printf("lookup '%.*s': (", ALIT(node->lookup.name));
 			ast_print_name_ref(node->lookup.ref);
 			printf(")\n");
 			break;
@@ -426,13 +231,13 @@ ast_print_internal(struct ast_context *ctx, struct ast_env *env,
 }
 
 void
-ast_print(struct ast_context *ctx, struct ast_env *env, struct ast_node *node)
+ast_print(struct ast_context *ctx, struct ast_node *node)
 {
-	ast_print_internal(ctx, env, node, 0);
+	ast_print_internal(ctx, node, 0);
 }
 
 void
-ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *node,
+ast_print_node(struct ast_context *ctx, struct ast_node *node,
 		bool print_type_slot)
 {
 	if (print_type_slot) {
@@ -445,14 +250,14 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 			for (size_t i = 0; i < node->func.num_params; i++) {
 				printf("%s%.*s: ", (i != 0) ? ", " : "",
 						ALIT(node->func.params[i].name));
-				ast_print_node(ctx, env, node->func.params[i].type, print_type_slot);
+				ast_print_node(ctx, node->func.params[i].type, print_type_slot);
 			}
 			printf(") -> ");
-			ast_print_node(ctx, env, node->func.return_type, print_type_slot);
+			ast_print_node(ctx, node->func.return_type, print_type_slot);
 			printf(" => ");
 
 			if (node->kind == AST_NODE_FUNC) {
-				ast_print_node(ctx, env, node->func.body, print_type_slot);
+				ast_print_node(ctx, node->func.body, print_type_slot);
 			} else {
 				printf("@native(\"%.*s\")", LIT(node->func.native.name));
 			}
@@ -461,7 +266,7 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
 		case AST_NODE_INST:
-			ast_print_node(ctx, env, node->call.func, print_type_slot);
+			ast_print_node(ctx, node->call.func, print_type_slot);
 			printf((node->kind == AST_NODE_CALL)
 					? "("
 					: ((node->kind == AST_NODE_CONS)
@@ -473,7 +278,7 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 				if (node->call.args[i].name) {
 					printf("%.*s=", ALIT(node->call.args[i].name));
 				}
-				ast_print_node(ctx, env, node->call.args[i].value, print_type_slot);
+				ast_print_node(ctx, node->call.args[i].value, print_type_slot);
 			}
 			printf((node->kind == AST_NODE_CALL)
 					? ")"
@@ -487,14 +292,14 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 				if (i != 0) {
 					printf(", ");
 				}
-				ast_print_node(ctx, env, node->func_type.param_types[i], print_type_slot);
+				ast_print_node(ctx, node->func_type.param_types[i], print_type_slot);
 			}
 			printf(") -> ");
-			ast_print_node(ctx, env, node->func_type.ret_type, print_type_slot);
+			ast_print_node(ctx, node->func_type.ret_type, print_type_slot);
 			break;
 
 		case AST_NODE_ACCESS:
-			ast_print_node(ctx, env, node->access.target, print_type_slot);
+			ast_print_node(ctx, node->access.target, print_type_slot);
 			printf(".%.*s", ALIT(node->access.name));
 			break;
 
@@ -504,12 +309,9 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 				printf("%s%.*s: ", (i != 0) ? ", " : "",
 						ALIT(node->templ.params[i].name));
 				if (node->type) {
-					ast_print_node(ctx, env, node->templ.params[i].type, print_type_slot);
+					ast_print_node(ctx, node->templ.params[i].type, print_type_slot);
 					printf(" ");
 				}
-				printf("<");
-				print_slot(env, node->templ.slot);
-				printf(">");
 			}
 			printf(") ->> ?");
 			printf(" => ");
@@ -533,51 +335,3 @@ ast_print_node(struct ast_context *ctx, struct ast_env *env, struct ast_node *no
 			break;
 	}
 }
-
-/*
-static void
-ast_print_namespace(struct ast_context *ctx, struct ast_env *env,
-		struct ast_namespace *ns, int indent)
-{
-	if (ns->num_used_objects > 0) {
-		print_indent(indent);
-		printf("use:\n");
-
-		for (size_t i = 0; i < ns->num_used_objects; i++) {
-			print_indent(indent + 1);
-			printf("- %i\n", ns->used_objects[i]);
-		}
-	}
-
-	for (size_t i = 0; i < ns->num_names; i++) {
-		struct ast_module_name *name = &ns->names[i];
-
-		print_indent(indent);
-		printf("%.*s: ", ALIT(name->name));
-
-		switch (name->kind) {
-			case AST_MODULE_NAME_DECL:
-				printf("decl %i\n", name->decl.value);
-				ast_print_internal(ctx, env, name->decl.expr, indent + 1);
-				break;
-
-			case AST_MODULE_NAME_NAMESPACE:
-				printf("ns\n");
-				ast_print_namespace(ctx, env, name->ns, indent+1);
-				break;
-
-			case AST_MODULE_NAME_IMPORT:
-				printf("import %.*s -> %i\n",
-						ALIT(name->import.name),
-						name->import.value);
-				break;
-		}
-	}
-}
-
-void
-ast_print_module(struct ast_context *ctx, struct ast_module *mod)
-{
-	ast_print_namespace(ctx, &mod->env, &mod->root, 0);
-}
-*/
