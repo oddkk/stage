@@ -590,8 +590,7 @@ ast_node_find_named_dependencies(
 }
 
 struct ast_node *
-ast_node_deep_copy(
-		struct ast_context *ctx, struct ast_node *src)
+ast_node_deep_copy(struct ast_node *src)
 {
 	struct ast_node *result;
 	result = calloc(1, sizeof(struct ast_node));
@@ -599,8 +598,7 @@ ast_node_deep_copy(
 #define DCP_NODE(name)                               \
 	do {                                             \
 	result->name =                                   \
-		ast_node_deep_copy(                 \
-				ctx, src->name);  \
+		ast_node_deep_copy(src->name);               \
 	} while (0);
 
 #define DCP_LIT(name)                                \
