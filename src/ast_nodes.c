@@ -917,7 +917,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	inst.params = calloc(
 			info->num_params,
 			sizeof(struct object));
-	memcpy(gen_info.templ_values, param_values,
+	memcpy(inst.params, param_values,
 			info->num_params * sizeof(struct object));
 	inst.result = res;
 
@@ -987,7 +987,7 @@ ast_templ_unpack(
 	}
 
 	if (!inst) {
-		return false;
+		return -1;
 	}
 
 	assert(param_id < info->num_params);
