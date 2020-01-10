@@ -3,6 +3,7 @@
 #include "dlist.h"
 #include "module.h"
 #include "native_bytecode.h"
+#include "term_color.h"
 #include "base/mod.h"
 #include <stdlib.h>
 #include <string.h>
@@ -653,7 +654,7 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 				printf("expr ");
 				if (expr->constant) {
 				} else if (expr->value.node) {
-					ast_print_node(ctx->ast_ctx, ctx->ast_env,
+					ast_print_node(ctx->ast_ctx,
 							expr->value.node, false);
 				} else {
 					printf("func %lu", expr->value.func);
@@ -668,7 +669,7 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 				bind = get_bind(ctx, job->bind);
 				printf("bind ");
 				if (bind->target_node) {
-					ast_print_node(ctx->ast_ctx, ctx->ast_env,
+					ast_print_node(ctx->ast_ctx,
 							bind->target_node, false);
 				}
 			}
@@ -701,10 +702,10 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 	}
 
 #if AST_DT_DEBUG_JOBS
-	printf("%03zx job dep ", ctx->run_i);
+	printf("%03zx " TC(TC_BRIGHT_BLUE, "job dep") " ", ctx->run_i);
 	ast_dt_print_job_desc(ctx, from_id);
 	// Move the cursor to column 50 to align the dependent jobs.
-	printf("\033[60G -> ");
+	printf("\033[60G " TC(TC_BRIGHT_BLUE, "->") " ");
 	ast_dt_print_job_desc(ctx, to_id);
 	printf("\n");
 #endif
@@ -1803,7 +1804,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	job = get_job(ctx, job_id);
 
 #if AST_DT_DEBUG_JOBS
-	printf("%03zx    ===> ", ctx->run_i);
+	printf("%03zx    "TC(TC_BRIGHT_YELLOW, "===>") " ", ctx->run_i);
 	ast_dt_print_job_desc(ctx, job_id);
 	printf("\n");
 #endif
@@ -2293,7 +2294,7 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 		err = ast_dt_dispatch_job(ctx, job_id);
 		if (err) {
 #if AST_DT_DEBUG_JOBS
-			printf("job failed!\n");
+			printf(TC(TC_BRIGHT_RED, "job failed!") "\n");
 #endif
 			failed_jobs += 1;
 
