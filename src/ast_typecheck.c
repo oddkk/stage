@@ -424,43 +424,12 @@ ast_node_constraints(
 
 		case AST_NODE_TEMPL:
 			{
-				struct ast_typecheck_dep body_deps[num_deps + node->templ.num_params];
+				struct ast_typecheck_dep body_deps[num_deps];
 				memset(body_deps, 0, sizeof(struct ast_typecheck_dep) *
 						(num_deps + node->templ.num_params));
 				ast_constr_fill_closure_deps(ctx, env,
 						body_deps, &node->templ.closure,
 						deps, num_deps);
-
-
-				for (size_t i = 0; i < node->templ.num_params; i++) {
-					ast_slot_id type_slot;
-
-					if (node->templ.params[i].type) {
-						body_deps[num_deps+i].determined = true;
-						type_slot = ast_node_constraints(
-								ctx, mod, env, deps, num_deps,
-								node->templ.params[i].type);
-					} else {
-						body_deps[num_deps+i].determined = false;
-						type_slot = ast_slot_alloc(env);
-					}
-
-					ast_slot_id param_slot;
-
-					param_slot = ast_slot_alloc(env);
-
-					ast_slot_require_type(
-							env, node->templ.params[i].loc,
-							AST_CONSTR_SRC_TEMPL_PARAM_DECL,
-							param_slot, type_slot);
-
-					body_deps[num_deps+i].req = AST_NAME_DEP_REQUIRE_VALUE;
-					body_deps[num_deps+i].ref.kind = AST_NAME_REF_TEMPL;
-					body_deps[num_deps+i].ref.templ = i;
-					body_deps[num_deps+i].lookup_failed = false;
-
-					body_deps[num_deps+i].value = param_slot;
-				}
 
 				if (!node->templ.cons) {
 					node->templ.cons = ast_node_create_templ(
@@ -481,7 +450,6 @@ ast_node_constraints(
 							env, node->loc, AST_CONSTR_SRC_TEMPL_PARAM_DECL,
 							res_slot, cons_obj);
 				} else {
-					panic("Failed to create template");
 					ast_slot_value_error(
 							env, node->loc, AST_CONSTR_SRC_TEMPL_PARAM_DECL,
 							res_slot);
