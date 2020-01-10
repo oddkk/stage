@@ -7,13 +7,6 @@
 #define AST_DEBUG_SLOT_SOLVE 0
 
 typedef int32_t ast_slot_id;
-#define AST_SLOT_TYPE ((ast_slot_id)-1)
-#define AST_SLOT_DC ((ast_slot_id)-2)
-#define AST_SLOT_NOT_FOUND ((ast_slot_id)-3)
-
-#define AST_BIND_NEW ((ast_slot_id)-4)
-#define AST_BIND_FAILED ((ast_slot_id)-5)
-
 typedef int ast_member_id;
 typedef int ast_param_id;
 typedef int ast_closure_id;

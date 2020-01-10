@@ -766,7 +766,7 @@ ast_solve_apply_cons(
 		new_cons = ast_slot_join(
 				ctx, res->cons, cons);
 	} else {
-		old_cons = AST_SLOT_NOT_FOUND;
+		old_cons = -1;
 		new_cons = cons;
 	}
 
@@ -826,7 +826,7 @@ ast_solve_apply_type(
 		res->type = ast_slot_join(
 				ctx, res->type, type_id);
 	} else {
-		old_type = AST_SLOT_NOT_FOUND;
+		old_type = -1;
 		res->type = type_id;
 	}
 

@@ -1778,7 +1778,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 				} else {
 					body_deps[i].ref = deps[i].ref;
 					body_deps[i].req = deps[i].req;
-					body_deps[i].value = AST_BIND_FAILED;
+					body_deps[i].value = -1;
 					body_deps[i].lookup_failed = true;
 					body_deps[i].determined = false;
 				}

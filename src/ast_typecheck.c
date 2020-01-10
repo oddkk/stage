@@ -622,7 +622,7 @@ ast_node_constraints(
 	if (node->typecheck_slot < 0) {
 		panic("Unhandled node %s in ast_node_constraints.",
 				ast_node_name(node->kind));
-		return AST_SLOT_NOT_FOUND;
+		return -1;
 	}
 
 	return node->typecheck_slot;
@@ -732,7 +732,7 @@ ast_node_resolve_types(
 		}
 	}
 
-	node->typecheck_slot = AST_SLOT_NOT_FOUND;
+	node->typecheck_slot = -1;
 
 	assert(res->type != TYPE_UNSET || errors > 0);
 	return errors;
