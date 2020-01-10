@@ -2720,15 +2720,15 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	ast_dt_composite_populate(&dt_ctx, comp);
 
 	err = ast_dt_run_jobs(&dt_ctx);
-	if (err) {
 #if AST_DT_DEBUG_JOBS
+	if (err) {
 		printf("One or more jobs failed when resolving datastructure.\n");
-#endif
 	}
+#endif
 
 	type_id result = TYPE_UNSET;
 
-	if (dt_ctx.num_errors == 0) {
+	if (!err && dt_ctx.num_errors == 0) {
 		result = ast_dt_composite_make_type(&dt_ctx, mod);
 	}
 

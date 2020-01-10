@@ -971,31 +971,33 @@ ast_templ_pack_type(struct ast_context *ctx, struct stg_module *mod,
 	return res.type;
 }
 
-void
-ast_templ_unpack(struct vm *vm, void *data,
-		void *out, void *obj, int param_id)
+int
+ast_templ_unpack(
+		struct ast_context *ctx, struct stg_module *mod,
+		void *data, void *out, struct object obj, int param_id)
 {
-	panic("TODO: Template unpack");
+	struct ast_templ_cons_info *info = data;
 
-	// struct ast_templ_cons_info *info = data;
-
-	// TODO: Figure out the type of the object.
-	/*
 	struct ast_templ_cons_inst *inst = NULL;
 	for (size_t i = 0; i < info->num_insts; i++) {
-		if (obj_equals(vm, obj, info->insts[i].result)) {
+		if (obj_equals(ctx->vm, obj, info->insts[i].result)) {
 			inst = &info->insts[i];
 			break;
 		}
 	}
-	assert(inst);
+
+	if (!inst) {
+		return false;
+	}
+
 	assert(param_id < info->num_params);
 
 	struct type *type;
-	type = vm_get_type(vm, inst->params[param_id].type);
+	type = vm_get_type(ctx->vm, inst->params[param_id].type);
 
 	memcpy(out, inst->params[param_id].data, type->size);
-	*/
+
+	return 0;
 }
 
 /*
@@ -1179,7 +1181,7 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 
 	def->data         = info;
 	def->ct_pack      = ast_templ_pack;
-	def->unpack       = ast_templ_unpack;
+	def->ct_unpack    = ast_templ_unpack;
 	def->ct_pack_type = ast_templ_pack_type;
 	// def->can_unpack = ast_templ_can_unpack;
 

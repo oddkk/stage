@@ -192,6 +192,10 @@ typedef type_id (*object_ct_pack_type_func)(
 		struct ast_context *, struct stg_module *mod,
 		void *data, void **params, size_t num_params);
 
+typedef int (*object_ct_unpack_func)(
+		struct ast_context *, struct stg_module *mod,
+		void *data, void *out, struct object obj, int param_id);
+
 typedef void (*object_pack_func)(
 		struct vm *, void *data, void *out,
 		void **params, size_t num_params);
@@ -228,6 +232,7 @@ struct object_cons {
 
 	// Compile time
 	object_ct_pack_func ct_pack;
+	object_ct_unpack_func ct_unpack;
 	object_ct_pack_type_func ct_pack_type;
 
 	object_impose_constraints impose_type_constraints;

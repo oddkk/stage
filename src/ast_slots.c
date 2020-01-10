@@ -1372,14 +1372,18 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 					ctx, slot->cons, &cons);
 			if (!err) {
 				for (size_t i = 0; i < slot->num_members; i++) {
-					if (!slot->members[i].ref.named) {
-						printf("Expected named members, got indexed one.\n");
+					ssize_t param_i = -1;
+					if (slot->members[i].ref.named) {
+						param_i = object_cons_find_param(
+								cons, slot->members[i].ref.name);
+					} else if (slot->members[i].ref.index < cons->num_params) {
+						param_i = slot->members[i].ref.index;
+					} else {
+						printf("Got unexpected parameter %zu to cons.\n",
+								slot->members[i].ref.index);
 						continue;
 					}
 
-					ssize_t param_i;
-					param_i = object_cons_find_param(
-							cons, slot->members[i].ref.name);
 					if (param_i < 0) {
 						printf("Cons does not have member %.*s.\n",
 								ALIT(slot->members[i].ref.name));
@@ -1397,9 +1401,21 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 					memset(buffer, 0, param_type->size);
 					res.data = buffer;
 
-					assert(cons->unpack);
-					cons->unpack(ctx->vm, cons->data,
-							res.data, obj.data, param_i);
+					assert(cons->unpack || cons->ct_unpack);
+					if (cons->unpack) {
+						cons->unpack(ctx->vm, cons->data,
+								res.data, obj.data, param_i);
+					} else {
+						int err;
+						err = cons->ct_unpack(
+								ctx->ast_ctx, ctx->mod->stg_mod,
+								cons->data, res.data, obj, param_i);
+						if (err) {
+							printf("Failed to unpack value.\n");
+							slot->flags |= AST_SLOT_HAS_ERROR;
+							return true;
+						}
+					}
 
 					res = register_object(ctx->vm, ctx->env->store, res);
 
