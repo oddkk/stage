@@ -1017,7 +1017,9 @@ ast_templ_can_unpack(struct ast_context *ctx, struct ast_env *env,
 
 struct object_cons *
 ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_node *templ_node, struct ast_typecheck_dep *deps, size_t num_deps)
+		struct ast_node *templ_node,
+		struct ast_typecheck_dep *outer_deps, size_t num_outer_deps,
+		struct ast_typecheck_dep *inner_deps, size_t num_inner_deps)
 {
 	assert(templ_node->templ.body->kind == AST_NODE_FUNC ||
 			templ_node->templ.body->kind == AST_NODE_FUNC_NATIVE ||
@@ -1038,20 +1040,26 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 	info->params = calloc(def->num_params,
 			sizeof(struct ast_templ_cons_param));
 
-	info->num_deps = num_deps;
+	info->num_deps = num_inner_deps;
 	info->deps = calloc(info->num_deps, sizeof(struct ast_typecheck_dep));
-	memcpy(info->deps, deps, sizeof(struct ast_typecheck_dep) * info->num_deps);
+	memcpy(info->deps, inner_deps, sizeof(struct ast_typecheck_dep) * info->num_deps);
 
 	info->templ_node =
 		ast_node_deep_copy(templ_node);
 
 	// Partially typecheck to determine the type of the template's parameters.
-	size_t num_body_deps = info->num_deps + info->num_params;
-	struct ast_typecheck_dep body_deps[num_body_deps];
-
 	struct ast_env inner_env = {0};
 	inner_env.store = mod->env.store;
 
+	size_t num_param_deps = num_outer_deps;
+	struct ast_typecheck_dep param_deps[num_param_deps];
+	memcpy(param_deps, outer_deps,
+			num_param_deps * sizeof(struct ast_typecheck_dep));
+	ast_typecheck_deps_slots(&inner_env,
+			param_deps, num_param_deps);
+
+	size_t num_body_deps = info->num_deps + info->num_params;
+	struct ast_typecheck_dep body_deps[num_body_deps];
 	memcpy(body_deps, info->deps,
 			info->num_deps * sizeof(struct ast_typecheck_dep));
 	ast_typecheck_deps_slots(&inner_env,
@@ -1076,11 +1084,11 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 		ast_slot_id type_slot;
 
 		if (param_type) {
-			// We only use the first info->num_deps body_deps for the parameters as
-			// they are not supposed to be able to see the other parameters.
+			// We the outer_deps for the parameters as they are not supposed to
+			// be able to see the other parameters.
 			type_slot = ast_node_constraints(
 					ctx, mod, &inner_env,
-					body_deps, info->num_deps,
+					param_deps, num_param_deps,
 					param_type);
 		} else {
 			type_slot = ast_slot_alloc(&inner_env);

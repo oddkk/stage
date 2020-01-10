@@ -424,16 +424,18 @@ ast_node_constraints(
 
 		case AST_NODE_TEMPL:
 			{
-				struct ast_typecheck_dep body_deps[num_deps];
-				memset(body_deps, 0, sizeof(struct ast_typecheck_dep) *
-						(num_deps + node->templ.num_params));
+				size_t num_body_deps = node->templ.closure.num_members;
+				struct ast_typecheck_dep body_deps[num_body_deps];
+				memset(body_deps, 0, sizeof(struct ast_typecheck_dep) * num_body_deps);
 				ast_constr_fill_closure_deps(ctx, env,
 						body_deps, &node->templ.closure,
 						deps, num_deps);
 
 				if (!node->templ.cons) {
 					node->templ.cons = ast_node_create_templ(
-					 	ctx, mod, node, body_deps, num_deps);
+						ctx, mod, node,
+						deps, num_deps,
+						body_deps, num_body_deps);
 				}
 
 				ast_slot_id res_slot;

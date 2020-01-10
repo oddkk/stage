@@ -786,9 +786,10 @@ struct ast_node *
 ast_node_deep_copy(struct ast_node *src);
 
 struct object_cons *
-ast_node_create_templ(struct ast_context *ctx, struct ast_module *,
+ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_node *templ_node,
-		struct ast_typecheck_dep *deps, size_t num_deps);
+		struct ast_typecheck_dep *outer_deps, size_t num_outer_deps,
+		struct ast_typecheck_dep *inner_deps, size_t num_inner_deps);
 
 struct bc_env;
 struct bc_instr;
