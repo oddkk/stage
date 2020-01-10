@@ -1071,6 +1071,18 @@ ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
 				expr->value_jobs.resolve_types,
 				bind->target_jobs.resolve);
 
+		struct ast_dt_member *mbr;
+		mbr = get_member(ctx, mbr_id);
+
+		ast_dt_job_dependency(ctx,
+				bind->target_jobs.resolve,
+				mbr->const_resolved);
+
+		ast_dt_job_dependency(ctx,
+				expr->value_jobs.codegen,
+				mbr->const_resolved);
+
+
 		struct ast_dt_member *member;
 		member = get_member(ctx, mbr_id);
 
