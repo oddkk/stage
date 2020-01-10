@@ -1504,15 +1504,17 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			memset(arg_set, 0, sizeof(bool) * cons->num_params);
 
 			for (size_t i = 0; i < slot->num_members; i++) {
-				if (!slot->members[i].ref.named) {
-					printf("Expected named arguments for cons, got indexed arg.\n");
-					slot->flags |= AST_SLOT_HAS_ERROR;
+				ssize_t param_i = -1;
+				if (slot->members[i].ref.named) {
+					param_i = object_cons_find_param(
+							cons, slot->members[i].ref.name);
+				} else if (slot->members[i].ref.index < cons->num_params) {
+						param_i = slot->members[i].ref.index;
+				} else {
+					printf("Got unexpected parameter %zu to cons.\n",
+							slot->members[i].ref.index);
 					continue;
 				}
-
-				ssize_t param_i;
-				param_i = object_cons_find_param(
-						cons, slot->members[i].ref.name);
 
 				if (param_i < 0) {
 					printf("Got unexpected parameter '%.*s' to cons.\n",
@@ -1619,6 +1621,120 @@ ast_slot_verify_fail(
 	va_end(ap);
 }
 #endif
+
+int
+ast_slot_verify_member(
+		struct solve_context *ctx, struct stg_location loc,
+		ast_slot_id target_id, ast_slot_id member_id,
+		struct ast_slot_member_ref ref)
+{
+	struct ast_slot_resolve *target;
+	target = ast_get_slot(ctx, target_id);
+
+	int err;
+	struct object mbr_val = {0};
+	err = ast_slot_try_get_value(
+			ctx, member_id, TYPE_UNSET, &mbr_val);
+	if (err < 0) {
+		// TODO: Better error message.
+		stg_error(ctx->err, loc,
+				"Failed to resolve the value of this member.");
+		return -1;
+	} else if (err > 0) {
+		return 1;
+	}
+
+	if ((target->flags & AST_SLOT_HAS_VALUE) == 0) {
+		return 1;
+	}
+
+	struct object target_val;
+	err = ast_slot_try_get_value(
+			ctx, target_id, TYPE_UNSET, &target_val);
+	if (err < 0) {
+		// TODO: Better error message.
+		stg_error(ctx->err, loc,
+				"Failed to resolve the value of the target.");
+		return -1;
+	} else if (err > 0) {
+		return 1;
+	}
+
+	struct object_cons *cons;
+	err = ast_slot_try_get_value_cons(
+			ctx, target->cons, &cons);
+	if (err) {
+		return -1;
+	}
+
+	size_t param_i = -1;
+	if (ref.named) {
+		ssize_t lookup_res;
+		lookup_res = object_cons_find_param(
+				cons, ref.name);
+		if (lookup_res < 0) {
+			stg_error(ctx->err, loc,
+					"Got unexpected parameter '%.*s' to constructor.\n",
+					ALIT(ref.name));
+			return -1;
+		}
+
+		param_i = lookup_res;
+	} else if (ref.index < cons->num_params) {
+		param_i = ref.index;
+	} else {
+		stg_error(ctx->err, loc,
+				"Got unexpected parameter %zu to constructor.\n",
+				ref.index);
+		return -1;
+	}
+
+	struct object exp_val = {0};
+	exp_val.type = cons->params[param_i].type;
+	struct type *exp_type;
+	exp_type = vm_get_type(ctx->vm, exp_val.type);
+
+	uint8_t buffer[exp_type->size];
+	memset(buffer, 0, exp_type->size);
+	exp_val.data = buffer;
+
+	assert(cons->unpack || cons->ct_unpack);
+	if (cons->unpack) {
+		cons->unpack(
+				ctx->vm, cons->data,
+				exp_val.data, target_val.data, param_i);
+	} else {
+		int err;
+		err = cons->ct_unpack(
+				ctx->ast_ctx, ctx->mod->stg_mod,
+				cons->data, exp_val.data,
+				target_val, param_i);
+		if (err) {
+			return -1;
+		}
+	}
+
+	if (!obj_equals(ctx->vm, mbr_val, exp_val)) {
+		struct string exp_str, got_str;
+
+		exp_str = obj_repr_to_alloced_string(
+				ctx->vm, exp_val);
+		got_str = obj_repr_to_alloced_string(
+				ctx->vm, mbr_val);
+
+		stg_error(ctx->err, loc,
+				"Expected '%.*s' to be %.*s, got %.*s.",
+				ALIT(cons->params[param_i].name),
+				LIT(exp_str), LIT(got_str));
+
+		free(exp_str.text);
+		free(got_str.text);
+
+		return -1;
+	}
+
+	return 0;
+}
 
 int
 ast_slot_verify_constraint(
@@ -1736,78 +1852,14 @@ ast_slot_verify_constraint(
 					return -1;
 				}
 
-				int err;
-				struct object mbr_val = {0};
-				err = ast_slot_try_get_value(
-						ctx, constr->member.slot, TYPE_UNSET, &mbr_val);
-				if (err < 0) {
-					// TODO: Better error message.
-					stg_error(ctx->err, constr->reason.loc,
-							"Failed to resolve the value of this member.");
-					return -1;
-				} else if (err > 0) {
-					return 1;
-				}
+				struct ast_slot_member_ref ref = {0};
+				ref.named = true;
+				ref.name = constr->member.name;
 
-				if ((target->flags & AST_SLOT_HAS_VALUE) == 0) {
-					return 1;
-				}
-
-				struct object target_val;
-				err = ast_slot_try_get_value(
-						ctx, constr->target, TYPE_UNSET, &target_val);
-				if (err < 0) {
-					// TODO: Better error message.
-					stg_error(ctx->err, constr->reason.loc,
-							"Failed to resolve the value of the target.");
-					return -1;
-				} else if (err > 0) {
-					return 1;
-				}
-
-				struct object_cons *cons;
-				err = ast_slot_try_get_value_cons(
-						ctx, target->cons, &cons);
-				if (err) {
-					return -1;
-				}
-
-				ssize_t param_i;
-				param_i = object_cons_find_param(
-						cons, constr->member.name);
-
-				struct object exp_val = {0};
-				exp_val.type = cons->params[param_i].type;
-				struct type *exp_type;
-				exp_type = vm_get_type(ctx->vm, exp_val.type);
-
-				uint8_t buffer[exp_type->size];
-				memset(buffer, 0, exp_type->size);
-				exp_val.data = buffer;
-
-				assert(cons->unpack);
-				cons->unpack(
-						ctx->vm, cons->data,
-						exp_val.data, target_val.data, param_i);
-
-				if (!obj_equals(ctx->vm, mbr_val, exp_val)) {
-					struct string exp_str, got_str;
-
-					exp_str = obj_repr_to_alloced_string(
-							ctx->vm, exp_val);
-					got_str = obj_repr_to_alloced_string(
-							ctx->vm, mbr_val);
-
-					stg_error(ctx->err, constr->reason.loc,
-							"Expected '%.*s' to be %.*s, got %.*s.",
-							ALIT(cons->params[param_i].name),
-							LIT(exp_str), LIT(got_str));
-
-					free(exp_str.text);
-					free(got_str.text);
-
-					return -1;
-				}
+				ast_slot_verify_member(
+						ctx, constr->reason.loc,
+						constr->target, constr->member.slot,
+						ref);
 			}
 			return 0;
 
@@ -1817,86 +1869,99 @@ ast_slot_verify_constraint(
 					stg_error(ctx->err, constr->reason.loc,
 							"Attempted to unpack a value that has no constructor.");
 					return -1;
+					/*
 				} else if ((target->flags & AST_SLOT_IS_FUNC_TYPE) == 0) {
 					stg_error(ctx->err, constr->reason.loc,
 							"Got invalid parameter %zu to function type constructor.",
 							constr->member.index);
 					return -1;
+					*/
 				}
 
-				int err;
-				type_id mbr_val;
-				err = ast_slot_try_get_value_type(
-						ctx, constr->member.slot, &mbr_val);
-				if (err < 0) {
-					// TODO: Better error message.
-					stg_error(ctx->err, constr->reason.loc,
-							"Failed to resolve the value of this member.");
-					return -1;
-				} else if (err > 0) {
-					return 1;
-				}
-
-				if ((target->flags & AST_SLOT_HAS_VALUE) == 0) {
-					return 1;
-				}
-
-				type_id target_val;
-				err = ast_slot_try_get_value_type(
-						ctx, constr->target, &target_val);
-				if (err < 0) {
-					// TODO: Better error message.
-					stg_error(ctx->err, constr->reason.loc,
-							"Failed to resolve the value of the target.");
-					return -1;
-				} else if (err > 0) {
-					return 1;
-				}
-
-				assert(stg_type_is_func(ctx->vm, target_val));
-				struct type *target_type;
-				target_type = vm_get_type(ctx->vm, target_val);
-
-				struct stg_func_type *target_type_info;
-				target_type_info = target_type->data;
-
-				type_id exp_val;
-				if (constr->member.index == 0) {
-					exp_val = target_type_info->return_type;
-				} else if (constr->member.index <= target_type_info->num_params) {
-					exp_val = target_type_info->params[constr->member.index-1];
-				} else {
-					stg_error(ctx->err, constr->reason.loc,
-							"Attempted to access function parameter number %zu "
-							"of a function that has only %zu parameters.",
-							constr->member.index-1, target_type_info->num_params);
-					return -1;
-				}
-
-				if (!type_equals(ctx->vm, exp_val, mbr_val)) {
-					struct string exp_str, got_str;
-
-					exp_str = type_repr_to_alloced_string(
-							ctx->vm, vm_get_type(ctx->vm, exp_val));
-					got_str = type_repr_to_alloced_string(
-							ctx->vm, vm_get_type(ctx->vm, mbr_val));
-
-					if (constr->member.index == 0) {
-						exp_val = target_type_info->return_type;
+				if ((target->flags & AST_SLOT_IS_FUNC_TYPE) == 0) {
+					int err;
+					type_id mbr_val;
+					err = ast_slot_try_get_value_type(
+							ctx, constr->member.slot, &mbr_val);
+					if (err < 0) {
+						// TODO: Better error message.
 						stg_error(ctx->err, constr->reason.loc,
-								"Expected the return value to be %.*s, got %.*s.",
-								LIT(exp_str), LIT(got_str));
-					} else if (constr->member.index <= target_type_info->num_params) {
-						exp_val = target_type_info->params[constr->member.index-1];
-						stg_error(ctx->err, constr->reason.loc,
-								"Expected parameter %zu to be %.*s, got %.*s.",
-								constr->member.index-1, LIT(exp_str), LIT(got_str));
+								"Failed to resolve the value of this member.");
+						return -1;
+					} else if (err > 0) {
+						return 1;
 					}
 
-					free(exp_str.text);
-					free(got_str.text);
+					if ((target->flags & AST_SLOT_HAS_VALUE) == 0) {
+						return 1;
+					}
 
-					return -1;
+					type_id target_val;
+					err = ast_slot_try_get_value_type(
+							ctx, constr->target, &target_val);
+					if (err < 0) {
+						// TODO: Better error message.
+						stg_error(ctx->err, constr->reason.loc,
+								"Failed to resolve the value of the target.");
+						return -1;
+					} else if (err > 0) {
+						return 1;
+					}
+
+					assert(stg_type_is_func(ctx->vm, target_val));
+					struct type *target_type;
+					target_type = vm_get_type(ctx->vm, target_val);
+
+					struct stg_func_type *target_type_info;
+					target_type_info = target_type->data;
+
+					type_id exp_val;
+					if (constr->member.index == 0) {
+						exp_val = target_type_info->return_type;
+					} else if (constr->member.index <= target_type_info->num_params) {
+						exp_val = target_type_info->params[constr->member.index-1];
+					} else {
+						stg_error(ctx->err, constr->reason.loc,
+								"Attempted to access function parameter number %zu "
+								"of a function that has only %zu parameters.",
+								constr->member.index-1, target_type_info->num_params);
+						return -1;
+					}
+
+					if (!type_equals(ctx->vm, exp_val, mbr_val)) {
+						struct string exp_str, got_str;
+
+						exp_str = type_repr_to_alloced_string(
+								ctx->vm, vm_get_type(ctx->vm, exp_val));
+						got_str = type_repr_to_alloced_string(
+								ctx->vm, vm_get_type(ctx->vm, mbr_val));
+
+						if (constr->member.index == 0) {
+							exp_val = target_type_info->return_type;
+							stg_error(ctx->err, constr->reason.loc,
+									"Expected the return value to be %.*s, got %.*s.",
+									LIT(exp_str), LIT(got_str));
+						} else if (constr->member.index <= target_type_info->num_params) {
+							exp_val = target_type_info->params[constr->member.index-1];
+							stg_error(ctx->err, constr->reason.loc,
+									"Expected parameter %zu to be %.*s, got %.*s.",
+									constr->member.index-1, LIT(exp_str), LIT(got_str));
+						}
+
+						free(exp_str.text);
+						free(got_str.text);
+
+						return -1;
+					}
+				} else {
+					struct ast_slot_member_ref ref = {0};
+					ref.named = false;
+					ref.index = constr->member.index;
+
+					ast_slot_verify_member(
+							ctx, constr->reason.loc,
+							constr->target, constr->member.slot,
+							ref);
 				}
 			}
 			return 0;

@@ -384,10 +384,20 @@ ast_node_constraints(
 							ctx, mod, env, deps, num_deps,
 							node->call.args[i].value);
 
-					ast_slot_require_member_named(
-							env, node->call.args[i].value->loc,
-							AST_CONSTR_SRC_CONS_ARG, res_slot,
-							node->call.args[i].name, arg_slot);
+					struct atom *name;
+					name = node->call.args[i].name;
+
+					if (name) {
+						ast_slot_require_member_named(
+								env, node->call.args[i].value->loc,
+								AST_CONSTR_SRC_CONS_ARG, res_slot,
+								name, arg_slot);
+					} else {
+						ast_slot_require_member_index(
+								env, node->call.args[i].value->loc,
+								AST_CONSTR_SRC_CONS_ARG, res_slot,
+								i, arg_slot);
+					}
 
 				}
 
