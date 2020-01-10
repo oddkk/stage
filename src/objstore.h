@@ -184,7 +184,7 @@ static inline struct func *store_get_func(struct objstore *store, func_id id) {
 
 struct ast_context;
 
-typedef void (*object_ct_pack_func)(
+typedef int (*object_ct_pack_func)(
 		struct ast_context *, struct stg_module *mod,
 		void *data, void *out, void **params, size_t num_params);
 

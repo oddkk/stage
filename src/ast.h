@@ -100,6 +100,7 @@ enum ast_constraint_source {
 	AST_CONSTR_SRC_DT_DECL,
 	AST_CONSTR_SRC_FUNC_DECL,
 	AST_CONSTR_SRC_TEMPL_PARAM_DECL,
+	AST_CONSTR_SRC_TEMPL_PARAM_VAL,
 	AST_CONSTR_SRC_CLOSURE,
 	AST_CONSTR_SRC_CALL_ARG,
 	AST_CONSTR_SRC_CONS_ARG,
@@ -226,10 +227,13 @@ ast_slot_require_is_type(
 		ast_slot_id target, type_id val
 		AST_SLOT_DEBUG_PARAM);
 
+// type should be the type type. It is passed explicitly to avoid having the
+// function take ast_context. TODO: type should not be a parameter.
 void
 ast_slot_require_is_func_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
+		type_id type,
 		ast_slot_id target, ast_slot_id ret_type,
 		ast_slot_id *param_types, size_t num_params
 		AST_SLOT_DEBUG_PARAM);
@@ -791,6 +795,16 @@ ast_node_typecheck(struct ast_context *ctx,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		type_id expected_type);
 
+ast_slot_id
+ast_node_constraints(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_env *env, struct ast_typecheck_dep *deps, size_t num_deps,
+		struct ast_node *node);
+
+void
+ast_typecheck_deps_slots(struct ast_env *env,
+		struct ast_typecheck_dep *body_deps, size_t num_deps);
+
 struct ast_typecheck_dep *
 ast_find_dep(struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_name_ref ref);
@@ -800,7 +814,7 @@ ast_node_deep_copy(struct ast_node *src);
 
 struct object_cons *
 ast_node_create_templ(struct ast_context *ctx, struct ast_module *,
-		struct ast_env *env, struct ast_node *templ_node,
+		struct ast_node *templ_node,
 		struct ast_typecheck_dep *deps, size_t num_deps);
 
 struct bc_env;

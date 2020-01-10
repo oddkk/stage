@@ -140,12 +140,6 @@ ast_fill_closure(struct ast_closure_target *closure,
 }
 
 static ast_slot_id
-ast_node_constraints(
-		struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_typecheck_dep *deps, size_t num_deps,
-		struct ast_node *node);
-
-static ast_slot_id
 ast_func_proto_constraints(
 		struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_typecheck_dep *deps, size_t num_deps,
@@ -182,18 +176,20 @@ ast_func_proto_constraints(
 
 	ast_slot_require_is_func_type(
 			env, decl_loc, AST_CONSTR_SRC_FUNC_DECL,
-			func_type, ret_type_slot,
+			ctx->types.type, func_type, ret_type_slot,
 			param_type_slots, num_params);
 
 	return func_type;
 }
 
-static ast_slot_id
+ast_slot_id
 ast_node_constraints(
 		struct ast_context *ctx, struct ast_module *mod,
 		struct ast_env *env, struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_node *node)
 {
+	node->typecheck_slot = -1;
+
 	switch (node->kind) {
 		case AST_NODE_FUNC:
 			{
@@ -266,8 +262,8 @@ ast_node_constraints(
 						func_value_slot, type_slot);
 
 				node->typecheck_slot = func_value_slot;
-				return func_value_slot;
 			}
+			break;
 
 		case AST_NODE_FUNC_NATIVE:
 			{
@@ -293,8 +289,8 @@ ast_node_constraints(
 						func_value_slot, type_slot);
 
 				node->typecheck_slot = func_value_slot;
-				return func_value_slot;
 			}
+			break;
 
 		case AST_NODE_CALL:
 			{
@@ -332,12 +328,12 @@ ast_node_constraints(
 
 				ast_slot_require_is_func_type(
 						env, node->loc, AST_CONSTR_SRC_CALL_ARG,
-						func_type_slot, ret_type_slot, arg_types,
+						ctx->types.type, func_type_slot, ret_type_slot, arg_types,
 						node->call.num_args);
 
 				node->typecheck_slot = ret_slot;
-				return ret_slot;
 			}
+			break;
 
 		case AST_NODE_INST:
 			{
@@ -366,8 +362,8 @@ ast_node_constraints(
 				}
 
 				node->typecheck_slot = res_slot;
-				return res_slot;
 			}
+			break;
 
 		case AST_NODE_CONS:
 			{
@@ -396,8 +392,8 @@ ast_node_constraints(
 				}
 
 				node->typecheck_slot = res_slot;
-				return res_slot;
 			}
+			break;
 
 		case AST_NODE_ACCESS:
 			{
@@ -413,8 +409,8 @@ ast_node_constraints(
 						target_slot, node->access.name, member_slot);
 
 				node->typecheck_slot = member_slot;
-				return member_slot;
 			}
+			break;
 
 		case AST_NODE_TEMPL:
 			{
@@ -457,28 +453,33 @@ ast_node_constraints(
 				}
 
 				if (!node->templ.cons) {
-					// TODO: Implement creating templates.
-					// node->templ.cons = ast_node_create_templ(
-					//		ctx, mod, env, node, body_deps, num_deps);
-					assert(node->templ.cons);
+					node->templ.cons = ast_node_create_templ(
+					 	ctx, mod, node, body_deps, num_deps);
 				}
 
 				ast_slot_id res_slot;
 				res_slot = ast_slot_alloc(env);
 
-				struct object cons_obj = {0};
-				cons_obj.type = ctx->types.cons;
-				cons_obj.data = &node->templ.cons;
-				cons_obj = register_object(
-						ctx->vm, env->store, cons_obj);
+				if (node->templ.cons) {
+					struct object cons_obj = {0};
+					cons_obj.type = ctx->types.cons;
+					cons_obj.data = &node->templ.cons;
+					cons_obj = register_object(
+							ctx->vm, env->store, cons_obj);
 
-				ast_slot_require_is_obj(
-						env, node->loc, AST_CONSTR_SRC_TEMPL_PARAM_DECL,
-						res_slot, cons_obj);
+					ast_slot_require_is_obj(
+							env, node->loc, AST_CONSTR_SRC_TEMPL_PARAM_DECL,
+							res_slot, cons_obj);
+				} else {
+					panic("Failed to create template");
+					ast_slot_value_error(
+							env, node->loc, AST_CONSTR_SRC_TEMPL_PARAM_DECL,
+							res_slot);
+				}
 
 				node->typecheck_slot = res_slot;
-				return res_slot;
 			}
+			break;
 
 		case AST_NODE_LIT:
 			{
@@ -490,28 +491,28 @@ ast_node_constraints(
 						res_slot, node->lit.obj);
 
 				node->typecheck_slot = res_slot;
-				return res_slot;
 			}
+			break;
 
 		case AST_NODE_FUNC_TYPE:
 			{
 				ast_slot_id type_slot;
 
-				struct ast_node *param_type_nodes[node->func.num_params];
+				struct ast_node *param_type_nodes[node->func_type.num_params];
 
-				for (size_t i = 0; i < node->func.num_params; i++) {
-					param_type_nodes[i] = node->func.params[i].type;
+				for (size_t i = 0; i < node->func_type.num_params; i++) {
+					param_type_nodes[i] = node->func_type.param_types[i];
 				}
 
 				type_slot = ast_func_proto_constraints(
 						ctx, mod, env, deps, num_deps,
-						node->func.return_type,
-						param_type_nodes, node->func.num_params,
+						node->func_type.ret_type,
+						param_type_nodes, node->func_type.num_params,
 						node->loc);
 
 				node->typecheck_slot = type_slot;
-				return type_slot;
 			}
+			break;
 
 		case AST_NODE_LOOKUP:
 		{
@@ -535,8 +536,8 @@ ast_node_constraints(
 			}
 
 			node->typecheck_slot = res_slot;
-			return res_slot;
 		}
+		break;
 
 		case AST_NODE_COMPOSITE:
 		{
@@ -573,8 +574,8 @@ ast_node_constraints(
 			}
 
 			node->typecheck_slot = res_slot;
-			return res_slot;
 		}
+		break;
 
 		case AST_NODE_VARIANT:
 		{
@@ -613,14 +614,18 @@ ast_node_constraints(
 			}
 
 			node->typecheck_slot = res_slot;
-			return res_slot;
 		}
+		break;
 
 	}
 
-	panic("Unhandled node %s in ast_node_constraints.",
-			ast_node_name(node->kind));
-	return AST_SLOT_NOT_FOUND;
+	if (node->typecheck_slot < 0) {
+		panic("Unhandled node %s in ast_node_constraints.",
+				ast_node_name(node->kind));
+		return AST_SLOT_NOT_FOUND;
+	}
+
+	return node->typecheck_slot;
 }
 
 static int
@@ -733,6 +738,52 @@ ast_node_resolve_types(
 	return errors;
 }
 
+void
+ast_typecheck_deps_slots(struct ast_env *env,
+		struct ast_typecheck_dep *body_deps, size_t num_deps)
+{
+	for (size_t i = 0; i < num_deps; i++) {
+		struct ast_typecheck_dep *dep;
+		dep = &body_deps[i];
+
+		dep->value = ast_slot_alloc(env);
+
+		if (!dep->determined) {
+			continue;
+		}
+
+		if (dep->lookup_failed) {
+			// TODO: Location.
+			ast_slot_value_error(env, STG_NO_LOC,
+					AST_CONSTR_SRC_CLOSURE, dep->value);
+			continue;
+		}
+
+		switch (dep->req) {
+			// TODO: Location.
+			case AST_NAME_DEP_REQUIRE_VALUE:
+				ast_slot_require_is_obj(env, STG_NO_LOC,
+						AST_CONSTR_SRC_CLOSURE,
+						dep->value, dep->val);
+				break;
+
+			case AST_NAME_DEP_REQUIRE_TYPE:
+				{
+					ast_slot_id type_slot;
+					type_slot = ast_slot_alloc(env);
+					ast_slot_require_is_type(env, STG_NO_LOC,
+							AST_CONSTR_SRC_CLOSURE,
+							type_slot, dep->type);
+					ast_slot_require_type(env, STG_NO_LOC,
+							AST_CONSTR_SRC_CLOSURE,
+							dep->value, type_slot);
+				}
+				break;
+		}
+	}
+
+}
+
 int
 ast_node_typecheck(struct ast_context *ctx,
 		struct ast_module *mod, struct ast_node *node,
@@ -745,45 +796,7 @@ ast_node_typecheck(struct ast_context *ctx,
 	struct ast_typecheck_dep body_deps[num_deps];
 	memcpy(body_deps, deps, num_deps * sizeof(struct ast_typecheck_dep));
 
-	for (size_t i = 0; i < num_deps; i++) {
-		struct ast_typecheck_dep *dep;
-		dep = &body_deps[i];
-
-		dep->value = ast_slot_alloc(&env);
-
-		if (!dep->determined) {
-			continue;
-		}
-
-		if (dep->lookup_failed) {
-			// TODO: Location.
-			ast_slot_value_error(&env, STG_NO_LOC,
-					AST_CONSTR_SRC_CLOSURE, dep->value);
-			continue;
-		}
-
-		switch (dep->req) {
-			// TODO: Location.
-			case AST_NAME_DEP_REQUIRE_VALUE:
-				ast_slot_require_is_obj(&env, STG_NO_LOC,
-						AST_CONSTR_SRC_CLOSURE,
-						dep->value, dep->val);
-				break;
-
-			case AST_NAME_DEP_REQUIRE_TYPE:
-				{
-					ast_slot_id type_slot;
-					type_slot = ast_slot_alloc(&env);
-					ast_slot_require_is_type(&env, STG_NO_LOC,
-							AST_CONSTR_SRC_CLOSURE,
-							type_slot, dep->type);
-					ast_slot_require_type(&env, STG_NO_LOC,
-							AST_CONSTR_SRC_CLOSURE,
-							dep->value, type_slot);
-				}
-				break;
-		}
-	}
+	ast_typecheck_deps_slots(&env, body_deps, num_deps);
 
 	ast_slot_id expr_slot;
 	expr_slot = ast_node_constraints(

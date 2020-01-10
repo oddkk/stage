@@ -111,6 +111,10 @@ ast_alloc_constraint(
 #	undef ast_slot_require_type
 #	undef ast_slot_require_member_named
 #	undef ast_slot_require_member_index
+
+#	define SLOT_DEBUG_ARG , AST_SLOT_DEBUG_ARG
+#else
+#	define SLOT_DEBUG_ARG
 #endif
 
 void
@@ -160,6 +164,7 @@ void
 ast_slot_require_is_func_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
+		type_id type,
 		ast_slot_id target, ast_slot_id ret_type,
 		ast_slot_id *param_types, size_t num_params
 		AST_SLOT_DEBUG_PARAM)
@@ -171,12 +176,33 @@ ast_slot_require_is_func_type(
 
 	ast_slot_require_member_index(
 			env, loc, source, target, 0, ret_type
-			PASS_DEBUG_PARAM);
+			SLOT_DEBUG_ARG);
+
+	ast_slot_id ret_type_type;
+	ret_type_type = ast_slot_alloc(env);
+
+	ast_slot_require_is_type(
+			env, loc, source, ret_type_type, type
+			SLOT_DEBUG_ARG);
+	ast_slot_require_type(
+			env, loc, source, ret_type, ret_type_type
+			SLOT_DEBUG_ARG);
 
 	for (size_t i = 0; i < num_params; i++) {
 		ast_slot_require_member_index(
 				env, loc, source, target, i+1, param_types[i]
-				PASS_DEBUG_PARAM);
+				SLOT_DEBUG_ARG);
+
+		ast_slot_id param_type_type;
+		param_type_type = ast_slot_alloc(env);
+
+		ast_slot_require_is_type(
+				env, loc, source, param_type_type, type
+				SLOT_DEBUG_ARG);
+		ast_slot_require_type(
+				env, loc, source, param_types[i], param_type_type
+				SLOT_DEBUG_ARG);
+
 	}
 }
 
@@ -375,6 +401,7 @@ ast_constraint_source_name(enum ast_constraint_source source)
 		SRC_NAME(DT_DECL);
 		SRC_NAME(FUNC_DECL);
 		SRC_NAME(TEMPL_PARAM_DECL);
+		SRC_NAME(TEMPL_PARAM_VAL);
 		SRC_NAME(CLOSURE);
 		SRC_NAME(CALL_ARG);
 		SRC_NAME(CONS_ARG);
@@ -516,7 +543,9 @@ ast_print_slot(
 
 	printf("%i:", slot_id);
 	if ((slot->flags & AST_SLOT_HAS_SUBST) != 0) {
-		printf(" subst %i\n", slot->subst);
+		printf(" subst %i\n",
+				ast_slot_resolve_subst(
+					ctx, slot->subst));
 		return;
 	}
 	if ((slot->flags & AST_SLOT_HAS_ERROR) != 0) {
@@ -1442,8 +1471,6 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				made_change |= ast_solve_apply_value_type(
 						ctx, slot->authority.value,
 						slot_id, res);
-			} else {
-				printf("Not all args are set for func type.\n");
 			}
 
 		} else {
@@ -1510,6 +1537,11 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 					res.type = cons->ct_pack_type(
 							ctx->ast_ctx, ctx->mod->stg_mod,
 							cons->data, arg_data, cons->num_params);
+					if (res.type == TYPE_UNSET) {
+						printf("Failed to pack type.\n");
+						slot->flags |= AST_SLOT_HAS_ERROR;
+						return true;
+					}
 				}
 
 				assert(res.type != TYPE_UNSET);
@@ -1527,10 +1559,16 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 							ctx->vm, cons->data, buffer,
 							arg_data, cons->num_params);
 				} else {
-					cons->ct_pack(
+					int err;
+					err = cons->ct_pack(
 							ctx->ast_ctx, ctx->mod->stg_mod,
 							cons->data, buffer,
 							arg_data, cons->num_params);
+					if (err) {
+						printf("Failed to pack value.\n");
+						slot->flags |= AST_SLOT_HAS_ERROR;
+						return true;
+					}
 				}
 
 				res = register_object(

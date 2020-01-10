@@ -308,7 +308,7 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 			for (size_t i = 0; i < node->templ.num_params; i++) {
 				printf("%s%.*s: ", (i != 0) ? ", " : "",
 						ALIT(node->templ.params[i].name));
-				if (node->type) {
+				if (node->templ.params[i].type) {
 					ast_print_node(ctx, node->templ.params[i].type, print_type_slot);
 					printf(" ");
 				}
