@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
+#include "term_color.h"
 #include "base/mod.h"
 #include "dlist.h"
 
@@ -1614,7 +1615,7 @@ ast_slot_verify_fail(
 
 	printf("%i [", constr_id);
 	ast_print_constraint(ctx, constr_id);
-	printf("] validation failed: ");
+	printf("] " TC(TC_BRIGHT_RED, "validation failed") ": ");
 	vprintf(fmt, ap);
 	printf("\n");
 
@@ -1878,7 +1879,7 @@ ast_slot_verify_constraint(
 					*/
 				}
 
-				if ((target->flags & AST_SLOT_IS_FUNC_TYPE) == 0) {
+				if ((target->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
 					int err;
 					type_id mbr_val;
 					err = ast_slot_try_get_value_type(
@@ -1958,7 +1959,7 @@ ast_slot_verify_constraint(
 					ref.named = false;
 					ref.index = constr->member.index;
 
-					ast_slot_verify_member(
+					return ast_slot_verify_member(
 							ctx, constr->reason.loc,
 							constr->target, constr->member.slot,
 							ref);
