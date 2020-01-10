@@ -2108,64 +2108,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 								desc->const_resolved);
 					}
 				}
-
-				/*
-				ast_member_id *targets = NULL;
-				int *descendant_ids = NULL;
-				size_t num_targets = 0;
-
-				ast_dt_find_terminal_members(
-						ctx, target, &targets,
-						&descendant_ids, &num_targets, 0);
-
-				assert(num_targets > 0);
-
-				if (num_targets == 1) {
-					bind->single_target = targets[0];
-					free(targets);
-				} else {
-					bind->multiple_targets = targets;
-				}
-				bind->num_targets = num_targets;
-				bind->target_descendant_id = descendant_ids;
-
-				// TODO: Get all descending members.
-				targets = ast_dt_get_bind_targets(bind);
-
-				type_id bind_value_type = TYPE_UNSET;
-				switch (bind->kind) {
-					case AST_OBJECT_DEF_BIND_VALUE:
-						bind_value_type = bind->value.node->type;
-						break;
-
-					case AST_OBJECT_DEF_BIND_PACK:
-						// TODO: Resolve the type from pack.
-						assert(bind->num_targets == 1);
-						bind_value_type = get_member(ctx, bind->single_target)->type;
-						break;
-
-					case AST_OBJECT_DEF_BIND_CONST:
-						bind_value_type = bind->const_value.type;
-						break;
-				}
-				// assert(bind_value_type != TYPE_UNSET);
-
-				if (bind_value_type != TYPE_UNSET) {
-					assert_type_equals(ctx->ast_ctx->vm,
-							bind_value_type, target_type);
-				}
-
-				for (size_t i = 0; i < bind->num_targets; i++) {
-					struct ast_dt_member *mbr;
-					mbr = get_member(ctx, targets[i]);
-					ast_dt_bind_to_member(
-							ctx, bind, targets[i], 0, false);
-
-					ast_dt_job_dependency(ctx,
-							bind->value_jobs.codegen,
-							mbr->const_resolved);
-				}
-				*/
 			}
 			return 0;
 
