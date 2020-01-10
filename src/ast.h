@@ -451,6 +451,8 @@ struct ast_node {
 				// Used only for inst.
 				struct object_inst *inst;
 			};
+
+			struct object cons_value;
 		} call;
 
 		struct {

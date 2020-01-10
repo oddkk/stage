@@ -643,47 +643,16 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 		case AST_NODE_CONS:
 			{
-				struct object_cons *def;
-				def = node->call.cons;
-				assert(def);
+				assert(node->call.cons_value.type != TYPE_UNSET);
 
-				if (!def->pack) {
-					stg_error(ctx->err, node->loc,
-							"This object must be packed compile time.");
-					return AST_GEN_ERROR;
-				}
+				struct bc_instr *lit_instr;
+				lit_instr = bc_gen_load(
+						bc_env, BC_VAR_NEW,
+						node->call.cons_value);
 
-				if (node->call.num_args != def->num_params) {
-					stg_error(ctx->err, node->loc,
-							"Expected %zu parameters, got %zu.",
-							def->num_params, node->call.num_args);
-					return AST_GEN_ERROR;
-				}
+				append_bc_instr(&result, lit_instr);
 
-				bc_var arg_vars[def->num_params];
-
-				for (size_t i = 0; i < def->num_params; i++) {
-					struct ast_gen_bc_result arg;
-					arg = ast_node_gen_bytecode(
-							ctx, mod, info, bc_env,
-							node->call.args[i].value);
-
-					append_bc_instrs(&result, arg);
-
-					arg_vars[i] = arg.out_var;
-				}
-
-				for (size_t i = 0; i < def->num_params; i++) {
-					append_bc_instr(&result,
-							bc_gen_push_arg(bc_env, arg_vars[i]));
-				}
-
-				struct bc_instr *pack_instr;
-				pack_instr = bc_gen_pack(bc_env, BC_VAR_NEW,
-							def->pack, def->data, node->type);
-				append_bc_instr(&result, pack_instr);
-
-				result.out_var = pack_instr->pack.target;
+				result.out_var = lit_instr->load.target;
 			}
 			return result;
 

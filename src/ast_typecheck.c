@@ -679,6 +679,34 @@ ast_node_resolve_types(
 
 		switch (node->kind) {
 			case AST_NODE_CONS:
+				switch (ast_slot_value_result(res->result)) {
+					case AST_SLOT_RES_VALUE_UNKNOWN:
+					case AST_SLOT_RES_TYPE_FOUND:
+						stg_error(ctx->err, node->loc,
+								"Not enough type information to resolve the value "
+								"of this expression.");
+
+						errors += 1;
+						break;
+
+					case AST_SLOT_RES_VALUE_FOUND_OBJ:
+						node->call.cons_value = res->value.obj;
+						break;
+
+					case AST_SLOT_RES_VALUE_FOUND_TYPE:
+						{
+							struct object obj = {0};
+							obj.type = ctx->types.type;
+							obj.data = &res->value.type;
+							obj = register_object(ctx->vm, env->store, obj);
+							node->call.cons_value = obj;
+						}
+						break;
+
+					default:
+						panic("Invalid slot bind result.");
+						break;
+				}
 				switch (ast_slot_cons_result(res->result)) {
 					case AST_SLOT_RES_CONS_UNKNOWN:
 						stg_error(ctx->err, node->loc,
