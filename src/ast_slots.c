@@ -1611,13 +1611,20 @@ ast_slot_verify_fail(
 {
 	va_list ap;
 	va_start(ap, fmt);
-	stg_msgv(ctx->err, loc, STG_ERROR, fmt, ap);
 
 	printf("%i [", constr_id);
 	ast_print_constraint(ctx, constr_id);
 	printf("] " TC(TC_BRIGHT_RED, "validation failed") ": ");
 	vprintf(fmt, ap);
 	printf("\n");
+
+	va_end(ap);
+
+	// It seems that the ap is corrupted during the call to vpritnf. Starting
+	// ap again seems to help.
+	va_start(ap, fmt);
+
+	stg_msgv(ctx->err, loc, STG_ERROR, fmt, ap);
 
 	va_end(ap);
 }
@@ -1909,7 +1916,10 @@ ast_slot_verify_constraint(
 						return 1;
 					}
 
-					assert(stg_type_is_func(ctx->vm, target_val));
+					if (!stg_type_is_func(ctx->vm, target_val)) {
+						return -1;
+					}
+
 					struct type *target_type;
 					target_type = vm_get_type(ctx->vm, target_val);
 
@@ -1998,12 +2008,38 @@ ast_slot_verify_constraint(
 			return 0;
 
 		case AST_SLOT_REQ_IS_FUNC_TYPE:
-			assert((target->flags & AST_SLOT_HAS_CONS) != 0);
-			if ((target->flags & AST_SLOT_IS_FUNC_TYPE) == 0) {
-				// TODO: Better error message.
-				stg_error(ctx->err, constr->reason.loc,
-						"Expected function type, got object constructor.");
-				return -1;
+			{
+				assert((target->flags & AST_SLOT_HAS_CONS) != 0);
+				if ((target->flags & AST_SLOT_IS_FUNC_TYPE) == 0) {
+					// TODO: Better error message.
+					stg_error(ctx->err, constr->reason.loc,
+							"Expected function type, got object constructor.");
+					return -1;
+				}
+
+				type_id target_val;
+				int err;
+				err = ast_slot_try_get_value_type(
+						ctx, constr->target, &target_val);
+				if (err < 0) {
+					// TODO: Better error message.
+					stg_error(ctx->err, constr->reason.loc,
+							"Failed to resolve the value of this object.");
+					return -1;
+				} else if (err > 0) {
+					return 1;
+				}
+
+				if (!stg_type_is_func(ctx->vm, target_val)) {
+					struct string got_str = {0};
+					got_str = type_repr_to_alloced_string(
+							ctx->vm, vm_get_type(ctx->vm, target_val));
+					stg_error(ctx->err, constr->reason.loc,
+							"Expected function type, got %.*s.",
+							LIT(got_str));
+					free(got_str.text);
+					return -1;
+				}
 			}
 			return 0;
 
@@ -2206,5 +2242,5 @@ ast_slot_try_solve(
 
 	ast_env_free(ctx->env);
 
-	return num_errors;
+	return -num_errors;
 }

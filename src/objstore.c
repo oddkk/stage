@@ -186,6 +186,10 @@ store_register_func(struct objstore *store, struct func func)
 type_id
 func_return_type(struct vm *vm, type_id func_type_id)
 {
+	if (!stg_type_is_func(vm, func_type_id)) {
+		return TYPE_UNSET;
+	}
+
 	struct type *func_type = vm_get_type(vm, func_type_id);
 	struct stg_func_type *func_info =
 		(struct stg_func_type *)func_type->data;

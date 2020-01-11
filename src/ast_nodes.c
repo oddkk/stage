@@ -1103,8 +1103,7 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 				dep->value, type_slot);
 	}
 
-	ast_slot_id body_type_slot;
-	body_type_slot = ast_node_constraints(
+	ast_node_constraints(
 			ctx, mod, &inner_env,
 			body_deps, num_body_deps,
 			info->templ_node->templ.body);
