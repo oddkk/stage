@@ -1000,6 +1000,41 @@ ast_templ_unpack(
 	return 0;
 }
 
+void ast_templ_impose_constraints(
+		struct ast_context *ctx, struct stg_module *mod,
+		void *data, struct ast_env *env,
+		ast_slot_id ret_type_slot, ast_slot_id *param_slots)
+{
+	struct ast_templ_cons_info *info = data;
+
+	size_t num_body_deps = info->num_deps + info->num_params;
+	struct ast_typecheck_dep body_deps[num_body_deps];
+	memcpy(body_deps, info->deps,
+			info->num_deps * sizeof(struct ast_typecheck_dep));
+
+	for (size_t i = 0; i < info->num_params; i++) {
+		struct ast_typecheck_dep *dep;
+		dep = &body_deps[info->num_deps+i];
+
+		dep->req = AST_NAME_DEP_REQUIRE_VALUE;
+		dep->ref.kind = AST_NAME_REF_TEMPL;
+		dep->ref.templ = i;
+		dep->determined = false;
+		dep->lookup_failed = false;
+		dep->value = param_slots[i];
+	}
+
+	ast_slot_id result_slot;
+	result_slot = ast_node_constraints(
+			ctx, &mod->mod, env, body_deps, num_body_deps,
+			info->templ_node->templ.body);
+
+	ast_slot_require_type(
+			env, info->templ_node->loc,
+			AST_CONSTR_SRC_TEMPL_PARAM_DECL,
+			result_slot, ret_type_slot);
+}
+
 /*
 static bool
 ast_templ_can_unpack(struct ast_context *ctx, struct ast_env *env,
@@ -1190,6 +1225,8 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 	def->ct_pack      = ast_templ_pack;
 	def->ct_unpack    = ast_templ_unpack;
 	def->ct_pack_type = ast_templ_pack_type;
+	def->impose_constraints =
+		ast_templ_impose_constraints;
 	// def->can_unpack = ast_templ_can_unpack;
 
 	return def;

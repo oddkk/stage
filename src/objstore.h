@@ -213,7 +213,8 @@ typedef int32_t ast_slot_id;
 struct ast_env;
 
 typedef void (*object_impose_constraints)(
-		struct vm *, void *data, struct ast_env *,
+		struct ast_context *, struct stg_module *,
+		void *data, struct ast_env *,
 		ast_slot_id ret_type_slot, ast_slot_id *param_slots);
 
 struct object_cons_param {
@@ -234,8 +235,7 @@ struct object_cons {
 	object_ct_pack_func ct_pack;
 	object_ct_unpack_func ct_unpack;
 	object_ct_pack_type_func ct_pack_type;
-
-	object_impose_constraints impose_type_constraints;
+	object_impose_constraints impose_constraints;
 
 	void *data;
 };

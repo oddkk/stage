@@ -369,6 +369,10 @@ struct ast_slot_resolve {
 	struct ast_slot_resolve_member *members;
 	size_t num_members;
 
+	// Keeps track of what constructor has had impose_constraints called on
+	// this slot.
+	struct object_cons *imposed_cons;
+
 	// Designates the constraints that has the highest priority for the
 	// parameter.
 	struct {
@@ -390,6 +394,9 @@ struct solve_context {
 	struct ast_slot_resolve *slots;
 	struct ast_context *ast_ctx;
 	size_t num_slots;
+
+	size_t num_extra_slots;
+	struct ast_slot_resolve *extra_slots;
 };
 
 #if AST_DEBUG_SLOT_SOLVE
@@ -441,15 +448,19 @@ ast_get_constraint(struct solve_context *ctx, ast_constraint_id constr)
 static inline struct ast_slot_resolve *
 ast_get_real_slot(struct solve_context *ctx, ast_slot_id slot)
 {
-	assert(slot < ctx->num_slots && slot >= 0);
-	return &ctx->slots[slot];
+	assert(slot < ctx->num_slots+ctx->num_extra_slots && slot >= 0);
+	if (slot < ctx->num_slots) {
+		return &ctx->slots[slot];
+	} else {
+		return &ctx->extra_slots[slot-ctx->num_slots];
+	}
 }
 
 static inline ast_slot_id
 ast_slot_resolve_subst(struct solve_context *ctx, ast_slot_id slot)
 {
-	while (slot >= 0 && (ctx->slots[slot].flags & AST_SLOT_HAS_SUBST) != 0) {
-		slot = ctx->slots[slot].subst;
+	while (slot >= 0 && (ast_get_real_slot(ctx, slot)->flags & AST_SLOT_HAS_SUBST) != 0) {
+		slot = ast_get_real_slot(ctx, slot)->subst;
 	}
 
 	return slot;
@@ -1372,28 +1383,28 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			err = ast_slot_try_get_value_cons(
 					ctx, slot->cons, &cons);
 			if (!err) {
-				for (size_t i = 0; i < slot->num_members; i++) {
+				for (size_t mbr_i = 0; mbr_i < slot->num_members; mbr_i++) {
 					ssize_t param_i = -1;
-					if (slot->members[i].ref.named) {
+					if (slot->members[mbr_i].ref.named) {
 						param_i = object_cons_find_param(
-								cons, slot->members[i].ref.name);
-					} else if (slot->members[i].ref.index < cons->num_params) {
-						param_i = slot->members[i].ref.index;
+								cons, slot->members[mbr_i].ref.name);
+					} else if (slot->members[mbr_i].ref.index < cons->num_params) {
+						param_i = slot->members[mbr_i].ref.index;
 					} else {
 						printf("Got unexpected parameter %zu to cons.\n",
-								slot->members[i].ref.index);
+								slot->members[mbr_i].ref.index);
 						continue;
 					}
 
 					if (param_i < 0) {
 						printf("Cons does not have member %.*s.\n",
-								ALIT(slot->members[i].ref.name));
+								ALIT(slot->members[mbr_i].ref.name));
 						continue;
 					}
 					assert(param_i < cons->num_params);
 
 					struct object res = {0};
-					res.type = cons->params[i].type;
+					res.type = cons->params[param_i].type;
 
 					struct type *param_type;
 					param_type = vm_get_type(ctx->vm, res.type);
@@ -1422,7 +1433,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 
 					made_change |= ast_solve_apply_value_obj(
 							ctx, slot->authority.value,
-							slot->members[i].slot, res);
+							slot->members[mbr_i].slot, res);
 				}
 			}
 		}
@@ -1434,15 +1445,15 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 
 		if ((slot->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
 			ssize_t max_param_i = -1;
-			for (size_t i = 0; i < slot->num_members; i++) {
-				if (slot->members[i].ref.named) {
+			for (size_t mbr_i = 0; mbr_i < slot->num_members; mbr_i++) {
+				if (slot->members[mbr_i].ref.named) {
 					printf("Expected indexed arguments for func type cons, got named arg.\n");
 					slot->flags |= AST_SLOT_HAS_ERROR;
 					continue;
 				}
 
-				if ((ssize_t)slot->members[i].ref.index > max_param_i) {
-					max_param_i = slot->members[i].ref.index;
+				if ((ssize_t)slot->members[mbr_i].ref.index > max_param_i) {
+					max_param_i = slot->members[mbr_i].ref.index;
 				}
 			}
 
@@ -1452,18 +1463,18 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			bool arg_set[max_param_i+1];
 			memset(arg_set, 0, sizeof(bool) * max_param_i+1);
 
-			for (size_t i = 0; i < slot->num_members; i++) {
-				if (slot->members[i].ref.named) {
+			for (size_t mbr_i = 0; mbr_i < slot->num_members; mbr_i++) {
+				if (slot->members[mbr_i].ref.named) {
 					continue;
 				}
 
-				size_t param_i = slot->members[i].ref.index;
+				size_t param_i = slot->members[mbr_i].ref.index;
 				assert(param_i <= max_param_i);
 
 				int err;
 				arg_types[param_i] = TYPE_UNSET;
 				err = ast_slot_try_get_value_type(
-						ctx, slot->members[i].slot, &arg_types[param_i]);
+						ctx, slot->members[mbr_i].slot, &arg_types[param_i]);
 				if (err < 0) {
 					slot->flags |= AST_SLOT_HAS_ERROR;
 					continue;
@@ -1498,6 +1509,51 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			if (err) {
 				return false;
 			}
+
+			if (!slot->imposed_cons) {
+				// The first time we see a constructor for slot we let it
+				// impose constraints. To avoid duplicatly creating
+				// constraints we set slot->imposed_cons. This also
+				// prevents applying conflicting constructor's constraints.
+
+				if (cons->impose_constraints) {
+					ast_slot_id param_slots[cons->num_params];
+
+					struct ast_slot_constraint *cons_constr;
+					cons_constr = ast_get_constraint(
+							ctx, slot->authority.cons);
+
+					for (size_t i = 0; i < cons->num_params; i++) {
+						param_slots[i] = ast_slot_alloc(ctx->env);
+
+						ast_slot_require_member_named(
+								ctx->env, cons_constr->reason.loc,
+								AST_CONSTR_SRC_EXPECTED,
+								slot_id, cons->params[i].name,
+								param_slots[i]
+								SLOT_DEBUG_ARG);
+					}
+
+					ast_slot_id ret_type_slot;
+					ret_type_slot = ast_slot_alloc(ctx->env);
+
+					ast_slot_require_type(
+							ctx->env, cons_constr->reason.loc,
+							AST_CONSTR_SRC_EXPECTED,
+							slot_id, ret_type_slot
+							SLOT_DEBUG_ARG);
+
+					cons->impose_constraints(
+							ctx->ast_ctx, ctx->mod->stg_mod,
+							cons->data, ctx->env,
+							ret_type_slot, param_slots);
+				}
+
+				made_change = true;
+
+				slot->imposed_cons = cons;
+			}
+
 
 			struct object args[cons->num_params];
 			void *arg_data[cons->num_params];
@@ -2097,6 +2153,22 @@ ast_slot_try_solve(
 	while (made_progress) {
 		made_progress = false;
 
+		if (ctx->num_slots + ctx->num_extra_slots < ctx->env->num_alloced_slots) {
+			size_t new_num_extra_slots = ctx->env->num_alloced_slots - ctx->num_slots;
+			ctx->extra_slots = realloc(ctx->extra_slots,
+					new_num_extra_slots * sizeof(struct ast_slot_resolve));
+			if (!ctx->extra_slots) {
+				panic("Failed to alloc new slots during solve.");
+				return -1;
+			}
+
+			memset(&ctx->extra_slots[ctx->num_extra_slots], 0,
+					(new_num_extra_slots-ctx->num_extra_slots) *
+					sizeof(struct ast_slot_resolve));
+
+			ctx->num_extra_slots = new_num_extra_slots;
+		}
+
 		size_t num_constraints = ast_env_num_constraints(ctx);
 		for (ast_constraint_id constr_id = num_applied_constraints;
 				constr_id < num_constraints; constr_id++) {
@@ -2134,6 +2206,13 @@ ast_slot_try_solve(
 
 	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
 		ast_print_slot(ctx, slot_id);
+	}
+
+	if (ctx->num_extra_slots > 0) {
+		printf("extra slots:\n");
+		for (ast_slot_id slot_id = 0; slot_id < ctx->num_extra_slots; slot_id++) {
+			ast_print_slot(ctx, ctx->num_slots+slot_id);
+		}
 	}
 #endif
 

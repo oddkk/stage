@@ -134,10 +134,12 @@ test_cons_unpack(struct vm *vm, void *data,
 }
 
 static void
-test_cons_impose_constraints(struct vm *vm, void *data,
-		struct ast_env *env, ast_slot_id ret_type_slot, ast_slot_id *param_slots)
+test_cons_impose_constraints(
+		struct ast_context *ctx, struct stg_module *mod,
+		void *data, struct ast_env *env,
+		ast_slot_id ret_type_slot, ast_slot_id *param_slots)
 {
-	ast_slot_require_is_type(
+	ast_slot_require_type(
 			env, STG_NO_LOC, AST_CONSTR_SRC_FUNC_DECL,
 			param_slots[0], ret_type_slot);
 }
@@ -163,7 +165,8 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 	test_cons.pack = test_cons_pack;
 	test_cons.pack_type = test_cons_pack_type;
 	test_cons.unpack = test_cons_unpack;
-	test_cons.impose_type_constraints = test_cons_impose_constraints;
+	test_cons.impose_constraints =
+		test_cons_impose_constraints;
 
 	ast_slot_id obj_slot, cons_slot, param_slot;
 
@@ -240,7 +243,8 @@ test_value_cons_propagate(struct ast_context *ctx, struct stg_module *mod)
 	test_cons.pack = test_cons_pack;
 	test_cons.pack_type = test_cons_pack_type;
 	test_cons.unpack = test_cons_unpack;
-	test_cons.impose_type_constraints = test_cons_impose_constraints;
+	test_cons.impose_constraints =
+		test_cons_impose_constraints;
 
 	struct object_cons *test_cons_ptr = &test_cons;
 
@@ -296,7 +300,8 @@ test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 	test_cons.num_params = sizeof(test_cons_params) / sizeof(struct object_cons_param);
 	test_cons.pack = test_cons_pack;
 	test_cons.unpack = test_cons_unpack;
-	test_cons.impose_type_constraints = test_cons_impose_constraints;
+	test_cons.impose_constraints =
+		test_cons_impose_constraints;
 
 	ast_slot_id obj_slot, cons_slot, param_slot;
 
