@@ -476,6 +476,7 @@ struct ast_node {
 			size_t num_params;
 
 			struct object_cons *cons;
+			bool failed;
 
 			struct ast_closure_target closure;
 		} templ;
@@ -502,6 +503,7 @@ struct ast_node {
 			struct ast_closure_target closure;
 
 			type_id type;
+			bool failed;
 		} composite;
 
 		struct {
@@ -511,6 +513,7 @@ struct ast_node {
 			struct ast_closure_target closure;
 
 			type_id type;
+			bool failed;
 		} variant;
 	};
 };
@@ -767,6 +770,12 @@ ast_node_typecheck(struct ast_context *ctx,
 		struct ast_module *mod, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		type_id expected_type);
+
+void
+ast_node_resolve_datatypes(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_typecheck_dep *deps, size_t num_deps,
+		struct ast_node *node);
 
 ast_slot_id
 ast_node_constraints(

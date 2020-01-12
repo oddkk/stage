@@ -198,6 +198,92 @@ ast_func_proto_constraints(
 	return func_type;
 }
 
+void
+ast_node_resolve_datatypes(
+		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_typecheck_dep *deps, size_t num_deps,
+		struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_TEMPL:
+			if (!node->templ.cons) {
+				size_t num_body_deps = node->templ.closure.num_members;
+				struct ast_typecheck_dep body_deps[num_body_deps];
+				memset(body_deps, 0, sizeof(struct ast_typecheck_dep) * num_body_deps);
+				ast_constr_fill_closure_deps(ctx, NULL,
+						body_deps, &node->templ.closure,
+						deps, num_deps);
+
+				node->templ.cons = ast_node_create_templ(
+						ctx, mod, node,
+						deps, num_deps,
+						body_deps, num_body_deps);
+
+				if (!node->templ.cons) {
+					node->templ.failed = true;
+				}
+			}
+			break;
+
+		case AST_NODE_COMPOSITE:
+			if (node->composite.type == TYPE_UNSET) {
+				struct ast_closure_target *closure;
+				closure = &node->composite.closure;
+
+				struct ast_typecheck_closure closure_values[closure->num_members];
+				memset(closure_values, 0,
+						sizeof(struct ast_typecheck_closure) * closure->num_members);
+
+				ast_fill_closure(closure, closure_values,
+						deps, num_deps);
+
+				node->composite.type =
+					ast_dt_finalize_composite(
+							ctx, mod, node,
+							closure_values, closure->num_members);
+
+				if (node->composite.type == TYPE_UNSET) {
+					node->composite.failed = true;
+				}
+			}
+			break;
+
+		case AST_NODE_VARIANT:
+			if (node->variant.type == TYPE_UNSET) {
+				struct ast_closure_target *closure;
+				closure = &node->variant.closure;
+
+				struct ast_typecheck_closure closure_values[closure->num_members];
+				memset(closure_values, 0,
+						sizeof(struct ast_typecheck_closure) * closure->num_members);
+
+				ast_fill_closure(closure, closure_values,
+						deps, num_deps);
+
+				node->variant.type =
+					ast_dt_finalize_variant(
+							ctx, mod,
+							node->variant.options,
+							node->variant.num_options,
+							closure_values, closure->num_members);
+
+				if (node->variant.type == TYPE_UNSET) {
+					node->variant.failed = true;
+				}
+			}
+			break;
+
+		default:
+			break;
+	}
+
+#define VISIT_NODE(child) \
+	ast_node_resolve_datatypes( \
+			ctx, mod, deps, num_deps, child);
+	AST_NODE_VISIT(node, false, false, true, false);
+#undef VISIT_NODE
+}
+
 ast_slot_id
 ast_node_constraints(
 		struct ast_context *ctx, struct ast_module *mod,
@@ -440,20 +526,6 @@ ast_node_constraints(
 
 		case AST_NODE_TEMPL:
 			{
-				size_t num_body_deps = node->templ.closure.num_members;
-				struct ast_typecheck_dep body_deps[num_body_deps];
-				memset(body_deps, 0, sizeof(struct ast_typecheck_dep) * num_body_deps);
-				ast_constr_fill_closure_deps(ctx, env,
-						body_deps, &node->templ.closure,
-						deps, num_deps);
-
-				if (!node->templ.cons) {
-					node->templ.cons = ast_node_create_templ(
-						ctx, mod, node,
-						deps, num_deps,
-						body_deps, num_body_deps);
-				}
-
 				ast_slot_id res_slot;
 				res_slot = ast_slot_alloc(env);
 
@@ -467,7 +539,7 @@ ast_node_constraints(
 					ast_slot_require_is_obj(
 							env, node->loc, AST_CONSTR_SRC_TEMPL_PARAM_DECL,
 							res_slot, cons_obj);
-				} else {
+				} else if (node->templ.failed) {
 					ast_slot_value_error(
 							env, node->loc, AST_CONSTR_SRC_TEMPL_PARAM_DECL,
 							res_slot);
@@ -540,30 +612,11 @@ ast_node_constraints(
 			ast_slot_id res_slot;
 			res_slot = ast_slot_alloc(env);
 
-			if (node->composite.type == TYPE_UNSET) {
-				struct ast_closure_target *closure;
-				closure = &node->composite.closure;
-
-				struct ast_typecheck_closure closure_values[closure->num_members];
-				memset(closure_values, 0,
-						sizeof(struct ast_typecheck_closure) * closure->num_members);
-
-				ast_fill_closure(closure, closure_values,
-						deps, num_deps);
-
-				node->composite.type =
-					ast_dt_finalize_composite(
-							ctx, mod, env, node,
-							closure_values, closure->num_members);
-
-				if (node->composite.type == TYPE_UNSET) {
-					ast_slot_value_error(
-							env, node->loc, AST_CONSTR_SRC_DT_DECL,
-							res_slot);
-				}
-			}
-
 			if (node->composite.type != TYPE_UNSET) {
+				ast_slot_require_is_type(
+						env, node->loc, AST_CONSTR_SRC_DT_DECL,
+						res_slot, node->composite.type);
+			} else if (node->composite.failed) {
 				ast_slot_require_is_type(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
 						res_slot, node->composite.type);
@@ -578,35 +631,14 @@ ast_node_constraints(
 			ast_slot_id res_slot;
 			res_slot = ast_slot_alloc(env);
 
-			if (node->variant.type == TYPE_UNSET) {
-				struct ast_closure_target *closure;
-				closure = &node->variant.closure;
-
-				struct ast_typecheck_closure closure_values[closure->num_members];
-				memset(closure_values, 0,
-						sizeof(struct ast_typecheck_closure) * closure->num_members);
-
-				ast_fill_closure(closure, closure_values,
-						deps, num_deps);
-
-				node->variant.type =
-					ast_dt_finalize_variant(
-							ctx, mod, env,
-							node->variant.options,
-							node->variant.num_options,
-							closure_values, closure->num_members);
-
-				if (node->variant.type == TYPE_UNSET) {
-					ast_slot_value_error(
-							env, node->loc, AST_CONSTR_SRC_DT_DECL,
-							res_slot);
-				}
-			}
-
 			if (node->variant.type != TYPE_UNSET) {
 				ast_slot_require_is_type(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
 						res_slot, node->variant.type);
+			} else if (node->variant.failed) {
+				ast_slot_value_error(
+						env, node->loc, AST_CONSTR_SRC_DT_DECL,
+						res_slot);
 			}
 
 			node->typecheck_slot = res_slot;
@@ -821,6 +853,9 @@ ast_node_typecheck(struct ast_context *ctx,
 	memcpy(body_deps, deps, num_deps * sizeof(struct ast_typecheck_dep));
 
 	ast_typecheck_deps_slots(&env, body_deps, num_deps);
+
+	ast_node_resolve_datatypes(
+			ctx, mod, body_deps, num_deps, node);
 
 	ast_slot_id expr_slot;
 	expr_slot = ast_node_constraints(
