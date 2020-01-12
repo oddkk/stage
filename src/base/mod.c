@@ -98,7 +98,7 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 	type_type_expr = ast_init_node_lit(
 			ctx, AST_NODE_NEW, STG_NO_LOC, type_obj);
 	ast_namespace_add_decl(ctx, &mod->mod,
-			mod->mod.root, mod_atoms(mod, "type"), type_type_expr);
+			mod->mod.root, mod_atoms(mod, "Type"), type_type_expr);
 
 	struct ast_node *unit_type_expr;
 	struct object unit_obj = {0};

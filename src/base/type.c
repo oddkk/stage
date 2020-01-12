@@ -9,7 +9,7 @@ obj_type_repr(struct vm *vm, struct arena *mem, struct object *obj)
 	struct type *type = vm_get_type(vm, tid);
 	struct string res = arena_string_init(mem);
 
-	arena_string_append(mem, &res, STR("type("));
+	arena_string_append(mem, &res, STR("Type("));
 	arena_string_append_type_repr(&res, vm, mem, type);
 	arena_string_append(mem, &res, STR(")"));
 
@@ -17,7 +17,7 @@ obj_type_repr(struct vm *vm, struct arena *mem, struct object *obj)
 }
 
 static struct type_base base_type_base = {
-	.name = STR("type"),
+	.name = STR("Type"),
 	.obj_repr = obj_type_repr,
 };
 
