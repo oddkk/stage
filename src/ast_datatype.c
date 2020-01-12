@@ -188,7 +188,6 @@ struct ast_dt_context {
 	ast_dt_job_id target_names_resolved;
 
 	struct ast_context *ast_ctx;
-	struct ast_env     *ast_env;
 	struct ast_module  *ast_mod;
 
 	struct ast_typecheck_closure *closures;
@@ -1156,7 +1155,7 @@ ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
 
 	expr->const_value =
 		register_object(ctx->ast_ctx->vm,
-				ctx->ast_env->store, obj);
+				ctx->ast_mod->env.store, obj);
 	expr->constant = true;
 	*out = expr->const_value;
 
@@ -2630,8 +2629,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 
 type_id
 ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_env *env, struct ast_node *comp,
-		struct ast_typecheck_closure *closures, size_t num_closures)
+		struct ast_node *comp, struct ast_typecheck_closure *closures, size_t num_closures)
 {
 	if (comp->composite.type != TYPE_UNSET) {
 		return comp->composite.type;
@@ -2639,7 +2637,6 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 	struct ast_dt_context dt_ctx = {0};
 	dt_ctx.ast_ctx = ctx;
-	dt_ctx.ast_env = env;
 	dt_ctx.ast_mod = mod;
 	dt_ctx.root_node = comp;
 	dt_ctx.terminal_jobs  = -1;
@@ -2829,7 +2826,7 @@ struct type_base variant_type_base = {
 
 type_id
 ast_dt_finalize_variant(
-		struct ast_context *ctx, struct ast_module *mod, struct ast_env *env,
+		struct ast_context *ctx, struct ast_module *mod,
 		struct ast_datatype_variant *options, size_t num_options,
 		struct ast_typecheck_closure *closure_values, size_t num_closures)
 {

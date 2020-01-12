@@ -1119,8 +1119,8 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 		ast_slot_id type_slot;
 
 		if (param_type) {
-			// We the outer_deps for the parameters as they are not supposed to
-			// be able to see the other parameters.
+			// We use the outer_deps for the parameters as they are not
+			// supposed to be able to see the other parameters.
 			type_slot = ast_node_constraints(
 					ctx, mod, &inner_env,
 					param_deps, num_param_deps,

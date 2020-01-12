@@ -42,6 +42,7 @@ ast_find_dep(struct ast_typecheck_dep *deps, size_t num_deps,
 	return NULL;
 }
 
+// If NULL is passed as env, the value member of all out_deps will be set to -1.
 static void
 ast_constr_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 		struct ast_typecheck_dep *out_deps, struct ast_closure_target *closure,
@@ -58,7 +59,11 @@ ast_constr_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 		assert(in_dep);
 
 		out_deps[i].lookup_failed = in_dep->lookup_failed;
-		out_deps[i].value = ast_slot_alloc(env);
+		if (env) {
+			out_deps[i].value = ast_slot_alloc(env);
+		} else {
+			out_deps[i].value = -1;
+		}
 
 		if (in_dep->determined) {
 			if (mbr->require_const) {
@@ -66,10 +71,12 @@ ast_constr_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 						in_dep->req == AST_NAME_DEP_REQUIRE_VALUE);
 				out_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
 
-				// TODO: Location
-				ast_slot_require_is_obj(
-						env, STG_NO_LOC, AST_CONSTR_SRC_CLOSURE,
-						out_deps[i].value, in_dep->val);
+				if (env) {
+					// TODO: Location
+					ast_slot_require_is_obj(
+							env, STG_NO_LOC, AST_CONSTR_SRC_CLOSURE,
+							out_deps[i].value, in_dep->val);
+				}
 
 				out_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
 				out_deps[i].determined = true;
@@ -79,23 +86,28 @@ ast_constr_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 				out_deps[i].req = AST_NAME_DEP_REQUIRE_TYPE;
 
 				if (in_dep->req == AST_NAME_DEP_REQUIRE_TYPE) {
-					ast_slot_id type_slot;
-					type_slot = ast_slot_alloc(env);
+					if (env) {
+						ast_slot_id type_slot;
+						type_slot = ast_slot_alloc(env);
 
-					// TODO: Location
-					ast_slot_require_is_type(
-							env, STG_NO_LOC, AST_CONSTR_SRC_CLOSURE,
-							type_slot, in_dep->type);
+						// TODO: Location
+						ast_slot_require_is_type(
+								env, STG_NO_LOC, AST_CONSTR_SRC_CLOSURE,
+								type_slot, in_dep->type);
 
-					ast_slot_require_type(
-							env, STG_NO_LOC, AST_CONSTR_SRC_CLOSURE,
-							out_deps[i].value, type_slot);
+						ast_slot_require_type(
+								env, STG_NO_LOC, AST_CONSTR_SRC_CLOSURE,
+								out_deps[i].value, type_slot);
+					}
 
 					out_deps[i].type = in_dep->type;
 				} else {
-					ast_slot_require_is_obj(
-							env, STG_NO_LOC, AST_CONSTR_SRC_CLOSURE,
-							out_deps[i].value, in_dep->val);
+					if (env) {
+						ast_slot_require_is_obj(
+								env, STG_NO_LOC, AST_CONSTR_SRC_CLOSURE,
+								out_deps[i].value, in_dep->val);
+					}
+
 					out_deps[i].val = in_dep->val;
 				}
 
@@ -104,8 +116,12 @@ ast_constr_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 			}
 		} else {
 			out_deps[i].determined = false;
-			out_deps[i].value = in_dep->value;
+			if (env) {
+				out_deps[i].value = in_dep->value;
+			}
 		}
+
+		assert(env || out_deps[i].value == -1);
 	}
 }
 

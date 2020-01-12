@@ -173,7 +173,7 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 
 	type_id type;
 	type = ast_dt_finalize_composite(ctx, mod,
-			&mod->env, mod->root, NULL, 0);
+			mod->root, NULL, 0);
 
 	mod->type = type;
 
