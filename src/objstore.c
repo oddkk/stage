@@ -571,6 +571,29 @@ get_expr(struct object_inst_context *ctx, obj_expr_id id)
 	return &ctx->exprs[id];
 }
 
+static void
+obj_inst_add_expr_target(
+		struct object_inst_context *ctx,
+		obj_expr_id expr_id, obj_member_id mbr_id)
+{
+	struct obj_inst_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	obj_member_id iter = expr->first_target;
+	while (iter >= 0) {
+		if (iter == mbr_id) {
+			return;
+		}
+		iter = get_member(ctx, iter)->next_expr_target;
+	}
+
+	struct obj_inst_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	mbr->next_expr_target = expr->first_target;
+	expr->first_target = mbr_id;
+}
+
 static int
 object_inst_bind_single(struct object_inst_context *ctx,
 		size_t target_id, size_t unpack_id, size_t bind_id)
@@ -946,8 +969,8 @@ object_inst_order(
 			object_inst_bind_single(ctx,
 					desc_id, bind->unpack_id+i, bind_i);
 
-			desc->next_expr_target = expr->first_target;
-			expr->first_target = desc_id;
+			obj_inst_add_expr_target(
+					ctx, bind->expr_id, desc_id);
 		}
 	}
 
