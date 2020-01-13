@@ -1040,6 +1040,8 @@ enum ast_slot_get_error {
 	AST_SLOT_GET_IS_FUNC_TYPE_CONS = 4,
 	AST_SLOT_GET_IS_CONS = 5,
 	AST_SLOT_GET_IS_INST = 6,
+	AST_SLOT_GET_TYPE_HAS_NO_INST = 7,
+	AST_SLOT_GET_TYPE_HAS_NO_CONS = 8,
 	AST_SLOT_GET_TYPE_ERROR = -1,
 };
 
@@ -1155,14 +1157,27 @@ ast_slot_try_get_value_inst(
 {
 	int err;
 	struct object obj;
-	err = ast_slot_try_get_value(ctx, slot_id, ctx->inst, &obj);
+	err = ast_slot_try_get_value(ctx, slot_id, TYPE_UNSET, &obj);
 	if (err) {
 		return err;
 	}
 
-	assert_type_equals(ctx->vm, obj.type, ctx->inst);
-	*out_inst = *(struct object_inst **)obj.data;
-	return AST_SLOT_GET_OK;
+	if (type_equals(ctx->vm, obj.type, ctx->inst)) {
+		*out_inst = *(struct object_inst **)obj.data;
+		return AST_SLOT_GET_OK;
+	} else if (type_equals(ctx->vm, obj.type, ctx->type)) {
+		type_id tid = *(type_id *)obj.data;
+		struct type *type = vm_get_type(ctx->vm, tid);
+
+		if (!type->obj_inst) {
+			return AST_SLOT_GET_TYPE_HAS_NO_INST;
+		}
+
+		*out_inst = type->obj_inst;
+		return AST_SLOT_GET_OK;
+	} else {
+		return AST_SLOT_GET_TYPE_ERROR;
+	}
 }
 
 static enum ast_slot_get_error
@@ -1260,6 +1275,9 @@ ast_slot_solve_impose_constraint(
 			ast_solve_apply_cons(
 					ctx, constr_id,
 					constr->target, constr->inst, true);
+			ast_solve_apply_type(
+					ctx, constr_id,
+					constr->target, constr->inst);
 			break;
 
 		case AST_SLOT_REQ_TYPE:
