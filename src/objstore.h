@@ -291,7 +291,8 @@ object_cons_num_descendants(
 		struct vm *, struct object_cons *);
 
 // out_local_descendent_ids is expected to be an array of length
-// cons->num_params.
+// cons->num_params. Note that the parent member has ID 0, so the first
+// parameter will have ID 1.
 void
 object_cons_local_descendent_ids(
 		struct vm *, struct object_cons *cons,

@@ -260,10 +260,14 @@ static inline ast_member_id
 ast_dt_member_get_descendant(struct ast_dt_context *ctx,
 		ast_member_id mbr_id, size_t descendant_id)
 {
+	if (descendant_id == 0) {
+		return mbr_id;
+	}
+
 	struct ast_dt_member *mbr;
 	mbr = get_member(ctx, mbr_id);
 	if ((mbr->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
-		return mbr->first_child + descendant_id;
+		return mbr->first_child + descendant_id-1;
 	} else {
 		return mbr_id + descendant_id;
 	}
@@ -2569,6 +2573,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 				ast_dt_calculate_persistant_id(
 						ctx, expr->member_deps[i]);
 		}
+
+		exprs[expr_i].loc = expr->loc;
 	}
 
 	inst->exprs = exprs;

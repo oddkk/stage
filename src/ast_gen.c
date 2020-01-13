@@ -450,6 +450,10 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				memset(extra_exprs, 0,
 						sizeof(struct object_inst_extra_expr) * node->call.num_args);
 
+				int local_descs[inst->cons->num_params];
+				object_cons_local_descendent_ids(
+						ctx->vm, inst->cons, local_descs);
+
 				for (size_t i = 0; i < node->call.num_args; i++) {
 					extra_binds[i].unpack_id = 0;
 					extra_binds[i].expr_id = inst->num_exprs + i;
@@ -459,7 +463,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					extra_binds[i].target_id = -1;
 					for (size_t mbr_i = 0; mbr_i < inst->cons->num_params; mbr_i++) {
 						if (inst->cons->params[mbr_i].name == node->call.args[i].name) {
-							extra_binds[i].target_id = mbr_i;
+							extra_binds[i].target_id = local_descs[mbr_i];
 							break;
 						}
 					}
@@ -606,9 +610,8 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 								object_cons_local_descendent_ids(
 										ctx->vm, mbr_cons, local_mbrs);
 
-								int first_child = act->pack.member_id + 1;
 								for (size_t i = 0; i < mbr_cons->num_params; i++) {
-									int param_id = first_child + local_mbrs[i];
+									int param_id = act->pack.member_id + local_mbrs[i];
 									assert(param_id < num_desc_members);
 									assert(member_vars[param_id] != BC_VAR_NEW);
 

@@ -373,7 +373,7 @@ object_cons_local_descendent_ids(
 		struct vm *vm, struct object_cons *cons,
 		int *out_local_descendent_ids)
 {
-	size_t count = 0;
+	size_t count = 1;
 	for (size_t i = 0; i < cons->num_params; i++) {
 		out_local_descendent_ids[i] = count;
 
