@@ -477,7 +477,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				size_t num_actions = 0;
 				int err;
 				err = object_inst_order(
-						ctx->vm, inst,
+						ctx->vm, ctx->err, inst,
 						extra_exprs, node->call.num_args,
 						extra_binds, node->call.num_args,
 						&actions, &num_actions);

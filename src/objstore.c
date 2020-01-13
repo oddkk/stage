@@ -527,6 +527,7 @@ struct obj_inst_expr {
 
 struct object_inst_context {
 	struct vm *vm;
+	struct stg_error_context *err;
 
 	// Note that members, like unpack id, starts with 0 being the top-level
 	// object, with descendants from 1.
@@ -604,15 +605,21 @@ object_inst_bind_single(struct object_inst_context *ctx,
 		prev_bind = get_bind(ctx, target->bind);
 
 		if (!prev_bind->overridable && !new_bind->overridable) {
-			// TODO: Report error.
-			printf("Bound multiple times.\n");
+			// TODO: Name
+			stg_error(ctx->err, new_bind->loc,
+					"Member bound multiple times.");
+			stg_appendage(ctx->err, prev_bind->loc,
+					"Also bound here.");
 			ctx->num_errors += 1;
 			return -1;
 		}
 
 		if (prev_bind->overridable && new_bind->overridable) {
-			// TODO: Report error.
-			printf("Multiple overridable binds.\n");
+			// TODO: Name
+			stg_error(ctx->err, new_bind->loc,
+					"Member bound multiple times as overridable.");
+			stg_appendage(ctx->err, prev_bind->loc,
+					"Also bound here.");
 			ctx->num_errors += 1;
 			return -1;
 		}
@@ -809,7 +816,7 @@ obj_inst_expr_emit_actions(
 
 int
 object_inst_order(
-		struct vm *vm, struct object_inst *inst,
+		struct vm *vm, struct stg_error_context *err, struct object_inst *inst,
 		struct object_inst_extra_expr *extra_exprs, size_t num_extra_exprs,
 		struct object_inst_bind       *extra_binds, size_t num_extra_binds,
 		struct object_inst_action **out_actions, size_t *out_num_actions)
@@ -818,6 +825,7 @@ object_inst_order(
 	struct object_inst_context *ctx = &_ctx;
 
 	ctx->vm = vm;
+	ctx->err = err;
 
 	ctx->num_exprs = inst->num_exprs + num_extra_exprs;
 	ctx->num_binds = inst->num_binds + num_extra_binds;
@@ -943,7 +951,9 @@ object_inst_order(
 		mbr = get_member(ctx, mbr_i);
 
 		if (mbr->bind < 0 && mbr->num_descendants == 0) {
-			printf("Missing bind.\n");
+			// TODO: Location and context about instantiation.
+			stg_error(ctx->err, STG_NO_LOC,
+					"Member not bound.");
 			ctx->num_errors += 1;
 		}
 	}

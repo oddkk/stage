@@ -349,7 +349,7 @@ struct object_inst_extra_expr {
 // inst->num_exprs+num_extra_exprs.
 int
 object_inst_order(
-		struct vm *vm, struct object_inst *inst,
+		struct vm *vm, struct stg_error_context *, struct object_inst *inst,
 		struct object_inst_extra_expr *extra_exprs, size_t num_extra_exprs,
 		struct object_inst_bind       *extra_binds, size_t num_extra_binds,
 		struct object_inst_action **out_actions, size_t *out_num_actions);
