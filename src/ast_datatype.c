@@ -784,9 +784,11 @@ ast_dt_bind_to_member(struct ast_dt_context *ctx,
 		} else {
 			member->overridden_bind = member->bound;
 			member->bound = bind_id;
+			member->bound_unpack_id = unpack_id;
 		}
 	} else {
 		member->bound = bind_id;
+		member->bound_unpack_id = unpack_id;
 	}
 }
 
@@ -938,10 +940,6 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 
 		mbr->type_resolved = mbr->type_jobs.codegen;
 	}
-
-	ast_dt_job_dependency(ctx,
-			mbr->type_jobs.resolve_types,
-			mbr->type_jobs.codegen);
 
 	mbr->const_resolved =
 		ast_dt_job_type(ctx, mbr_id,
@@ -1367,7 +1365,9 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 }
 
 static void
-ast_dt_populate_descendants(struct ast_dt_context *ctx, ast_member_id local_anscestor, ast_member_id parent_id)
+ast_dt_populate_descendants(
+		struct ast_dt_context *ctx, ast_member_id local_anscestor,
+		ast_member_id parent_id)
 {
 	struct ast_dt_member *parent;
 	parent = get_member(ctx, parent_id);
@@ -1605,32 +1605,6 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 
 	ast_dt_populate_descendants(ctx, mbr_id, mbr_id);
 	ast_dt_populate_descendant_binds(ctx, mbr_id);
-
-	// We re-fetch mbr as it might have been
-	// invalidated by ast_dt_populate_descendant_binds.
-	mbr = get_member(ctx, mbr_id);
-
-	struct type *mbr_type;
-	mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
-
-	if (mbr_type->obj_def) {
-		size_t num_children = 0;
-		ast_member_id *children = NULL;
-
-		num_children = mbr_type->obj_def->num_params;
-		if (num_children > 0) {
-			children = calloc(num_children, sizeof(ast_member_id));
-
-			assert((mbr->flags & AST_DT_MEMBER_IS_LOCAL) != 0 &&
-					mbr->first_child >= 0);
-
-			size_t offset = 0;
-			for (size_t i = 0; i < num_children; i++) {
-				children[i] = mbr->first_child + offset;
-				offset += ast_dt_member_num_descendants(ctx, children[i]);
-			}
-		}
-	}
 
 	return 0;
 }
@@ -2045,10 +2019,11 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				struct ast_dt_member *mbr;
 				mbr = get_member(ctx, target);
 
+				ast_dt_job_dependency(ctx,
+						mbr->type_resolved,
+						bind->target_jobs.resolve);
+
 				if (mbr->typegiving_bind == job->bind) {
-					ast_dt_job_dependency(ctx,
-							mbr->type_resolved,
-							bind->target_jobs.resolve);
 					bind->target = target;
 				}
 
