@@ -600,9 +600,14 @@ object_inst_bind_single(struct object_inst_context *ctx,
 		printf("bind %zu = %zu[%zu]\n",
 				target_id, bind_id, unpack_id);
 #endif
-	} else {
+	} else if (target->bind != bind_id) {
 		struct object_inst_bind *prev_bind;
 		prev_bind = get_bind(ctx, target->bind);
+
+		if (prev_bind->expr_id == new_bind->expr_id &&
+				target->unpack_id == unpack_id) {
+			return 0;
+		}
 
 		if (!prev_bind->overridable && !new_bind->overridable) {
 			// TODO: Name
