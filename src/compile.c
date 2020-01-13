@@ -819,8 +819,8 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		assert(main_mod_type->obj_def);
 
 		struct object mod_cons_obj = {0};
-		mod_cons_obj.type = ast_ctx->types.inst;
-		mod_cons_obj.data = &main_mod_type->obj_inst;
+		mod_cons_obj.type = ast_ctx->types.type;
+		mod_cons_obj.data = &main_mod->type;
 
 		struct object mod_type_obj = {0};
 		mod_type_obj.type = ast_ctx->types.type;
