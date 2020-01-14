@@ -198,6 +198,8 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 		msg_type_def->pack_type = message_type_pack_type;
 		msg_type_def->unpack    = message_type_unpack;
 
+		msg_type_def->data      = mod;
+
 		ctx->message_type_cons = msg_type_def;
 
 		struct ast_module *ast_mod = &mod->mod;

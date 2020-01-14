@@ -9,9 +9,16 @@ op/ := base.op/;
 int := base.int;
 Unit := base.Unit;
 String := base.String;
-Type := base.type;
+Type := base.Type;
 id := base.id;
 compose := base.compose;
+
+List := [T: Type] Variant {
+	Cons Struct { head: T; tail: Unit; },
+	Nil
+};
+
+TypeList := List[Type];
 
 Init := [T: Type] Struct {
 	unsafePerformInit: () -> T;
@@ -38,20 +45,24 @@ fmap := (f: ($T) -> $U, a: Init[T]) -> Init[U]
 bind := (a: Init[$T], f: (T) -> Init[$U]) -> Init[U]
 	=> Init[U] {
 		unsafePerformInit = () -> U
-			=> join(fmap(f, a));
+			=> join[](fmap[](f, a));
 	};
 
 # someinittest: Init[int] = join(return(return(2)));
+# asdf: int =! someinittest;
 
-init: Init[Unit] = bind(return(2), (a: int) -> Init[Unit]
-	=> return(base.print(a)));
+# init: Init[Unit] = bind(return(2), (a: int) -> Init[Unit]
+# 	=> return(base.print(a)));
 
-composeTest := base.compose(
+# !bind(return(2), (a: int) -> Init[Unit]
+# 	=> return(base.print(a)));
+
+composeTest := base.compose[](
 	(a: int) -> int => a + 2,
 	(a: int) -> int => a * 2);
 
 typeof := (a: $T) -> Type => T;
-asdfasdfasdfasdf := (a: typeof(2)) -> int => a + 2;
+asdfasdfasdfasdf := (a: typeof[](2)) -> int => a + 2;
 
 # Monad := Struct { a: int; set: int; };
 # Some  := (val: int) -> Monad => Monad { a = val; set = 1; }
@@ -101,13 +112,13 @@ asdfasdfasdfasdf := (a: typeof(2)) -> int => a + 2;
 
 # a := bind(unit(2), (a: int) -> int => a * 2);
 
-testQuery: sql.SQL[int] = sql.sql("
-	select * from foo where a = ?
-");
-
-testQuery2 := sql.sql[int]("
-	select * from foo where a = ?
-");
+# testQuery: sql.SQL[int] = sql.sql("
+# 	select * from foo where a = ?
+# ");
+#
+# testQuery2 := sql.sql[int]("
+# 	select * from foo where a = ?
+# ");
 
 TestType := [T: Type] Struct {
 	a: T;
@@ -116,12 +127,12 @@ TestType := [T: Type] Struct {
 TT2 := TestType[int];
 
 prnt := message.Print(
-	message.Map(
-		message.Map(message.onStart, (a: Unit) -> int => composeTest(500)),
+	message.Map[](
+		message.Map[](message.onStart, (a: Unit) -> int => composeTest[](500)),
 		(a: int) -> int => a * 2));
 
 prnt2 := message.PrintStr(
-	message.Map(message.onStart, (a: Unit) -> String => "Hello, World!"));
+	message.Map[](message.onStart, (a: Unit) -> String => "Hello, World!"));
 
 # con := sql.postgresql.connect("");
 
@@ -129,16 +140,7 @@ prnt2 := message.PrintStr(
 
 func_test := (base.type, int) -> int;
 
-id_test := id(2);
-
-Foo := Struct {
-	foo: int ~= 6;
-	bar: int ~= 2;
-	baz: int  = 3;
-	sum: int  = foo + bar + baz;
-
-	bar = 5;
-};
+id_test := id[](2);
 
 Color := Struct {
 	r: int;
@@ -160,7 +162,17 @@ c.b = 3;
 
 col2 := Color { r=8; g=9; b=10; };
 
-foobar: Foo;
-foobar.foo = 3;
+# TODO: Fix
+# Foo := Struct {
+# 	foo: int ~= 6;
+# 	bar: int ~= 2;
+# 	baz: int  = 3;
+# 	sum: int  = foo + bar + baz;
+#
+# 	bar = 5;
+# };
+
+# foobar: Foo;
+# foobar.foo = 3;
 
 # b := addFive(int);

@@ -3,7 +3,7 @@ mod message;
 int     := base.int;
 String  := base.String;
 Unit    := base.Unit;
-Type    := base.type;
+Type    := base.Type;
 Message := message.Message;
 
 # _dbConnect := (kind: String, conStr: String) -> DBConnectionHandle

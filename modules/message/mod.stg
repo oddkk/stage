@@ -7,8 +7,8 @@ Unit := base.Unit;
 
 Endpoint := (func: ($T) -> Unit) -> ((Message[T]) -> Unit) @nativeImpure("msg_endpoint");
 
-Print    := Endpoint((val: int) -> Unit @nativeImpure("msg_print_int_callback"));
-PrintStr := Endpoint((val: base.String) -> Unit @nativeImpure("msg_print_string_callback"));
+Print    := Endpoint[]((val: int) -> Unit @nativeImpure("msg_print_int_callback"));
+PrintStr := Endpoint[]((val: base.String) -> Unit @nativeImpure("msg_print_string_callback"));
 
 Map := (in: Message[$T], f: (T) -> $U) -> Message[U] @nativeImpure("msg_map");
 # Fitler := (in: Message[$T], f: (T) -> Bool) -> Message[T] @nativeImpure("msg_filter");
