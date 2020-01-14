@@ -561,7 +561,7 @@ ast_print_slot(
 		return;
 	}
 	if ((slot->flags & AST_SLOT_HAS_ERROR) != 0) {
-		printf(" (error)");
+		printf(" " TC(TC_BRIGHT_RED, "(error)"));
 	}
 
 	printf("\n -value: ");
@@ -773,7 +773,8 @@ ast_solve_apply_cons(
 
 	ast_slot_id old_cons, new_cons;
 
-	if ((res->flags & AST_SLOT_HAS_TYPE) != 0) {
+	if ((res->flags & (AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) ==
+			AST_SLOT_HAS_CONS) {
 		old_cons = res->cons;
 		new_cons = ast_slot_join(
 				ctx, res->cons, cons);
@@ -1334,57 +1335,96 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			ast_slot_update_type(ctx, slot->authority.value, slot_id);
 	}
 
-	if ((slot->flags & (AST_SLOT_HAS_VALUE|AST_SLOT_HAS_TYPE|AST_SLOT_HAS_CONS)) ==
-			AST_SLOT_HAS_TYPE) {
-		// TODO: Try determine cons from type
+	if ((slot->flags & AST_SLOT_HAS_CONS) == 0 && slot->num_members > 0) {
+		type_id type_id;
+
+		enum ast_slot_get_error err;
+		err = ast_slot_try_get_type(ctx, slot_id, &type_id);
+
+		if (!err) {
+			struct type *type;
+			type = vm_get_type(ctx->vm, type_id);
+
+			if (type->obj_def) {
+				if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
+					made_change |= ast_solve_apply_cons(
+							ctx, slot->authority.type,
+							slot_id, slot->type, false);
+				} else {
+					assert((slot->flags & AST_SLOT_HAS_VALUE) != 0);
+
+					ast_slot_id new_type_slot;
+					new_type_slot = ast_slot_alloc(ctx->env);
+
+					struct ast_slot_constraint *val_constr;
+					val_constr = ast_get_constraint(
+							ctx, slot->authority.value);
+
+					ast_slot_require_is_type(
+							ctx->env, val_constr->reason.loc,
+							AST_CONSTR_SRC_EXPECTED,
+							new_type_slot, type_id
+							SLOT_DEBUG_ARG);
+
+					ast_slot_require_type(
+							ctx->env, val_constr->reason.loc,
+							AST_CONSTR_SRC_EXPECTED,
+							slot_id, new_type_slot
+							SLOT_DEBUG_ARG);
+
+					made_change = true;
+				}
+			}
+		}
 	}
 
-	if ((slot->flags & (AST_SLOT_HAS_VALUE|AST_SLOT_HAS_CONS)) ==
-			(AST_SLOT_HAS_VALUE|AST_SLOT_HAS_CONS) &&
+	if ((slot->flags & AST_SLOT_HAS_CONS) != 0 &&
 			slot->num_members > 0) {
 		// Unpack value and push down to the members.
 		if ((slot->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
-			if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
-				if (stg_type_is_func(ctx->vm, slot->value.type)) {
-					struct type *func_type;
-					func_type = vm_get_type(ctx->vm, slot->value.type);
+			if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
+				if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
+					if (stg_type_is_func(ctx->vm, slot->value.type)) {
+						struct type *func_type;
+						func_type = vm_get_type(ctx->vm, slot->value.type);
 
-					struct stg_func_type *func_info;
-					func_info = func_type->data;
+						struct stg_func_type *func_info;
+						func_info = func_type->data;
 
-					for (size_t i = 0; i < slot->num_members; i++) {
-						if (slot->members[i].ref.named) {
-							printf("Expected indexed members, got a named one (%.*s).\n",
-									ALIT(slot->members[i].ref.name));
-							continue;
-						}
-
-						type_id mbr_type = TYPE_UNSET;
-
-						if (slot->members[i].ref.index == 0) {
-							mbr_type = func_info->return_type;
-						} else {
-							if (slot->members[i].ref.index > func_info->num_params) {
-								printf("Attempted to get param %zu from a "
-										"function with %zu parameters.\n",
-										slot->members[i].ref.index-1,
-										func_info->num_params);
+						for (size_t i = 0; i < slot->num_members; i++) {
+							if (slot->members[i].ref.named) {
+								printf("Expected indexed members, got a named one (%.*s).\n",
+										ALIT(slot->members[i].ref.name));
 								continue;
 							}
 
-							mbr_type = func_info->params[slot->members[i].ref.index-1];
-						}
-						assert(mbr_type != TYPE_UNSET);
+							type_id mbr_type = TYPE_UNSET;
 
-						made_change |= ast_solve_apply_value_type(
-								ctx, slot->authority.value,
-								slot->members[i].slot, mbr_type);
+							if (slot->members[i].ref.index == 0) {
+								mbr_type = func_info->return_type;
+							} else {
+								if (slot->members[i].ref.index > func_info->num_params) {
+									printf("Attempted to get param %zu from a "
+											"function with %zu parameters.\n",
+											slot->members[i].ref.index-1,
+											func_info->num_params);
+									continue;
+								}
+
+								mbr_type = func_info->params[slot->members[i].ref.index-1];
+							}
+							assert(mbr_type != TYPE_UNSET);
+
+							made_change |= ast_solve_apply_value_type(
+									ctx, slot->authority.value,
+									slot->members[i].slot, mbr_type);
+						}
+					} else {
+						printf("Expected function type, got another type.\n");
 					}
 				} else {
-					printf("Expected function type, got another type.\n");
+					printf("Expected function type, got object.\n");
 				}
-			} else {
-				printf("Expected function type, got object.\n");
 			}
 
 		} else {
@@ -1409,49 +1449,83 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 					} else if (slot->members[mbr_i].ref.index < cons->num_params) {
 						param_i = slot->members[mbr_i].ref.index;
 					} else {
-						printf("Got unexpected parameter %zu to cons.\n",
+						printf("Object has no member %zu.\n",
 								slot->members[mbr_i].ref.index);
 						continue;
 					}
 
 					if (param_i < 0) {
-						printf("Cons does not have member %.*s.\n",
+						printf("Object has no member '%.*s'.\n",
 								ALIT(slot->members[mbr_i].ref.name));
 						continue;
 					}
 					assert(param_i < cons->num_params);
 
-					struct object res = {0};
-					res.type = cons->params[param_i].type;
+					if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
+						struct object res = {0};
+						res.type = cons->params[param_i].type;
 
-					struct type *param_type;
-					param_type = vm_get_type(ctx->vm, res.type);
+						struct type *param_type;
+						param_type = vm_get_type(ctx->vm, res.type);
 
-					uint8_t buffer[param_type->size];
-					memset(buffer, 0, param_type->size);
-					res.data = buffer;
+						uint8_t buffer[param_type->size];
+						memset(buffer, 0, param_type->size);
+						res.data = buffer;
 
-					assert(cons->unpack || cons->ct_unpack);
-					if (cons->unpack) {
-						cons->unpack(ctx->vm, cons->data,
-								res.data, obj.data, param_i);
+						assert(cons->unpack || cons->ct_unpack);
+						if (cons->unpack) {
+							cons->unpack(ctx->vm, cons->data,
+									res.data, obj.data, param_i);
+						} else {
+							int err;
+							err = cons->ct_unpack(
+									ctx->ast_ctx, ctx->mod->stg_mod,
+									cons->data, res.data, obj, param_i);
+							if (err) {
+								printf("Failed to unpack value.\n");
+								slot->flags |= AST_SLOT_HAS_ERROR;
+								return true;
+							}
+						}
+
+						res = register_object(ctx->vm, ctx->env->store, res);
+
+						made_change |= ast_solve_apply_value_obj(
+								ctx, slot->authority.value,
+								slot->members[mbr_i].slot, res);
 					} else {
-						int err;
-						err = cons->ct_unpack(
-								ctx->ast_ctx, ctx->mod->stg_mod,
-								cons->data, res.data, obj, param_i);
-						if (err) {
-							printf("Failed to unpack value.\n");
-							slot->flags |= AST_SLOT_HAS_ERROR;
-							return true;
+						struct ast_slot_resolve *mbr;
+						mbr = ast_get_slot(ctx, slot->members[mbr_i].slot);
+
+						if ((mbr->flags & AST_SLOT_HAS_TYPE) == 0) {
+							ast_slot_id new_type_slot;
+							new_type_slot = ast_slot_alloc(ctx->env);
+
+							struct ast_slot_constraint *mbr_constr;
+							mbr_constr = ast_get_constraint(
+									ctx, slot->members[mbr_i].authority);
+
+							// TODO: Proper source.
+							ast_slot_require_is_type(
+									ctx->env, mbr_constr->reason.loc,
+									AST_CONSTR_SRC_EXPECTED,
+									new_type_slot, cons->params[param_i].type
+									SLOT_DEBUG_ARG);
+
+							ast_slot_require_type(
+									ctx->env, mbr_constr->reason.loc,
+									AST_CONSTR_SRC_EXPECTED,
+									slot->members[mbr_i].slot, new_type_slot
+									SLOT_DEBUG_ARG);
+
+							made_change = true;
+						} else {
+							ast_solve_apply_value_type(
+									ctx, slot->members[mbr_i].authority,
+									mbr->type, cons->params[param_i].type);
 						}
 					}
 
-					res = register_object(ctx->vm, ctx->env->store, res);
-
-					made_change |= ast_solve_apply_value_obj(
-							ctx, slot->authority.value,
-							slot->members[mbr_i].slot, res);
 				}
 			}
 		}
