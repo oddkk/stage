@@ -1012,6 +1012,9 @@ void ast_templ_impose_constraints(
 	memcpy(body_deps, info->deps,
 			info->num_deps * sizeof(struct ast_typecheck_dep));
 
+	ast_typecheck_deps_slots(env,
+			body_deps, info->num_deps);
+
 	for (size_t i = 0; i < info->num_params; i++) {
 		struct ast_typecheck_dep *dep;
 		dep = &body_deps[info->num_deps+i];
