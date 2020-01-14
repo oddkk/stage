@@ -1833,6 +1833,40 @@ ast_slot_verify_member(
 	target = ast_get_slot(ctx, target_id);
 
 	int err;
+
+	struct object_cons *cons;
+	err = ast_slot_try_get_value_cons(
+			ctx, target->cons, &cons);
+	if (err < 0) {
+		stg_error(ctx->err, loc,
+				"Object has no members.");
+		return -1;
+	} else if (err > 0) {
+		return 1;
+	}
+
+	size_t param_i = -1;
+	if (ref.named) {
+		ssize_t lookup_res;
+		lookup_res = object_cons_find_param(
+				cons, ref.name);
+		if (lookup_res < 0) {
+			stg_error(ctx->err, loc,
+					"Object has no member '%.*s'.\n",
+					ALIT(ref.name));
+			return -1;
+		}
+
+		param_i = lookup_res;
+	} else if (ref.index < cons->num_params) {
+		param_i = ref.index;
+	} else {
+		stg_error(ctx->err, loc,
+				"Object has no member %zu.\n",
+				ref.index);
+		return -1;
+	}
+
 	struct object mbr_val = {0};
 	err = ast_slot_try_get_value(
 			ctx, member_id, TYPE_UNSET, &mbr_val);
@@ -1859,35 +1893,6 @@ ast_slot_verify_member(
 		return -1;
 	} else if (err > 0) {
 		return 1;
-	}
-
-	struct object_cons *cons;
-	err = ast_slot_try_get_value_cons(
-			ctx, target->cons, &cons);
-	if (err) {
-		return -1;
-	}
-
-	size_t param_i = -1;
-	if (ref.named) {
-		ssize_t lookup_res;
-		lookup_res = object_cons_find_param(
-				cons, ref.name);
-		if (lookup_res < 0) {
-			stg_error(ctx->err, loc,
-					"Got unexpected parameter '%.*s' to constructor.\n",
-					ALIT(ref.name));
-			return -1;
-		}
-
-		param_i = lookup_res;
-	} else if (ref.index < cons->num_params) {
-		param_i = ref.index;
-	} else {
-		stg_error(ctx->err, loc,
-				"Got unexpected parameter %zu to constructor.\n",
-				ref.index);
-		return -1;
 	}
 
 	struct object exp_val = {0};
