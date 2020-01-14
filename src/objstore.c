@@ -9,6 +9,7 @@
 #include "utils.h"
 #include "vm.h"
 #include "base/mod.h"
+#include "ast.h"
 
 static struct string default_type_repr(struct vm *vm, struct arena *mem,
 									   struct type *type)
@@ -442,6 +443,61 @@ object_unpack(
 	}
 
 	return -1;
+}
+
+int
+object_ct_pack_type(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct object_cons *cons, void *args, size_t num_args,
+		type_id *out)
+{
+	assert(cons->pack_type || cons->ct_pack_type);
+	assert(num_args == cons->num_params);
+
+	type_id res;
+
+	if (cons->pack) {
+		res = cons->pack_type(
+				ctx->vm, cons->data,
+				args, num_args);
+	} else {
+		res = cons->ct_pack_type(
+				ctx, mod, cons->data,
+				args, num_args);
+	}
+
+	if (res == TYPE_UNSET) {
+		return -1;
+	}
+
+	*out = res;
+	return 0;
+}
+
+
+int
+object_ct_pack(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct object_cons *cons, void *args, size_t num_args,
+		struct object *out)
+{
+	assert(cons->pack || cons->ct_pack);
+	assert(num_args == cons->num_params);
+	if (cons->pack) {
+		cons->pack(
+				ctx->vm, cons->data, out->data,
+				args, num_args);
+	} else {
+		int err;
+		err = cons->ct_pack(
+				ctx, mod, cons->data, out->data,
+				args, num_args);
+		if (err) {
+			return -1;
+		}
+	}
+
+	return 0;
 }
 
 int

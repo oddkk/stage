@@ -184,6 +184,8 @@ static inline struct func *store_get_func(struct objstore *store, func_id id) {
 
 struct ast_context;
 
+// TODO: Compile time hooks should take vm and stg_error_context instead of
+// ast_context.
 typedef int (*object_ct_pack_func)(
 		struct ast_context *, struct stg_module *mod,
 		void *data, void *out, void **params, size_t num_params);
@@ -302,6 +304,18 @@ int
 object_unpack(
 		struct vm *, struct object obj,
 		size_t unpack_id, struct object *out);
+
+int
+object_ct_pack(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct object_cons *cons, void *args, size_t num_args,
+		struct object *out);
+
+int
+object_ct_pack_type(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct object_cons *cons, void *args, size_t num_args,
+		type_id *out);
 
 int
 object_cons_descendant_type(
