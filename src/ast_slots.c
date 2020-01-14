@@ -1064,11 +1064,42 @@ ast_slot_try_get_type(
 	struct ast_slot_resolve *slot;
 	slot = ast_get_slot(ctx, slot_id);
 
+	type_id value_type = TYPE_UNSET;
+
+	if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
+		if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
+			value_type = ctx->type;
+		} else {
+			value_type = slot->value.obj.type;
+		}
+	}
+
 	if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
-		return ast_slot_try_get_value_type(
-				ctx, slot->type, out_type);
+		enum ast_slot_get_error err;
+		type_id res;
+		err = ast_slot_try_get_value_type(
+				ctx, slot->type, &res);
+
+		if (value_type == TYPE_UNSET || err < 0) {
+			if (err == 0) {
+				*out_type = res;
+			}
+			return err;
+		}
+
+		if (err == 0 && !type_equals(ctx->vm, value_type, res)) {
+			return AST_SLOT_GET_TYPE_ERROR;
+		}
+
+		*out_type = value_type;
+		return AST_SLOT_GET_OK;
 	} else {
-		return AST_SLOT_GET_NO_TYPE_SLOT;
+		if (value_type == TYPE_UNSET) {
+			return AST_SLOT_GET_NO_TYPE_SLOT;
+		} else {
+			*out_type = value_type;
+			return AST_SLOT_GET_OK;
+		}
 	}
 }
 
@@ -1141,14 +1172,28 @@ ast_slot_try_get_value_cons(
 {
 	int err;
 	struct object obj;
-	err = ast_slot_try_get_value(ctx, slot_id, ctx->cons, &obj);
+	err = ast_slot_try_get_value(ctx, slot_id, TYPE_UNSET, &obj);
 	if (err) {
 		return err;
 	}
 
-	assert_type_equals(ctx->vm, obj.type, ctx->cons);
-	*out_cons = *(struct object_cons **)obj.data;
-	return AST_SLOT_GET_OK;
+
+	if (type_equals(ctx->vm, obj.type, ctx->cons)) {
+		*out_cons = *(struct object_cons **)obj.data;
+		return AST_SLOT_GET_OK;
+	} else if (type_equals(ctx->vm, obj.type, ctx->type)) {
+		type_id tid = *(type_id *)obj.data;
+		struct type *type = vm_get_type(ctx->vm, tid);
+
+		if (!type->obj_def) {
+			return AST_SLOT_GET_TYPE_HAS_NO_CONS;
+		}
+
+		*out_cons = type->obj_def;
+		return AST_SLOT_GET_OK;
+	} else {
+		return AST_SLOT_GET_TYPE_ERROR;
+	}
 }
 
 static enum ast_slot_get_error
@@ -1997,11 +2042,7 @@ ast_slot_verify_constraint(
 
 		case AST_SLOT_REQ_MEMBER_NAMED:
 			{
-				if ((target->flags & AST_SLOT_HAS_CONS) == 0) {
-					stg_error(ctx->err, constr->reason.loc,
-							"Attempted to unpack a value that has no constructor.");
-					return -1;
-				} else if ((target->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
+				if ((target->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
 					stg_error(ctx->err, constr->reason.loc,
 							"Got invalid parameter '%.*s' to function type constructor.",
 							ALIT(constr->member.name));
@@ -2012,12 +2053,11 @@ ast_slot_verify_constraint(
 				ref.named = true;
 				ref.name = constr->member.name;
 
-				ast_slot_verify_member(
+				return ast_slot_verify_member(
 						ctx, constr->reason.loc,
 						constr->target, constr->member.slot,
 						ref);
 			}
-			return 0;
 
 		case AST_SLOT_REQ_MEMBER_INDEXED:
 			{
@@ -2025,13 +2065,6 @@ ast_slot_verify_constraint(
 					stg_error(ctx->err, constr->reason.loc,
 							"Attempted to unpack a value that has no constructor.");
 					return -1;
-					/*
-				} else if ((target->flags & AST_SLOT_IS_FUNC_TYPE) == 0) {
-					stg_error(ctx->err, constr->reason.loc,
-							"Got invalid parameter %zu to function type constructor.",
-							constr->member.index);
-					return -1;
-					*/
 				}
 
 				if ((target->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
