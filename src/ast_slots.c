@@ -1494,14 +1494,12 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 					} else if (slot->members[mbr_i].ref.index < cons->num_params) {
 						param_i = slot->members[mbr_i].ref.index;
 					} else {
-						printf("Object has no member %zu.\n",
-								slot->members[mbr_i].ref.index);
+						// Object has no such member (index out of range).
 						continue;
 					}
 
 					if (param_i < 0) {
-						printf("Object has no member '%.*s'.\n",
-								ALIT(slot->members[mbr_i].ref.name));
+						// Object has no such member.
 						continue;
 					}
 					assert(param_i < cons->num_params);

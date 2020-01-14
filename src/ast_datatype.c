@@ -1965,7 +1965,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					}
 
 					if (!all_bound) {
-						printf("not all bound\n");
 						return 0;
 					}
 
@@ -1976,7 +1975,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 							cons, const_member_values, cons->num_params,
 							&res_type);
 					if (err) {
-						printf("pack type failed.\n");
 						return -1;
 					}
 					assert_type_equals(ctx->ast_ctx->vm,
@@ -1992,7 +1990,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 							cons, const_member_values, cons->num_params,
 							&res);
 					if (err) {
-						printf("pack failed.\n");
 						return -1;
 					}
 
@@ -2001,7 +1998,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					mbr->flags |= AST_DT_MEMBER_IS_CONST;
 				} else {
 					if (mbr->bound < 0) {
-						printf("not bound\n");
 						return 0;
 					}
 
@@ -2009,7 +2005,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					bind = get_bind(ctx, mbr->bound);
 
 					if (bind->overridable) {
-						printf("overridable\n");
 						return 0;
 					}
 
@@ -2021,7 +2016,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					err = ast_dt_try_eval_expr_const(
 							ctx, bind->expr, &const_value);
 					if (err) {
-						printf("failed\n");
 						return err < 0;
 					}
 

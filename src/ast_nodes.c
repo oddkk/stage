@@ -1213,7 +1213,6 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 #endif
 
 	if (err < 0) {
-		printf("Failed to partially solve template expression types.\n");
 		free(def->params);
 		free(def);
 		free(info);
