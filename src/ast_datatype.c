@@ -242,20 +242,6 @@ get_member(struct ast_dt_context *ctx, ast_member_id id)
 	return &ctx->member_pages[id / members_per_page][id % members_per_page];
 }
 
-/*
-static inline ast_member_id *
-ast_dt_get_bind_targets(struct ast_dt_bind *bind)
-{
-	if (bind->num_targets == 0) {
-		return NULL;
-	} else if (bind->num_targets == 1) {
-		return &bind->single_target;
-	} else {
-		return bind->multiple_targets;
-	}
-}
-*/
-
 static inline ast_member_id
 ast_dt_member_get_descendant(struct ast_dt_context *ctx,
 		ast_member_id mbr_id, size_t descendant_id)
@@ -1938,36 +1924,116 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				mbr = get_member(ctx, job->member);
 				assert(mbr->type != TYPE_UNSET);
 
-				if (mbr->bound < 0) {
-					return 0;
+				struct type *type;
+				type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
+
+				if (type->obj_def) {
+					struct object_cons *cons;
+					cons = type->obj_def;
+					bool all_bound = true;
+
+					int local_members_offset[cons->num_params];
+					object_cons_local_descendent_ids(
+							ctx->ast_ctx->vm, cons,
+							local_members_offset);
+
+					void *const_member_values[cons->num_params];
+
+					ast_member_id first_child;
+					if ((mbr->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
+						first_child = mbr->first_child;
+					} else {
+						first_child = job->member + 1;
+					}
+
+					for (size_t i = 0; i < cons->num_params; i++) {
+						ast_member_id desc_id;
+						// Subtract one to compansate for the parent having ID
+						// 0 in local_members_offset
+						desc_id = first_child +
+							local_members_offset[i] -1;
+
+						struct ast_dt_member *desc;
+						desc = get_member(ctx, desc_id);
+
+						if ((desc->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+							all_bound = false;
+							break;
+						}
+
+						const_member_values[i] = desc->const_value.data;
+					}
+
+					if (!all_bound) {
+						printf("not all bound\n");
+						return 0;
+					}
+
+					int err;
+					type_id res_type;
+					err = object_ct_pack_type(
+							ctx->ast_ctx, ctx->ast_mod->stg_mod,
+							cons, const_member_values, cons->num_params,
+							&res_type);
+					if (err) {
+						printf("pack type failed.\n");
+						return -1;
+					}
+					assert_type_equals(ctx->ast_ctx->vm,
+							res_type, mbr->type);
+
+					struct object res = {0};
+					uint8_t buffer[type->size];
+					res.type = mbr->type;
+					res.data = buffer;
+
+					err = object_ct_pack(
+							ctx->ast_ctx, ctx->ast_mod->stg_mod,
+							cons, const_member_values, cons->num_params,
+							&res);
+					if (err) {
+						printf("pack failed.\n");
+						return -1;
+					}
+
+					mbr->const_value = register_object(
+							ctx->ast_ctx->vm, ctx->ast_mod->env.store, res);
+					mbr->flags |= AST_DT_MEMBER_IS_CONST;
+				} else {
+					if (mbr->bound < 0) {
+						printf("not bound\n");
+						return 0;
+					}
+
+					struct ast_dt_bind *bind;
+					bind = get_bind(ctx, mbr->bound);
+
+					if (bind->overridable) {
+						printf("overridable\n");
+						return 0;
+					}
+
+					struct ast_dt_expr *expr;
+					expr = get_expr(ctx, bind->expr);
+
+					struct object const_value;
+					int err;
+					err = ast_dt_try_eval_expr_const(
+							ctx, bind->expr, &const_value);
+					if (err) {
+						printf("failed\n");
+						return err < 0;
+					}
+
+					err = object_unpack(
+							ctx->ast_ctx->vm, const_value,
+							mbr->bound_unpack_id, &mbr->const_value);
+
+					assert_type_equals(ctx->ast_ctx->vm,
+							mbr->type, mbr->const_value.type);
+
+					mbr->flags |= AST_DT_MEMBER_IS_CONST;
 				}
-
-				struct ast_dt_bind *bind;
-				bind = get_bind(ctx, mbr->bound);
-
-				if (bind->overridable) {
-					return 0;
-				}
-
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, bind->expr);
-
-				struct object const_value;
-				int err;
-				err = ast_dt_try_eval_expr_const(
-						ctx, bind->expr, &const_value);
-				if (err) {
-					return err < 0;
-				}
-
-				err = object_unpack(
-						ctx->ast_ctx->vm, const_value,
-						mbr->bound_unpack_id, &mbr->const_value);
-
-				assert_type_equals(ctx->ast_ctx->vm,
-						mbr->type, mbr->const_value.type);
-
-				mbr->flags |= AST_DT_MEMBER_IS_CONST;
 			}
 			return 0;
 
