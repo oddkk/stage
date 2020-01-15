@@ -1596,20 +1596,13 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 						memset(buffer, 0, param_type->size);
 						res.data = buffer;
 
-						assert(cons->unpack || cons->ct_unpack);
-						if (cons->unpack) {
-							cons->unpack(ctx->vm, cons->data,
-									res.data, obj.data, param_i);
-						} else {
-							int err;
-							err = cons->ct_unpack(
-									ctx->ast_ctx, ctx->mod->stg_mod,
-									cons->data, res.data, obj, param_i);
-							if (err) {
-								printf("Failed to unpack value.\n");
-								slot->flags |= AST_SLOT_HAS_ERROR;
-								return true;
-							}
+						int err;
+						err = object_ct_unpack_param(
+								ctx->ast_ctx, ctx->mod->stg_mod,
+								cons, obj, param_i, &res);
+						if (err) {
+							slot->flags |= AST_SLOT_HAS_ERROR;
+							return false;
 						}
 
 						res = register_object(ctx->vm, ctx->env->store, res);
@@ -1819,20 +1812,14 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			if (all_args_set) {
 				struct object res = {0};
 
-				assert(cons->pack_type || cons->ct_pack_type);
-				if (cons->pack_type) {
-					res.type = cons->pack_type(
-							ctx->vm, cons->data,
-							arg_data, cons->num_params);
-				} else {
-					res.type = cons->ct_pack_type(
-							ctx->ast_ctx, ctx->mod->stg_mod,
-							cons->data, arg_data, cons->num_params);
-					if (res.type == TYPE_UNSET) {
-						printf("Failed to pack type.\n");
-						slot->flags |= AST_SLOT_HAS_ERROR;
-						return true;
-					}
+				int err;
+				err = object_ct_pack_type(
+						ctx->ast_ctx, ctx->mod->stg_mod,
+						cons, arg_data, cons->num_params,
+						&res.type);
+				if (err) {
+					slot->flags |= AST_SLOT_HAS_ERROR;
+					return false;
 				}
 
 				assert(res.type != TYPE_UNSET);
@@ -1844,22 +1831,13 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				memset(buffer, 0, res_type->size);
 				res.data = buffer;
 
-				assert(cons->pack || cons->ct_pack);
-				if (cons->pack) {
-					cons->pack(
-							ctx->vm, cons->data, buffer,
-							arg_data, cons->num_params);
-				} else {
-					int err;
-					err = cons->ct_pack(
-							ctx->ast_ctx, ctx->mod->stg_mod,
-							cons->data, buffer,
-							arg_data, cons->num_params);
-					if (err) {
-						printf("Failed to pack value.\n");
-						slot->flags |= AST_SLOT_HAS_ERROR;
-						return true;
-					}
+				err = object_ct_pack(
+						ctx->ast_ctx, ctx->mod->stg_mod,
+						cons, arg_data, cons->num_params,
+						&res);
+				if (err) {
+					slot->flags |= AST_SLOT_HAS_ERROR;
+					return false;
 				}
 
 				res = register_object(
@@ -1983,20 +1961,11 @@ ast_slot_verify_member(
 	memset(buffer, 0, exp_type->size);
 	exp_val.data = buffer;
 
-	assert(cons->unpack || cons->ct_unpack);
-	if (cons->unpack) {
-		cons->unpack(
-				ctx->vm, cons->data,
-				exp_val.data, target_val.data, param_i);
-	} else {
-		int err;
-		err = cons->ct_unpack(
-				ctx->ast_ctx, ctx->mod->stg_mod,
-				cons->data, exp_val.data,
-				target_val, param_i);
-		if (err) {
-			return -1;
-		}
+	err = object_ct_unpack_param(
+			ctx->ast_ctx, ctx->mod->stg_mod,
+			cons, target_val, param_i, &exp_val);
+	if (err) {
+		return -1;
 	}
 
 	if (!obj_equals(ctx->vm, mbr_val, exp_val)) {

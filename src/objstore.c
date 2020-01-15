@@ -456,7 +456,9 @@ object_ct_pack_type(
 
 	type_id res;
 
-	if (cons->pack) {
+	size_t num_errors_pre = ctx->err->num_errors;
+
+	if (cons->pack_type) {
 		res = cons->pack_type(
 				ctx->vm, cons->data,
 				args, num_args);
@@ -467,6 +469,12 @@ object_ct_pack_type(
 	}
 
 	if (res == TYPE_UNSET) {
+		// If the pack failed it must emit an error.
+		if (ctx->err->num_errors <= num_errors_pre) {
+			// TODO: Constructor name and location.
+			stg_error(ctx->err, STG_NO_LOC,
+					"Constructor pack type failed but did not emit any errors.");
+		}
 		return -1;
 	}
 
@@ -489,10 +497,52 @@ object_ct_pack(
 				args, num_args);
 	} else {
 		int err;
+		size_t num_errors_pre = ctx->err->num_errors;
 		err = cons->ct_pack(
 				ctx, mod, cons->data, out->data,
 				args, num_args);
 		if (err) {
+			// If the pack failed it must emit an error.
+			if (ctx->err->num_errors <= num_errors_pre) {
+				// TODO: Constructor name and location.
+				stg_error(ctx->err, STG_NO_LOC,
+						"Constructor pack failed but did not emit any errors.");
+			}
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int
+object_ct_unpack_param(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct object_cons *cons, struct object obj, size_t param_id,
+		struct object *out)
+{
+	assert(cons->unpack || cons->ct_unpack);
+	assert(param_id < cons->num_params);
+	assert_type_equals(ctx->vm,
+			out->type, cons->params[param_id].type);
+
+	if (cons->unpack) {
+		cons->unpack(
+				ctx->vm, cons->data, out->data,
+				obj.data, param_id);
+	} else {
+		int err;
+		size_t num_errors_pre = ctx->err->num_errors;
+		err = cons->ct_unpack(
+				ctx, mod, cons->data, out->data,
+				obj, param_id);
+		if (err) {
+			// If the unpack failed it must emit an error.
+			if (ctx->err->num_errors <= num_errors_pre) {
+				// TODO: Constructor name and location.
+				stg_error(ctx->err, STG_NO_LOC,
+						"Constructor unpack failed but did not emit any errors.");
+			}
 			return -1;
 		}
 	}
