@@ -1,6 +1,7 @@
 #include "ast.h"
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "utils.h"
 #include "term_color.h"
 #include "base/mod.h"
@@ -399,7 +400,7 @@ struct solve_context {
 	struct ast_slot_resolve *extra_slots;
 };
 
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE || AST_DEBUG_SLOT_SOLVE_APPLY
 static const char *
 ast_constraint_source_name(enum ast_constraint_source source)
 {
@@ -487,9 +488,10 @@ ast_print_constraint(
 	struct ast_slot_constraint *constr;
 	constr = ast_get_constraint(ctx, constr_id);
 
-	printf("%s:%zu ",
+	printf("%s:%zu %s ",
 			constr->reason.impose_loc.filename,
-			constr->reason.impose_loc.line);
+			constr->reason.impose_loc.line,
+			ast_constraint_source_name(constr->source));
 
 	switch (constr->kind) {
 		case AST_SLOT_REQ_ERROR:
@@ -546,25 +548,104 @@ ast_print_constraint(
 }
 
 static void
+ast_print_slot_result(
+		struct vm *vm,
+		struct ast_slot_result *result,
+		ast_slot_id slot_id)
+{
+	struct ast_slot_result res;
+	res = result[slot_id];
+
+	printf("  result: 0x%x\n", res.result);
+	switch (ast_slot_value_result(res.result)) {
+		case AST_SLOT_RES_VALUE_UNKNOWN:
+			printf("   -value: unknown\n");
+			printf("   -type:  unknown\n");
+			break;
+
+		case AST_SLOT_RES_TYPE_FOUND:
+			printf("   -value: unknown\n");
+			printf("   -type:  ");
+			print_type_repr(vm, vm_get_type(vm, res.type));
+			printf("\n");
+			break;
+
+		case AST_SLOT_RES_VALUE_FOUND_OBJ:
+			printf("   -value: ");
+			print_obj_repr(vm, res.value.obj);
+			printf("\n   -type:  ");
+			print_type_repr(vm, vm_get_type(vm, res.type));
+			printf("\n");
+			break;
+
+		case AST_SLOT_RES_VALUE_FOUND_TYPE:
+			printf("   -value: Type(");
+			print_type_repr(vm, vm_get_type(vm, res.value.type));
+			printf(")\n   -type:  ");
+			print_type_repr(vm, vm_get_type(vm, res.type));
+			printf("\n");
+			break;
+
+		default:
+			printf("   -value: " TC(TC_BRIGHT_RED, "error") "\n");
+			printf("   -type:  " TC(TC_BRIGHT_RED, "error") "\n");
+			break;
+	}
+
+	switch (ast_slot_cons_result(res.result)) {
+		case AST_SLOT_RES_CONS_UNKNOWN:
+			printf("   -cons:  unknown\n");
+			break;
+
+		case AST_SLOT_RES_CONS_FOUND:
+			printf("   -cons:  cons %p\n", (void *)res.cons);
+			break;
+
+		case AST_SLOT_RES_CONS_FOUND_INST:
+			printf("   -cons:  inst %p\n", (void *)res.inst);
+			break;
+
+		case AST_SLOT_RES_CONS_FOUND_FUNC_TYPE:
+			printf("   -cons:  func type\n");
+			break;
+
+		default:
+			printf("   -cons:  " TC(TC_BRIGHT_RED, "error") "\n");
+			break;
+	}
+}
+
+static void
 ast_print_slot(
 		struct solve_context *ctx,
+		struct ast_slot_result *result,
 		ast_slot_id slot_id)
 {
 	struct ast_slot_resolve *slot;
 	slot = ast_get_real_slot(ctx, slot_id);
 
 	printf("%i:", slot_id);
+
+	printf("\n");
 	if ((slot->flags & AST_SLOT_HAS_SUBST) != 0) {
 		printf(" subst %i\n",
 				ast_slot_resolve_subst(
 					ctx, slot->subst));
-		return;
 	}
 	if ((slot->flags & AST_SLOT_HAS_ERROR) != 0) {
-		printf(" " TC(TC_BRIGHT_RED, "(error)"));
+		printf(" " TC(TC_BRIGHT_RED, "(error)\n"));
 	}
 
-	printf("\n -value: ");
+	if (slot_id < ctx->num_slots) {
+		ast_print_slot_result(ctx->vm, result, slot_id);
+	}
+
+	if ((slot->flags & AST_SLOT_HAS_SUBST) != 0) {
+		printf("\n");
+		return;
+	}
+
+	printf(" -value: ");
 	if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
 		printf("[%i] ", slot->authority.value);
 		if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
@@ -601,7 +682,7 @@ ast_print_slot(
 
 	printf("\n -members:\n");
 	if (slot->num_members == 0) {
-		printf("    (none)");
+		printf("    (none)\n");
 	}
 	for (size_t i = 0; i < slot->num_members; i++) {
 		if (slot->members[i].ref.named) {
@@ -648,7 +729,7 @@ ast_solve_should_apply_internal(
 	constr = ast_get_constraint(ctx, constr_id);
 	if (!prev_authority || is_more_authorative(constr, prev_authority)) {
 		*authority = constr_id;
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 		if (prev_authority) {
 			printf(" yes (more authorative '%s' > '%s')\n",
 					ast_constraint_source_name(constr->source),
@@ -660,7 +741,7 @@ ast_solve_should_apply_internal(
 		return true;
 	}
 
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	printf(" no (less authorative '%s' > '%s')\n",
 			ast_constraint_source_name(constr->source),
 			ast_constraint_source_name(prev_authority->source));
@@ -703,7 +784,7 @@ ast_solve_should_apply(
 	} else {
 		*authority = constr_id;
 		res->flags |= flag;
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 		printf(" yes (new)\n");
 #endif
 		return true;
@@ -715,7 +796,7 @@ ast_solve_apply_value_type(
 		struct solve_context *ctx,
 		ast_constraint_id constr_id, ast_slot_id slot, type_id type)
 {
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	printf("%3i apply value type %i = ",
 			constr_id, slot);
 	print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
@@ -742,7 +823,7 @@ ast_solve_apply_value_obj(
 				ctx, constr_id, slot, tid);
 	}
 
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	printf("%3i apply value obj %i = ",
 			constr_id, slot);
 	print_obj_repr(ctx->vm, obj);
@@ -764,7 +845,7 @@ ast_solve_apply_cons(
 		ast_constraint_id constr_id, ast_slot_id slot,
 		ast_slot_id cons, bool is_inst)
 {
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	printf("%3i apply %s %i = %i",
 			constr_id, is_inst ? "inst" : "cons", slot, cons);
 #endif
@@ -803,7 +884,7 @@ ast_solve_apply_func_type(
 		struct solve_context *ctx,
 		ast_constraint_id constr_id, ast_slot_id slot)
 {
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	printf("%i apply cons func %i",
 			constr_id, slot);
 #endif
@@ -825,7 +906,7 @@ ast_solve_apply_type(
 		ast_constraint_id constr_id, ast_slot_id slot,
 		ast_slot_id type_id)
 {
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	printf("%3i apply type %i.type = %i",
 			constr_id, slot, type_id);
 #endif
@@ -872,7 +953,7 @@ ast_solve_apply_member(struct solve_context *ctx,
 		ast_constraint_id constr_id, ast_slot_id slot_id,
 		struct ast_slot_member_ref ref, ast_slot_id mbr_slot)
 {
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	if (ref.named) {
 		printf("%3i apply member %i.%.*s = %i",
 				constr_id, slot_id, ALIT(ref.name), mbr_slot);
@@ -901,7 +982,7 @@ ast_solve_apply_member(struct solve_context *ctx,
 		return false;
 	}
 
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	printf(" yes (new)\n");
 #endif
 
@@ -948,7 +1029,7 @@ ast_slot_join(
 		struct solve_context *ctx,
 		ast_slot_id lhs, ast_slot_id rhs)
 {
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	printf("join %i U %i\n", lhs, rhs);
 #endif
 	ast_slot_id to, from;
@@ -1020,7 +1101,7 @@ ast_slot_join(
 	from_slot->flags = AST_SLOT_HAS_SUBST;
 	from_slot->subst = to;
 
-#if AST_DEBUG_SLOT_SOLVE
+#if AST_DEBUG_SLOT_SOLVE_APPLY
 	printf("join finished\n");
 #endif
 
@@ -2318,16 +2399,7 @@ ast_slot_try_solve(
 
 #if AST_DEBUG_SLOT_SOLVE
 	printf("====== begin solve slots ======\n");
-	printf("Constraints:\n");
-	{
-		size_t num_constraints = ast_env_num_constraints(ctx);
-		for (size_t constr_id = 0; constr_id < num_constraints; constr_id++) {
-			ast_print_constraint(ctx, constr_id);
-			printf("\n");
-		}
-	}
-
-	printf("\n");
+	size_t original_num_constraints = ast_env_num_constraints(ctx);
 #endif
 
 	size_t num_applied_constraints = 0;
@@ -2382,22 +2454,6 @@ ast_slot_try_solve(
 			target->flags |= AST_SLOT_HAS_ERROR;
 		}
 	}
-
-#if AST_DEBUG_SLOT_SOLVE
-	printf("final slots (%zu slot%s):\n", ctx->num_slots,
-			(ctx->num_slots == 1) ? "" : "s");
-
-	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
-		ast_print_slot(ctx, slot_id);
-	}
-
-	if (ctx->num_extra_slots > 0) {
-		printf("extra slots:\n");
-		for (ast_slot_id slot_id = 0; slot_id < ctx->num_extra_slots; slot_id++) {
-			ast_print_slot(ctx, ctx->num_slots+slot_id);
-		}
-	}
-#endif
 
 	// Produce result.
 	int num_errors = 0;
@@ -2499,6 +2555,43 @@ ast_slot_try_solve(
 	}
 
 #if AST_DEBUG_SLOT_SOLVE
+	printf("Constraints:\n");
+	{
+		size_t num_constraints = ast_env_num_constraints(ctx);
+
+		int num_digits_constr_id;
+		num_digits_constr_id =
+			(int)ceil(log10((double)num_constraints));
+		if (num_digits_constr_id <= 0) {
+			num_digits_constr_id = 1;
+		}
+
+		for (size_t constr_id = 0; constr_id < num_constraints; constr_id++) {
+			if (constr_id == original_num_constraints) {
+				printf("\nextra constraints:\n");
+			}
+			printf("%*zu ",
+					num_digits_constr_id, constr_id);
+			ast_print_constraint(ctx, constr_id);
+			printf("\n");
+		}
+	}
+
+	printf("\nfinal slots (%zu slot%s):\n", ctx->num_slots,
+			(ctx->num_slots == 1) ? "" : "s");
+
+	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
+		ast_print_slot(ctx, out_result, slot_id);
+	}
+
+	if (ctx->num_extra_slots > 0) {
+		printf("extra slots:\n");
+		for (ast_slot_id slot_id = 0; slot_id < ctx->num_extra_slots; slot_id++) {
+			ast_print_slot(ctx, out_result,
+					ctx->num_slots+slot_id);
+		}
+	}
+
 	printf("======  end solve slots  ======\n");
 #endif
 

@@ -5,6 +5,7 @@
 #include "objstore.h"
 
 #define AST_DEBUG_SLOT_SOLVE 0
+#define AST_DEBUG_SLOT_SOLVE_APPLY 0
 
 typedef int32_t ast_slot_id;
 typedef int ast_member_id;
