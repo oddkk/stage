@@ -100,6 +100,10 @@ ast_resolve_lookup(struct ast_context *ctx,
 
 			for (ast_closure_id i = 0; i < closure->num_members; i++) {
 				if (closure->members[i].name == name) {
+					if (allow_add_closure) {
+						closure->members[i].require_const |= require_const;
+					}
+
 					struct ast_name_ref ref = {0};
 					ref.kind = AST_NAME_REF_CLOSURE;
 					ref.closure = i;
@@ -234,13 +238,21 @@ ast_node_resolve_names(struct ast_context *ctx,
 			break;
 
 		case AST_NODE_CALL:
-		case AST_NODE_CONS:
 		case AST_NODE_INST:
 			err += ast_node_resolve_names(ctx, native_mod,
 					scope, require_const, node->call.func);
 			for (size_t i = 0; i < node->call.num_args; i++) {
 				err += ast_node_resolve_names(ctx, native_mod,
 						scope, require_const, node->call.args[i].value);
+			}
+			break;
+
+		case AST_NODE_CONS:
+			err += ast_node_resolve_names(ctx, native_mod,
+					scope, true, node->call.func);
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				err += ast_node_resolve_names(ctx, native_mod,
+						scope, true, node->call.args[i].value);
 			}
 			break;
 
@@ -290,7 +302,7 @@ ast_node_resolve_names(struct ast_context *ctx,
 
 		case AST_NODE_ACCESS:
 			err += ast_node_resolve_names(ctx, native_mod,
-					scope, true, node->access.target);
+					scope, require_const, node->access.target);
 			// At this point we do not have type information, and thus can not
 			// resolve accesses.
 			break;
@@ -473,7 +485,6 @@ ast_node_discover_potential_closures(struct ast_context *ctx,
 			break;
 
 		case AST_NODE_CALL:
-		case AST_NODE_CONS:
 		case AST_NODE_INST:
 			err += ast_node_discover_potential_closures(
 					ctx, scope, require_const,
@@ -484,6 +495,18 @@ ast_node_discover_potential_closures(struct ast_context *ctx,
 						node->call.args[i].value);
 			}
 			break;
+
+		case AST_NODE_CONS:
+			err += ast_node_discover_potential_closures(
+					ctx, scope, true,
+					node->call.func);
+			for (size_t i = 0; i < node->call.num_args; i++) {
+				err += ast_node_discover_potential_closures(
+						ctx, scope, true,
+						node->call.args[i].value);
+			}
+			break;
+
 
 		case AST_NODE_FUNC_TYPE:
 			err += ast_node_discover_potential_closures(
@@ -531,7 +554,7 @@ ast_node_discover_potential_closures(struct ast_context *ctx,
 
 		case AST_NODE_ACCESS:
 			err += ast_node_discover_potential_closures(ctx,
-					scope, true, node->access.target);
+					scope, require_const, node->access.target);
 			break;
 
 		case AST_NODE_LIT:

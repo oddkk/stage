@@ -551,6 +551,10 @@ ast_node_find_named_dependencies(
 			req = AST_NAME_DEP_REQUIRE_VALUE;
 			break;
 
+		case AST_NODE_CONS:
+			req = AST_NAME_DEP_REQUIRE_VALUE;
+			break;
+
 		case AST_NODE_COMPOSITE:
 			err += ast_node_closure_find_named_dependencies(
 					req, &node->composite.closure,
