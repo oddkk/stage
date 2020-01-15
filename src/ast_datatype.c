@@ -1379,6 +1379,13 @@ ast_dt_populate_descendants(
 					ctx, def->params[i].name, STG_NO_LOC,
 					def->params[i].type, local_anscestor);
 
+			struct ast_dt_member *param_mbr;
+			param_mbr = get_member(ctx, param_mbr_id);
+
+			ast_dt_job_dependency(ctx,
+					param_mbr->const_resolved,
+					parent->const_resolved);
+
 			ast_dt_populate_descendants(ctx, local_anscestor, param_mbr_id);
 		}
 	}
