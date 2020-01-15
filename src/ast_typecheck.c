@@ -783,6 +783,33 @@ ast_node_resolve_types(
 				}
 				break;
 
+			case AST_NODE_FUNC_TYPE:
+				switch (ast_slot_value_result(res->result)) {
+					case AST_SLOT_RES_VALUE_UNKNOWN:
+					case AST_SLOT_RES_TYPE_FOUND:
+						stg_error(ctx->err, node->loc,
+								"Not enough type information to resolve the type of this "
+								"expression.");
+						errors += 1;
+						break;
+
+					case AST_SLOT_RES_VALUE_FOUND_OBJ:
+						// TODO: Better error message.
+						stg_error(ctx->err, node->loc,
+								"Expected function type, got another object.");
+						errors += 1;
+						break;
+
+					case AST_SLOT_RES_VALUE_FOUND_TYPE:
+						node->func_type.func_type = res->value.type;
+						break;
+
+					default:
+						panic("Invalid slot bind result.");
+						break;
+				}
+				break;
+
 			default:
 				break;
 		}
