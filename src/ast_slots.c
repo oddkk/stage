@@ -556,7 +556,7 @@ ast_print_slot_result(
 	struct ast_slot_result res;
 	res = result[slot_id];
 
-	printf("  result: 0x%x\n", res.result);
+	printf("  result: 0x%02x\n", res.result);
 	switch (ast_slot_value_result(res.result)) {
 		case AST_SLOT_RES_VALUE_UNKNOWN:
 			printf("   -value: unknown\n");
@@ -1453,6 +1453,10 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 		return false;
 	}
 
+	if ((slot->flags & AST_SLOT_HAS_ERROR) != 0) {
+		return false;
+	}
+
 	bool made_change = false;
 
 	if ((slot->flags & (AST_SLOT_HAS_VALUE|AST_SLOT_HAS_TYPE)) ==
@@ -1767,7 +1771,12 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			struct object args[cons->num_params];
 			void *arg_data[cons->num_params];
 			bool arg_set[cons->num_params];
+			ast_slot_id param_slot[cons->num_params];
 			memset(arg_set, 0, sizeof(bool) * cons->num_params);
+
+			for (size_t i = 0 ; i < cons->num_params; i++) {
+				param_slot[i] = -1;
+			}
 
 			for (size_t i = 0; i < slot->num_members; i++) {
 				ssize_t param_i = -1;
@@ -1789,9 +1798,20 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				}
 				assert(param_i < cons->num_params);
 
+				if (param_slot[param_i] >= 0) {
+					if (cons == slot->imposed_cons) {
+						param_slot[param_i] =
+							ast_slot_join(ctx,
+									slot->members[i].slot,
+									param_slot[param_i]);
+					}
+				} else {
+					param_slot[param_i] = slot->members[i].slot;
+				}
+
 				int err;
 				err = ast_slot_try_get_value(
-						ctx, slot->members[i].slot,
+						ctx, param_slot[param_i],
 						TYPE_UNSET, &args[param_i]);
 				if (err < 0) {
 					slot->flags |= AST_SLOT_HAS_ERROR;
@@ -2399,6 +2419,7 @@ ast_slot_try_solve(
 			ast_slot_solve_impose_constraint(
 					ctx, constr_id);
 		}
+		num_applied_constraints = num_constraints;
 
 		for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
 			made_progress |= ast_slot_solve_push_value(
@@ -2407,9 +2428,8 @@ ast_slot_try_solve(
 	};
 
 	// Verify the solution.
-	size_t num_constraints = ast_env_num_constraints(ctx);
 	for (ast_constraint_id constr_id = 0;
-			constr_id < num_constraints; constr_id++) {
+			constr_id < num_applied_constraints; constr_id++) {
 		int err;
 		err = ast_slot_verify_constraint(
 				ctx, constr_id);
@@ -2526,16 +2546,14 @@ ast_slot_try_solve(
 #if AST_DEBUG_SLOT_SOLVE
 	printf("Constraints:\n");
 	{
-		size_t num_constraints = ast_env_num_constraints(ctx);
-
 		int num_digits_constr_id;
 		num_digits_constr_id =
-			(int)ceil(log10((double)num_constraints));
+			(int)ceil(log10((double)num_applied_constraints));
 		if (num_digits_constr_id <= 0) {
 			num_digits_constr_id = 1;
 		}
 
-		for (size_t constr_id = 0; constr_id < num_constraints; constr_id++) {
+		for (size_t constr_id = 0; constr_id < num_applied_constraints; constr_id++) {
 			if (constr_id == original_num_constraints) {
 				printf("\nextra constraints:\n");
 			}
