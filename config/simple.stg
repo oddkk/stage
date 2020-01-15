@@ -128,7 +128,7 @@ TT2 := TestType[int];
 
 prnt := message.Print(
 	message.Map[](
-		message.Map[](message.onStart, (a: Unit) -> int => composeTest[](500)),
+		message.Map[](message.onStart, (a: Unit) -> int => composeTest(500)),
 		(a: int) -> int => a * 2));
 
 prnt2 := message.PrintStr(
@@ -138,7 +138,7 @@ prnt2 := message.PrintStr(
 
 # asdfasdfasdf := message.msgId(message.onStart);
 
-func_test := (base.type, int) -> int;
+func_test := (base.Type, int) -> int;
 
 id_test := id[](2);
 

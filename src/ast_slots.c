@@ -2173,6 +2173,34 @@ ast_slot_verify_constraint(
 				stg_error(ctx->err, constr->reason.loc,
 						"Expected constructor, got object instantiation.");
 				return -1;
+			} else {
+				int err;
+
+				struct object_cons *cons;
+				err = ast_slot_try_get_cons(
+						ctx, constr->target, &cons);
+				if (err < 0) {
+
+					type_id cons_obj_type;
+					err = ast_slot_try_get_type(
+							ctx, constr->cons, &cons_obj_type);
+
+					if (err) {
+						// TODO: Better error message.
+						stg_error(ctx->err, constr->reason.loc,
+								"The constructor was invalid.");
+					} else {
+						struct string got_str = {0};
+						got_str = type_repr_to_alloced_string(
+								ctx->vm, vm_get_type(ctx->vm, cons_obj_type));
+
+						stg_error(ctx->err, constr->reason.loc,
+								"Expected constructor, got %.*s.",
+								LIT(got_str));
+						free(got_str.text);
+					}
+					return -1;
+				}
 			}
 			return 0;
 
@@ -2188,6 +2216,33 @@ ast_slot_verify_constraint(
 				stg_error(ctx->err, constr->reason.loc,
 						"Expected object instantiation, got constructor.");
 				return -1;
+			} else {
+				int err;
+
+				struct object_inst *inst;
+				err = ast_slot_try_get_inst(
+						ctx, constr->target, &inst);
+				if (err < 0) {
+					type_id inst_obj_type;
+					err = ast_slot_try_get_type(
+							ctx, constr->inst, &inst_obj_type);
+
+					if (err) {
+						// TODO: Better error message.
+						stg_error(ctx->err, constr->reason.loc,
+								"The object instantiation was invalid.");
+					} else {
+						struct string got_str = {0};
+						got_str = type_repr_to_alloced_string(
+								ctx->vm, vm_get_type(ctx->vm, inst_obj_type));
+
+						stg_error(ctx->err, constr->reason.loc,
+								"Expected object instantiation, got %.*s.",
+								LIT(got_str));
+						free(got_str.text);
+					}
+					return -1;
+				}
 			}
 			return 0;
 
