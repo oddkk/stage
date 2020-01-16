@@ -696,6 +696,36 @@ ast_node_resolve_types(
 		}
 
 		switch (node->kind) {
+			case AST_NODE_CALL:
+				{
+					type_id func_type;
+					func_type = node->call.func->type;
+					if (func_type == TYPE_UNSET) {
+						break;
+					}
+
+					assert(stg_type_is_func(ctx->vm, func_type));
+
+					struct type *type;
+					type = vm_get_type(ctx->vm, func_type);
+					struct stg_func_type *func_info;
+					func_info = type->data;
+
+					if (func_info->num_params != node->call.num_args) {
+						struct string exp_str;
+						exp_str = type_repr_to_alloced_string(
+								ctx->vm, type);
+						stg_error(ctx->err, node->loc,
+								"Function (%.*s) expected %zu arument%s, got %zu.",
+								LIT(exp_str), func_info->num_params,
+								func_info->num_params != 1 ? "s" : "",
+								node->call.num_args);
+						free(exp_str.text);
+						errors += 1;
+					}
+				}
+				break;
+
 			case AST_NODE_CONS:
 				switch (ast_slot_value_result(res->result)) {
 					case AST_SLOT_RES_VALUE_UNKNOWN:
