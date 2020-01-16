@@ -161,7 +161,7 @@ stg_alloc(struct stg_exec *ctx, size_t nmemb, size_t size)
 {
 	size_t res;
 	// TODO: Make this cross platform and cross compiler compliant.
-	if (!__builtin_mul_overflow(nmemb, size, &res)) {
+	if (__builtin_mul_overflow(nmemb, size, &res)) {
 		panic("Attempted to allocate memory with a size that exeedes 64-bit integers.");
 		return NULL;
 	}
@@ -457,7 +457,10 @@ object_ct_pack_type(
 
 	type_id res;
 
-	size_t num_errors_pre = ctx->err->num_errors;
+	size_t num_errors_pre = 0;
+	if (ctx->err) {
+		num_errors_pre = ctx->err->num_errors;
+	}
 
 	if (cons->pack_type) {
 		res = cons->pack_type(
@@ -471,7 +474,7 @@ object_ct_pack_type(
 
 	if (res == TYPE_UNSET) {
 		// If the pack failed it must emit an error.
-		if (ctx->err->num_errors <= num_errors_pre) {
+		if (ctx->err && ctx->err->num_errors <= num_errors_pre) {
 			// TODO: Constructor name and location.
 			stg_error(ctx->err, STG_NO_LOC,
 					"Constructor pack type failed but did not emit any errors.");
@@ -498,13 +501,18 @@ object_ct_pack(
 				args, num_args);
 	} else {
 		int err;
-		size_t num_errors_pre = ctx->err->num_errors;
+
+		size_t num_errors_pre = 0;
+		if (ctx->err) {
+			num_errors_pre = ctx->err->num_errors;
+		}
+
 		err = cons->ct_pack(
 				ctx, mod, cons->data, out->data,
 				args, num_args);
 		if (err) {
 			// If the pack failed it must emit an error.
-			if (ctx->err->num_errors <= num_errors_pre) {
+			if (ctx->err && ctx->err->num_errors <= num_errors_pre) {
 				// TODO: Constructor name and location.
 				stg_error(ctx->err, STG_NO_LOC,
 						"Constructor pack failed but did not emit any errors.");
@@ -533,13 +541,17 @@ object_ct_unpack_param(
 				obj.data, param_id);
 	} else {
 		int err;
-		size_t num_errors_pre = ctx->err->num_errors;
+		size_t num_errors_pre = 0;
+		if (ctx->err) {
+			num_errors_pre = ctx->err->num_errors;
+		}
+
 		err = cons->ct_unpack(
 				ctx, mod, cons->data, out->data,
 				obj, param_id);
 		if (err) {
 			// If the unpack failed it must emit an error.
-			if (ctx->err->num_errors <= num_errors_pre) {
+			if (ctx->err && ctx->err->num_errors <= num_errors_pre) {
 				// TODO: Constructor name and location.
 				stg_error(ctx->err, STG_NO_LOC,
 						"Constructor unpack failed but did not emit any errors.");
