@@ -921,8 +921,13 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	inst.params = calloc(
 			info->num_params,
 			sizeof(struct object));
-	memcpy(inst.params, param_values,
-			info->num_params * sizeof(struct object));
+
+	for (size_t i = 0; i < info->num_params; i++) {
+		inst.params[i] =
+			register_object(ctx->vm,
+					mod->mod.env.store, param_values[i]);
+	}
+
 	inst.result = res;
 
 	dlist_append(
