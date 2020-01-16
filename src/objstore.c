@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <error.h>
+#include <math.h>
 #include <unistd.h>
 #include <sys/mman.h>
 #include <string.h>
@@ -955,6 +956,9 @@ object_inst_order(
 		struct object_inst_bind       *extra_binds, size_t num_extra_binds,
 		struct object_inst_action **out_actions, size_t *out_num_actions)
 {
+#if OBJ_DEBUG_ACTIONS
+	printf("\n\nbegin object_inst_order\n");
+#endif
 	struct object_inst_context _ctx = {0};
 	struct object_inst_context *ctx = &_ctx;
 
@@ -1219,6 +1223,47 @@ object_inst_order(
 
 	if (ctx->num_unvisited_deps > 0) {
 		printf("One or more loops detected when resolving expression order.\n");
+
+		for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+			struct obj_inst_expr *expr;
+			expr = get_expr(ctx, expr_i);
+
+			if (expr->num_incoming_deps <= 0) {
+				continue;
+			}
+
+			printf("  - Expr %zu (%zi unvisited deps, targets ",
+					expr_i, expr->num_incoming_deps);
+
+			{
+				obj_member_id target = expr->first_target;
+				bool first = true;
+				while (target >= 0) {
+					struct obj_inst_member *mbr;
+					mbr = get_member(ctx, target);
+
+					printf("%s%i", first ? "" : ",", target);
+
+					first = false;
+					target = mbr->next_expr_target;
+				}
+			}
+
+			printf(") ");
+			print_type_repr(ctx->vm, vm_get_type(ctx->vm, expr->type));
+			printf("\n");
+
+			for (size_t dep_i = 0; dep_i < expr->num_expr_deps; dep_i++) {
+				obj_expr_id dep_id = expr->expr_deps[dep_i];
+				struct obj_inst_expr *dep;
+				dep = get_expr(ctx, dep_id);
+
+				printf("      dep %i %s\n", dep_id,
+						(dep->num_incoming_deps == -1)
+						? "visited" : "not visited");
+			}
+		}
+
 		free(ctx->actions);
 		return -1;
 	}
@@ -1237,4 +1282,63 @@ object_inst_order(
 	*out_actions = ctx->actions;
 	*out_num_actions = ctx->action_i;
 	return 0;
+}
+
+static void
+print_indent(int depth)
+{
+	for (int i = 0; i < depth; ++i) {
+		printf("  ");
+	}
+}
+
+size_t
+object_cons_print_internal(
+		struct vm *vm, struct object_cons *cons,
+		size_t indent, int num_desc_digits, size_t id_offset)
+{
+	size_t count = 0;
+
+	for (size_t i = 0; i < cons->num_params; i++) {
+		struct type *member_type;
+		member_type = vm_get_type(
+				vm, cons->params[i].type);
+
+		printf("%*zu ", num_desc_digits, id_offset+count);
+		print_indent(indent);
+		printf("%.*s: ", ALIT(cons->params[i].name));
+		print_type_repr(vm, member_type);
+		printf("\n");
+
+		count += 1;
+
+		if (member_type->obj_def) {
+			count += object_cons_print_internal(
+					vm, member_type->obj_def,
+					indent+1, num_desc_digits, id_offset+count);
+		}
+	}
+
+	return count;
+}
+
+void
+object_cons_print(struct vm *vm, struct object_cons *cons)
+{
+	printf("object cons:\n");
+
+	size_t num_desc;
+	num_desc = object_cons_num_descendants(
+			vm, cons);
+
+	int num_desc_digits;
+	num_desc_digits =
+		(int)ceil(log10((double)num_desc));
+	if (num_desc_digits <= 0) {
+		num_desc_digits = 1;
+	}
+
+	object_cons_print_internal(
+			vm, cons, 0, num_desc_digits, 1);
+	printf("\n");
 }

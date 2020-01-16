@@ -283,6 +283,9 @@ struct object_inst {
 	size_t num_exprs;
 };
 
+void
+object_cons_print(struct vm *, struct object_cons *);
+
 ssize_t
 object_cons_find_param(
 		struct object_cons *cons,
