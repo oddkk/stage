@@ -639,7 +639,12 @@ struct obj_inst_expr {
 	obj_expr_id next_terminal;
 	obj_expr_id *expr_deps;
 	size_t num_expr_deps;
-	size_t num_incoming_deps;
+
+	obj_expr_id *outgoing_expr_deps;
+	size_t num_outgoing_expr_deps;
+	size_t exp_outgoing_expr_deps;
+
+	ssize_t num_incoming_deps;
 
 	struct stg_location loc;
 };
@@ -1015,6 +1020,8 @@ object_inst_order(
 				ctx->exprs[offset+i].type = func_info->return_type;
 			}
 
+			assert(ctx->exprs[offset+i].type != TYPE_UNSET);
+
 			ctx->exprs[offset+i].mbr_deps = expr->deps;
 			ctx->exprs[offset+i].num_mbr_deps = expr->num_deps;
 		}
@@ -1139,6 +1146,7 @@ object_inst_order(
 		ctx->first_terminal_expr = -1;
 	}
 
+	size_t total_outgoing_dependencies = 0;
 	{
 		size_t offset = 0;
 		for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
@@ -1174,13 +1182,8 @@ object_inst_order(
 					struct obj_inst_expr *dep_expr;
 					dep_expr = get_expr(ctx, dep_expr_id);
 
-					if (dep_expr->num_incoming_deps == 0) {
-						obj_inst_remove_terminal_expr(
-								ctx, dep_expr_id);
-					}
-
-					dep_expr->num_incoming_deps += 1;
-					ctx->num_unvisited_deps += 1;
+					dep_expr->exp_outgoing_expr_deps += 1;
+					total_outgoing_dependencies += 1;
 				}
 			}
 
@@ -1188,6 +1191,61 @@ object_inst_order(
 			expr->expr_deps = deps;
 
 			offset += num_deps;
+		}
+	}
+
+	obj_expr_id _outgoing_expr_deps[num_total_dependencies];
+
+	{
+		size_t offset = 0;
+		for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+			struct obj_inst_expr *expr;
+			expr = get_expr(ctx, expr_i);
+
+			assert(offset + expr->exp_outgoing_expr_deps <= total_outgoing_dependencies);
+			expr->outgoing_expr_deps = &_outgoing_expr_deps[offset];
+			offset += expr->exp_outgoing_expr_deps;
+		}
+	}
+
+	for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+		struct obj_inst_expr *expr;
+		expr = get_expr(ctx, expr_i);
+
+		for (size_t dep_i = 0; dep_i < expr->num_mbr_deps; dep_i++) {
+			struct obj_inst_member *mbr;
+			mbr = get_member(ctx, expr->mbr_deps[dep_i]);
+
+			struct object_inst_bind *bind;
+			bind = get_bind(ctx, mbr->bind);
+
+			struct obj_inst_expr *dep_expr;
+			dep_expr = get_expr(ctx, bind->expr_id);
+
+			bool found = false;
+			for (size_t i = 0; i < dep_expr->num_outgoing_expr_deps; i++) {
+				if (dep_expr->outgoing_expr_deps[i] == expr_i) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) {
+				assert(dep_expr->num_outgoing_expr_deps+1 <=
+						dep_expr->exp_outgoing_expr_deps);
+
+				dep_expr->outgoing_expr_deps[dep_expr->num_outgoing_expr_deps] =
+					expr_i;
+				dep_expr->num_outgoing_expr_deps += 1;
+
+				if (expr->num_incoming_deps == 0) {
+					obj_inst_remove_terminal_expr(
+							ctx, expr_i);
+				}
+
+				expr->num_incoming_deps += 1;
+				ctx->num_unvisited_deps += 1;
+			}
 		}
 	}
 
@@ -1216,8 +1274,8 @@ object_inst_order(
 		assert(expr->num_incoming_deps == 0);
 		expr->num_incoming_deps = -1;
 
-		for (size_t dep_i = 0; dep_i < expr->num_expr_deps; dep_i++) {
-			obj_expr_id dep_id = expr->expr_deps[dep_i];
+		for (size_t dep_i = 0; dep_i < expr->num_outgoing_expr_deps; dep_i++) {
+			obj_expr_id dep_id = expr->outgoing_expr_deps[dep_i];
 			struct obj_inst_expr *dep;
 			dep = get_expr(ctx, dep_id);
 
