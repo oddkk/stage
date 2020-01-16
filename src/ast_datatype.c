@@ -2392,13 +2392,18 @@ ast_dt_num_descendant_members(struct ast_dt_context *ctx,
 	}
 }
 
+// Note that the top-level object itself is concidered to have persistant ID 0,
+// and hence the first member receives ID 1.
 static ast_member_id
 ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 {
 	struct ast_dt_member *mbr = get_member(ctx, mbr_id);
 
 	if ((mbr->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
-		assert(mbr->persistant_id >= 0 && mbr->persistant_id < ctx->num_member_alloced);
+		// Members can not have persistant ID 0 as that ID is reserved for the
+		// top-level object.
+		assert(mbr->persistant_id > 0 &&
+				mbr->persistant_id < ctx->num_member_alloced + 1);
 		return mbr->persistant_id;
 	} else {
 		struct ast_dt_member *local_anscestor;
@@ -2412,7 +2417,7 @@ ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 		result = 1 + local_anscestor->persistant_id +
 			(mbr_id - local_anscestor->first_child);
 
-		assert(result >= 0 && result < ctx->num_member_alloced);
+		assert(result > 0 && result < ctx->num_member_alloced + 1);
 
 		return result;
 	}
@@ -2541,7 +2546,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 			sizeof(struct object_cons_param));
 
 	size_t offset = 0;
-	ast_member_id cumulative_persistant_id = 0;
+	ast_member_id cumulative_persistant_id = 1;
 	for (size_t i = 0; i < comp->composite.num_members; i++) {
 		local_members[i].name = comp->composite.members[i].name;
 		local_members[i].location = offset;
@@ -2633,9 +2638,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 		struct ast_dt_bind *bind;
 		bind = get_bind(ctx, mbr->bound);
 
-		// Add one to compansate for the datatype object being target 0.
 		binds[bind_i].target_id =
-			1 + ast_dt_calculate_persistant_id(
+			ast_dt_calculate_persistant_id(
 					ctx, mbr_i);
 		binds[bind_i].loc = bind->loc;
 		binds[bind_i].expr_id = bind->expr;
