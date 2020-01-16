@@ -1,20 +1,4 @@
-#include "vm.h"
-#include "ast.h"
-#include "module.h"
-#include "base/mod.h"
-#include <string.h>
-#include <signal.h>
-
-#define TEST_ASSERT(expr)							\
-	do {											\
-		if (!(expr)) {								\
-			fprintf(stdout,							\
-					__FILE__ ":%i: "				\
-					"Assertion '" #expr "' failed!\n",\
-					__LINE__);						\
-			return -1;								\
-		}											\
-	} while (0);
+#include "stage_test.h"
 
 int
 test_type_propagation(struct ast_context *ctx, struct stg_module *mod)
@@ -359,26 +343,14 @@ test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 int main()
 {
 	struct vm vm;
-	int err;
+	struct stg_module *mod;
+	struct ast_context ctx;
 
-	err = vm_init(&vm);
+	int err;
+	err = stg_test_bootstrap(&vm, &ctx, &mod);
 	if (err) {
-		printf("Failed to initialize vm.\n");
 		return -1;
 	}
-
-	stg_base_load(&vm);
-
-	struct ast_context ctx;
-	ctx = ast_init_context(NULL, &vm.atom_table, &vm);
-
-	struct stg_module_info mod_info = {
-		.name = STR("test"),
-		.version = {.major = 0, .minor = 1},
-	};
-
-	struct stg_module *mod;
-	mod = vm_register_module(&vm, &ctx, NULL, &mod_info);
 
 	int res = 0;
 
