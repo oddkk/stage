@@ -2026,9 +2026,21 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						return err < 0;
 					}
 
+					mbr->const_value.type = mbr->type;
+
+					struct type *mbr_type;
+					mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->const_value.type);
+
+					uint8_t buffer[mbr_type->size];
+					mbr->const_value.data = buffer;
+
 					err = object_unpack(
 							ctx->ast_ctx->vm, const_value,
 							mbr->bound_unpack_id, &mbr->const_value);
+
+					mbr->const_value =
+						register_object(ctx->ast_ctx->vm,
+								ctx->ast_mod->env.store, mbr->const_value);
 
 					assert_type_equals(ctx->ast_ctx->vm,
 							mbr->type, mbr->const_value.type);

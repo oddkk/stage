@@ -303,6 +303,9 @@ object_cons_local_descendent_ids(
 		struct vm *, struct object_cons *cons,
 		int *out_local_descendent_ids);
 
+// out->type is expected to point to the final type of the requested object,
+// and out->data should point to a buffer with sufficient space to store such
+// an object.
 int
 object_unpack(
 		struct vm *, struct object obj,

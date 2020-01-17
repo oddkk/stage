@@ -397,13 +397,14 @@ object_unpack(
 		struct vm *vm, struct object obj,
 		size_t unpack_id, struct object *out)
 {
-	if (unpack_id == 0) {
-		*out = obj;
-		return 0;
-	}
-
 	struct type *type;
 	type = vm_get_type(vm, obj.type);
+
+	if (unpack_id == 0) {
+		assert_type_equals(vm, obj.type, out->type);
+		memcpy(out->data, obj.data, type->size);
+		return 0;
+	}
 
 	struct object_cons *def;
 	def = type->obj_def;
