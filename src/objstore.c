@@ -1124,7 +1124,13 @@ object_inst_order(
 		struct obj_inst_expr *expr;
 		expr = get_expr(ctx, expr_i);
 
-		num_total_dependencies += expr->num_mbr_deps;
+		for (size_t dep_i = 0; dep_i < expr->num_mbr_deps; dep_i++) {
+			ast_member_id dep_id = expr->mbr_deps[dep_i];
+			struct obj_inst_member *dep;
+			dep = get_member(ctx, dep_id);
+
+			num_total_dependencies += dep->num_descendants+1;
+		}
 	}
 
 	// Set up for topological sort by finding dependencies between expressions.
@@ -1186,6 +1192,7 @@ object_inst_order(
 					}
 
 					if (!found) {
+						assert(offset + num_deps + 1 <= num_total_dependencies);
 						deps[num_deps] = dep_expr_id;
 						num_deps += 1;
 
@@ -1205,7 +1212,7 @@ object_inst_order(
 		}
 	}
 
-	obj_expr_id _outgoing_expr_deps[num_total_dependencies];
+	obj_expr_id _outgoing_expr_deps[total_outgoing_dependencies];
 
 	{
 		size_t offset = 0;
@@ -1219,17 +1226,18 @@ object_inst_order(
 		}
 	}
 
-	for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+	for (size_t expr_id = 0; expr_id < ctx->num_exprs; expr_id++) {
 		struct obj_inst_expr *expr;
-		expr = get_expr(ctx, expr_i);
+		expr = get_expr(ctx, expr_id);
 
 		for (size_t dep_i = 0; dep_i < expr->num_expr_deps; dep_i++) {
+			obj_expr_id dep_id = expr->expr_deps[dep_i];
 			struct obj_inst_expr *dep_expr;
-			dep_expr = get_expr(ctx, expr->expr_deps[dep_i]);
+			dep_expr = get_expr(ctx, dep_id);
 
 			bool found = false;
 			for (size_t i = 0; i < dep_expr->num_outgoing_expr_deps; i++) {
-				if (dep_expr->outgoing_expr_deps[i] == expr_i) {
+				if (dep_expr->outgoing_expr_deps[i] == expr_id) {
 					found = true;
 					break;
 				}
@@ -1240,12 +1248,12 @@ object_inst_order(
 						dep_expr->exp_outgoing_expr_deps);
 
 				dep_expr->outgoing_expr_deps[dep_expr->num_outgoing_expr_deps] =
-					expr_i;
+					expr_id;
 				dep_expr->num_outgoing_expr_deps += 1;
 
 				if (expr->num_incoming_deps == 0) {
 					obj_inst_remove_terminal_expr(
-							ctx, expr_i);
+							ctx, expr_id);
 				}
 
 				expr->num_incoming_deps += 1;
