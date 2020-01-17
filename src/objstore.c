@@ -1149,41 +1149,52 @@ object_inst_order(
 	size_t total_outgoing_dependencies = 0;
 	{
 		size_t offset = 0;
-		for (size_t expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+		for (size_t expr_id = 0; expr_id < ctx->num_exprs; expr_id++) {
 			struct obj_inst_expr *expr;
-			expr = get_expr(ctx, expr_i);
+			expr = get_expr(ctx, expr_id);
 
 			obj_expr_id *deps;
 			deps = &_expr_deps[offset];
 			size_t num_deps = 0;
 
 			for (size_t dep_i = 0; dep_i < expr->num_mbr_deps; dep_i++) {
-				struct obj_inst_member *mbr;
-				mbr = get_member(ctx, expr->mbr_deps[dep_i]);
+				ast_member_id dep_id = expr->mbr_deps[dep_i];
+				struct obj_inst_member *dep;
+				dep = get_member(ctx, dep_id);
 
-				struct object_inst_bind *bind;
-				bind = get_bind(ctx, mbr->bind);
+				for (size_t desc_i = 0; desc_i < dep->num_descendants+1; desc_i++) {
+					ast_member_id desc_id = dep_id + desc_i;
+					struct obj_inst_member *desc;
+					desc = get_member(ctx, desc_id);
 
-				obj_expr_id dep_expr_id;
-				dep_expr_id = bind->expr_id;
-
-				bool found = false;
-				for (size_t i = 0; i < num_deps; i++) {
-					if (deps[i] == dep_expr_id) {
-						found = true;
-						break;
+					if (desc->num_descendants > 0) {
+						continue;
 					}
-				}
 
-				if (!found) {
-					deps[num_deps] = dep_expr_id;
-					num_deps += 1;
+					struct object_inst_bind *bind;
+					bind = get_bind(ctx, desc->bind);
 
-					struct obj_inst_expr *dep_expr;
-					dep_expr = get_expr(ctx, dep_expr_id);
+					obj_expr_id dep_expr_id;
+					dep_expr_id = bind->expr_id;
 
-					dep_expr->exp_outgoing_expr_deps += 1;
-					total_outgoing_dependencies += 1;
+					bool found = false;
+					for (size_t i = 0; i < num_deps; i++) {
+						if (deps[i] == dep_expr_id) {
+							found = true;
+							break;
+						}
+					}
+
+					if (!found) {
+						deps[num_deps] = dep_expr_id;
+						num_deps += 1;
+
+						struct obj_inst_expr *dep_expr;
+						dep_expr = get_expr(ctx, dep_expr_id);
+
+						dep_expr->exp_outgoing_expr_deps += 1;
+						total_outgoing_dependencies += 1;
+					}
 				}
 			}
 
@@ -1212,15 +1223,9 @@ object_inst_order(
 		struct obj_inst_expr *expr;
 		expr = get_expr(ctx, expr_i);
 
-		for (size_t dep_i = 0; dep_i < expr->num_mbr_deps; dep_i++) {
-			struct obj_inst_member *mbr;
-			mbr = get_member(ctx, expr->mbr_deps[dep_i]);
-
-			struct object_inst_bind *bind;
-			bind = get_bind(ctx, mbr->bind);
-
+		for (size_t dep_i = 0; dep_i < expr->num_expr_deps; dep_i++) {
 			struct obj_inst_expr *dep_expr;
-			dep_expr = get_expr(ctx, bind->expr_id);
+			dep_expr = get_expr(ctx, expr->expr_deps[dep_i]);
 
 			bool found = false;
 			for (size_t i = 0; i < dep_expr->num_outgoing_expr_deps; i++) {
