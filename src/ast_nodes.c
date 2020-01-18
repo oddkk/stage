@@ -778,6 +778,9 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	for (size_t i = 0; i < info->num_params; i++) {
 		param_values[i].type = info->params[i].type;
 		param_values[i].data = params[i];
+
+		param_values[i] = register_object(
+				ctx->vm, mod->mod.env.store, param_values[i]);
 	}
 
 	// Check if we already have instantiated this template with the given
