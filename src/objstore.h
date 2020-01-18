@@ -294,6 +294,14 @@ object_cons_find_param(
 		struct object_cons *cons,
 		struct atom *name);
 
+// Returns a unpack id for the member pointed to by lookup, or -1 if the lookup
+// failed.
+ssize_t
+object_cons_simple_lookup(
+		struct vm *,
+		struct object_cons *cons,
+		struct string lookup);
+
 size_t
 object_cons_num_descendants(
 		struct vm *, struct object_cons *);

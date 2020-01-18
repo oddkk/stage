@@ -349,6 +349,47 @@ object_cons_find_param(
 	return -1;
 }
 
+ssize_t
+object_cons_simple_lookup(
+		struct vm *vm,
+		struct object_cons *cons,
+		struct string lookup)
+{
+	struct object_cons *current = cons;
+	size_t offset = 1;
+	struct string expr = lookup;
+	struct string part = {0};
+
+	while (string_split(expr, &part, &expr, '.')) {
+		struct atom *part_name;
+		part_name = vm_atom(vm, part);
+		bool found = false;
+		for (size_t i = 0; i < current->num_params; i++) {
+			if (current->params[i].name == part_name) {
+				found = true;
+				break;
+			} else {
+				struct type *mbr_type;
+				mbr_type = vm_get_type(
+						vm, cons->params[i].type);
+				if (mbr_type->obj_def) {
+					offset +=
+						object_cons_num_descendants(
+								vm, mbr_type->obj_def) + 1;
+				} else {
+					offset += 1;
+				}
+			}
+		}
+
+		if (!found) {
+			return -1;
+		}
+	}
+
+	return offset;
+}
+
 size_t
 object_cons_num_descendants(
 		struct vm *vm, struct object_cons *cons)
