@@ -46,6 +46,10 @@ init_obj_copy(struct stg_exec *ctx, void *type_data, void *obj_data)
 	memcpy(new_closure, data->data, data->data_size);
 
 	data->data = new_closure;
+
+	if (data->copy) {
+		data->copy(ctx, data->data);
+	}
 }
 
 static struct type_base init_type_base = {
@@ -56,6 +60,7 @@ static struct type_base init_type_base = {
 };
 
 static ffi_type *ffi_type_stg_init_members[] = {
+	&ffi_type_pointer,
 	&ffi_type_pointer,
 	&ffi_type_pointer,
 	&ffi_type_uint64,
@@ -245,6 +250,16 @@ init_fmap_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
 			&arg, 1, &ret);
 }
 
+static void
+init_fmap_copy(struct stg_exec *ctx, void *data)
+{
+	struct init_fmap_data *closure = data;
+
+	if (closure->monad.copy) {
+		closure->monad.copy(ctx, closure->monad.data);
+	}
+}
+
 static struct stg_init_data
 init_monad_fmap(struct stg_exec *heap,
 		struct stg_module *mod,
@@ -254,6 +269,7 @@ init_monad_fmap(struct stg_exec *heap,
 {
 	struct stg_init_data data = {0};
 	data.call = init_fmap_unsafe;
+	data.copy = init_fmap_copy;
 	data.data_size = sizeof(struct init_fmap_data);
 	data.data = stg_alloc(heap, 1, data.data_size);
 
@@ -293,6 +309,8 @@ init_monad_fmap(struct stg_exec *heap,
 struct init_return_data {
 	void *value;
 	size_t size;
+	obj_copy value_copy;
+	void *type_data;
 };
 
 static void
@@ -301,6 +319,18 @@ init_return_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
 	struct init_return_data *closure = data;
 
 	memcpy(out, closure->value, closure->size);
+}
+
+static void
+init_return_copy(struct stg_exec *ctx, void *data)
+{
+	struct init_return_data *closure = data;
+
+	if (closure->value_copy) {
+		closure->value_copy(
+				ctx, closure->type_data,
+				closure->value);
+	}
 }
 
 static void
@@ -314,6 +344,7 @@ init_monad_return(void **args, size_t num_args, void *ret)
 
 	struct stg_init_data data = {0};
 	data.call = init_return_unsafe;
+	data.copy = init_return_copy;
 	data.data_size = sizeof(struct init_return_data);
 	data.data = stg_alloc(heap, 1, data.data_size);
 
@@ -334,6 +365,16 @@ struct init_join_data {
 
 	type_id data_type;
 };
+
+static void
+init_join_copy(struct stg_exec *ctx, void *data)
+{
+	struct init_join_data *closure = data;
+
+	if (closure->monad.copy) {
+		closure->monad.copy(ctx, closure->monad.data);
+	}
+}
 
 static void
 init_join_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
@@ -357,6 +398,7 @@ init_monad_join(struct stg_exec *heap,
 {
 	struct stg_init_data data = {0};
 	data.call = init_join_unsafe;
+	data.copy = init_join_copy;
 	data.data_size = sizeof(struct init_join_data);
 	data.data = stg_alloc(heap, 1, data.data_size);
 

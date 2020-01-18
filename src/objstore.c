@@ -81,22 +81,25 @@ obj_equals(struct vm *vm, struct object lhs, struct object rhs)
 	return memcmp(lhs.data, rhs.data, lhs_type->size) == 0;
 }
 
-struct object
-register_object(struct vm *vm, struct objstore *store, struct object obj) {
+void *
+objstore_alloc(struct objstore *store, size_t num_bytes)
+{
 	if (store->page_size == 0) {
 		store->page_size = sysconf(_SC_PAGESIZE);
 	}
 
-	struct type *type = vm_get_type(vm, obj.type);
+	if (num_bytes == 0) {
+		return NULL;
+	}
 
 	if (store->data_pages == NULL ||
-		store->last_data_page_used + type->size >= store->page_size) {
+		store->last_data_page_used + num_bytes >= store->page_size) {
 		size_t new_size = (store->num_data_pages + 1) * sizeof(uint8_t *);
 		uint8_t **new_pages = realloc(store->data_pages, new_size);
 
 		if (!new_pages) {
 			perror("realloc");
-			return OBJ_NONE;
+			return NULL;
 		}
 
 		store->data_pages = new_pages;
@@ -108,28 +111,46 @@ register_object(struct vm *vm, struct objstore *store, struct object obj) {
 
 		if (new_pages[store->num_data_pages] == MAP_FAILED) {
 			perror("mmap");
-			return OBJ_NONE;
+			return NULL;
 		}
 
 		store->num_data_pages = store->num_data_pages + 1;
 		store->last_data_page_used = 0;
 	}
 
+	size_t addr = ((store->num_data_pages - 1) * store->page_size
+			+ store->last_data_page_used);
+	store->last_data_page_used += num_bytes;
 
-	struct object o = {0};
-	o.type = obj.type;
+	void *result;
+	result = &store->data_pages[addr / store->page_size][addr % store->page_size];
+
+	return result;
+}
+
+struct object
+register_object(struct vm *vm, struct objstore *store, struct object obj) {
+	struct type *type;
+	type = vm_get_type(vm, obj.type);
+
+	struct object res = {0};
+	res.type = obj.type;
+	res.data = objstore_alloc(store, type->size);
 
 	if (type->size > 0) {
-		size_t addr = ((store->num_data_pages - 1) * store->page_size
-					   + store->last_data_page_used);
-		store->last_data_page_used += type->size;
-
-		o.data = &store->data_pages[addr / store->page_size][addr % store->page_size];
-
-		memcpy((void *)o.data, (void *)obj.data, type->size);
+		if (!res.data) {
+			return OBJ_NONE;
+		}
+		memcpy(res.data, obj.data, type->size);
 	}
 
-	return o;
+	if (type->base->obj_copy) {
+		struct stg_exec ctx = {0};
+		ctx.store = store;
+		type->base->obj_copy(&ctx, type->data, res.data);
+	}
+
+	return res;
 }
 
 void free_objstore(struct objstore *store) {
@@ -166,7 +187,11 @@ stg_alloc(struct stg_exec *ctx, size_t nmemb, size_t size)
 		return NULL;
 	}
 
-	return arena_alloc(&ctx->heap, res);
+	if (ctx->store) {
+		return objstore_alloc(ctx->store, res);
+	} else {
+		return arena_alloc(&ctx->heap, res);
+	}
 }
 
 modtype_id

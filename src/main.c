@@ -130,9 +130,6 @@ int main(int argc, char *argv[])
 	struct stg_exec exec_ctx;
 	exec_ctx = vm_init_exec_context(&vm);
 	vm_call_func(&vm, &exec_ctx, vm.init_func, NULL, 0, &program_obj);
-	// TODO: Copy the objects created here out to avoid them being invalidated
-	// by release.
-	vm_release_exec_context(&vm, &exec_ctx);
 
 	/*
 	print_obj_repr(&vm, program_obj);
@@ -169,10 +166,10 @@ int main(int argc, char *argv[])
 		struct object result = {0};
 		result.type = vm.default_types.unit;
 
-		exec_ctx = vm_init_exec_context(&vm);
 		stg_unsafe_call_init(&vm, &exec_ctx, main_obj, &result);
-		vm_release_exec_context(&vm, &exec_ctx);
 	}
+
+	vm_release_exec_context(&vm, &exec_ctx);
 
 #if 0
 	for (size_t i = 0; i < vm.num_modules; i++) {

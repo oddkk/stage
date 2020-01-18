@@ -83,8 +83,12 @@ struct stg_init_type_info {
 typedef void (*stg_init_callback)(
 		struct vm *vm, struct stg_exec *, void *data, void *out);
 
+typedef void (*stg_init_copy)(
+		struct stg_exec *, void *data);
+
 struct stg_init_data {
 	stg_init_callback call;
+	stg_init_copy copy;
 	void *data;
 	size_t data_size;
 };

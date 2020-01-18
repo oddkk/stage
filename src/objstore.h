@@ -399,6 +399,7 @@ object_inst_order(
 		struct object_inst_action **out_actions, size_t *out_num_actions);
 
 struct stg_exec {
+	struct objstore *store;
 	struct arena heap;
 };
 
