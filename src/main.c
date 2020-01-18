@@ -26,7 +26,9 @@ void stage_signal_handler(int sig)
 	}
 }
 
-static struct timespec timespec_add(struct timespec begin, struct timespec end)
+#if 0
+struct timespec
+timespec_add(struct timespec begin, struct timespec end)
 {
 	struct timespec temp;
 	temp.tv_sec = begin.tv_sec + end.tv_sec;
@@ -36,7 +38,8 @@ static struct timespec timespec_add(struct timespec begin, struct timespec end)
 	return temp;
 }
 
-static struct timespec read_time()
+struct timespec
+read_time()
 {
 	struct timespec time;
 	int error;
@@ -53,6 +56,7 @@ static struct timespec read_time()
 
 	return time;
 }
+#endif
 
 static bool check_clock_support()
 {
@@ -82,8 +86,6 @@ obj_register_integer(struct vm *, struct objstore *,
 int main(int argc, char *argv[])
 {
 	int err;
-	struct timespec tick_begin;
-	struct timespec frame_duration;
 
 	if (!check_clock_support()) {
 		panic("No alternative clock supported yet.");
@@ -176,22 +178,18 @@ int main(int argc, char *argv[])
 	for (size_t i = 0; i < vm.num_modules; i++) {
 		printf("Module %.*s:\n", LIT(vm.modules[i]->info.name));
 		if (vm.modules[i]->mod.root) {
-			ast_print(&ctx, &vm.modules[i]->mod.env,
-					vm.modules[i]->mod.root);
+			ast_print(&ctx, vm.modules[i]->mod.root);
 		}
-
-		printf("\n");
-		ast_env_print(&vm, &vm.modules[i]->mod.env);
 		printf("\n");
 	}
 #endif
 
 	vm_post_init(&vm);
 	vm_start(&vm);
-	vm_destroy(&vm);
 
-	return 0;
-
+#if 0
+	struct timespec tick_begin;
+	struct timespec frame_duration;
 	uint64_t tick_period = NSEC / 1000;
 
 	frame_duration.tv_sec = tick_period / NSEC;
@@ -215,6 +213,7 @@ int main(int argc, char *argv[])
 
 		tick_begin = read_time();
 	}
+#endif
 
 	vm_destroy(&vm);
 

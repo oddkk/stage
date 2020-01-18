@@ -72,7 +72,12 @@ ast_print_internal(struct ast_context *ctx,
 
 			print_indent(depth + 1);
 			printf("return type\n");
-			ast_print_internal(ctx, node->func.return_type, depth + 2);
+			if (node->func.return_type) {
+				ast_print_internal(ctx, node->func.return_type, depth + 2);
+			} else {
+			print_indent(depth + 2);
+			printf("(none)\n");
+			}
 
 			if (node->kind == AST_NODE_FUNC) {
 				print_indent(depth + 1);
@@ -101,7 +106,9 @@ ast_print_internal(struct ast_context *ctx,
 				print_indent(depth + 1);
 				printf("inst %p, cons %p\n",
 						(void *)node->call.inst,
-						(void *)node->call.inst->cons);
+						node->call.inst
+						? (void *)node->call.inst->cons
+						: NULL);
 			}
 
 			print_indent(depth + 1);
@@ -199,8 +206,13 @@ ast_print_internal(struct ast_context *ctx,
 				printf("%.*s:\n", ALIT(node->variant.options[i].name));
 				print_indent(depth + 2);
 				printf("type:\n");
-				ast_print_internal(ctx,
-						node->variant.options[i].data_type, depth + 3);
+				if (node->variant.options[i].data_type) {
+					ast_print_internal(ctx,
+							node->variant.options[i].data_type, depth + 3);
+				} else {
+					print_indent(depth + 3);
+					printf("(none)\n");
+				}
 			}
 			break;
 
