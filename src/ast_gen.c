@@ -854,13 +854,15 @@ ast_func_gen_bytecode(
 		closure_types[i] = TYPE_UNSET;
 	}
 
+	size_t pruned_i = 0;
 	for (size_t i = 0; i < num_closures; i++) {
 		if (closure_refs[i] != AST_BC_CLOSURE_PRUNED) {
 			assert(closure_refs[i] < num_unpruned_closures);
 			assert(closures[i].req == AST_NAME_DEP_REQUIRE_TYPE);
-			assert(closure_types[i] == TYPE_UNSET);
+			assert(closure_types[pruned_i] == TYPE_UNSET);
 
-			closure_types[i] = closures[i].type;
+			closure_types[pruned_i] = closures[i].type;
+			pruned_i += 1;
 		}
 	}
 
