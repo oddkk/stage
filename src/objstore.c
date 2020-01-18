@@ -464,7 +464,7 @@ object_unpack(
 			num_desc = object_cons_num_descendants(
 					vm, mbr_type->obj_def);
 		} else {
-			num_desc = 1;
+			num_desc = 0;
 		}
 
 		assert(unpack_id >= offset);
