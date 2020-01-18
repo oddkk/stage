@@ -280,7 +280,7 @@ vm_call_func_obj(
 					call_args[i] = args[i].data;
 				}
 				nbc_exec(vm, ctx, func->bytecode->nbc,
-						call_args, num_args, NULL, ret->data);
+						call_args, num_args, func_obj.closure, ret->data);
 			}
 			break;
 
