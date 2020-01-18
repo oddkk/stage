@@ -28,6 +28,7 @@ struct type;
 struct scope;
 struct object;
 struct objstore;
+struct stg_exec;
 struct stg_module;
 struct object_cons;
 
@@ -36,6 +37,11 @@ struct object_cons;
 
 typedef struct string (*type_repr)(struct vm *vm, struct arena *mem, struct type *);
 typedef struct string (*obj_repr)(struct vm *vm, struct arena *mem, struct object *);
+
+// obj_data is a pointer to the new object's data. This function is expected to
+// modify obj_data such that the old object and all related heap memory can be
+// freed without corrupting this object.
+typedef void (*obj_copy)(struct stg_exec *, void *type_data, void *obj_data);
 typedef bool (*type_equals_func)(struct vm *vm, struct type *lhs, struct type *rhs);
 typedef void (*type_free)(struct vm *vm, struct type *type);
 
@@ -44,6 +50,7 @@ struct type_base {
 	struct string name;
 	type_repr repr;
 	obj_repr obj_repr;
+	obj_copy obj_copy;
 	type_free free;
 	type_equals_func equals;
 

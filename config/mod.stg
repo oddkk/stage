@@ -1,0 +1,4 @@
+main := base.init.bind[](
+	base.init.return[](10),
+	(a: base.int) -> base.Init[base.Unit]
+		=> base.init.printInt(a));

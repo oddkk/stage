@@ -128,12 +128,49 @@ int main(int argc, char *argv[])
 	struct stg_exec exec_ctx;
 	exec_ctx = vm_init_exec_context(&vm);
 	vm_call_func(&vm, &exec_ctx, vm.init_func, NULL, 0, &program_obj);
+	// TODO: Copy the objects created here out to avoid them being invalidated
+	// by release.
 	vm_release_exec_context(&vm, &exec_ctx);
 
 	/*
 	print_obj_repr(&vm, program_obj);
 	printf("\n");
 	*/
+
+	struct type *program_type;
+	program_type = vm_get_type(&vm, vm.program_object_type);
+	assert(program_type->obj_def);
+
+	ssize_t main_unpack_id;
+	main_unpack_id = object_cons_simple_lookup(
+			&vm, program_type->obj_def, STR("main"));
+
+	if (main_unpack_id >= 0) {
+		struct object main_obj = {0};
+
+		int err;
+		err = object_cons_descendant_type(
+				&vm, program_obj.type,
+				main_unpack_id, &main_obj.type);
+
+		struct type *main_obj_type;
+		main_obj_type = vm_get_type(&vm, main_obj.type);
+
+		uint8_t buffer[main_obj_type->size];
+		main_obj.data = buffer;
+
+		err = object_unpack(
+				&vm, program_obj,
+				main_unpack_id, &main_obj);
+		assert(!err);
+
+		struct object result = {0};
+		result.type = vm.default_types.unit;
+
+		exec_ctx = vm_init_exec_context(&vm);
+		stg_unsafe_call_init(&vm, &exec_ctx, main_obj, &result);
+		vm_release_exec_context(&vm, &exec_ctx);
+	}
 
 #if 0
 	for (size_t i = 0; i < vm.num_modules; i++) {

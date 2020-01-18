@@ -78,6 +78,10 @@ static struct stg_module_info base_bootstrap_mod_info = {
 static int
 stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 {
+	struct stg_base_mod_info *info;
+	info = calloc(1, sizeof(struct stg_base_mod_info));
+	mod->data = info;
+
 	struct ast_node *int_type_expr;
 	struct object int_obj = {0};
 	int_obj.type = ctx->types.type;
@@ -124,6 +128,7 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 
 
 	base_init_register_cons(ctx, mod);
+	base_init_register_init(ctx, mod);
 
 	return 0;
 }
@@ -141,6 +146,7 @@ stg_base_load(struct vm *vm)
 	mod = vm_add_precompiled_native_module(vm, STR("base"));
 
 	base_integer_register_native(mod);
+	base_init_register_native(mod);
 	stg_native_register_funcs(mod, print_int, STG_NATIVE_FUNC_IMPURE);
 
 	mod->hook_init = stg_base_init;

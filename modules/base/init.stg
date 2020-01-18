@@ -1,0 +1,17 @@
+return := (val: $T) -> Init[T]
+	=> ((val: T, type: Type) -> Init[T]
+		@native("init_monad_return"))(val, T);
+
+join := (a: Init[Init[$T]]) -> Init[T]
+	=> ((a: Init[Init[T]], dataType: Type) -> Init[T]
+		@native("init_monad_join"))(a, T);
+
+fmap := (f: ($T) -> $U, a: Init[T]) -> Init[U]
+	=> ((f: (T) -> U, a: Init[T], In: Type, Out: Type) -> Init[U]
+		@native("init_monad_fmap"))(f, a, T, U);
+
+bind := (a: Init[$T], f: (T) -> Init[$U]) -> Init[U]
+	=> join[](fmap[](f, a));
+
+printInt := (val: int) -> Init[Unit]
+	@native("init_monad_print_int");
