@@ -379,6 +379,9 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					new_func.flags |= FUNC_HEAP;
 				}
 
+				if ((native_func->flags & STG_NATIVE_FUNC_REFS) != 0) {
+					new_func.flags |= FUNC_REFS;
+				}
 
 				func_id fid;
 				fid = stg_register_func(mod->stg_mod, new_func);

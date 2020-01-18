@@ -94,7 +94,10 @@ enum func_flags {
 	FUNC_IMPURE  = 0x1,
 	FUNC_HEAP    = 0x2,
 	FUNC_CLOSURE = 0x4,
+	FUNC_REFS    = 0x8,
 };
+
+typedef void (*native_ref_func)(void **args, size_t num_args, void *ret);
 
 struct bc_env;
 

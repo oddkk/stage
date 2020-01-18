@@ -14,6 +14,10 @@ enum stg_native_func_flags {
 	// If true, the function expects to receive a `struct stg_module *` ast its
 	// first argument (second if STG_NATIVE_FUNC_HEAP also is set).
 	STG_NATIVE_FUNC_MODULE_CLOSURE = 0x4,
+
+	// If true, this function will be called according to native_ref_func
+	// prototype in objstore.h
+	STG_NATIVE_FUNC_REFS = 0x8,
 };
 
 struct stg_native_func {

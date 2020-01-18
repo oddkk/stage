@@ -324,7 +324,13 @@ nbc_call_func(struct vm *vm, struct stg_exec *ctx, struct stg_func_object func_o
 
 				memcpy(&closure_args[prefix_i], args, sizeof(void *) * num_args);
 
-				ffi_call(cif, FFI_FN(func->native), ret, closure_args);
+				if ((func->flags & FUNC_REFS) != 0) {
+					native_ref_func fp;
+					fp = (native_ref_func)func->native;
+					fp(closure_args, num_args+prefix_i, ret);
+				} else {
+					ffi_call(cif, FFI_FN(func->native), ret, closure_args);
+				}
 			}
 			break;
 

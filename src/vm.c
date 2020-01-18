@@ -263,7 +263,13 @@ vm_call_func_obj(
 				ffi_cif *cif = stg_func_ffi_cif(vm, func->type,
 						func->flags);
 
-				ffi_call(cif, FFI_FN(func->native), ret->data, arg_values);
+				if ((func->flags & FUNC_REFS) != 0) {
+					native_ref_func fp;
+					fp = (native_ref_func)func->native;
+					fp(arg_values, num_args+prefix, ret->data);
+				} else {
+					ffi_call(cif, FFI_FN(func->native), ret->data, arg_values);
+				}
 			}
 			break;
 
