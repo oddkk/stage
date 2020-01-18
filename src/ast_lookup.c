@@ -187,8 +187,10 @@ ast_node_resolve_names(struct ast_context *ctx,
 							scope, true, node->func.params[i].type);
 				}
 
-				err += ast_node_resolve_names(ctx, native_mod,
-						scope, true, node->func.return_type);
+				if (node->func.return_type) {
+					err += ast_node_resolve_names(ctx, native_mod,
+							scope, true, node->func.return_type);
+				}
 
 				err += ast_node_resolve_names(ctx, native_mod,
 						&params_scope, false, node->func.body);
@@ -456,9 +458,11 @@ ast_node_discover_potential_closures(struct ast_context *ctx,
 							node->func.params[i].type);
 				}
 
-				err += ast_node_discover_potential_closures(
-						ctx, scope, true,
-						node->func.return_type);
+				if (node->func.return_type) {
+					err += ast_node_discover_potential_closures(
+							ctx, scope, true,
+							node->func.return_type);
+				}
 
 				err += ast_node_discover_potential_closures(
 						ctx, &params_scope, false,
