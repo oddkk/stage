@@ -6,12 +6,9 @@ Unit    := base.Unit;
 Type    := base.Type;
 Message := message.Message;
 
-# _dbConnect := (kind: String, conStr: String) -> DBConnectionHandle
-# 	@nativeImpure("db_connect");
-
 DBConnectionHandle := base.int;
 
-_dbConnect := (kind: String, conStr: String) -> DBConnectionHandle
+_dbConnect := (kind: String, conStr: String) -> base.Init[DBConnectionHandle]
 	@nativeImpure("sql_db_connect");
 
 Connection := Struct {

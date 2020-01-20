@@ -1,8 +1,9 @@
-connect := (connectionString: String) -> Connection
-	=> Connection {
-		dbKind = "postgresql";
-		connectionString = connectionString;
-		# TODO: Fix ordering.
-		# _handle = _dbConnect(dbKind, connectionString);
-		_handle = _dbConnect("postgresql", connectionString);
-	};
+connect := (connectionString: String) -> base.Init[Connection]
+	=> base.init.bind[](
+		_dbConnect("postgresql", connectionString),
+		(handle: DBConnectionHandle) =>
+			base.init.return[](Connection {
+				dbKind = "postgresql";
+				connectionString = connectionString;
+				_handle = handle;
+			}));

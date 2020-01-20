@@ -1,4 +1,23 @@
+mod sql;
+
+op* := base.op*;
+
+conStr := "host=localhost port=5432 dbname=test user=test password=test";
+
 main := base.init.bind[](
-	base.init.return[](10),
-	(a: base.int) -> base.Init[base.Unit]
-		=> base.init.printInt(a));
+	sql.postgresql.connect(conStr),
+	(db: sql.Connection) => base.init.printInt(db._handle));
+
+# main := base.init.bind[](
+# 	base.init.bind[](
+# 		base.init.return[](10),
+# 		(a: base.int) => base.init.return[](a * 5)),
+# 	(a: base.int) -> base.Init[base.Unit]
+# 		=> printIntTwice(a));
+
+printIntTwice := (val: base.int) -> base.Init[base.Unit]
+	=> base.init.bind[](base.init.printInt(val),
+		(a: base.Unit) => base.init.printInt(val));
+
+
+# db := !sql.postgresql.connect(conStr);
