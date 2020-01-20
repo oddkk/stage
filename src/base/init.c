@@ -112,7 +112,10 @@ init_type_unpack(
 
 	struct type *type;
 	type = vm_get_type(ctx->vm, tid);
-	assert(type->base == &init_type_base);
+	// TODO: Properly report type mismatch error.
+	if (type->base != &init_type_base) {
+		return -1;
+	}
 
 	struct stg_init_type_info *info = type->data;
 	memcpy(out, &info->type, sizeof(type_id));

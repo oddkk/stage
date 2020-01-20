@@ -307,8 +307,6 @@ nbc_call_func(struct vm *vm, struct stg_exec *ctx, struct stg_func_object func_o
 	switch (func->kind) {
 		case FUNC_NATIVE:
 			{
-				ffi_cif *cif = stg_func_ffi_cif(
-						vm, func->type, func->flags);
 				void *closure_args[num_args+2];
 				size_t prefix_i = 0;
 
@@ -329,6 +327,9 @@ nbc_call_func(struct vm *vm, struct stg_exec *ctx, struct stg_func_object func_o
 					fp = (native_ref_func)func->native;
 					fp(closure_args, num_args+prefix_i, ret);
 				} else {
+					ffi_cif *cif = stg_func_ffi_cif(
+							vm, func->type, func->flags);
+
 					ffi_call(cif, FFI_FN(func->native), ret, closure_args);
 				}
 			}
