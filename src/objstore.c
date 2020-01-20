@@ -247,8 +247,13 @@ func_param_type(struct vm *vm, type_id func_type_id, size_t param_i)
 
 void print_type_repr(struct vm *vm, struct type *type)
 {
-	struct arena mem = arena_push(&vm->memory);
-	/* struct type *type = &vm->store.types[obj.type]; */
+	struct arena mem = {0};
+	// TODO: We should probably use some scratch memory for this print.
+	uint8_t buffer[4096];
+
+	mem.data = buffer;
+	mem.capacity = sizeof(buffer);
+
 	struct string res;
 
 	if (type->base->repr) {
@@ -257,8 +262,6 @@ void print_type_repr(struct vm *vm, struct type *type)
 		res = default_type_repr(vm, &mem, type);
 	}
 	printf("%.*s", LIT(res));
-
-	arena_pop(&vm->memory, mem);
 }
 
 struct string
@@ -286,7 +289,13 @@ type_repr_to_alloced_string(struct vm *vm, struct type *type)
 
 void print_obj_repr(struct vm *vm, struct object obj)
 {
-	struct arena mem = arena_push(&vm->memory);
+	struct arena mem = {0};
+	// TODO: We should probably use some scratch memory for this print.
+	uint8_t buffer[4096];
+
+	mem.data = buffer;
+	mem.capacity = sizeof(buffer);
+
 	struct type *type = vm_get_type(vm, obj.type);
 	struct string res;
 
@@ -296,8 +305,6 @@ void print_obj_repr(struct vm *vm, struct object obj)
 		res = default_obj_repr(vm, &mem, &obj);
 	}
 	printf("%.*s", LIT(res));
-
-	arena_pop(&vm->memory, mem);
 }
 
 struct string
