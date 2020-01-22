@@ -264,8 +264,12 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 						ALIT(node->func.params[i].name));
 				ast_print_node(ctx, node->func.params[i].type, print_type_slot);
 			}
-			printf(") -> ");
-			ast_print_node(ctx, node->func.return_type, print_type_slot);
+			if (node->func.return_type) {
+				printf(") -> ");
+				ast_print_node(ctx, node->func.return_type, print_type_slot);
+			} else {
+				printf(")");
+			}
 			printf(" => ");
 
 			if (node->kind == AST_NODE_FUNC) {
