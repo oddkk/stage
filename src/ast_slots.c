@@ -1912,8 +1912,8 @@ ast_slot_verify_member(
 	int err;
 
 	struct object_cons *cons;
-	err = ast_slot_try_get_value_cons(
-			ctx, target->cons, &cons);
+	err = ast_slot_try_get_cons(
+			ctx, target_id, &cons);
 	if (err < 0) {
 		stg_error(ctx->err, loc,
 				"Object has no members.");
