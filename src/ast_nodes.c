@@ -555,6 +555,19 @@ ast_node_find_named_dependencies(
 			req = AST_NAME_DEP_REQUIRE_VALUE;
 			break;
 
+		case AST_NODE_INST:
+			// We must know the value of the instantiation type before we can
+			// resolve the names.
+			err += ast_node_find_named_dependencies(
+					node->call.func, AST_NAME_DEP_REQUIRE_VALUE,
+					out_refs, out_num_refs);
+
+			for (size_t i = 0; i < (node)->call.num_args; i++) {
+				err += ast_node_find_named_dependencies(
+						node->call.args[i].value, req, out_refs, out_num_refs);
+			}
+			return err;
+
 		case AST_NODE_COMPOSITE:
 			err += ast_node_closure_find_named_dependencies(
 					req, &node->composite.closure,
