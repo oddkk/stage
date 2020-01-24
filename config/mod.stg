@@ -8,15 +8,12 @@ conStr := "host=localhost port=5432 dbname=test user=test password=test";
 testStmt := sql.sql[]("select * from test where test_int=$1", 0);
 
 
-main := base.init.withIO[](base.io.printInt(10));
+main := base.init.withIO[](
+	base.io.bind[](
+		sql.postgresql.connect(conStr),
+		(db: sql.Connection) -> base.IO[base.Unit] => sql.query[](db, testStmt)));
 
 
-
-# main := base.init.bind[](
-# 	sql.postgresql.connect(conStr),
-# 	(db: sql.Connection) -> base.Init[base.Unit] => sql.query[](db, testStmt));
-
-# a := message.map[](message.onStart, (a: base.Unit) => 2);
 
 # q: sql.SQL[base.int] = sql.sql[base.int]("select * from test");
 

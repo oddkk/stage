@@ -3,8 +3,8 @@ return := (val: $T) -> IO[T]
 		@native("io_monad_return"))(val, T);
 
 bind := (a: IO[$T], f: (T) -> IO[$U]) -> IO[U]
-	=> ((a: IO[$T], f: (T) -> IO[$U], In: Type, Out: Type) -> IO[U]
-		@native("io_monad_bind"))(f, a, T, U);
+	=> ((a: IO[T], f: (T) -> IO[U], In: Type, Out: Type) -> IO[U]
+		@native("io_monad_bind"))(a, f, T, U);
 
 printInt := (val: int) -> IO[Unit]
 	@native("io_monad_print_int");

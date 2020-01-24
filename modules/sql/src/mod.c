@@ -76,6 +76,51 @@ sql_db_connect(struct stg_exec *ctx, struct string kind, struct string con_str)
 	return monad;
 }
 
+struct sql_query_data {
+	int64_t db;
+	struct string query;
+};
+
+void
+sql_db_query_unsafe(struct vm *vm, struct stg_exec *heap,
+		void *data, void *out)
+{
+	struct sql_query_data *closure = data;
+
+	struct stg_module *sql_mod;
+	sql_mod = vm_get_module(vm, STR("sql"));
+
+	struct sql_context *ctx = sql_mod->data;
+
+	assert(closure->db < ctx->num_connections);
+	struct sql_connection *db;
+	db = &ctx->connections[closure->db];
+
+	printf("Query db %zi '%.*s'\n",
+			closure->db, LIT(closure->query));
+}
+
+struct stg_init_data
+sql_db_query(struct stg_exec *ctx, int64_t db,
+		struct string query, type_id param_type,
+		type_id result_type)
+{
+	struct stg_init_data monad = {0};
+	monad.call = sql_db_query_unsafe;
+	// TODO: Copy strings.
+	// monad.copy = ...;
+	monad.data_size = sizeof(struct sql_query_data);
+	monad.data = stg_alloc(ctx, 1, monad.data_size);
+
+	struct sql_query_data *closure;
+	closure = monad.data;
+	// TODO: Copy strings.
+	closure->db = db;
+	closure->query = query;
+
+	return monad;
+}
+
 int
 mod_sql_init(struct ast_context *ast_ctx, struct stg_module *mod)
 {
@@ -103,6 +148,8 @@ mod_sql_load(struct stg_native_module *mod)
 	mod->hook_free = mod_sql_free;
 
 	stg_native_register_funcs(mod, sql_db_connect,
+			STG_NATIVE_FUNC_HEAP);
+	stg_native_register_funcs(mod, sql_db_query,
 			STG_NATIVE_FUNC_HEAP);
 
 	return 0;
