@@ -30,6 +30,12 @@ base_init_register_init(struct ast_context *ctx, struct stg_module *mod);
 void
 base_init_register_native(struct stg_native_module *mod);
 
+void
+base_init_register_io(struct ast_context *ctx, struct stg_module *mod);
+
+void
+base_io_register_native(struct stg_native_module *mod);
+
 type_id
 stg_register_func_type(struct stg_module *, type_id return_type,
 		type_id *param_types, size_t num_params);
@@ -47,6 +53,7 @@ stg_register_func_object(
 
 struct stg_base_mod_info {
 	struct object_cons *init_cons;
+	struct object_cons *io_cons;
 };
 
 struct stg_func_closure_member {
@@ -106,5 +113,36 @@ stg_unsafe_call_init(
 
 type_id
 stg_init_get_return_type(struct vm *, type_id);
+
+struct stg_io_type_info {
+	type_id type;
+};
+
+typedef void (*stg_io_callback)(
+		struct vm *vm, struct stg_exec *, void *data, void *out);
+
+typedef void (*stg_io_copy)(
+		struct stg_exec *, void *data);
+
+struct stg_io_data {
+	stg_io_callback call;
+	stg_io_copy copy;
+	void *data;
+	size_t data_size;
+};
+
+type_id
+stg_register_io_type(struct stg_module *mod, type_id res_type);
+
+// This function requires out->type to be set to the proper return type of the
+// monad (as returned by stg_io_get_return_type(obj.type)), and out->data to
+// point to a buffer sufficiently large to store the resulting object.
+void
+stg_unsafe_call_io(
+		struct vm *vm, struct stg_exec *ctx,
+		struct object obj, struct object *out);
+
+type_id
+stg_io_get_return_type(struct vm *, type_id);
 
 #endif

@@ -358,6 +358,7 @@ init_monad_return(void **args, size_t num_args, void *ret)
 	closure = data.data;
 	closure->size = value_type->size;
 	closure->value = stg_alloc(heap, 1, closure->size);
+	closure->value_copy = value_type->base->obj_copy;
 	memcpy(closure->value, value, closure->size);
 
 	memcpy(ret, &data, sizeof(struct stg_init_data));
@@ -412,6 +413,49 @@ init_monad_join(struct stg_exec *heap,
 	return data;
 }
 
+struct init_io_data {
+	struct stg_io_data monad;
+
+	type_id data_type;
+};
+
+static void
+init_io_copy(struct stg_exec *ctx, void *data)
+{
+	struct init_io_data *closure = data;
+
+	if (closure->monad.copy) {
+		closure->monad.copy(ctx, closure->monad.data);
+	}
+}
+
+static void
+init_io_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
+{
+	struct init_io_data *closure = data;
+	closure->monad.call(vm, ctx,
+			closure->monad.data, out);
+}
+
+static struct stg_init_data
+init_monad_io(struct stg_exec *heap,
+		struct stg_module *mod,
+		struct stg_io_data monad,
+		type_id data_type_id)
+{
+	struct stg_init_data data = {0};
+	data.call = init_io_unsafe;
+	data.copy = init_io_copy;
+	data.data_size = sizeof(struct init_io_data);
+	data.data = stg_alloc(heap, 1, data.data_size);
+
+	struct init_io_data *closure = data.data;
+	closure->monad = monad;
+	closure->data_type = data_type_id;
+
+	return data;
+}
+
 void
 base_init_register_native(struct stg_native_module *mod)
 {
@@ -419,10 +463,12 @@ base_init_register_native(struct stg_native_module *mod)
 			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE|STG_NATIVE_FUNC_REFS);
 	stg_native_register_funcs(mod, init_monad_join,
 			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
-	stg_native_register_funcs(mod, init_monad_print_int,
-			STG_NATIVE_FUNC_HEAP);
 	stg_native_register_funcs(mod, init_monad_fmap,
 			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
+	stg_native_register_funcs(mod, init_monad_io,
+			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
+	stg_native_register_funcs(mod, init_monad_print_int,
+			STG_NATIVE_FUNC_HEAP);
 }
 
 void

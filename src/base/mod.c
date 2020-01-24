@@ -129,6 +129,7 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 
 	base_init_register_cons(ctx, mod);
 	base_init_register_init(ctx, mod);
+	base_init_register_io(ctx, mod);
 
 	return 0;
 }
@@ -147,6 +148,7 @@ stg_base_load(struct vm *vm)
 
 	base_integer_register_native(mod);
 	base_init_register_native(mod);
+	base_io_register_native(mod);
 	stg_native_register_funcs(mod, print_int, STG_NATIVE_FUNC_IMPURE);
 
 	mod->hook_init = stg_base_init;

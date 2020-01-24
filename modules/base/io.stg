@@ -1,0 +1,10 @@
+return := (val: $T) -> IO[T]
+	=> ((val: T, type: Type) -> IO[T]
+		@native("io_monad_return"))(val, T);
+
+bind := (a: IO[$T], f: (T) -> IO[$U]) -> IO[U]
+	=> ((a: IO[$T], f: (T) -> IO[$U], In: Type, Out: Type) -> IO[U]
+		@native("io_monad_bind"))(f, a, T, U);
+
+printInt := (val: int) -> IO[Unit]
+	@native("io_monad_print_int");
