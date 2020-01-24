@@ -183,8 +183,10 @@ ast_node_resolve_names(struct ast_context *ctx,
 				}
 
 				for (size_t i = 0; i < params_scope.num_names; i++) {
-					err += ast_node_resolve_names(ctx, native_mod,
-							scope, true, node->func.params[i].type);
+					if (node->func.params[i].type) {
+						err += ast_node_resolve_names(ctx, native_mod,
+								scope, true, node->func.params[i].type);
+					}
 				}
 
 				if (node->func.return_type) {
@@ -461,9 +463,11 @@ ast_node_discover_potential_closures(struct ast_context *ctx,
 				}
 
 				for (size_t i = 0; i < params_scope.num_names; i++) {
-					err += ast_node_discover_potential_closures(
-							ctx, scope, true,
-							node->func.params[i].type);
+					if (node->func.params[i].type) {
+						err += ast_node_discover_potential_closures(
+								ctx, scope, true,
+								node->func.params[i].type);
+					}
 				}
 
 				if (node->func.return_type) {

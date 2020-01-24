@@ -405,8 +405,12 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 
 
 		for (size_t i = 0; i < params_decl.num_members; i++) {
-			params[i] = st_node_visit_expr(
-					ctx, mod, templ, params_decl.types[i]);
+			if (params_decl.types[i]) {
+				params[i] = st_node_visit_expr(
+						ctx, mod, templ, params_decl.types[i]);
+			} else {
+				params[i] = NULL;
+			}
 		}
 
 		if (ret_type_decl) {
