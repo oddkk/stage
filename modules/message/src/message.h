@@ -1,7 +1,7 @@
 #ifndef STAGE_MESSAGE_MESSAGE_H
 #define STAGE_MESSAGE_MESSAGE_H
 
-#include "mod.h"
+#include <module.h>
 
 typedef unsigned int msg_node_id;
 typedef unsigned char msg_node_point_id;

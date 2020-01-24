@@ -1,21 +1,27 @@
 int := base.int;
 Unit := base.Unit;
+Type := base.Type;
 
-# Print  := (val: int) -> Message[Unit];
-# Delay  := (val: $T, time: TimeDelta) -> Message[T];
-# Map    := (val: $T, fun: (T) -> $U) -> Message[U];
+map := (a: Msg[$T], fn: (T) -> $U) -> Msg[U]
+	=> ((a: Msg[T], fn: (T) -> U, typeIn: Type, typeOut: Type) -> Msg[U]
+		@native("msg_functor_map"))(a, fn, T, U);
 
-Endpoint := (func: ($T) -> Unit) -> ((Message[T]) -> Unit) @nativeImpure("msg_endpoint");
+# TODO: Bool
+# filter := (a: Msg[$T], fn: (T) -> Bool) -> Msg[T]
+# 	=> ((a: Msg[T], fn: (T) -> U, type: Type) -> Msg[T]
+# 		@native("msg_functor_filter"))(a, fn, T);
 
-Print    := Endpoint[]((val: int) -> Unit @nativeImpure("msg_print_int_callback"));
-PrintStr := Endpoint[]((val: base.String) -> Unit @nativeImpure("msg_print_string_callback"));
+# TODO: IO
+# io := (a: Msg[$T], fn: (T) -> IO[$U]) -> Init[Msg[U]]
+# 	=> ((a: Msg[T], fn: (T) -> IO[U], typeIn: Type, typeOut: Type) -> Init[Msg[U]]
+# 		@native("msg_functor_io"))(a, fn, T, U);
 
-Map := (in: Message[$T], f: (T) -> $U) -> Message[U] @nativeImpure("msg_map");
-# Fitler := (in: Message[$T], f: (T) -> Bool) -> Message[T] @nativeImpure("msg_filter");
+# print := (a: Msg[$T]) -> Init[Unit]
+# 	=> io(a, io.print);
 
-# bind := (in: Message[$T], f: (T) -> Message[$U]) -> Message[$U]
-# 	=> ;
-
-# Message := [T: Type] Struct { msgId: int; };
-# return := (val: $T) -> Message[T] => ;
-# Map := (in: Message[$T], f: (T) -> Message[$U]) -> Message[U] @nativeImpure("msg_map");
+# !print(map(!onStart, (a: Unit) => 2));
+# main := bind(
+# 	onStart,
+# 	(onStart: Msg[Unit])
+# 		=> print(map(onStart, a => 2))
+# );

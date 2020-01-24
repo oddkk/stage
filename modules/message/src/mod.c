@@ -7,10 +7,10 @@
 #include <stdlib.h>
 #include <ffi.h>
 
-static struct type_base message_type_base;
+static struct type_base msg_type_base;
 
 static void
-message_type_unpack(struct vm *vm, void *data,
+msg_type_unpack(struct vm *vm, void *data,
 		void *out, void *obj, int param_id)
 {
 	assert(param_id == 0);
@@ -18,16 +18,16 @@ message_type_unpack(struct vm *vm, void *data,
 	struct type *type;
 	type = vm_get_type(
 			vm, *(type_id *)obj);
-	assert(type->base == &message_type_base);
+	assert(type->base == &msg_type_base);
 
-	struct msg_message_type_info *info =
-		(struct msg_message_type_info *)type->data;
+	struct msg_type_info *info =
+		(struct msg_type_info *)type->data;
 
 	memcpy(out, &info->type, sizeof(type_id));
 }
 
 static void
-message_type_pack(struct vm *vm, void *data,
+msg_type_pack(struct vm *vm, void *data,
 		void *out, void **params, size_t num_params)
 {
 	struct stg_module *mod = data;
@@ -36,13 +36,13 @@ message_type_pack(struct vm *vm, void *data,
 
 	type_id msg_type = *(type_id *)params[0];
 	type_id res;
-	res = msg_register_message_type(mod, msg_type);
+	res = msg_register_msg_type(mod, msg_type);
 
 	memcpy(out, &res, sizeof(type_id));
 }
 
 static type_id
-message_type_pack_type(struct vm *vm,
+msg_type_pack_type(struct vm *vm,
 		void *data, void **params, size_t num_params)
 {
 	assert(num_params == 1);
@@ -50,25 +50,25 @@ message_type_pack_type(struct vm *vm,
 }
 
 static bool
-message_type_equals(struct vm *vm, struct type *lhs, struct type *rhs)
+msg_type_equals(struct vm *vm, struct type *lhs, struct type *rhs)
 {
-	struct msg_message_type_info *lhs_info;
-	struct msg_message_type_info *rhs_info;
+	struct msg_type_info *lhs_info;
+	struct msg_type_info *rhs_info;
 
-	lhs_info = (struct msg_message_type_info *)lhs->data;
-	rhs_info = (struct msg_message_type_info *)rhs->data;
+	lhs_info = (struct msg_type_info *)lhs->data;
+	rhs_info = (struct msg_type_info *)rhs->data;
 
 	return type_equals(vm, lhs_info->type, rhs_info->type);
 }
 
 static struct string
-message_type_repr(struct vm *vm, struct arena *mem, struct type *type)
+msg_type_repr(struct vm *vm, struct arena *mem, struct type *type)
 {
-	struct msg_message_type_info *info;
-	info = (struct msg_message_type_info *)type->data;
+	struct msg_type_info *info;
+	info = (struct msg_type_info *)type->data;
 
 	struct string res = arena_string_init(mem);
-	arena_string_append(mem, &res, STR("Message("));
+	arena_string_append(mem, &res, STR("Msg("));
 
 	struct type *item_type;
 	item_type = vm_get_type(vm, info->type);
@@ -79,26 +79,41 @@ message_type_repr(struct vm *vm, struct arena *mem, struct type *type)
 	return res;
 }
 
-static struct type_base message_type_base = {
-	.name = STR("Message"),
-	.equals = message_type_equals,
-	.repr = message_type_repr,
+static struct type_base msg_type_base = {
+	.name = STR("Msg"),
+	.equals = msg_type_equals,
+	.repr = msg_type_repr,
 };
 
 struct msg_context {
 	struct msg_system sys;
-	struct object_cons *message_type_cons;
+	struct object_cons *msg_type_cons;
 
 	msg_node_id on_start_msg;
 	func_id endpoint_cons_func;
 };
 
-type_id
-msg_register_message_type(struct stg_module *mod, type_id msg_type)
-{
-	struct msg_message_type_info *info;
+static ffi_type *ffi_type_msg_functor_members[] = {
+	&ffi_type_pointer,
+	&ffi_type_pointer,
+	&ffi_type_pointer,
+	&ffi_type_uint64,
+	NULL,
+};
 
-	info = calloc(1, sizeof(struct msg_message_type_info));
+static ffi_type ffi_type_msg_functor = {
+	.size = 0,
+	.alignment = 0,
+	.type = FFI_TYPE_STRUCT,
+	.elements = ffi_type_msg_functor_members,
+};
+
+type_id
+msg_register_msg_type(struct stg_module *mod, type_id msg_type)
+{
+	struct msg_type_info *info;
+
+	info = calloc(1, sizeof(struct msg_type_info));
 
 	struct stg_module *msg_mod;
 	msg_mod = vm_get_module(mod->vm, STR("message"));
@@ -110,25 +125,13 @@ msg_register_message_type(struct stg_module *mod, type_id msg_type)
 	info->type = msg_type;
 
 	struct type type = {0};
-	type.base = &message_type_base;
+	type.base = &msg_type_base;
 	type.data = info;
 	type.size = sizeof(msg_node_id);
-	type.type_def = ctx->message_type_cons;
-	type.ffi_type = &ffi_type_uint32;
+	type.type_def = ctx->msg_type_cons;
+	type.ffi_type = &ffi_type_msg_functor;
 
 	return stg_register_type(mod, type);
-}
-
-static void
-msg_print_int_callback(int64_t val)
-{
-	printf(" => %zi\n", val);
-}
-
-static void
-msg_print_string_callback(struct string val)
-{
-	printf(" => %.*s\n", LIT(val));
 }
 
 struct msg_endpoint_cons_info {
@@ -164,7 +167,7 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 	{
 		type_id endpoint_cons_params[1];
 		endpoint_cons_params[0] =
-			msg_register_message_type(mod,
+			msg_register_msg_type(mod,
 					mod->vm->default_types.integer);
 
 		type_id endpoint_cons_return;
@@ -194,22 +197,22 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 		msg_type_def->params[0].name = vm_atoms(ast_ctx->vm, "T");
 		msg_type_def->params[0].type = ast_ctx->types.type;
 
-		msg_type_def->pack      = message_type_pack;
-		msg_type_def->pack_type = message_type_pack_type;
-		msg_type_def->unpack    = message_type_unpack;
+		msg_type_def->pack      = msg_type_pack;
+		msg_type_def->pack_type = msg_type_pack_type;
+		msg_type_def->unpack    = msg_type_unpack;
 
 		msg_type_def->data      = mod;
 
-		ctx->message_type_cons = msg_type_def;
+		ctx->msg_type_cons = msg_type_def;
 
 		struct ast_module *ast_mod = &mod->mod;
 
 		struct object res = {0};
 		res.type = ast_ctx->types.cons;
-		res.data = &ctx->message_type_cons;
+		res.data = &ctx->msg_type_cons;
 		res = register_object(ast_ctx->vm, ast_mod->env.store, res);
 
-		struct atom *cons_name = vm_atoms(ast_ctx->vm, "Message");
+		struct atom *cons_name = vm_atoms(ast_ctx->vm, "Msg");
 
 		struct ast_node *expr;
 		expr = ast_init_node_lit(
@@ -221,7 +224,7 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 
 	{
 		struct object res = {0};
-		res.type = msg_register_message_type(
+		res.type = msg_register_msg_type(
 				mod, ast_ctx->types.unit);
 		res.data = &ctx->on_start_msg;
 
@@ -238,6 +241,87 @@ mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
 	}
 
 	return 0;
+}
+
+struct msg_functor_data
+msg_copy_functor(struct stg_exec *heap, struct msg_functor_data functor)
+{
+	struct msg_functor_data out;
+	
+	out = functor;
+	out.data = stg_alloc(heap, 1, out.data_size);
+	memcpy(out.data, functor.data, out.data_size);
+
+	if (out.copy) {
+		out.copy(heap, out.data);
+	}
+
+	return out;
+}
+
+msg_node_id
+msg_call_functor(struct vm *vm, struct msg_system *sys,
+		struct msg_functor_data msg)
+{
+	assert(msg.call);
+	return msg.call(vm, sys, msg.data);
+}
+
+struct msg_functor_map_data {
+	struct msg_functor_data msg;
+	struct stg_func_object func;
+};
+
+static msg_node_id
+msg_functor_map_call(
+		struct vm *vm, struct msg_system *sys,
+		void *data)
+{
+	struct msg_functor_map_data *map_data;
+	map_data = data;
+
+	msg_node_id in;
+	in = msg_call_functor(vm, sys, map_data->msg);
+
+	msg_node_id node;
+	node = msg_pipe_map(sys, map_data->func);
+
+	msg_pipe_connect(sys, in, node);
+
+	return node;
+}
+
+static void
+msg_functor_map_copy(
+	struct stg_exec *heap, void *data)
+{
+	struct msg_functor_map_data *map_data;
+	map_data = data;
+
+	map_data->msg =
+		msg_copy_functor(heap, map_data->msg);
+}
+
+static struct msg_functor_data
+msg_functor_map(struct stg_exec *heap,
+		struct stg_module *mod,
+		struct msg_functor_data msg,
+		struct stg_func_object func,
+		type_id type_in, type_id type_out)
+{
+	struct msg_functor_data out_msg = {0};
+
+	out_msg.call = msg_functor_map_call;
+	out_msg.copy = msg_functor_map_copy;
+	out_msg.data_size = sizeof(struct msg_functor_map_data);
+	out_msg.data = stg_alloc(heap, 1, out_msg.data_size);
+
+	struct msg_functor_map_data *map_data;
+	map_data = out_msg.data;
+	map_data->msg = msg;
+	map_data->func = func;
+
+	return out_msg;
 }
 
 int
@@ -268,63 +352,6 @@ mod_message_free(struct stg_module *mod)
 {
 }
 
-/*
-static void
-msg_print_int(struct stg_module *mod, msg_node_id in)
-{
-	struct msg_context *ctx = mod->data;
-
-	msg_node_id end;
-	end = msg_pipe_endpoint(&ctx->sys, msg_print_int_callback, mod);
-
-	msg_pipe_connect(&ctx->sys, in, end);
-}
-*/
-
-static msg_node_id
-msg_map(struct stg_module *mod, msg_node_id in, struct stg_func_object map_func)
-{
-	struct msg_context *ctx = mod->data;
-
-	msg_node_id res;
-	res = msg_pipe_map(&ctx->sys, map_func);
-
-	msg_pipe_connect(&ctx->sys, in, res);
-
-	return res;
-}
-
-static msg_node_id
-msg_filter(struct stg_module *mod, msg_node_id in, struct stg_func_object filter_func)
-{
-	struct msg_context *ctx = mod->data;
-
-	msg_node_id res;
-	res = msg_pipe_filter(&ctx->sys, filter_func);
-
-	msg_pipe_connect(&ctx->sys, in, res);
-
-	return res;
-}
-
-static struct stg_func_object
-msg_endpoint(struct stg_module *mod, struct stg_func_object map_func)
-{
-	struct msg_context *ctx = mod->data;
-
-	struct msg_endpoint_cons_info *info;
-	info = calloc(1, sizeof(struct msg_endpoint_cons_info));
-	info->mod = mod;
-	info->func = map_func;
-
-	struct stg_func_object cons_func = {0};
-	cons_func.func = ctx->endpoint_cons_func;
-	cons_func.closure = info;
-
-	return cons_func;
-}
-
-
 int
 mod_message_load(struct stg_native_module *mod)
 {
@@ -333,16 +360,8 @@ mod_message_load(struct stg_native_module *mod)
 	mod->hook_free      = mod_message_free;
 	mod->hook_start     = mod_message_start;
 
-	stg_native_register_funcs(mod, msg_print_int_callback,
-			STG_NATIVE_FUNC_IMPURE);
-	stg_native_register_funcs(mod, msg_print_string_callback,
-			STG_NATIVE_FUNC_IMPURE);
-	stg_native_register_funcs(mod, msg_map,
-			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
-	stg_native_register_funcs(mod, msg_filter,
-			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
-	stg_native_register_funcs(mod, msg_endpoint,
-			STG_NATIVE_FUNC_IMPURE | STG_NATIVE_FUNC_MODULE_CLOSURE);
+	stg_native_register_funcs(mod, msg_functor_map,
+			STG_NATIVE_FUNC_HEAP | STG_NATIVE_FUNC_MODULE_CLOSURE);
 
 	return 0;
 }
