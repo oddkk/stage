@@ -11,6 +11,8 @@
 #include <time.h>
 #include <errno.h>
 
+#include <argp.h>
+
 #ifdef STAGE_TEST
 #define main _main
 #endif
@@ -79,13 +81,60 @@ static bool check_clock_support()
 	return true;
 }
 
-struct object
-obj_register_integer(struct vm *, struct objstore *,
-		int64_t value);
+const char *
+argp_program_version = "0.0.1";
+
+static const char
+args_doc[] = "FILE";
+
+static const char
+doc[] = "Stage -- a simple functional programming language.";
+
+struct stg_arguments {
+	struct string project_path;
+};
+
+static struct argp_option options[] = {
+	{0}
+};
+
+static error_t
+parse_opt(int key, char *arg, struct argp_state *state)
+{
+	struct stg_arguments *args = state->input;
+
+	switch (key) {
+		case ARGP_KEY_ARG:
+			args->project_path =
+				string_duplicate_cstr(arg);
+			break;
+
+		// Temporarly allows a default project for development.
+		// TODO: Remove.
+		// case ARGP_KEY_NO_ARGS:
+		// 	argp_usage(state);
+		// 	break;
+
+		default:
+			return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
+}
+
+static struct argp argp = { options, parse_opt, args_doc, doc };
 
 int main(int argc, char *argv[])
 {
 	int err;
+
+	struct stg_arguments args = {0};
+
+	// Temporarly set default project for development.
+	// TODO: Remove.
+	args.project_path = STR("./config");
+
+	argp_parse(&argp, argc, argv, 0, 0, &args);
 
 	if (!check_clock_support()) {
 		panic("No alternative clock supported yet.");
@@ -113,7 +162,7 @@ int main(int argc, char *argv[])
 		.num_module_locations = ARRAY_LENGTH(module_locations),
 	};
 
-	err = stg_compile(&vm, &ctx, compile_opts, STR("./config/"));
+	err = stg_compile(&vm, &ctx, compile_opts, args.project_path);
 	if (err) {
 		return -1;
 	}
