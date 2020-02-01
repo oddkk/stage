@@ -294,36 +294,46 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 		} break;
 
 		case FTS_D:
-			if (f->fts_namelen) {
+			// The root of the project should be the root name space.
+			if (f->fts_level > 0) {
+				assert(f->fts_namelen > 0);
+
 				struct string name;
 				name.text = f->fts_name;
 				name.length = f->fts_namelen;
 
 				// Discard directories named src as those probably contains c-code.
-				if (!string_equal(name, STR("src"))) {
-					struct atom *atom = vm_atom(ctx->vm, name);
-
-					assert(dir_ns_head < DIR_NS_STACK_CAP - 1);
-					dir_ns_head += 1;
-					dir_ns_stack[dir_ns_head] =
-						ast_namespace_add_ns(
-								ctx->ast_ctx,
-								dir_ns_stack[dir_ns_head-1], atom);
+				if (string_equal(name, STR("src"))) {
+					fts_set(ftsp, f, FTS_SKIP);
+					break;
 				}
+
+				struct atom *atom = vm_atom(ctx->vm, name);
+
+				assert(dir_ns_head < DIR_NS_STACK_CAP - 1);
+				dir_ns_head += 1;
+				dir_ns_stack[dir_ns_head] =
+					ast_namespace_add_ns(
+							ctx->ast_ctx,
+							dir_ns_stack[dir_ns_head-1], atom);
 			}
 			break;
 
 		case FTS_DP:
-			if (f->fts_namelen) {
+			if (f->fts_level > 0) {
+				assert(f->fts_namelen > 0);
+
 				struct string name;
 				name.text = f->fts_name;
 				name.length = f->fts_namelen;
 
 				// Discard directories named src as those probably contains c-code.
-				if (!string_equal(name, STR("src"))) {
-					assert(dir_ns_head > 0);
-					dir_ns_head -= 1;
+				if (string_equal(name, STR("src"))) {
+					break;
 				}
+
+				assert(dir_ns_head > 0);
+				dir_ns_head -= 1;
 			}
 			break;
 
