@@ -719,7 +719,9 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 	{
 		struct st_node *option;
 		option = node->VARIANT_DECL.items;
-		assert(option);
+		if (!option) {
+			return NULL;
+		}
 
 		struct ast_node *variant;
 		variant = ast_init_node_variant(
