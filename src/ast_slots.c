@@ -6,6 +6,7 @@
 #include "term_color.h"
 #include "base/mod.h"
 #include "dlist.h"
+#include "module.h"
 
 #include <unistd.h>
 #include <sys/mman.h>
@@ -337,6 +338,7 @@ enum ast_slot_state_flags {
 	AST_SLOT_HAS_TYPE       = (1<<5),
 	AST_SLOT_HAS_VALUE      = (1<<6),
 	AST_SLOT_VALUE_IS_TYPE  = (1<<7),
+	AST_SLOT_CONS_DECAYED   = (1<<8),
 };
 
 typedef int32_t ast_constraint_id;
@@ -417,6 +419,7 @@ ast_constraint_source_name(enum ast_constraint_source source)
 		SRC_NAME(ACCESS);
 		SRC_NAME(LIT);
 		SRC_NAME(LOOKUP);
+		SRC_NAME(DECAY);
 	}
 	return "(unknown)";
 }
@@ -672,6 +675,9 @@ ast_print_slot(
 	} else {
 		printf("none");
 	}
+	if ((slot->flags & AST_SLOT_CONS_DECAYED) != 0) {
+		printf(" (decayed)");
+	}
 
 	printf("\n -type: ");
 	if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
@@ -701,6 +707,39 @@ ast_print_slot(
 	printf("\n");
 }
 #endif
+
+// ast_slot_try_get_{value,value_type,type} has a return value less than 0 if a
+// typing error occured, a return value of greater than 0 if not enough
+// information was available to determine the type, and a return value of 0 if
+// the type was determined.  *out_type is only modified if the return value is
+// 0.
+enum ast_slot_get_error {
+	AST_SLOT_GET_OK = 0,
+	AST_SLOT_GET_NOT_ENOUGH_INFO = 1,
+	AST_SLOT_GET_NO_TYPE_SLOT = 2,
+	AST_SLOT_GET_NO_CONS_SLOT = 3,
+	AST_SLOT_GET_IS_FUNC_TYPE_CONS = 4,
+	AST_SLOT_GET_IS_CONS = 5,
+	AST_SLOT_GET_IS_INST = 6,
+	AST_SLOT_GET_TYPE_HAS_NO_INST = 7,
+	AST_SLOT_GET_TYPE_HAS_NO_CONS = 8,
+	AST_SLOT_GET_TYPE_ERROR = -1,
+};
+
+static enum ast_slot_get_error
+ast_slot_try_get_value(
+		struct solve_context *ctx, ast_slot_id slot_id,
+		type_id require_type, struct object *out_obj);
+
+static enum ast_slot_get_error
+ast_slot_try_get_value_type(
+		struct solve_context *ctx, ast_slot_id slot_id,
+		type_id *out_type);
+
+static enum ast_slot_get_error
+ast_slot_try_get_type(
+		struct solve_context *ctx, ast_slot_id slot_id,
+		type_id *out_type);
 
 static ast_slot_id
 ast_slot_join(
@@ -791,6 +830,166 @@ ast_solve_should_apply(
 	}
 }
 
+// Attemptes to decay a cons object slot into a slot that is constructed by the
+// cons object.
+// Returns 0 if the slot did not decay and obj can be applied as normal.
+// Returns 1 if the slot did decay and reset the slot's value. In this case the
+// obj can also be applied as normal.
+// Returns 2 if the slot did already has decayed. In this case the obj can be
+// applied as normal.
+// Returns -1 if the slot decayed because of obj's cons. In this case the
+// caller should not apply obj.
+// Returns -2 if the slot had already decayed because of obj's cons. In this
+// case the caller should not apply obj, and no change was made.
+static int
+ast_solve_try_decay(
+		struct solve_context *ctx, ast_slot_id slot, struct object obj)
+{
+#if AST_DEBUG_SLOT_SOLVE_APPLY
+	const char *decay_reason = NULL;
+#endif
+	bool should_decay = false;
+	bool should_clear_value = false;
+
+	struct ast_slot_resolve *res;
+	res = ast_get_slot(ctx, slot);
+
+	if ((res->flags & AST_SLOT_CONS_DECAYED) != 0) {
+		return obj.type == ctx->cons ? -2 : 2;
+	}
+
+	struct object_cons *target_cons = NULL;
+	// TODO: We keep the pointer to the cons-ptr to avoid having to reallocate
+	// the memory for the pointer. In the future we should have some temporary
+	// memory for the solve.
+	struct object_cons **tmp_target_cons_ptr = NULL;
+
+	if (obj.type == ctx->cons) {
+		if (obj.data) {
+			target_cons = *(struct object_cons **)obj.data;
+			// TODO: Remove.
+			tmp_target_cons_ptr = obj.data;
+		}
+	}
+
+
+	// We do not use ast_slot_try_get_value here because said function will
+	// fail if the slot's value's type and the slot's type-slot's value do not
+	// match.
+	if ((res->flags & AST_SLOT_HAS_VALUE) != 0) {
+		if ((res->flags & AST_SLOT_VALUE_IS_TYPE) == 0 &&
+				res->value.obj.type == ctx->cons) {
+			struct object_cons *current_cons;
+			current_cons = *(struct object_cons **)res->value.obj.data;
+
+			if (target_cons && target_cons != current_cons) {
+				// There is a conflict trying to apply two different cons to this
+				// slot. We will let the verifictaion step report this error.
+				return 0;
+			}
+
+			// The slot should decay if the new object is a value other than a
+			// cons.
+			if (obj.type != TYPE_UNSET &&
+					obj.type != ctx->cons) {
+				should_decay = true;
+			}
+
+			should_clear_value = true;
+			target_cons = current_cons;
+			// TODO: Remove.
+			tmp_target_cons_ptr = res->value.obj.data;
+		} else {
+			should_decay = true;
+#if AST_DEBUG_SLOT_SOLVE_APPLY
+			decay_reason = "conflicting value";
+#endif
+		}
+	}
+
+	if (res->num_members > 0) {
+		should_decay = true;
+#if AST_DEBUG_SLOT_SOLVE_APPLY
+		decay_reason = "has members";
+#endif
+	}
+
+	if ((res->flags & AST_SLOT_HAS_TYPE) != 0) {
+		struct ast_slot_resolve *type_slot;
+		type_slot = ast_get_slot(ctx, res->type);
+
+
+		if ((type_slot->flags & (AST_SLOT_HAS_VALUE|AST_SLOT_VALUE_IS_TYPE)) ==
+				(AST_SLOT_HAS_VALUE|AST_SLOT_VALUE_IS_TYPE) &&
+				type_slot->value.type != ctx->cons) {
+
+			// printf("type of slot %i - %i is cons\n", slot, res->type);
+			should_decay = true;
+#if AST_DEBUG_SLOT_SOLVE_APPLY
+			decay_reason = "type is func type";
+#endif
+		}
+
+		if ((type_slot->flags & (AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) ==
+				(AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) {
+			// printf("type of slot %i - %i has func cons\n", slot, res->type);
+			should_decay = true;
+#if AST_DEBUG_SLOT_SOLVE_APPLY
+			decay_reason = "type is func type";
+#endif
+		}
+	}
+
+	if (!target_cons || !should_decay) {
+		/*
+		if (!target_cons) {
+			printf("no target cons.\n");
+		} else {
+			printf("should not decay.\n");
+		}
+		*/
+		return 0;
+	}
+
+#if AST_DEBUG_SLOT_SOLVE_APPLY
+	printf("decay slot %i (reason: %s)\n", slot,
+			decay_reason ? decay_reason : "unknown");
+#endif
+
+	struct object cons_obj = {0};
+	cons_obj.type = ctx->cons;
+	// TODO: Remove.
+	assert(*tmp_target_cons_ptr == target_cons);
+	cons_obj.data = tmp_target_cons_ptr;
+
+	ast_slot_id cons_id;
+
+	if ((res->flags & AST_SLOT_HAS_CONS) == 0) {
+		cons_id = ast_slot_alloc(ctx->env);
+
+		ast_slot_require_cons(ctx->env, STG_NO_LOC,
+				AST_CONSTR_SRC_DECAY,
+				slot, cons_id
+				SLOT_DEBUG_ARG);
+	} else {
+		cons_id = res->cons;
+	}
+
+	// TODO: Location.
+	ast_slot_require_is_obj(ctx->env, STG_NO_LOC,
+			AST_CONSTR_SRC_DECAY,
+			cons_id, cons_obj
+			SLOT_DEBUG_ARG);
+
+	res->flags |= AST_SLOT_CONS_DECAYED;
+
+	if (should_clear_value) {
+		res->flags &= ~(AST_SLOT_HAS_VALUE | AST_SLOT_VALUE_IS_TYPE);
+	}
+
+	return obj.type == ctx->cons ? -1 : 1;
+}
+
 static bool
 ast_solve_apply_value_type(
 		struct solve_context *ctx,
@@ -801,6 +1000,19 @@ ast_solve_apply_value_type(
 			constr_id, slot);
 	print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
 #endif
+
+	struct object type_obj = {0};
+	type_obj.type = ctx->type;
+	type_obj.data = &type;
+	// TODO: We should have temporary memory for the solve.
+	type_obj = register_object(ctx->vm, &ctx->mod->stg_mod->store, type_obj);
+
+	// We only abort the application if the decay was as a result of type_obj's
+	// cons. In reality this should never happen for type values.
+	if (ast_solve_try_decay(ctx, slot, type_obj) < 0) {
+		return true;
+	}
+
 	if (ast_solve_should_apply(
 				ctx, constr_id, slot,
 				AST_SLOT_PARAM_VALUE)) {
@@ -828,6 +1040,15 @@ ast_solve_apply_value_obj(
 			constr_id, slot);
 	print_obj_repr(ctx->vm, obj);
 #endif
+
+	// We only abort the application if the decay was as a result of obj's
+	// cons.
+	int err;
+	err = ast_solve_try_decay(ctx, slot, obj);
+	if (err < 0) {
+		return err == -1;
+	}
+
 	if (ast_solve_should_apply(
 				ctx, constr_id, slot,
 				AST_SLOT_PARAM_VALUE)) {
@@ -888,6 +1109,7 @@ ast_solve_apply_func_type(
 	printf("%i apply cons func %i",
 			constr_id, slot);
 #endif
+
 	if (ast_solve_should_apply(
 				ctx, constr_id, slot,
 				AST_SLOT_PARAM_CONS)) {
@@ -997,6 +1219,10 @@ ast_solve_apply_member(struct solve_context *ctx,
 			slot->members,
 			slot->num_members,
 			&new_mbr);
+
+	ast_solve_try_decay(
+			ctx, slot_id, OBJ_UNSET);
+
 	return true;
 }
 
@@ -1107,35 +1333,6 @@ ast_slot_join(
 
 	return to;
 }
-
-// ast_slot_try_get_{value,value_type,type} has a return value less than 0 if a
-// typing error occured, a return value of greater than 0 if not enough
-// information was available to determine the type, and a return value of 0 if
-// the type was determined.  *out_type is only modified if the return value is
-// 0.
-
-enum ast_slot_get_error {
-	AST_SLOT_GET_OK = 0,
-	AST_SLOT_GET_NOT_ENOUGH_INFO = 1,
-	AST_SLOT_GET_NO_TYPE_SLOT = 2,
-	AST_SLOT_GET_NO_CONS_SLOT = 3,
-	AST_SLOT_GET_IS_FUNC_TYPE_CONS = 4,
-	AST_SLOT_GET_IS_CONS = 5,
-	AST_SLOT_GET_IS_INST = 6,
-	AST_SLOT_GET_TYPE_HAS_NO_INST = 7,
-	AST_SLOT_GET_TYPE_HAS_NO_CONS = 8,
-	AST_SLOT_GET_TYPE_ERROR = -1,
-};
-
-static enum ast_slot_get_error
-ast_slot_try_get_value(
-		struct solve_context *ctx, ast_slot_id slot_id,
-		type_id require_type, struct object *out_obj);
-
-static enum ast_slot_get_error
-ast_slot_try_get_value_type(
-		struct solve_context *ctx, ast_slot_id slot_id,
-		type_id *out_type);
 
 static enum ast_slot_get_error
 ast_slot_try_get_type(
@@ -1458,6 +1655,15 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 	}
 
 	bool made_change = false;
+
+	int decay_res;
+	decay_res = ast_solve_try_decay(
+			ctx, slot_id, OBJ_UNSET);
+	// Tag as changed only if the slot did decay.
+	if (decay_res == 1) {
+		printf("decay made change\n");
+		made_change = true;
+	}
 
 	if ((slot->flags & (AST_SLOT_HAS_VALUE|AST_SLOT_HAS_TYPE)) ==
 			(AST_SLOT_HAS_VALUE|AST_SLOT_HAS_TYPE)) {
@@ -2031,8 +2237,6 @@ ast_slot_verify_constraint(
 		case AST_SLOT_REQ_IS_OBJ:
 		case AST_SLOT_REQ_IS_TYPE:
 			{
-				assert((target->flags & AST_SLOT_HAS_VALUE) != 0);
-
 				struct object expected = {0};
 				if (constr->kind == AST_SLOT_REQ_IS_TYPE) {
 					expected.type = ctx->type;
@@ -2041,52 +2245,78 @@ ast_slot_verify_constraint(
 					expected = constr->is.obj;
 				}
 
-				struct object got = {0};
-				int err;
-				err = ast_slot_try_get_value(
-						ctx, constr->target, TYPE_UNSET, &got);
-				if (err) {
-					// TODO: Error message.
-					stg_error(ctx->err, constr->reason.loc,
-							"Failed to resolve this value.");
-					return -1;
-				}
+				if (expected.type == ctx->cons &&
+						(target->flags & AST_SLOT_CONS_DECAYED) != 0) {
+					// assert((target->flags & AST_SLOT_HAS_CONS) != 0);
 
-				if (!obj_equals(ctx->vm, expected, got)) {
-					struct string exp_str, got_str;
-					const char *value_kind_expectation;
-
-					if (expected.type == ctx->type && got.type == ctx->type) {
-						type_id expected_type = *(type_id *)expected.data;
-						type_id got_type = *(type_id *)got.data;
-
-						exp_str = type_repr_to_alloced_string(
-								ctx->vm, vm_get_type(ctx->vm, expected_type));
-						got_str = type_repr_to_alloced_string(
-								ctx->vm, vm_get_type(ctx->vm, got_type));
-						value_kind_expectation = "type";
-					} else if (expected.type == ctx->type && got.type != ctx->type) {
-						type_id expected_type = *(type_id *)expected.data;
-
-						exp_str = type_repr_to_alloced_string(
-								ctx->vm, vm_get_type(ctx->vm, expected_type));
-						got_str = obj_repr_to_alloced_string(
-								ctx->vm, got);
-						value_kind_expectation = "type";
-					} else {
-						exp_str = obj_repr_to_alloced_string(
-								ctx->vm, expected);
-						got_str = obj_repr_to_alloced_string(
-								ctx->vm, got);
-						value_kind_expectation = "value";
+					int err;
+					struct object_cons *cons;
+					err = ast_slot_try_get_cons(
+							ctx, constr->target, &cons);
+					if (err) {
+						// TODO: Error message. We should report the
+						// authorative and expected types.
+						stg_error(ctx->err, constr->reason.loc,
+								"Failed to resolve this value.");
+						return -1;
 					}
 
-					stg_error(ctx->err, constr->reason.loc,
-							"Expected %s '%.*s', got '%.*s'.",
-							value_kind_expectation,
-							LIT(exp_str), LIT(got_str));
+					if (cons != *(struct object_cons **)expected.data) {
+						// TODO: Error message.
+						stg_error(ctx->err, constr->reason.loc,
+								"Mismatching constructors.");
+						return -1;
+					}
+				} else {
+					assert((target->flags & AST_SLOT_HAS_VALUE) != 0);
 
-					return -1;
+					struct object got = {0};
+					int err;
+					err = ast_slot_try_get_value(
+							ctx, constr->target, TYPE_UNSET, &got);
+					if (err) {
+						// TODO: Error message.
+						stg_error(ctx->err, constr->reason.loc,
+								"Failed to resolve this value.");
+						return -1;
+					}
+
+					if (!obj_equals(ctx->vm, expected, got)) {
+						struct string exp_str, got_str;
+						const char *value_kind_expectation;
+
+						if (expected.type == ctx->type && got.type == ctx->type) {
+							type_id expected_type = *(type_id *)expected.data;
+							type_id got_type = *(type_id *)got.data;
+
+							exp_str = type_repr_to_alloced_string(
+									ctx->vm, vm_get_type(ctx->vm, expected_type));
+							got_str = type_repr_to_alloced_string(
+									ctx->vm, vm_get_type(ctx->vm, got_type));
+							value_kind_expectation = "type";
+						} else if (expected.type == ctx->type && got.type != ctx->type) {
+							type_id expected_type = *(type_id *)expected.data;
+
+							exp_str = type_repr_to_alloced_string(
+									ctx->vm, vm_get_type(ctx->vm, expected_type));
+							got_str = obj_repr_to_alloced_string(
+									ctx->vm, got);
+							value_kind_expectation = "type";
+						} else {
+							exp_str = obj_repr_to_alloced_string(
+									ctx->vm, expected);
+							got_str = obj_repr_to_alloced_string(
+									ctx->vm, got);
+							value_kind_expectation = "value";
+						}
+
+						stg_error(ctx->err, constr->reason.loc,
+								"Expected %s '%.*s', got '%.*s'.",
+								value_kind_expectation,
+								LIT(exp_str), LIT(got_str));
+
+						return -1;
+					}
 				}
 			}
 			return 0;
@@ -2421,9 +2651,21 @@ ast_slot_try_solve(
 		}
 		num_applied_constraints = num_constraints;
 
+		// Immediatly apply new constraints and slots.
+		if (num_applied_constraints < ast_env_num_constraints(ctx)) {
+			made_progress = true;
+			continue;
+		}
+
 		for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
-			made_progress |= ast_slot_solve_push_value(
+			bool this_slot_made_progress;
+			
+			this_slot_made_progress = ast_slot_solve_push_value(
 					ctx, slot_id);
+			if (this_slot_made_progress) {
+				printf("slot %i made progress.\n", slot_id);
+			}
+			made_progress |= this_slot_made_progress;
 		}
 	};
 
