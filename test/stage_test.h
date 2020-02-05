@@ -44,3 +44,20 @@ stg_test_bootstrap(
 
 	return 0;
 }
+
+#define STG_TEST(fun)                               \
+int fun(struct ast_context *, struct stg_module *); \
+int main()                                          \
+{                                                   \
+	struct vm vm;                                   \
+	struct stg_module *mod;                         \
+	struct ast_context ctx;                         \
+                                                    \
+	int err;                                        \
+	err = stg_test_bootstrap(&vm, &ctx, &mod);      \
+	if (err) {                                      \
+		return -1;                                  \
+	}                                               \
+                                                    \
+	return fun(&ctx, mod);                          \
+}

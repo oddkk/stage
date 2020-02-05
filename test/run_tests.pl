@@ -131,6 +131,7 @@ closedir($dir);
 
 if ($test_cases > 0) {
 	my $percent = $successful_test_cases / $test_cases * 100;
+	$percent = sprintf("%.2f", $percent);
 	print "$successful_test_cases / $test_cases tests passed ($percent%).\n";
 } else {
 	print "No test cases.\n"
