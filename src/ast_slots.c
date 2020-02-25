@@ -1396,7 +1396,7 @@ ast_slot_try_get_value(
 			ctx, slot_id, &slot_type);
 	if (err != AST_SLOT_GET_OK &&
 			err != AST_SLOT_GET_NO_TYPE_SLOT) {
-		return err;
+		return AST_SLOT_GET_TYPE_ERROR;
 	}
 
 	if ((slot->flags & AST_SLOT_HAS_VALUE) == 0) {
@@ -1755,11 +1755,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 									ctx, slot->authority.value,
 									slot->members[i].slot, mbr_type);
 						}
-					} else {
-						printf("Expected function type, got another type.\n");
 					}
-				} else {
-					printf("Expected function type, got object.\n");
 				}
 			}
 
@@ -2270,18 +2266,55 @@ ast_slot_verify_constraint(
 				} else {
 					assert((target->flags & AST_SLOT_HAS_VALUE) != 0);
 
+					bool got_type_only = false;
 					struct object got = {0};
 					int err;
 					err = ast_slot_try_get_value(
 							ctx, constr->target, TYPE_UNSET, &got);
-					if (err) {
+					if (err == AST_SLOT_GET_TYPE_ERROR) {
+						struct ast_slot_resolve *target;
+						target = ast_get_slot(ctx, constr->target);
+
+						if ((target->flags & AST_SLOT_HAS_VALUE) != 0) {
+							if ((target->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
+								got.type = ctx->type;
+								got.data = &target->value.type;
+							} else {
+								got = target->value.obj;
+							}
+						} else if ((target->flags & AST_SLOT_HAS_TYPE) != 0) {
+							struct ast_slot_resolve *type_slot;
+							type_slot = ast_get_slot(ctx, target->type);
+
+							if (((type_slot->flags &
+											(AST_SLOT_HAS_VALUE|AST_SLOT_VALUE_IS_TYPE)) !=
+										(AST_SLOT_HAS_VALUE|AST_SLOT_VALUE_IS_TYPE))) {
+								got.type = type_slot->value.type;
+								got_type_only = true;
+							} else {
+								// We let errors with the type slot being the
+								// wrong type be reported by the type
+								// constraint.
+								return -1;
+							}
+						} else {
+							stg_error(ctx->err, constr->reason.loc,
+									"Type mismatch.");
+							return -1;
+						}
+
+					} else if (err == AST_SLOT_GET_NOT_ENOUGH_INFO) {
+						stg_error(ctx->err, constr->reason.loc,
+								"Not enough information to determine this type.");
+						return -1;
+					} else if (err) {
 						// TODO: Error message.
 						stg_error(ctx->err, constr->reason.loc,
 								"Failed to resolve this value.");
 						return -1;
 					}
 
-					if (!obj_equals(ctx->vm, expected, got)) {
+					if (got_type_only || !obj_equals(ctx->vm, expected, got)) {
 						struct string exp_str, got_str;
 						const char *value_kind_expectation;
 
@@ -2302,6 +2335,12 @@ ast_slot_verify_constraint(
 							got_str = obj_repr_to_alloced_string(
 									ctx->vm, got);
 							value_kind_expectation = "type";
+						} else if (got_type_only) {
+							exp_str = type_repr_to_alloced_string(
+									ctx->vm, vm_get_type(ctx->vm, expected.type));
+							got_str = type_repr_to_alloced_string(
+									ctx->vm, vm_get_type(ctx->vm, got.type));
+							value_kind_expectation = "object of type";
 						} else {
 							exp_str = obj_repr_to_alloced_string(
 									ctx->vm, expected);
@@ -2338,8 +2377,50 @@ ast_slot_verify_constraint(
 					expected_type = target->value.type;
 				}
 
+				struct ast_slot_constraint *exp_constr;
+				exp_constr = ast_get_constraint(ctx, target->authority.value);
+
 				struct ast_slot_resolve *type_slot;
 				type_slot = ast_get_slot(ctx, target->type);
+
+				struct ast_slot_constraint *got_constr;
+				got_constr = ast_get_constraint(ctx, type_slot->authority.value);
+
+				if ((type_slot->flags & AST_SLOT_HAS_VALUE) != 0) {
+					if ((type_slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
+						if (!type_equals(ctx->vm, type_slot->value.type, expected_type)) {
+							type_id exp_type, got_type;
+							if (is_more_authorative(exp_constr, got_constr)) {
+								exp_type = expected_type;
+								got_type = type_slot->value.type;
+							} else {
+								exp_type = type_slot->value.type;
+								got_type = expected_type;
+							}
+							struct string exp_str, got_str;
+							exp_str = type_repr_to_alloced_string(
+									ctx->vm, vm_get_type(ctx->vm, exp_type));
+							got_str = type_repr_to_alloced_string(
+									ctx->vm, vm_get_type(ctx->vm, got_type));
+
+							stg_error(ctx->err, constr->reason.loc,
+									"Expected type '%.*s', got '%.*s'.",
+									LIT(exp_str), LIT(got_str));
+							return -1;
+						}
+					} else {
+						struct string exp_str, got_str;
+						exp_str = type_repr_to_alloced_string(
+								ctx->vm, vm_get_type(ctx->vm, expected_type));
+						got_str = obj_repr_to_alloced_string(
+								ctx->vm, type_slot->value.obj);
+
+						stg_error(ctx->err, constr->reason.loc,
+								"Expected type '%.*s', got object '%.*s'.",
+								LIT(exp_str), LIT(got_str));
+						return -1;
+					}
+				}
 			}
 			return 0;
 
@@ -2662,9 +2743,6 @@ ast_slot_try_solve(
 			
 			this_slot_made_progress = ast_slot_solve_push_value(
 					ctx, slot_id);
-			if (this_slot_made_progress) {
-				printf("slot %i made progress.\n", slot_id);
-			}
 			made_progress |= this_slot_made_progress;
 		}
 	};
