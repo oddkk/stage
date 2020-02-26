@@ -739,6 +739,14 @@ ast_node_substitute_slot(struct ast_node *,
 
 struct stg_native_module;
 
+enum ast_node_resolve_names_flags {
+	AST_NODE_RESOLVE_REQUIRE_CONST     = 1 << 0,
+	AST_NODE_RESOLVE_ALLOW_ADD_CLOSURE = 1 << 1,
+	AST_NODE_RESOLVE_RESOLVE_NATIVE    = 1 << 2,
+	AST_NODE_RESOLVE_PRELIMINARY       = 1 << 3,
+	AST_NODE_RESOLVE_VISIT_MEMBERS     = 1 << 4,
+};
+
 int
 ast_node_resolve_names(struct ast_context *ctx,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
