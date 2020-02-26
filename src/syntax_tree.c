@@ -138,7 +138,19 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 
 	switch (stmt->STMT.stmt->type) {
 		case ST_NODE_USE_STMT:
-			panic("TODO: Use statement in composite datatype");
+			{
+				struct st_node *use_stmt;
+				use_stmt = stmt->STMT.stmt;
+
+				struct ast_node *target;
+				target = st_node_visit_expr(
+						ctx, mod, NULL, use_stmt->USE_STMT.ident);
+				if (target) {
+					ast_node_composite_add_use(
+							ctx, use_stmt->loc,
+							struct_node, target);
+				}
+			}
 			break;
 
 		case ST_NODE_MOD_STMT:

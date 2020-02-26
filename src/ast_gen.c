@@ -33,9 +33,9 @@ append_bc_instrs(struct ast_gen_bc_result *res, struct ast_gen_bc_result instrs)
 	res->last = instrs.last;
 }
 
-struct ast_typecheck_closure
+static struct ast_typecheck_closure
 ast_gen_resolve_closure(struct bc_env *bc_env,
-		struct ast_gen_info *info, struct ast_name_ref ref)
+		struct ast_module *mod, struct ast_gen_info *info, struct ast_name_ref ref)
 {
 	switch (ref.kind) {
 		case AST_NAME_REF_NOT_FOUND:
@@ -85,6 +85,51 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 				return res;
 			}
 			break;
+
+		case AST_NAME_REF_USE:
+			{
+				assert(ref.use.id < info->num_use);
+
+				struct object use_value;
+				use_value = info->const_use_values[ref.use.id];
+
+				type_id target_type_id;
+				int err;
+				err = object_cons_descendant_type(
+						bc_env->vm, use_value.type,
+						ref.use.param, &target_type_id);
+				if (err) {
+					printf("Failed to resolve the use target's type.\n");
+					return (struct ast_typecheck_closure){0};
+				}
+
+				struct type *target_type;
+				target_type = vm_get_type(bc_env->vm, target_type_id);
+
+				uint8_t buffer[target_type->size];
+				memset(buffer, 0, target_type->size);
+				struct object obj = {0};
+				obj.type = target_type_id;
+				obj.data = buffer;
+
+				err = object_unpack(
+						bc_env->vm,
+						use_value,
+						ref.use.param, &obj);
+				if (err) {
+					printf("Failed to unpack use target.\n");
+					return (struct ast_typecheck_closure){0};
+				}
+				// TODO: Is this necessary?
+				obj = register_object(bc_env->vm, mod->env.store, obj);
+
+				struct ast_typecheck_closure res = {0};
+				// TODO: Allow use of non-constant values.
+				res.req = AST_NAME_DEP_REQUIRE_VALUE;
+				res.lookup_failed = false;
+				res.value = obj;
+				return res;
+			}
 	}
 
 	return (struct ast_typecheck_closure){0};
@@ -92,6 +137,10 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 
 #define AST_GEN_ERROR ((struct ast_gen_bc_result){.err=-1})
 #define AST_GEN_EXPECT_OK(res) do { if ((res).err) { return res; } } while (0);
+
+static struct ast_gen_bc_result
+ast_unpack_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+		struct bc_env *bc_env, bc_var value, size_t descendent);
 
 static struct ast_gen_bc_result
 ast_name_ref_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
@@ -150,10 +199,6 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				result.out_var = closure_instr->copy_closure.target;
 
 				return result;
-
-				// stg_error(ctx->err, loc,
-				// 		"TODO: Closures");
-				// return AST_GEN_ERROR;
 			}
 			break;
 
@@ -162,6 +207,31 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			result.first = result.last = NULL;
 			result.out_var = bc_alloc_param(
 					bc_env, ref.param, type);
+			return result;
+
+		case AST_NAME_REF_USE:
+			{
+				assert(ref.use.id < info->num_use);
+				// TODO: Support use of non-constant values.
+				assert(info->const_use_values[ref.use.id].type != TYPE_UNSET);
+				append_bc_instr(&result,
+						bc_gen_load(bc_env, BC_VAR_NEW,
+							info->const_use_values[ref.use.id]));
+				bc_var value_var;
+				value_var = result.last->load.target;
+
+				struct ast_gen_bc_result unpack_instrs;
+				unpack_instrs = ast_unpack_gen_bytecode(
+							ctx, mod, bc_env,
+							value_var, ref.use.param);
+
+				assert_type_equals(bc_env->vm, type,
+						bc_get_var_type(bc_env, unpack_instrs.out_var));
+
+				append_bc_instrs(&result, unpack_instrs);
+
+				result.out_var = unpack_instrs.out_var;
+			}
 			return result;
 
 		case AST_NAME_REF_NOT_FOUND:
@@ -249,7 +319,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 					struct ast_closure_member *cls;
 					cls = &node->func.closure.members[i];
 					closure[i] = ast_gen_resolve_closure(
-							bc_env, info, cls->ref);
+							bc_env, mod, info, cls->ref);
 
 					// Ensure we got a value if we require const.
 					assert(!cls->require_const ||
@@ -905,6 +975,7 @@ ast_composite_bind_gen_bytecode(
 		struct ast_context *ctx, struct ast_module *mod,
 		ast_member_id *members, type_id *member_types,
 		struct object *const_member_values, size_t num_members,
+		struct object *const_use_values, size_t num_use,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr)
 {
 	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
@@ -921,6 +992,8 @@ ast_composite_bind_gen_bytecode(
 	info.member_types = member_types;
 	info.const_member_values = const_member_values;
 	info.num_members = num_members;
+	info.const_use_values = const_use_values;
+	info.num_use = num_use;
 
 	info.closures = closures;
 	info.num_closures = num_closures;

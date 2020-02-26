@@ -11,6 +11,7 @@ typedef int32_t ast_slot_id;
 typedef int ast_member_id;
 typedef int ast_param_id;
 typedef int ast_closure_id;
+typedef int ast_use_id;
 
 enum ast_name_ref_kind {
 	AST_NAME_REF_NOT_FOUND = 0,
@@ -18,6 +19,7 @@ enum ast_name_ref_kind {
 	AST_NAME_REF_PARAM,
 	AST_NAME_REF_CLOSURE,
 	AST_NAME_REF_TEMPL,
+	AST_NAME_REF_USE,
 };
 
 struct ast_name_ref {
@@ -27,6 +29,10 @@ struct ast_name_ref {
 		ast_param_id   param;
 		ast_closure_id closure;
 		ast_param_id   templ;
+		struct {
+			ast_use_id   id;
+			ast_param_id param;
+		} use;
 	};
 };
 
@@ -399,6 +405,11 @@ struct ast_datatype_bind {
 	bool erroneous;
 };
 
+struct ast_datatype_use {
+	struct ast_node *target;
+	struct stg_location loc;
+};
+
 struct ast_closure_member {
 	struct atom *name;
 	struct ast_name_ref ref;
@@ -501,6 +512,9 @@ struct ast_node {
 
 			struct ast_node **free_exprs;
 			size_t num_free_exprs;
+
+			struct ast_datatype_use *uses;
+			size_t num_uses;
 
 			struct ast_closure_target closure;
 
@@ -703,6 +717,11 @@ ast_node_composite_add_free_expr(
 		struct ast_context *ctx,
 		struct ast_node *target, struct ast_node *expr);
 
+void
+ast_node_composite_add_use(
+		struct ast_context *ctx, struct stg_location,
+		struct ast_node *target, struct ast_node *expr);
+
 struct ast_node *
 ast_init_node_variant(
 		struct ast_context *ctx,
@@ -826,6 +845,9 @@ struct ast_gen_info {
 	bc_closure *closure_refs;
 	size_t num_closures;
 
+	struct object *const_use_values;
+	size_t num_use;
+
 	struct object *templ_values;
 	size_t num_templ_values;
 };
@@ -845,6 +867,7 @@ ast_composite_bind_gen_bytecode(
 		struct ast_context *ctx, struct ast_module *mod,
 		ast_member_id *members, type_id *member_types,
 		struct object *const_member_values, size_t num_members,
+		struct object *const_use_values, size_t num_use,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr);
 
 struct bc_env *

@@ -180,10 +180,10 @@ int main(int argc, char *argv[])
 	exec_ctx = vm_init_exec_context(&vm);
 	vm_call_func(&vm, &exec_ctx, vm.init_func, NULL, 0, &program_obj);
 
-	/*
+#if 0
 	print_obj_repr(&vm, program_obj);
 	printf("\n");
-	*/
+#endif
 
 	struct type *program_type;
 	program_type = vm_get_type(&vm, vm.program_object_type);

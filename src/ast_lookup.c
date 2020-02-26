@@ -1,3 +1,4 @@
+#include "vm.h"
 #include "ast.h"
 #include "native.h"
 #include "dlist.h"
@@ -66,13 +67,22 @@ static struct ast_name_ref
 ast_try_lookup_in_scope(struct ast_context *ctx,
 		struct ast_scope *scope, struct atom *name)
 {
+	struct ast_name_ref res = {0};
+	res.kind = AST_NAME_REF_NOT_FOUND;
+
 	for (size_t i = 0; i < scope->num_names; i++) {
 		if (scope->names[i].name == name) {
-			return scope->names[i].ref;
+			if (res.kind == AST_NAME_REF_NOT_FOUND ||
+					res.kind == AST_NAME_REF_CLOSURE) {
+				res = scope->names[i].ref;
+			} else {
+				assert(scope->names[i].ref.kind == AST_NAME_REF_NOT_FOUND ||
+						scope->names[i].ref.kind == AST_NAME_REF_CLOSURE);
+			}
 		}
 	}
 
-	return (struct ast_name_ref){AST_NAME_REF_NOT_FOUND};
+	return res;
 }
 
 static struct ast_name_ref
@@ -381,15 +391,74 @@ ast_composite_node_resolve_names(struct ast_context *ctx,
 	ast_scope_push_composite(&member_scope, scope);
 	member_scope.closure_target = comp;
 
-	struct ast_scope_name names[comp->composite.num_members];
-	for (size_t i = 0; i < comp->composite.num_members; i++) {
-		names[i].name = comp->composite.members[i].name;
-		names[i].ref.kind = AST_NAME_REF_MEMBER;
-		names[i].ref.member = local_members[i];
+	size_t num_use_fields = 0;
+	for (size_t i = 0; i < comp->composite.num_uses; i++) {
+		type_id target_type = comp->composite.uses[i].target->type;
+		if (target_type == TYPE_UNSET) {
+			continue;
+		}
+
+		struct type *type = vm_get_type(ctx->vm, target_type);
+
+		if (!type->obj_inst) {
+			printf("Use target does not have an object inst.\n");
+			continue;
+		}
+
+		struct object_cons *cons;
+		cons = type->obj_inst->cons;
+
+		num_use_fields += cons->num_params;
 	}
 
+	size_t num_names = comp->composite.num_members + num_use_fields;
+	struct ast_scope_name names[num_names];
+	size_t names_offset = 0;
+
+	for (size_t i = 0; i < comp->composite.num_members; i++) {
+		names[names_offset+i].name = comp->composite.members[i].name;
+		names[names_offset+i].ref.kind = AST_NAME_REF_MEMBER;
+		names[names_offset+i].ref.member = local_members[i];
+	}
+
+	names_offset += comp->composite.num_members;
+
+	for (size_t use_i = 0; use_i < comp->composite.num_uses; use_i++) {
+		type_id target_type = comp->composite.uses[use_i].target->type;
+
+		ast_print_node(ctx, comp->composite.uses[use_i].target, false);
+
+		if (target_type == TYPE_UNSET) {
+			continue;
+		}
+
+		struct type *type = vm_get_type(ctx->vm, target_type);
+
+		if (!type->obj_inst) {
+			continue;
+		}
+
+		struct object_cons *cons;
+		cons = type->obj_inst->cons;
+
+		int local_descendent_ids[cons->num_params];
+		object_cons_local_descendent_ids(
+				ctx->vm, cons, local_descendent_ids);
+
+		for (size_t param_i = 0; param_i < cons->num_params; param_i++) {
+			struct ast_scope_name *name;
+			name = &names[names_offset+use_i+param_i];
+
+			name->name = cons->params[param_i].name;
+			name->ref.kind = AST_NAME_REF_USE;
+			name->ref.use.id = use_i;
+			name->ref.use.param = local_descendent_ids[param_i];
+		}
+	}
+	names_offset += comp->composite.num_uses;
+
 	member_scope.names = names;
-	member_scope.num_names = comp->composite.num_members;
+	member_scope.num_names = num_names;
 
 	if (node == comp) {
 		int err = 0;

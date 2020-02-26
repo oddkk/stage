@@ -24,6 +24,9 @@ ast_name_ref_equals(struct ast_name_ref lhs, struct ast_name_ref rhs)
 			return lhs.closure == rhs.closure;
 		case AST_NAME_REF_TEMPL:
 			return lhs.templ == rhs.templ;
+		case AST_NAME_REF_USE:
+			return lhs.use.id == rhs.use.id &&
+				lhs.use.param == rhs.use.param;
 	}
 
 	return false;

@@ -36,6 +36,10 @@ ast_print_name_ref(struct ast_name_ref ref)
 		case AST_NAME_REF_TEMPL:
 			printf("templ %i", ref.templ);
 			break;
+
+		case AST_NAME_REF_USE:
+			printf("use %i[%i]", ref.use.id, ref.use.param);
+			break;
 	}
 }
 

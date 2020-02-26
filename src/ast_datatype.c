@@ -104,6 +104,17 @@ struct ast_dt_member {
 	ast_member_id persistant_id;
 };
 
+struct ast_dt_use {
+	ast_dt_expr_id expr;
+
+	type_id type;
+
+	bool is_const;
+	struct object const_value;
+
+	ast_dt_job_id const_resolved;
+};
+
 struct ast_dt_dependency {
 	ast_member_id from, to;
 	bool visited;
@@ -124,6 +135,8 @@ enum ast_dt_job_kind {
 
 	AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES,
 	AST_DT_JOB_BIND_TARGET_RESOLVE,
+
+	AST_DT_JOB_USE_CONST_EVAL,
 };
 
 struct ast_dt_job_dep {
@@ -152,6 +165,8 @@ struct ast_dt_job {
 		ast_dt_expr_id expr;
 
 		ast_dt_bind_id bind;
+
+		ast_use_id use;
 
 		// Used when the job is not allocated.
 		ast_dt_job_id free_list;
@@ -185,7 +200,11 @@ struct ast_dt_context {
 	size_t num_member_pages;
 	size_t num_member_alloced;
 
+	struct ast_dt_use *uses;
+	size_t num_uses;
+
 	ast_dt_job_id target_names_resolved;
+	ast_dt_job_id use_resolved;
 
 	struct ast_context *ast_ctx;
 	struct ast_module  *ast_mod;
@@ -240,6 +259,13 @@ get_member(struct ast_dt_context *ctx, ast_member_id id)
 	assert(id >= 0 && id < ctx->num_member_alloced);
 
 	return &ctx->member_pages[id / members_per_page][id % members_per_page];
+}
+
+static inline struct ast_dt_use *
+get_use(struct ast_dt_context *ctx, ast_use_id id)
+{
+	assert(id < ctx->num_uses);
+	return &ctx->uses[id];
 }
 
 static inline ast_member_id
@@ -409,6 +435,17 @@ ast_dt_alloc_member(struct ast_dt_context *ctx)
 	return res;
 }
 
+static ast_use_id
+ast_dt_alloc_use(struct ast_dt_context *ctx)
+{
+	struct ast_dt_use use = {0};
+
+	return dlist_append(
+			ctx->uses,
+			ctx->num_uses,
+			&use);
+}
+
 static inline void
 ast_dt_free_job(struct ast_dt_context *ctx, ast_dt_job_id id)
 {
@@ -549,6 +586,21 @@ ast_dt_job_bind(struct ast_dt_context *ctx,
 	return job_id;
 }
 
+static ast_dt_job_id
+ast_dt_job_use(struct ast_dt_context *ctx,
+		ast_use_id use, enum ast_dt_job_kind kind)
+{
+	ast_dt_job_id job_id;
+	job_id = ast_dt_alloc_job(ctx);
+
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+	job->kind = kind;
+	job->use  = use;
+
+	return job_id;
+}
+
 static void
 ast_dt_job_remove_from_terminal_jobs(struct ast_dt_context *ctx,
 		ast_dt_job_id target_id)
@@ -591,6 +643,9 @@ ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
 			return "BND TAR NAMES";
 		case AST_DT_JOB_BIND_TARGET_RESOLVE:
 			return "BND TAR RESOLVE";
+
+		case AST_DT_JOB_USE_CONST_EVAL:
+			return "USE CONST EVAL";
 
 		case AST_DT_JOB_FREE:
 			return "FREE";
@@ -663,6 +718,25 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 				}
 			}
 			break;
+
+		case AST_DT_JOB_USE_CONST_EVAL:
+			{
+				struct ast_dt_use *use;
+				use = get_use(ctx, job->use);
+
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, use->expr);
+
+				printf("use ");
+				if (expr->constant) {
+				} else if (expr->value.node) {
+					ast_print_node(ctx->ast_ctx,
+							expr->value.node, false);
+				} else {
+					printf("func %lu", expr->value.func);
+				}
+			}
+			break;
 	}
 	printf(")");
 }
@@ -716,6 +790,35 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 
 	to->num_incoming_deps += 1;
 	ctx->unvisited_job_deps += 1;
+}
+
+// When a lookup is determined to not refer to a local name it can either refer
+// to a field exposed by a 'use' statement or to a closure. Expressions
+// containing such lookups are considered ambigous.
+static inline bool
+ast_dt_expr_has_ambigous_refs(struct ast_node *node)
+{
+	struct ast_name_dep *deps = NULL;
+	size_t num_deps = 0;
+
+	// TODO: We can not use this proc to find what names an expression uses
+	// because it is based on what ref has been set by lookup, and lookup is
+	// not run until after the ambiguity is supposed to be resolved.
+	ast_node_find_named_dependencies(
+			node, AST_NAME_DEP_REQUIRE_TYPE, &deps, &num_deps);
+
+	bool ambigous = false;
+
+	for (size_t i = 0; i < num_deps; i++) {
+		if (deps[i].ref.kind == AST_NAME_REF_CLOSURE) {
+			ambigous = true;
+			break;
+		}
+	}
+
+	free(deps);
+
+	return ambigous;
 }
 
 static void
@@ -813,6 +916,13 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 	ast_dt_job_dependency(ctx,
 			new_expr->value_jobs.resolve_types,
 			new_expr->value_jobs.codegen);
+
+	if (ast_dt_expr_has_ambigous_refs(new_expr->value.node)) {
+		ast_dt_job_dependency(ctx,
+				ctx->use_resolved,
+				new_expr->value_jobs.resolve_names);
+	}
+
 
 	return expr_i;
 }
@@ -924,6 +1034,12 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 				mbr->type_jobs.resolve_types,
 				mbr->type_jobs.codegen);
 
+		if (ast_dt_expr_has_ambigous_refs(mbr->type_node)) {
+			ast_dt_job_dependency(ctx,
+					ctx->use_resolved,
+					mbr->type_jobs.resolve_names);
+		}
+
 		mbr->type_resolved = mbr->type_jobs.codegen;
 	}
 
@@ -1025,6 +1141,12 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 			bind->target_jobs.resolve_names,
 			ctx->target_names_resolved);
 
+	// if (ast_dt_expr_has_ambigous_refs(bind->target_node)) {
+	// 	ast_dt_job_dependency(ctx,
+	// 			ctx->use_resolved,
+	// 			bind->target_jobs.resolve_names);
+	// }
+
 	return bind_id;
 }
 
@@ -1081,6 +1203,34 @@ ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
 			ctx, mbr_id, bind_id, unpack_id, typegiving);
 
 	return bind_id;
+}
+
+static ast_use_id
+ast_dt_register_use(struct ast_dt_context *ctx, ast_dt_expr_id expr_id)
+{
+	ast_use_id use_id;
+	use_id = ast_dt_alloc_use(ctx);
+
+	struct ast_dt_use *use;
+	use = get_use(ctx, use_id);
+
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	use->expr = expr_id;
+
+	use->const_resolved = ast_dt_job_use(ctx, use_id,
+			AST_DT_JOB_USE_CONST_EVAL);
+
+	ast_dt_job_dependency(ctx,
+			expr->value_jobs.codegen,
+			use->const_resolved);
+
+	ast_dt_job_dependency(ctx,
+			expr->value_jobs.resolve_types,
+			ctx->use_resolved);
+
+	return use_id;
 }
 
 static int
@@ -1347,6 +1497,14 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		struct ast_dt_member *mbr;
 		mbr = get_member(ctx, members[i]);
 		assert(mbr->type_resolved >= 0);
+	}
+
+	for (size_t i = 0; i < node->composite.num_uses; i++) {
+		ast_dt_expr_id expr_id;
+		expr_id = ast_dt_register_expr(ctx,
+					node->composite.uses[i].target);
+
+		ast_dt_register_use(ctx, expr_id);
 	}
 }
 
@@ -1647,11 +1805,25 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 	free(names);
 	names = NULL;
 
+	struct object const_use_values[ctx->num_uses];
+
+	for (ast_use_id use_i = 0; use_i < ctx->num_uses; use_i++) {
+		struct ast_dt_use *use;
+		use = get_use(ctx, use_i);
+
+		if (use->is_const) {
+			const_use_values[use_i] = use->const_value;
+		} else {
+			const_use_values[use_i] = OBJ_UNSET;
+		}
+	}
+
 	struct bc_env *bc_env;
 	bc_env = ast_composite_bind_gen_bytecode(
 				ctx->ast_ctx, ctx->ast_mod,
 				dep_members, dep_member_types,
 				dep_member_const, num_dep_members,
+				const_use_values, ctx->num_uses,
 				ctx->closures, ctx->num_closures, node);
 	if (!bc_env) {
 		return FUNC_UNSET;
@@ -1751,6 +1923,53 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 					body_deps[i].value = -1;
 					body_deps[i].lookup_failed = true;
 					body_deps[i].determined = false;
+				}
+				break;
+
+			case AST_NAME_REF_USE:
+				{
+					struct ast_dt_use *use;
+					use = get_use(ctx, deps[i].ref.use.id);
+
+					// TODO: Support use of non-constant values.
+					assert(use->is_const);
+
+					type_id target_type_id;
+					int err;
+					err = object_cons_descendant_type(
+							ctx->ast_ctx->vm, use->type,
+							deps[i].ref.use.param, &target_type_id);
+					if (err) {
+						printf("Failed to resolve the use target's type.\n");
+						return -1;
+					}
+
+					struct type *target_type;
+					target_type = vm_get_type(ctx->ast_ctx->vm, target_type_id);
+
+					uint8_t buffer[target_type->size];
+					memset(buffer, 0, target_type->size);
+					struct object obj = {0};
+					obj.type = target_type_id;
+					obj.data = buffer;
+
+					err = object_unpack(
+							ctx->ast_ctx->vm,
+							use->const_value,
+							deps[i].ref.use.param, &obj);
+					if (err) {
+						printf("Failed to unpack use target.\n");
+						return -1;
+					}
+					// TODO: Is this necessary?
+					obj = register_object(ctx->ast_ctx->vm, ctx->ast_mod->env.store, obj);
+
+					body_deps[i].ref = deps[i].ref;
+					body_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+					body_deps[i].val = obj;
+					body_deps[i].value = -1;
+					body_deps[i].lookup_failed = false;
+					body_deps[i].determined = true;
 				}
 				break;
 
@@ -2168,6 +2387,30 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			return 0;
 
+		case AST_DT_JOB_USE_CONST_EVAL:
+			{
+				struct ast_dt_use *use;
+				use = get_use(ctx, job->use);
+
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, use->expr);
+
+				assert(expr->type != TYPE_UNSET);
+				use->type = expr->type;
+
+				int err;
+				err = ast_dt_try_eval_expr_const(
+						ctx, use->expr, &use->const_value);
+				if (err) {
+					printf("not constant %i\n", err);
+					return err < 0;
+				}
+
+				use->is_const = true;
+
+			}
+			return 0;
+
 		case AST_DT_JOB_FREE:
 			panic("Attempted to dispatch job that has been freed.");
 			break;
@@ -2283,6 +2526,14 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			break;
 
+		case AST_DT_JOB_USE_CONST_EVAL:
+			{
+				struct ast_dt_use *use;
+				use = get_use(ctx, job->use);
+				assert(use->const_resolved == job_id);
+				use->const_resolved = -1;
+			}
+			break;
 	}
 }
 
@@ -2719,6 +2970,8 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 	dt_ctx.target_names_resolved =
 		ast_dt_job_nop(&dt_ctx, &dt_ctx.target_names_resolved);
+	dt_ctx.use_resolved =
+		ast_dt_job_nop(&dt_ctx, &dt_ctx.use_resolved);
 
 	ast_dt_composite_populate(&dt_ctx, comp);
 

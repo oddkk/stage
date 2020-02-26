@@ -420,6 +420,23 @@ ast_node_composite_add_free_expr(
 			&expr);
 }
 
+void
+ast_node_composite_add_use(
+		struct ast_context *ctx, struct stg_location loc,
+		struct ast_node *target, struct ast_node *expr)
+{
+	assert(target && expr);
+
+	struct ast_datatype_use use;
+	use.target = expr;
+	use.loc = loc;
+
+	dlist_append(
+			target->composite.uses,
+			target->composite.num_uses,
+			&use);
+}
+
 struct ast_node *
 ast_init_node_variant(
 		struct ast_context *ctx,
