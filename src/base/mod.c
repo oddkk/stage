@@ -115,6 +115,17 @@ stg_base_init(struct ast_context *ctx, struct stg_module *mod)
 	ast_namespace_add_decl(ctx, &mod->mod,
 			mod->mod.root, mod_atoms(mod, "Unit"), unit_type_expr);
 
+	struct ast_node *unit_inst_expr;
+	struct object unit_inst = {0};
+	unit_inst.type = ctx->types.unit;
+	unit_inst.data = NULL;
+
+	unit_inst_expr = ast_init_node_lit(
+			ctx, AST_NODE_NEW, STG_NO_LOC, unit_inst);
+	ast_namespace_add_decl(ctx, &mod->mod,
+			mod->mod.root, mod_atoms(mod, "unit"), unit_inst_expr);
+
+
 	struct ast_node *string_type_expr;
 	struct object string_obj = {0};
 	string_obj.type = ctx->types.type;
