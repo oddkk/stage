@@ -114,6 +114,9 @@ init_type_unpack(
 	type = vm_get_type(ctx->vm, tid);
 	// TODO: Properly report type mismatch error.
 	if (type->base != &init_type_base) {
+		stg_error(ctx->err, STG_NO_LOC,
+				"Expected Init type, got %.*s.",
+				LIT(type->base->name));
 		return -1;
 	}
 
