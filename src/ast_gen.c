@@ -271,7 +271,7 @@ ast_unpack_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			size_t num_desc;
 			if (mbr_type->obj_def) {
 				num_desc = object_cons_num_descendants(
-						ctx->vm, mbr_type->obj_def);
+						ctx->vm, mbr_type->obj_def) + 1;
 			} else {
 				num_desc = 1;
 			}
@@ -287,6 +287,7 @@ ast_unpack_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 							def->unpack, def->data, i,
 							def->params[i].type));
 
+				result.out_var = result.last->unpack.target;
 				current_type = def->params[i].type;
 				descendent -= offset;
 				break;
@@ -949,6 +950,10 @@ ast_func_gen_bytecode(
 		return NULL;
 	}
 
+	assert_type_equals(ctx->vm,
+			bc_get_var_type(bc_env, func_instr.out_var),
+			node->func.body->type);
+
 	append_bc_instr(&func_instr,
 			bc_gen_ret(bc_env, func_instr.out_var));
 
@@ -1009,6 +1014,10 @@ ast_composite_bind_gen_bytecode(
 		return NULL;
 	}
 
+	assert_type_equals(ctx->vm,
+			bc_get_var_type(bc_env, func_instr.out_var),
+			expr->type);
+
 	append_bc_instr(&func_instr,
 			bc_gen_ret(bc_env, func_instr.out_var));
 
@@ -1052,6 +1061,10 @@ ast_type_expr_gen_bytecode(
 	if (func_instr.err) {
 		return NULL;
 	}
+
+	assert_type_equals(ctx->vm,
+			bc_get_var_type(bc_env, func_instr.out_var),
+			ctx->types.type);
 
 	append_bc_instr(&func_instr,
 			bc_gen_ret(bc_env, func_instr.out_var));
