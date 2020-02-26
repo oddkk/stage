@@ -553,15 +553,16 @@ ast_composite_setup_scope(struct ast_context *ctx, struct ast_scope *target_scop
 
 		for (size_t param_i = 0; param_i < cons->num_params; param_i++) {
 			struct ast_scope_name *name;
-			name = &names_buffer[names_offset+use_i+param_i];
+			name = &names_buffer[names_offset+param_i];
 
 			name->name = cons->params[param_i].name;
 			name->ref.kind = AST_NAME_REF_USE;
 			name->ref.use.id = use_i;
 			name->ref.use.param = local_descendent_ids[param_i];
 		}
+
+		names_offset += cons->num_params;
 	}
-	names_offset += comp->composite.num_uses;
 
 	target_scope->names = names_buffer;
 	target_scope->num_names = num_names;
