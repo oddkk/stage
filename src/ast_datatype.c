@@ -796,29 +796,13 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 // to a field exposed by a 'use' statement or to a closure. Expressions
 // containing such lookups are considered ambigous.
 static inline bool
-ast_dt_expr_has_ambigous_refs(struct ast_node *node)
+ast_dt_expr_has_ambiguous_refs(struct ast_dt_context *ctx, struct ast_node *node)
 {
-	struct ast_name_dep *deps = NULL;
-	size_t num_deps = 0;
+	int res;
+	res = ast_composite_node_has_ambiguous_refs(
+			ctx->ast_ctx, NULL, ctx->root_node, node, ctx->local_member_ids);
 
-	// TODO: We can not use this proc to find what names an expression uses
-	// because it is based on what ref has been set by lookup, and lookup is
-	// not run until after the ambiguity is supposed to be resolved.
-	ast_node_find_named_dependencies(
-			node, AST_NAME_DEP_REQUIRE_TYPE, &deps, &num_deps);
-
-	bool ambigous = false;
-
-	for (size_t i = 0; i < num_deps; i++) {
-		if (deps[i].ref.kind == AST_NAME_REF_CLOSURE) {
-			ambigous = true;
-			break;
-		}
-	}
-
-	free(deps);
-
-	return ambigous;
+	return res != 0;
 }
 
 static void
@@ -917,7 +901,7 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 			new_expr->value_jobs.resolve_types,
 			new_expr->value_jobs.codegen);
 
-	if (ast_dt_expr_has_ambigous_refs(new_expr->value.node)) {
+	if (ast_dt_expr_has_ambiguous_refs(ctx, new_expr->value.node)) {
 		ast_dt_job_dependency(ctx,
 				ctx->use_resolved,
 				new_expr->value_jobs.resolve_names);
@@ -1034,7 +1018,7 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 				mbr->type_jobs.resolve_types,
 				mbr->type_jobs.codegen);
 
-		if (ast_dt_expr_has_ambigous_refs(mbr->type_node)) {
+		if (ast_dt_expr_has_ambiguous_refs(ctx, mbr->type_node)) {
 			ast_dt_job_dependency(ctx,
 					ctx->use_resolved,
 					mbr->type_jobs.resolve_names);
@@ -1141,7 +1125,7 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 			bind->target_jobs.resolve_names,
 			ctx->target_names_resolved);
 
-	// if (ast_dt_expr_has_ambigous_refs(bind->target_node)) {
+	// if (ast_dt_expr_has_ambiguous_refs(ctx, bind->target_node)) {
 	// 	ast_dt_job_dependency(ctx,
 	// 			ctx->use_resolved,
 	// 			bind->target_jobs.resolve_names);
@@ -1226,8 +1210,13 @@ ast_dt_register_use(struct ast_dt_context *ctx, ast_dt_expr_id expr_id)
 			expr->value_jobs.codegen,
 			use->const_resolved);
 
+	// TODO: Support use of non-constant targets.
+	// ast_dt_job_dependency(ctx,
+	// 		expr->value_jobs.resolve_types,
+	// 		ctx->use_resolved);
+
 	ast_dt_job_dependency(ctx,
-			expr->value_jobs.resolve_types,
+			use->const_resolved,
 			ctx->use_resolved);
 
 	return use_id;

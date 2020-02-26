@@ -753,9 +753,19 @@ ast_node_resolve_names(struct ast_context *ctx,
 		bool require_const, struct ast_node *node);
 
 int
+ast_node_has_ambiguous_refs(struct ast_context *ctx,
+		struct ast_scope *scope, struct ast_node *node);
+
+int
 ast_composite_node_resolve_names(struct ast_context *ctx,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *comp, struct ast_node *node,
+		ast_member_id *local_members);
+
+int
+ast_composite_node_has_ambiguous_refs(
+		struct ast_context *ctx, struct ast_scope *scope,
+		struct ast_node *comp, struct ast_node *node,
 		ast_member_id *local_members);
 
 int
