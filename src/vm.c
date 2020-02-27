@@ -98,8 +98,8 @@ vm_register_module(struct vm *vm, struct ast_context *ctx,
 
 	mod->mod.stg_mod = mod;
 
-	if (mod->info.init) {
-		mod->info.init(ctx, mod);
+	if (mod->info.pre_compile) {
+		mod->info.pre_compile(ctx, mod);
 	}
 
 	return mod;

@@ -561,7 +561,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				};
 
 				if (data->native_mod) {
-					modinfo.init = data->native_mod->hook_init;
+					modinfo.pre_compile = data->native_mod->hook_pre_compile;
 					modinfo.post_init = data->native_mod->hook_post_init;
 					modinfo.start = data->native_mod->hook_start;
 					modinfo.free = data->native_mod->hook_free;

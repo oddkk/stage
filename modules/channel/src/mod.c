@@ -110,7 +110,7 @@ cnl_register_channel_type(struct stg_module *mod, type_id cnl_type)
 }
 
 int
-mod_channel_init(struct ast_context *ctx, struct stg_module *mod)
+mod_channel_pre_compile(struct ast_context *ctx, struct stg_module *mod)
 {
 	struct cnl_context *cctx;
 	cctx = calloc(1, sizeof(struct cnl_context));
@@ -177,7 +177,7 @@ mod_channel_free(struct stg_module *mod)
 int
 mod_channel_load(struct stg_native_module *mod)
 {
-	mod->hook_init = mod_channel_init;
+	mod->hook_pre_compile = mod_channel_pre_compile;
 	mod->hook_free = mod_channel_free;
 	mod->hook_start = mod_channel_start;
 

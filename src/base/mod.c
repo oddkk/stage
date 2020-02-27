@@ -13,7 +13,7 @@ print_int(int64_t val)
 }
 
 static int
-stg_base_bootstrap_init(struct ast_context *ctx, struct stg_module *mod) {
+stg_base_bootstrap_pre_compile(struct ast_context *ctx, struct stg_module *mod) {
 	assert(mod->id == 0);
 	assert(ctx == NULL);
 
@@ -72,11 +72,11 @@ static struct stg_module_info base_bootstrap_mod_info = {
 	.name    = STR("base_bootstrap"),
 	.version = {0, 1},
 
-	.init = stg_base_bootstrap_init,
+	.pre_compile = stg_base_bootstrap_pre_compile,
 };
 
 static int
-stg_base_init(struct ast_context *ctx, struct stg_module *mod)
+stg_base_pre_compile(struct ast_context *ctx, struct stg_module *mod)
 {
 	struct stg_base_mod_info *info;
 	info = calloc(1, sizeof(struct stg_base_mod_info));
@@ -162,5 +162,5 @@ stg_base_load(struct vm *vm)
 	base_io_register_native(mod);
 	stg_native_register_funcs(mod, print_int, STG_NATIVE_FUNC_IMPURE);
 
-	mod->hook_init = stg_base_init;
+	mod->hook_pre_compile = stg_base_pre_compile;
 }

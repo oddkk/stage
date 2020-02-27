@@ -17,7 +17,7 @@ struct stg_module_info {
 
 	void *data;
 
-	int  (*init)(struct ast_context *ctx, struct stg_module *);
+	int  (*pre_compile)(struct ast_context *ctx, struct stg_module *);
 	void (*free)(struct stg_module *);
 
 	int  (*post_init)(struct stg_module *);

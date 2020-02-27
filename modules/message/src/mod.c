@@ -152,7 +152,7 @@ msg_endpoint_cons(struct msg_endpoint_cons_info *info, msg_node_id in)
 }
 
 int
-mod_message_init(struct ast_context *ast_ctx, struct stg_module *mod)
+mod_message_pre_compile(struct ast_context *ast_ctx, struct stg_module *mod)
 {
 	struct msg_context *ctx;
 	ctx = calloc(1, sizeof(struct msg_context));
@@ -355,10 +355,10 @@ mod_message_free(struct stg_module *mod)
 int
 mod_message_load(struct stg_native_module *mod)
 {
-	mod->hook_init      = mod_message_init;
-	mod->hook_post_init = mod_message_post_init;
-	mod->hook_free      = mod_message_free;
-	mod->hook_start     = mod_message_start;
+	mod->hook_pre_compile = mod_message_pre_compile;
+	mod->hook_post_init   = mod_message_post_init;
+	mod->hook_free        = mod_message_free;
+	mod->hook_start       = mod_message_start;
 
 	stg_native_register_funcs(mod, msg_functor_map,
 			STG_NATIVE_FUNC_HEAP | STG_NATIVE_FUNC_MODULE_CLOSURE);
