@@ -132,7 +132,7 @@ mod_sql_pre_compile(struct ast_context *ast_ctx, struct stg_module *mod)
 }
 
 void
-mod_sql_free(struct stg_module *mod)
+mod_sql_destroy(struct stg_module *mod)
 {
 	struct sql_context *ctx = mod->data;
 
@@ -145,7 +145,7 @@ int
 mod_sql_load(struct stg_native_module *mod)
 {
 	mod->hook_pre_compile = mod_sql_pre_compile;
-	mod->hook_free = mod_sql_free;
+	mod->hook_destroy = mod_sql_destroy;
 
 	stg_native_register_funcs(mod, sql_db_connect,
 			STG_NATIVE_FUNC_HEAP);

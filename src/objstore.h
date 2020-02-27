@@ -11,14 +11,15 @@ typedef uint64_t type_id;
 typedef uint32_t modtype_id;
 typedef uint64_t func_id;
 typedef uint32_t modfunc_id;
+typedef uint32_t stg_mod_id;
 typedef size_t template_id;
 
 #define TYPE_ID(modid, typeid) (((type_id)modid << 32) | ((type_id)typeid & 0xffffffff))
-#define TYPE_ID_MOD(typeid) (uint32_t)((typeid >> 32) & 0xffffffff)
+#define TYPE_ID_MOD(typeid) (stg_mod_id)((typeid >> 32) & 0xffffffff)
 #define TYPE_ID_TYPE(typeid) (modtype_id)(typeid & 0xffffffff)
 
 #define FUNC_ID(modid, funcid) (((func_id)modid << 32) | ((func_id)funcid & 0xffffffff))
-#define FUNC_ID_MOD(funcid) (uint32_t)((funcid >> 32) & 0xffffffff)
+#define FUNC_ID_MOD(funcid) (stg_mod_id)((funcid >> 32) & 0xffffffff)
 #define FUNC_ID_LOCAL(funcid) (modfunc_id)(funcid & 0xffffffff)
 
 #define FUNC_UNSET ((func_id)0)
@@ -132,7 +133,7 @@ struct object {
 
 struct objstore {
 	size_t page_size;
-	uint32_t mod_id;
+	stg_mod_id mod_id;
 
 	uint8_t **data_pages;
 	size_t num_data_pages;

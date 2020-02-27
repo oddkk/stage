@@ -938,12 +938,6 @@ struct ast_module {
 
 	struct ast_node *root;
 
-	struct ast_module_dependency *dependencies;
-	size_t num_dependencies;
-
-	bool has_native_module_ext;
-	struct string native_module_ext;
-
 	struct object instance;
 };
 

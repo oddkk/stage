@@ -48,9 +48,10 @@ struct stg_native_module {
 	size_t num_types;
 
 	int  (*hook_pre_compile)(struct ast_context *, struct stg_module *);
+	int  (*hook_pre_init   )(struct stg_module *);
 	int  (*hook_post_init  )(struct stg_module *);
-	void (*hook_free       )(struct stg_module *);
 	int  (*hook_start      )(struct stg_module *);
+	void (*hook_destroy    )(struct stg_module *);
 };
 
 void

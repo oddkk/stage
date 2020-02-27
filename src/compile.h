@@ -15,12 +15,6 @@ enum complie_job_type {
 
 extern struct string complie_job_names[COMPILE_JOBS_LEN];
 
-struct stg_compile_options {
-	struct string *module_locations;
-	size_t num_module_locations;
-};
-
-int stg_compile(struct vm *vm, struct ast_context *,
-		struct stg_compile_options, struct string src_dir);
+int stg_compile(struct vm *vm, struct ast_context *);
 
 #endif

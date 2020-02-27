@@ -1,5 +1,6 @@
 #include "ast.h"
 #include "vm.h"
+#include "module.h"
 #include "utils.h"
 #include "error.h"
 #include "base/mod.h"
@@ -616,14 +617,9 @@ ast_node_constraints(
 			res_slot = ast_slot_alloc(env);
 			node->typecheck_slot = res_slot;
 
-			struct ast_module *mod_ref = NULL;
-
-			for (size_t i = 0; i < mod->num_dependencies; i++) {
-				if (mod->dependencies[i].name == node->mod.name) {
-					mod_ref = mod->dependencies[i].mod;
-					break;
-				}
-			}
+			struct stg_module *mod_ref = NULL;
+			mod_ref = stg_mod_find_module(
+					mod->stg_mod, node->mod.name);
 
 			if (!mod_ref) {
 				panic("Attempted to access module that was not registered as a dependency.");
@@ -632,11 +628,11 @@ ast_node_constraints(
 				break;
 			}
 
-			assert(mod_ref->instance.type != TYPE_UNSET);
+			assert(mod_ref->mod.instance.type != TYPE_UNSET);
 
 			ast_slot_require_is_obj(
 					env, node->loc, AST_CONSTR_SRC_MOD,
-					res_slot, mod_ref->instance);
+					res_slot, mod_ref->mod.instance);
 		}
 		break;
 

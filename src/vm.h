@@ -20,10 +20,17 @@ struct stg_module_info;
 struct stg_native_module;
 struct bc_instr_store;
 
+struct stg_compile_options {
+	struct string *module_locations;
+	size_t num_module_locations;
+};
+
 struct vm {
 	/* struct objstore store; */
 	struct arena memory;
 	struct atom_table atom_table;
+
+	struct stg_compile_options compile_options;
 
 	struct stg_module **modules;
 	size_t num_modules;
@@ -47,12 +54,20 @@ struct vm {
 struct ast_context;
 struct ast_module;
 
+#define VM_REQUEST_MOD_NO_LOC ((struct string){.text=NULL, .length=0})
+#define VM_REQUEST_PINNED ((stg_mod_id)UINT32_MAX)
+
 struct stg_module *
-vm_register_module(struct vm *vm, struct ast_context *,
-		struct ast_module *, struct stg_module_info *);
+vm_request_module(struct vm *vm,
+		stg_mod_id requestor,
+		struct atom *module,
+		struct string location);
 
 struct stg_module *
 vm_get_module(struct vm *vm, struct string name);
+
+struct stg_module *
+vm_get_module_by_id(struct vm *vm, stg_mod_id);
 
 struct stg_module *
 vm_get_module_by_native(struct vm *vm, struct stg_native_module *mod);

@@ -348,7 +348,7 @@ mod_message_start(struct stg_module *mod)
 }
 
 void
-mod_message_free(struct stg_module *mod)
+mod_message_destroy(struct stg_module *mod)
 {
 }
 
@@ -357,7 +357,7 @@ mod_message_load(struct stg_native_module *mod)
 {
 	mod->hook_pre_compile = mod_message_pre_compile;
 	mod->hook_post_init   = mod_message_post_init;
-	mod->hook_free        = mod_message_free;
+	mod->hook_destroy     = mod_message_destroy;
 	mod->hook_start       = mod_message_start;
 
 	stg_native_register_funcs(mod, msg_functor_map,

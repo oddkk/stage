@@ -165,7 +165,7 @@ mod_channel_start(struct stg_module *mod)
 }
 
 void
-mod_channel_free(struct stg_module *mod)
+mod_channel_destroy(struct stg_module *mod)
 {
 	struct cnl_context *ctx = mod->data;
 
@@ -178,7 +178,7 @@ int
 mod_channel_load(struct stg_native_module *mod)
 {
 	mod->hook_pre_compile = mod_channel_pre_compile;
-	mod->hook_free = mod_channel_free;
+	mod->hook_destroy = mod_channel_destroy;
 	mod->hook_start = mod_channel_start;
 
 	return 0;

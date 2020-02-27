@@ -12,10 +12,15 @@ print_int(int64_t val)
 	return val;
 }
 
+static void
+func_unset_call()
+{
+	panic("Called an unset function.");
+}
+
 static int
-stg_base_bootstrap_pre_compile(struct ast_context *ctx, struct stg_module *mod) {
+stg_base_bootstrap_pre_compile(struct stg_module *mod) {
 	assert(mod->id == 0);
-	assert(ctx == NULL);
 
 	{
 		struct type_base *base = calloc(1, sizeof(struct type_base));
@@ -57,23 +62,25 @@ stg_base_bootstrap_pre_compile(struct ast_context *ctx, struct stg_module *mod) 
 		mod->vm->default_types.unit = store_register_type(&mod->store, unit);
 	}
 
+	{
+		struct func func_unset = {0};
+
+		func_unset.native = (void *)func_unset_call;
+		func_unset.type = stg_register_func_type(mod,
+				mod->vm->default_types.unit, NULL, 0);
+
+		func_id fid;
+		fid = store_register_func(&mod->store, func_unset);
+		assert(fid == 0);
+	}
+
 	base_bootstrap_register_type(mod);
 	base_bootstrap_register_cons(mod);
 	base_bootstrap_register_integer(mod);
 	base_bootstrap_register_string(mod);
 
-	struct ast_context tmp_ctx;
-	tmp_ctx = ast_init_context(NULL, &mod->vm->atom_table, mod->vm);
-
 	return 0;
 }
-
-static struct stg_module_info base_bootstrap_mod_info = {
-	.name    = STR("base_bootstrap"),
-	.version = {0, 1},
-
-	.pre_compile = stg_base_bootstrap_pre_compile,
-};
 
 static int
 stg_base_pre_compile(struct ast_context *ctx, struct stg_module *mod)
@@ -148,11 +155,15 @@ stg_base_pre_compile(struct ast_context *ctx, struct stg_module *mod)
 void
 stg_base_load(struct vm *vm)
 {
+	struct stg_module *base_mod;
+	base_mod = vm_request_module(vm,
+			VM_REQUEST_PINNED,
+			vm_atoms(vm, "base"),
+			VM_REQUEST_MOD_NO_LOC);
+
 	// We manually register the base_bootstrap module this early because it is
-	// required for the compiler to function. At this point, there exists no
-	// ast_context because we are missing the types and constructors that are
-	// being created in base_bootstrap.
-	vm_register_module(vm, NULL, NULL, &base_bootstrap_mod_info);
+	// required for the compiler to function.
+	stg_base_bootstrap_pre_compile(base_mod);
 
 	struct stg_native_module *mod;
 	mod = vm_add_precompiled_native_module(vm, STR("base"));

@@ -8,24 +8,10 @@
 
 struct stg_module;
 
-struct stg_module_info {
-	struct string name;
-	struct {
-		unsigned int major;
-		unsigned int minor;
-	} version;
-
-	void *data;
-
-	int  (*pre_compile)(struct ast_context *ctx, struct stg_module *);
-	void (*free)(struct stg_module *);
-
-	int  (*post_init)(struct stg_module *);
-	int  (*start)(struct stg_module *);
-};
-
 enum stg_module_lifetime {
-	STG_MOD_LIFE_INIT = 0,
+	STG_MOD_LIFE_PRE_COMPILE = 0,
+	STG_MOD_LIFE_COMPILING,
+	STG_MOD_LIFE_INIT,
 	STG_MOD_LIFE_IDLE,
 	STG_MOD_LIFE_RUNNING,
 	STG_MOD_LIFE_DESTROYED,
@@ -39,10 +25,18 @@ stg_mod_state_ok(enum stg_module_lifetime state) {
 }
 
 struct stg_module {
-	unsigned int id;
+	stg_mod_id id;
 	enum stg_module_lifetime state;
 
-	struct stg_module_info info;
+	// If a module is pinned it will not be unloaded even if no other modules
+	// depend on it.
+	bool pin;
+
+	struct atom *name;
+	struct string src_dir;
+
+	stg_mod_id *dependencies;
+	size_t num_dependencies;
 
 	struct objstore store;
 	struct atom_table *atom_table;
@@ -50,6 +44,9 @@ struct stg_module {
 
 	struct ast_module mod;
 	struct stg_native_module *native_mod;
+
+	bool has_native_module_ext;
+	struct string native_module_ext;
 
 	void *data;
 };
@@ -80,5 +77,23 @@ stg_register_type(struct stg_module *, struct type);
 
 func_id
 stg_register_func(struct stg_module *, struct func);
+
+struct stg_module *
+stg_mod_find_module(struct stg_module *, struct atom *name);
+
+int
+stg_mod_invoke_pre_compile(struct ast_context *ctx, struct stg_module *mod);
+
+int
+stg_mod_invoke_pre_init(struct stg_module *mod);
+
+int
+stg_mod_invoke_post_init(struct stg_module *mod);
+
+int
+stg_mod_invoke_start(struct stg_module *mod);
+
+void
+stg_mod_invoke_destroy(struct stg_module *mod);
 
 #endif

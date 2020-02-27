@@ -161,8 +161,9 @@ int main(int argc, char *argv[])
 		.module_locations = module_locations,
 		.num_module_locations = ARRAY_LENGTH(module_locations),
 	};
+	vm.compile_options = compile_opts;
 
-	err = stg_compile(&vm, &ctx, compile_opts, args.project_path);
+	err = stg_compile(&vm, &ctx);
 	if (err) {
 		return -1;
 	}

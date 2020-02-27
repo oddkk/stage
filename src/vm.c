@@ -34,10 +34,7 @@ void vm_destroy(struct vm *vm)
 	for (size_t i = 0; i < vm->num_modules; i++) {
 		struct stg_module *mod = vm->modules[i];
 
-		if (mod->info.free) {
-			mod->info.free(mod);
-		}
-
+		stg_mod_invoke_destroy(mod);
 		free(mod);
 	}
 
@@ -50,9 +47,8 @@ int vm_start(struct vm *vm)
 {
 	for (size_t i = 0; i < vm->num_modules; i++) {
 		struct stg_module *mod = vm->modules[i];
-		if (mod->info.start) {
-			mod->info.start(mod);
-		}
+
+		stg_mod_invoke_start(mod);
 	}
 
 	return 0;
@@ -62,45 +58,92 @@ int vm_post_init(struct vm *vm)
 {
 	for (size_t i = 0; i < vm->num_modules; i++) {
 		struct stg_module *mod = vm->modules[i];
-		if (mod->info.post_init) {
-			mod->info.post_init(mod);
-		}
+
+		stg_mod_invoke_post_init(mod);
 	}
 
 	return 0;
 }
 
-struct stg_module *
-vm_register_module(struct vm *vm, struct ast_context *ctx,
-		struct ast_module *old_module, struct stg_module_info *info)
+static void
+vm_add_request(struct vm *vm,
+		struct stg_module *req_mod,
+		struct stg_module *mod)
 {
+	if (req_mod) {
+		bool dep_exist = false;
+		for (size_t i = 0; i < req_mod->num_dependencies; i++) {
+			if (req_mod->dependencies[i] == mod->id) {
+				dep_exist = true;
+				break;
+			}
+		}
+
+		if (!dep_exist) {
+			dlist_append(
+					req_mod->dependencies,
+					req_mod->num_dependencies,
+					&mod->id);
+		}
+	} else {
+		mod->pin = true;
+	}
+}
+
+struct stg_module *
+vm_request_module(struct vm *vm,
+		stg_mod_id requestor,
+		struct atom *target,
+		struct string src_dir)
+{
+	struct stg_module *req_mod = NULL;
+	if (requestor != VM_REQUEST_PINNED) {
+		req_mod = vm_get_module_by_id(vm, requestor);
+		assert(req_mod);
+	}
 
 	struct stg_module *mod;
+	mod = vm_get_module(vm, target->name);
+
+	if (mod) {
+		if (src_dir.text && src_dir.length > 0) {
+			if (!string_equal(mod->src_dir, src_dir)) {
+				printf("Module conflict: Attempted to load module '%.*s' from:\n"
+					   " - %.*s\n - %.*s\n",
+					   ALIT(target), LIT(mod->src_dir), LIT(src_dir));
+				return NULL;
+			}
+		}
+
+		vm_add_request(vm, req_mod, mod);
+
+		return mod;
+	}
+
 	mod = calloc(1, sizeof(struct stg_module));
-	// TODO: Should each module have its own arena, and use that for
-	// its root scope?
+
 	mod->vm = vm;
 	mod->atom_table = &vm->atom_table;
 
-	mod->info = *info;
+	mod->name = target;
+	mod->src_dir = src_dir;
 
-	mod->id = dlist_append(vm->modules,
-						   vm->num_modules, &mod);
+	mod->id = dlist_append(
+			vm->modules, vm->num_modules, &mod);
+
 	mod->store.mod_id = mod->id;
-	if (old_module) {
-		mod->mod = *old_module;
-	} else {
-		mod->mod.env.store = &mod->store;
-		// TODO: Initialize the module.
-		// mod->mod.root.instance = ast_bind_slot_cons(ctx, &mod->mod.env,
-		// 		AST_BIND_NEW, NULL, NULL);
-	}
 
+	mod->mod.env.store = &mod->store;
 	mod->mod.stg_mod = mod;
 
-	if (mod->info.pre_compile) {
-		mod->info.pre_compile(ctx, mod);
+	struct atom *base_atom = vm_atoms(vm, "base");
+	if (mod->name != base_atom) {
+		vm_request_module(vm, mod->id,
+				base_atom,
+				VM_REQUEST_MOD_NO_LOC);
 	}
+
+	vm_add_request(vm, req_mod, mod);
 
 	return mod;
 }
@@ -111,12 +154,19 @@ vm_get_module(struct vm *vm, struct string mod_name)
 	struct stg_module *mod = NULL;
 
 	for (uint32_t mid = 0; mid < vm->num_modules; mid++) {
-		if (string_equal(vm->modules[mid]->info.name, mod_name)) {
+		if (vm->modules[mid]->name == vm_atom(vm, mod_name)) {
 			mod = vm->modules[mid];
 		}
 	}
 
 	return mod;
+}
+
+struct stg_module *
+vm_get_module_by_id(struct vm *vm, stg_mod_id id)
+{
+	assert(id < vm->num_modules);
+	return vm->modules[id];
 }
 
 struct stg_module *

@@ -113,8 +113,6 @@ struct compile_ctx {
 	size_t num_jobs_failed;
 
 	struct stg_error_context err;
-
-	struct stg_compile_options opts;
 };
 
 static void
@@ -282,14 +280,14 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 						.file_name = file_name,
 						.num_unparsed_files = num_unparsed_files);
 			} else if (has_extension(path, STR("module.so")))  {
-				if (mod->has_native_module_ext) {
+				if (mod->stg_mod->has_native_module_ext) {
 					stg_error(&ctx->err, STG_NO_LOC,
 							"Found multiple native module extensions for module.");
 					break;
 				}
 
-				mod->has_native_module_ext = true;
-				string_duplicate(ctx->mem, &mod->native_module_ext, path);
+				mod->stg_mod->has_native_module_ext = true;
+				string_duplicate(ctx->mem, &mod->stg_mod->native_module_ext, path);
 			}
 		} break;
 
@@ -349,95 +347,51 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 	fts_close(ftsp);
 }
 
-/*
-static void
-dispatch_compile_expr(struct compile_ctx *ctx,
-		job_load_module_t *data, struct ast_namespace *ns)
-{
-	for (size_t i = 0; i < ns->num_names; i++) {
-		switch (ns->names[i].kind) {
-			case AST_MODULE_NAME_DECL:
-				DISPATCH_JOB(ctx, compile_expr, COMPILE_PHASE_DISCOVER,
-						.mod = data->mod,
-						.expr = ns->names[i].decl.expr,
-						.out_value = &ns->names[i].decl.value,
-						.num_uncompiled_exprs = &data->num_uncompiled_exprs);
-				data->num_uncompiled_exprs += 1;
-				break;
-
-			case AST_MODULE_NAME_NAMESPACE:
-				dispatch_compile_expr(ctx, data, ns->names[i].ns);
-				break;
-
-			case AST_MODULE_NAME_IMPORT:
-				break;
-		}
-	}
-
-	for (size_t i = 0; i < ns->num_free_exprs; i++) {
-		DISPATCH_JOB(ctx, compile_expr, COMPILE_PHASE_DISCOVER,
-				.mod = data->mod,
-				.expr = ns->free_exprs[i].expr,
-				.out_value = &ns->free_exprs[i].value,
-				.num_uncompiled_exprs = &data->num_uncompiled_exprs);
-		data->num_uncompiled_exprs += 1;
-	}
-}
-*/
-
 static struct job_status
 job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 {
+	struct stg_module *mod;
+	mod = data->stg_mod;
+	assert(mod->state == STG_MOD_LIFE_COMPILING);
+
 	switch (data->state) {
 		case JOB_LOAD_MODULE_DISCOVER:
-			assert(data->module_name != NULL || data->module_src_dir.length != 0);
-
-			if (data->module_name) {
-				struct stg_module *lookup_mod;
-
-				lookup_mod = vm_get_module(ctx->vm, data->module_name->name);
-
-				if (lookup_mod && stg_mod_state_ok(lookup_mod->state)) {
-					if (data->out_module) {
-						*data->out_module = &lookup_mod->mod;
-					}
-
-					return JOB_OK;
-				}
-
-				for (size_t i = 0; i < ctx->vm->num_precompiled_native_modules; i++) {
-					struct stg_native_module *native_mod;
-					native_mod = ctx->vm->precompiled_native_modules[i];
-					if (native_mod->name == data->module_name) {
-						data->native_mod = native_mod;
-						break;
-					}
-				}
-			}
-
 			{
+				assert(mod->name != NULL || mod->src_dir.length != 0);
+
+				if (mod->name) {
+					for (size_t i = 0; i < ctx->vm->num_precompiled_native_modules; i++) {
+						struct stg_native_module *native_mod;
+						native_mod = ctx->vm->precompiled_native_modules[i];
+						if (native_mod->name == mod->name) {
+							mod->native_mod = native_mod;
+							break;
+						}
+					}
+				}
+
 				bool should_discover_files = true;
 
-				if (data->module_src_dir.length == 0) {
+				if (mod->src_dir.length == 0) {
 					bool module_found = false;
 
 					char path_buffer[PATH_MAX + 1];
-					for (size_t i = 0; i < ctx->opts.num_module_locations; i++) {
-						struct string base_dir = ctx->opts.module_locations[i];
+					for (size_t i = 0; i < ctx->vm->compile_options.num_module_locations; i++) {
+						struct string base_dir = ctx->vm->compile_options.module_locations[i];
 
 						size_t predicted_path_length =
 							base_dir.length +
-							data->module_name->name.length + 2;
+							mod->name->name.length + 2;
 
 						if (predicted_path_length > PATH_MAX) {
 							print_error("lookup module",
 									"Module location path '%.*s' is too long. (%zu of max %zu)",
-									base_dir.length + data->module_name->name.length, PATH_MAX);
+									base_dir.length + mod->name->name.length, PATH_MAX);
 							continue;
 						}
 						size_t path_length =
 							snprintf(path_buffer, PATH_MAX + 1,
-								"%.*s/%.*s/", LIT(base_dir), ALIT(data->module_name));
+								"%.*s/%.*s/", LIT(base_dir), ALIT(mod->name));
 
 						for (size_t i = 0; i < path_length; i++) {
 							if (path_buffer[i] == '\0') {
@@ -475,29 +429,27 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 							real_path_string.text[real_path_string.length] = '\0';
 						}
 
-						data->module_src_dir =
+						mod->src_dir =
 							string_duplicate_cstr(real_path_buffer);
 						module_found = true;
 					}
 
-					if (!module_found && !data->native_mod) {
+					if (!module_found && !mod->native_mod) {
 						stg_error(&ctx->err, STG_NO_LOC, "Could not find module '%.*s'",
-								ALIT(data->module_name));
+								ALIT(mod->name));
 						return JOB_ERROR;
 					}
 
 					should_discover_files = module_found;
 				}
 
-				data->mod = &data->_tmp_module;
-				data->mod->env.store = &ctx->store;
-				data->mod->root = ast_init_node_composite(
+				mod->mod.root = ast_init_node_composite(
 						ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC);
 
 				struct atom *base_mod_name = vm_atoms(ctx->vm, "base");
 
-				if (data->module_name != base_mod_name) {
-					ast_module_add_dependency(ctx->ast_ctx, data->mod,
+				if (mod->name != base_mod_name) {
+					ast_module_add_dependency(ctx->ast_ctx, &mod->mod,
 							base_mod_name);
 
 					struct ast_node *use_base_target_node;
@@ -507,19 +459,19 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 					ast_node_composite_add_use(
 							ctx->ast_ctx, STG_NO_LOC,
-							data->mod->root,
+							mod->mod.root,
 							use_base_target_node);
 				}
 
 				if (should_discover_files) {
-					discover_module_files(ctx, data->mod,
-							data->module_src_dir,
+					discover_module_files(ctx, &mod->mod,
+							mod->src_dir,
 							&data->num_unparsed_files);
 				}
 
-				if (!data->native_mod && data->mod->has_native_module_ext) {
-					data->native_mod = stg_native_load_module_ext(
-							ctx->vm, data->mod->native_module_ext);
+				if (!mod->native_mod && mod->has_native_module_ext) {
+					mod->native_mod = stg_native_load_module_ext(
+							ctx->vm, mod->native_module_ext);
 				}
 
 				if (!should_discover_files) {
@@ -536,48 +488,19 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				return JOB_YIELD;
 			}
 
-			assert(data->num_unparsed_files == 0);
-
-			for (size_t i = 0; i < data->mod->num_dependencies; i++) {
-				DISPATCH_JOB(ctx, load_module, COMPILE_PHASE_DISCOVER,
-						.module_name = data->mod->dependencies[i].name,
-						.out_module  = &data->mod->dependencies[i].mod);
-			}
-
 			data->state = JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES;
 			// fallthrough
 
 		case JOB_LOAD_MODULE_WAIT_FOR_DEPENDENCIES:
-			for (size_t i = 0; i < data->mod->num_dependencies; i++) {
-				if (data->mod->dependencies[i].mod == NULL) {
+			for (size_t i = 0; i < mod->num_dependencies; i++) {
+				struct stg_module *dep;
+				dep = vm_get_module_by_id(ctx->vm, mod->dependencies[i]);
+				if (!stg_mod_state_ok(dep->state)) {
 					return JOB_YIELD;
 				}
 			}
 
-			{
-				struct stg_module_info modinfo = {
-					.name = data->module_name->name,
-					.version = {0, 1},
-				};
-
-				if (data->native_mod) {
-					modinfo.pre_compile = data->native_mod->hook_pre_compile;
-					modinfo.post_init = data->native_mod->hook_post_init;
-					modinfo.start = data->native_mod->hook_start;
-					modinfo.free = data->native_mod->hook_free;
-				}
-
-				// We register the module here because at this point all
-				// dependencies are resolved, so the module's init function can
-				// reference them. After this point, _tmp_module should not be
-				// used.
-				data->stg_mod = vm_register_module(ctx->vm,
-						ctx->ast_ctx, data->mod, &modinfo);
-				data->mod = &data->stg_mod->mod;
-				data->stg_mod->native_mod = data->native_mod;
-
-				memset(&data->_tmp_module, 0, sizeof(struct ast_module));
-			}
+			stg_mod_invoke_pre_compile(ctx->ast_ctx, mod);
 
 			data->state = JOB_LOAD_MODULE_DONE;
 			// fallthrough
@@ -585,39 +508,17 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 		case JOB_LOAD_MODULE_DONE:
 			{
 				int err;
-#if 0
-				printf("Module %.*s (%.*s)\n", ALIT(data->module_name), LIT(data->module_src_dir));
-				if (data->mod->root) {
-					ast_print(ctx->ast_ctx, &data->mod->env,
-							data->mod->root);
-				}
+				err = ast_module_finalize(ctx->ast_ctx, &mod->mod);
 
-				printf("\n");
-				ast_env_print(ctx->vm, &data->mod->env);
-#endif
-
-				err = ast_module_finalize(ctx->ast_ctx, data->mod);
 				if (err) {
-					print_error("compile", "Failed to finalize module '%.*s'.",
-							ALIT(data->module_name));
+					print_error("compile", "Failed to initialize module '%.*s'",
+							ALIT(mod->name));
 					return JOB_ERROR;
 				}
 			}
 
-#if 0
-			printf("%.*s (%.*s)\n", ALIT(data->module_name), LIT(data->module_src_dir));
-			ast_print_module(ctx->ast_ctx, data->mod);
-
-			printf("\n");
-			ast_env_print(ctx->vm, &data->mod->env);
-#endif
-
-			assert(data->stg_mod->state == STG_MOD_LIFE_INIT);
-			data->stg_mod->state = STG_MOD_LIFE_IDLE;
-
-			if (data->out_module) {
-				*data->out_module = data->mod;
-			}
+			assert(mod->state == STG_MOD_LIFE_COMPILING);
+			mod->state = STG_MOD_LIFE_IDLE;
 
 			return JOB_OK;
 	}
@@ -764,9 +665,23 @@ static void compile_exec_job(struct compile_ctx *ctx, struct complie_job *job)
 	}
 }
 
+static void
+stg_dispatch_load_modules(struct compile_ctx *ctx)
+{
+	for (size_t i = 0; i < ctx->vm->num_modules; i++) {
+		struct stg_module *mod;
+		mod = ctx->vm->modules[i];
+		if (mod->state == STG_MOD_LIFE_PRE_COMPILE) {
+			mod->state = STG_MOD_LIFE_COMPILING;
+
+			DISPATCH_JOB(ctx, load_module, COMPILE_PHASE_DISCOVER,
+					.stg_mod=mod);
+		}
+	}
+}
+
 int
-stg_compile(struct vm *vm, struct ast_context *ast_ctx,
-		struct stg_compile_options opts, struct string initial_module_src_dir)
+stg_compile(struct vm *vm, struct ast_context *ast_ctx)
 {
 	struct compile_ctx ctx = {0};
 
@@ -774,17 +689,11 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 	ctx.mem = &vm->memory;
 	ctx.err.string_arena = &vm->memory;
 	ctx.ast_ctx = ast_ctx;
-	ctx.opts = opts;
 
 	assert(!ctx.ast_ctx->err);
 	ctx.ast_ctx->err = &ctx.err;
 
-	struct ast_module *main_mod = NULL;
-
-	DISPATCH_JOB(&ctx, load_module, COMPILE_PHASE_DISCOVER,
-			.module_name = vm_atoms(vm, "main"),
-			.module_src_dir = initial_module_src_dir,
-			.out_module = &main_mod);
+	stg_dispatch_load_modules(&ctx);
 
 	for (; ctx.current_phase < COMPILE_NUM_PHASES; ctx.current_phase += 1) {
 		struct compile_phase *phase = &ctx.phases[ctx.current_phase];
@@ -800,6 +709,7 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 			}
 
 			compile_exec_job(&ctx, job);
+			stg_dispatch_load_modules(&ctx);
 		}
 	}
 
@@ -817,8 +727,6 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 		ctx.ast_ctx->err = NULL;
 		return -1;
 	}
-
-	assert(main_mod);
 
 	print_errors(&ctx.err);
 

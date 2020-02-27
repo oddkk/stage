@@ -87,21 +87,9 @@ void
 ast_module_add_dependency(struct ast_context *ctx,
 		struct ast_module *mod, struct atom *name)
 {
-	for (size_t i = 0; i < mod->num_dependencies; i++) {
-		if (name == mod->dependencies[i].name) {
-			return;
-		}
-	}
-
-	struct ast_module_dependency new_dep = {0};
-
-	new_dep.name = name;
-
-	size_t dep_id;
-	dep_id = dlist_append(
-			mod->dependencies,
-			mod->num_dependencies,
-			&new_dep);
+	vm_request_module(
+			ctx->vm, mod->stg_mod->id, name,
+			VM_REQUEST_MOD_NO_LOC);
 }
 
 int
@@ -159,7 +147,7 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 				mod_init_func, NULL, 0, TYPE_UNSET);
 		if (err) {
 			printf("Failed typechecking initialize function for module '%.*s'.\n",
-					LIT(mod->stg_mod->info.name));
+					ALIT(mod->stg_mod->name));
 			return -1;
 		}
 
@@ -168,7 +156,7 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 				NULL, NULL, 0, mod_init_func);
 		if (!bc_env) {
 			printf("Failed codegen for module '%.*s'.\n",
-					LIT(mod->stg_mod->info.name));
+					ALIT(mod->stg_mod->name));
 			return -1;
 		}
 
