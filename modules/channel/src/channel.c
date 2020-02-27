@@ -7,7 +7,7 @@ struct channel_system *
 get_channel_system(struct vm *vm)
 {
 	struct stg_module *mod;
-	mod = vm_get_module(vm, STR("channel"));
+	mod = vm_get_module(vm, vm_atoms(vm, "channel"));
 	assert(mod != NULL);
 	return (struct channel_system *)mod->data;
 }

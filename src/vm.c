@@ -190,7 +190,7 @@ vm_request_module(struct vm *vm,
 	}
 
 	struct stg_module *mod;
-	mod = vm_get_module(vm, target->name);
+	mod = vm_get_module(vm, target);
 
 	if (mod) {
 		if (src_dir.text && src_dir.length > 0) {
@@ -236,12 +236,12 @@ vm_request_module(struct vm *vm,
 }
 
 struct stg_module *
-vm_get_module(struct vm *vm, struct string mod_name)
+vm_get_module(struct vm *vm, struct atom *mod_name)
 {
 	struct stg_module *mod = NULL;
 
 	for (uint32_t mid = 0; mid < vm->num_modules; mid++) {
-		if (vm->modules[mid]->name == vm_atom(vm, mod_name)) {
+		if (vm->modules[mid]->name == mod_name) {
 			mod = vm->modules[mid];
 		}
 	}
@@ -279,44 +279,6 @@ vm_get_type(struct vm *vm, type_id tid)
 
 	assert(mid < vm->num_modules);
 	return store_get_type(&vm->modules[mid]->store, mtid);
-}
-
-type_id
-vm_find_type_id(struct vm *vm, struct string mod_name, struct string name)
-{
-	struct stg_module *mod = NULL;
-
-	mod = vm_get_module(vm, mod_name);
-
-	// for (uint32_t mid = 0; mid < vm->num_modules; mid++) {
-	// 	if (string_equal(vm->modules[mid]->info.name, mod_name)) {
-	// 		mod = vm->modules[mid];
-	// 	}
-	// }
-
-	assert(mod != NULL);
-
-	/*
-	struct string tail = name;
-	struct string part;
-
-	// TODO: Looup type name.
-	while (string_split(tail, &part, &tail, '.')) {
-	}
-	*/
-
-	type_id result = TYPE_UNSET;
-	//result = type_obj_get(vm, entry.object);
-
-	return result;
-}
-
-struct type *
-vm_find_type(struct vm *vm, struct string mod, struct string name)
-{
-	type_id tid;
-	tid = vm_find_type_id(vm, mod, name);
-	return vm_get_type(vm, tid);
 }
 
 struct func *

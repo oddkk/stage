@@ -133,7 +133,7 @@ stg_register_init_type(struct stg_module *mod, type_id res_type)
 	info = calloc(1, sizeof(struct stg_init_type_info));
 
 	struct stg_module *base_mod;
-	base_mod = vm_get_module(mod->vm, STR("base"));
+	base_mod = vm_get_module(mod->vm, mod_atoms(mod, "base"));
 	assert(base_mod);
 
 	struct stg_base_mod_info *mod_info;

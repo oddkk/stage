@@ -116,7 +116,7 @@ msg_register_msg_type(struct stg_module *mod, type_id msg_type)
 	info = calloc(1, sizeof(struct msg_type_info));
 
 	struct stg_module *msg_mod;
-	msg_mod = vm_get_module(mod->vm, STR("message"));
+	msg_mod = vm_get_module(mod->vm, mod_atoms(mod, "message"));
 	assert(msg_mod);
 
 	struct msg_context *ctx;

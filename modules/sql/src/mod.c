@@ -27,7 +27,7 @@ sql_db_connect_unsafe(struct vm *vm, struct stg_exec *heap,
 	struct sql_connect_data *closure = data;
 
 	struct stg_module *sql_mod;
-	sql_mod = vm_get_module(vm, STR("sql"));
+	sql_mod = vm_get_module(vm, vm_atoms(vm, "sql"));
 
 	struct sql_context *ctx = sql_mod->data;
 
@@ -88,7 +88,7 @@ sql_db_query_unsafe(struct vm *vm, struct stg_exec *heap,
 	struct sql_query_data *closure = data;
 
 	struct stg_module *sql_mod;
-	sql_mod = vm_get_module(vm, STR("sql"));
+	sql_mod = vm_get_module(vm, vm_atoms(vm, "sql"));
 
 	struct sql_context *ctx = sql_mod->data;
 

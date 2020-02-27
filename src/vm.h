@@ -64,7 +64,7 @@ vm_request_module(struct vm *vm,
 		struct string location);
 
 struct stg_module *
-vm_get_module(struct vm *vm, struct string name);
+vm_get_module(struct vm *vm, struct atom *name);
 
 struct stg_module *
 vm_get_module_by_id(struct vm *vm, stg_mod_id);
@@ -74,12 +74,6 @@ vm_get_module_by_native(struct vm *vm, struct stg_native_module *mod);
 
 struct type *
 vm_get_type(struct vm *, type_id);
-
-struct type *
-vm_find_type(struct vm *, struct string mod, struct string name);
-
-type_id
-vm_find_type_id(struct vm *, struct string mod, struct string name);
 
 struct func *
 vm_get_func(struct vm *, func_id);
