@@ -47,9 +47,16 @@ struct stg_native_module {
 	struct stg_native_type *types;
 	size_t num_types;
 
+	// Called before the AST is compiled to allow the module to make changes to
+	// the tree.
 	int  (*hook_pre_compile)(struct ast_context *, struct stg_module *);
+
+	// Called when the module is about to be started, right before and after
+	// this module's init monad is called.
 	int  (*hook_pre_init   )(struct stg_module *);
 	int  (*hook_post_init  )(struct stg_module *);
+
+	// Indicates that the module should start any background processes.
 	int  (*hook_start      )(struct stg_module *);
 	void (*hook_destroy    )(struct stg_module *);
 };

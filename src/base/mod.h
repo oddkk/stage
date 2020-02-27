@@ -111,6 +111,9 @@ stg_unsafe_call_init(
 		struct vm *vm, struct stg_exec *ctx,
 		struct object obj, struct object *out);
 
+bool
+stg_type_is_init(struct vm *, type_id);
+
 type_id
 stg_init_get_return_type(struct vm *, type_id);
 

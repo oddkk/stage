@@ -43,23 +43,110 @@ void vm_destroy(struct vm *vm)
 	// TODO: Free atom table
 }
 
-int vm_start(struct vm *vm)
+static int
+vm_mod_init(struct stg_module *mod)
 {
-	for (size_t i = 0; i < vm->num_modules; i++) {
-		struct stg_module *mod = vm->modules[i];
+	struct object mod_obj;
+	mod_obj = mod->mod.instance;
+	struct type *mod_type;
+	mod_type = vm_get_type(mod->vm, mod_obj.type);
 
-		stg_mod_invoke_start(mod);
+	if (!mod_type->obj_def) {
+		return -1;
 	}
+
+	ssize_t main_unpack_id;
+	main_unpack_id = object_cons_simple_lookup(
+			mod->vm, mod_type->obj_def, STR("main"));
+
+	if (main_unpack_id < 0) {
+		return 1;
+	}
+	struct object main_obj = {0};
+
+	int err;
+	err = object_cons_descendant_type(
+			mod->vm, mod_obj.type,
+			main_unpack_id, &main_obj.type);
+
+	struct type *main_obj_type;
+	main_obj_type = vm_get_type(mod->vm, main_obj.type);
+
+	if (!stg_type_is_init(mod->vm, main_obj.type)) {
+		struct string got_str;
+		got_str = type_repr_to_alloced_string(
+				mod->vm, main_obj_type);
+
+		stg_error(NULL, STG_NO_LOC, "Expected main object of module '%.*s' "
+				"to be of type Init, got '%.*s'.",
+				ALIT(mod->name), LIT(got_str));
+		return -1;
+	}
+
+	uint8_t buffer[main_obj_type->size];
+	main_obj.data = buffer;
+
+	err = object_unpack(
+			mod->vm, mod_obj,
+			main_unpack_id, &main_obj);
+	if (err) {
+		printf("Failed to unpack main object.\n");
+		return -1;
+	}
+
+	type_id inner_type_id;
+	inner_type_id = stg_init_get_return_type(mod->vm, main_obj.type);
+
+	struct type *inner_type;
+	inner_type = vm_get_type(mod->vm, inner_type_id);
+
+	struct object result = {0};
+	result.type = mod->vm->default_types.unit;
+
+	uint8_t result_buffer[inner_type->size];
+	memset(result_buffer, 0, inner_type->size);
+	result.data = result_buffer;
+
+	struct stg_exec exec_ctx;
+	exec_ctx = vm_init_exec_context(mod->vm);
+	stg_unsafe_call_init(mod->vm, &exec_ctx, main_obj, &result);
+	vm_release_exec_context(mod->vm, &exec_ctx);
 
 	return 0;
 }
 
-int vm_post_init(struct vm *vm)
+int vm_start(struct vm *vm)
 {
 	for (size_t i = 0; i < vm->num_modules; i++) {
-		struct stg_module *mod = vm->modules[i];
+		struct stg_module *dep;
+		dep = vm->modules[i];
 
-		stg_mod_invoke_post_init(mod);
+		int err;
+
+		err = stg_mod_invoke_pre_init(dep);
+		if (err < 0) {
+			printf("Intialize module '%.*s' failed. (pre)\n", ALIT(dep->name));
+			dep->state = STG_MOD_LIFE_FAILED;
+			continue;
+		}
+
+		err = vm_mod_init(dep);
+		if (err < 0) {
+			printf("Intialize module '%.*s' failed.\n", ALIT(dep->name));
+			dep->state = STG_MOD_LIFE_FAILED;
+			continue;
+		}
+
+		err = stg_mod_invoke_post_init(dep);
+		if (err < 0) {
+			printf("Intialize module '%.*s' failed. (post)\n", ALIT(dep->name));
+			dep->state = STG_MOD_LIFE_FAILED;
+			continue;
+		}
+	}
+
+	for (size_t i = 0; i < vm->num_modules; i++) {
+		stg_mod_invoke_start(vm->modules[i]);
 	}
 
 	return 0;

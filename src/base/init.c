@@ -493,12 +493,21 @@ stg_unsafe_call_init(
 	data->call(vm, ctx, data->data, out->data);
 }
 
+bool
+stg_type_is_init(struct vm *vm, type_id tid)
+{
+	struct type *type;
+	type = vm_get_type(vm, tid);
+
+	return type->base == &init_type_base;
+}
+
 type_id
 stg_init_get_return_type(struct vm *vm, type_id tid)
 {
 	struct type *type;
 	type = vm_get_type(vm, tid);
-	assert(type->base = &init_type_base);
+	assert(type->base == &init_type_base);
 
 	struct stg_init_type_info *info;
 	info = type->data;
