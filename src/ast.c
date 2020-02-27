@@ -84,36 +84,11 @@ ast_namespace_add_ns(struct ast_context *ctx,
 }
 
 void
-ast_namespace_add_import(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_node *ns, struct atom *name)
-{
-	ast_module_add_dependency(ctx, mod, ns, name);
-}
-
-
-void
-ast_namespace_use(struct ast_context *ctx,
-		struct ast_module *mod, struct ast_node *ns,
-		ast_slot_id object)
-{
-	panic("TODO: Implement use\n");
-	/*
-	struct ast_env_slot slot = ast_env_slot(ctx, &mod->env, object);
-
-	assert(slot.kind == AST_SLOT_CONS);
-
-	dlist_append(ns->used_objects, ns->num_used_objects, &object);
-	*/
-}
-
-void
 ast_module_add_dependency(struct ast_context *ctx,
-		struct ast_module *mod, struct ast_node *container, struct atom *name)
+		struct ast_module *mod, struct atom *name)
 {
 	for (size_t i = 0; i < mod->num_dependencies; i++) {
 		if (name == mod->dependencies[i].name) {
-			panic("Module %.*s imported multiple times.",
-					ALIT(name));
 			return;
 		}
 	}
@@ -121,47 +96,12 @@ ast_module_add_dependency(struct ast_context *ctx,
 	struct ast_module_dependency new_dep = {0};
 
 	new_dep.name = name;
-	new_dep.container = container;
 
 	size_t dep_id;
 	dep_id = dlist_append(
 			mod->dependencies,
 			mod->num_dependencies,
 			&new_dep);
-}
-
-int
-ast_module_resolve_dependencies(struct ast_context *ctx,
-		struct ast_module *mod)
-{
-	for (size_t i = 0; i < mod->num_dependencies; i++) {
-		struct ast_module_dependency *dep;
-		dep = &mod->dependencies[i];
-
-		struct object type_obj = {0};
-		type_obj.type = ctx->types.type;
-		type_obj.data = &dep->mod->type;
-
-		type_obj = register_object(
-				ctx->vm, mod->env.store, type_obj);
-
-		struct ast_node *type;
-		type = ast_init_node_lit(
-				ctx, AST_NODE_NEW,
-				STG_NO_LOC, type_obj);
-
-		if (dep->mod->type == TYPE_UNSET) {
-			return -1;
-		}
-
-		int err;
-		err = ast_node_composite_add_member(
-				ctx, dep->container, dep->name, type,
-				AST_NO_TYPE_GIVING_BIND);
-		assert(!err);
-	}
-
-	return 0;
 }
 
 int
@@ -175,13 +115,93 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 	type = ast_dt_finalize_composite(ctx, mod,
 			mod->root, NULL, 0);
 
-	mod->type = type;
+	func_id init_func;
 
-	/*
-	printf("Final type for %.*s: ", LIT(mod->stg_mod->info.name));
-	print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
-	printf("\n");
-	*/
+	if (type == TYPE_UNSET) {
+		return -1;
+	}
+
+	{
+		struct ast_node *mod_init_func;
+		struct ast_node *mod_inst;
+		struct ast_node *mod_cons_obj;
+		struct ast_node *mod_ret;
+
+		struct type *mod_type;
+		mod_type = vm_get_type(ctx->vm, type);
+
+		assert(mod_type->obj_def);
+
+		struct object cons_obj = {0};
+		cons_obj.type = ctx->types.type;
+		cons_obj.data = &type;
+
+		struct object type_obj = {0};
+		type_obj.type = ctx->types.type;
+		type_obj.data = &type;
+
+		mod_ret = ast_init_node_lit(ctx,
+				AST_NODE_NEW, STG_NO_LOC, type_obj);
+
+		mod_cons_obj = ast_init_node_lit(ctx,
+				AST_NODE_NEW, STG_NO_LOC, cons_obj);
+
+		mod_inst = ast_init_node_inst(ctx,
+				AST_NODE_NEW, STG_NO_LOC, mod_cons_obj, NULL, 0);
+
+		mod_init_func = ast_init_node_func(ctx,
+				AST_NODE_NEW, STG_NO_LOC,
+				NULL, NULL, 0,
+				mod_ret, mod_inst);
+
+		int err;
+		err = ast_node_typecheck(ctx, mod,
+				mod_init_func, NULL, 0, TYPE_UNSET);
+		if (err) {
+			printf("Failed typechecking initialize function for module '%.*s'.\n",
+					LIT(mod->stg_mod->info.name));
+			return -1;
+		}
+
+		struct bc_env *bc_env;
+		bc_env = ast_func_gen_bytecode(ctx, mod,
+				NULL, NULL, 0, mod_init_func);
+		if (!bc_env) {
+			printf("Failed codegen for module '%.*s'.\n",
+					LIT(mod->stg_mod->info.name));
+			return -1;
+		}
+
+		struct func func = {0};
+
+		func.type = stg_register_func_type(
+				mod->stg_mod, type, NULL, 0);
+
+		func.kind = FUNC_BYTECODE;
+		func.bytecode = bc_env;
+
+
+		init_func = stg_register_func(mod->stg_mod, func);
+	}
+
+	{
+		struct type *mod_obj_type;
+		mod_obj_type = vm_get_type(ctx->vm, type);
+		uint8_t mod_obj_buffer[mod_obj_type->size];
+		struct object mod_obj = {0};
+
+		mod_obj.data = mod_obj_buffer;
+		mod_obj.type = type;
+
+		struct stg_exec exec_ctx;
+		exec_ctx = vm_init_exec_context(ctx->vm);
+		vm_call_func(ctx->vm, &exec_ctx, init_func, NULL, 0, &mod_obj);
+
+		mod->instance =
+			register_object(ctx->vm, mod->env.store, mod_obj);
+
+		vm_release_exec_context(ctx->vm, &exec_ctx);
+	}
 
 	return 0;
 }

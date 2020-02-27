@@ -1950,6 +1950,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 						printf("Failed to unpack use target.\n");
 						return -1;
 					}
+
 					// TODO: Is this necessary?
 					obj = register_object(ctx->ast_ctx->vm, ctx->ast_mod->env.store, obj);
 

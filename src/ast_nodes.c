@@ -22,6 +22,7 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_TEMPL:		return "TEMPL";
 		case AST_NODE_LIT:			return "LIT";
 		case AST_NODE_LOOKUP:		return "LOOKUP";
+		case AST_NODE_MOD:			return "MOD";
 
 		case AST_NODE_COMPOSITE:	return "COMPOSITE";
 		case AST_NODE_VARIANT:		return "VARIANT";
@@ -283,6 +284,27 @@ ast_init_node_lookup(
 
 	node->lookup.name = name;
 	node->lookup.ref.kind = AST_NAME_REF_NOT_FOUND;
+
+	return node;
+}
+
+struct ast_node *
+ast_init_node_mod(
+		struct ast_context *ctx,
+		struct ast_node *node, struct stg_location loc,
+		struct atom *name)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(node);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_MOD;
+	node->loc = loc;
+
+	node->mod.name = name;
 
 	return node;
 }
@@ -725,6 +747,10 @@ ast_node_deep_copy(struct ast_node *src)
 
 	case AST_NODE_LIT:
 		DCP_LIT(lit);
+		break;
+
+	case AST_NODE_MOD:
+		DCP_LIT(mod.name);
 		break;
 
 	case AST_NODE_LOOKUP:

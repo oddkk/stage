@@ -346,6 +346,7 @@ object_ct_unpack_param(
 		struct ast_context *ctx, struct stg_module *mod,
 		struct object_cons *cons, struct object obj, size_t param_id,
 		struct object *out);
+
 int
 object_cons_descendant_type(
 		struct vm *, type_id type,

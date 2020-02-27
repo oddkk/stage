@@ -105,6 +105,7 @@ enum ast_constraint_source {
 	AST_CONSTR_SRC_CALL_ARG,
 	AST_CONSTR_SRC_CONS_ARG,
 	AST_CONSTR_SRC_ACCESS,
+	AST_CONSTR_SRC_MOD,
 	AST_CONSTR_SRC_LIT,
 	AST_CONSTR_SRC_LOOKUP,
 	AST_CONSTR_SRC_DECAY,
@@ -357,6 +358,7 @@ enum ast_node_kind {
 	AST_NODE_LIT,
 	AST_NODE_FUNC_TYPE,
 	AST_NODE_LOOKUP,
+	AST_NODE_MOD,
 
 	// Datatype declarations
 	AST_NODE_COMPOSITE,
@@ -504,6 +506,10 @@ struct ast_node {
 		} lookup;
 
 		struct {
+			struct atom *name;
+		} mod;
+
+		struct {
 			struct ast_datatype_member *members;
 			size_t num_members;
 
@@ -587,6 +593,8 @@ ast_node_name(enum ast_node_kind);
 		case AST_NODE_LIT:														\
 			break;																\
 		case AST_NODE_LOOKUP:													\
+			break;																\
+		case AST_NODE_MOD:														\
 			break;																\
 		case AST_NODE_COMPOSITE:												\
 			if (visit_composite_body) {											\
@@ -677,6 +685,12 @@ ast_init_node_lit(
 
 struct ast_node *
 ast_init_node_lookup(
+		struct ast_context *ctx,
+		struct ast_node *target, struct stg_location,
+		struct atom *name);
+
+struct ast_node *
+ast_init_node_mod(
 		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct atom *name);
@@ -912,8 +926,6 @@ enum ast_module_name_kind {
 
 struct ast_module_dependency {
 	struct atom *name;
-	struct ast_node *container;
-
 	struct ast_module *mod;
 };
 
@@ -932,7 +944,7 @@ struct ast_module {
 	bool has_native_module_ext;
 	struct string native_module_ext;
 
-	type_id type;
+	struct object instance;
 };
 
 int
@@ -948,21 +960,8 @@ ast_namespace_add_ns(struct ast_context *,
 		struct ast_node *, struct atom *name);
 
 void
-ast_namespace_add_import(struct ast_context *, struct ast_module *,
-		struct ast_node *, struct atom *name);
-
-void
 ast_module_add_dependency(struct ast_context *,
-		struct ast_module *, struct ast_node *container,
-		struct atom *name);
-
-void
-ast_namespace_use(struct ast_context *,
-		struct ast_module *, struct ast_node *,
-		ast_slot_id object);
-
-int
-ast_module_resolve_dependencies(struct ast_context *, struct ast_module *);
+		struct ast_module *, struct atom *name);
 
 int
 ast_module_finalize(struct ast_context *, struct ast_module *);

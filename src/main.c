@@ -167,6 +167,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	/*
 	struct type *program_obj_type;
 	program_obj_type = vm_get_type(&vm, vm.program_object_type);
 
@@ -179,12 +180,14 @@ int main(int argc, char *argv[])
 	struct stg_exec exec_ctx;
 	exec_ctx = vm_init_exec_context(&vm);
 	vm_call_func(&vm, &exec_ctx, vm.init_func, NULL, 0, &program_obj);
+	*/
 
 #if 0
 	print_obj_repr(&vm, program_obj);
 	printf("\n");
 #endif
 
+	/*
 	struct type *program_type;
 	program_type = vm_get_type(&vm, vm.program_object_type);
 	assert(program_type->obj_def);
@@ -219,6 +222,7 @@ int main(int argc, char *argv[])
 	}
 
 	vm_release_exec_context(&vm, &exec_ctx);
+	*/
 
 #if 0
 	for (size_t i = 0; i < vm.num_modules; i++) {

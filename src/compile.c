@@ -494,9 +494,21 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				data->mod->root = ast_init_node_composite(
 						ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC);
 
-				if (data->module_name != vm_atoms(ctx->vm, "base")) {
+				struct atom *base_mod_name = vm_atoms(ctx->vm, "base");
+
+				if (data->module_name != base_mod_name) {
 					ast_module_add_dependency(ctx->ast_ctx, data->mod,
-							data->mod->root, vm_atoms(ctx->vm, "base"));
+							base_mod_name);
+
+					struct ast_node *use_base_target_node;
+					use_base_target_node = ast_init_node_mod(
+							ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC,
+							base_mod_name);
+
+					ast_node_composite_add_use(
+							ctx->ast_ctx, STG_NO_LOC,
+							data->mod->root,
+							use_base_target_node);
 				}
 
 				if (should_discover_files) {
@@ -540,13 +552,6 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				if (data->mod->dependencies[i].mod == NULL) {
 					return JOB_YIELD;
 				}
-			}
-
-			int err;
-			err = ast_module_resolve_dependencies(
-					ctx->ast_ctx, data->mod);
-			if (err) {
-				return JOB_ERROR;
 			}
 
 			{
@@ -815,80 +820,12 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx,
 
 	assert(main_mod);
 
-	func_id init_func = FUNC_UNSET;
-
-	{
-		struct ast_node *main_mod_init_func;
-		struct ast_node *main_mod_inst;
-		struct ast_node *main_mod_cons_obj;
-		struct ast_node *main_mod_ret;
-
-		struct type *main_mod_type;
-		main_mod_type = vm_get_type(ast_ctx->vm, main_mod->type);
-
-		assert(main_mod_type->obj_def);
-
-		struct object mod_cons_obj = {0};
-		mod_cons_obj.type = ast_ctx->types.type;
-		mod_cons_obj.data = &main_mod->type;
-
-		struct object mod_type_obj = {0};
-		mod_type_obj.type = ast_ctx->types.type;
-		mod_type_obj.data = &main_mod->type;
-
-		main_mod_ret = ast_init_node_lit(ast_ctx,
-				AST_NODE_NEW, STG_NO_LOC, mod_type_obj);
-
-		main_mod_cons_obj = ast_init_node_lit(ast_ctx,
-				AST_NODE_NEW, STG_NO_LOC, mod_cons_obj);
-
-		main_mod_inst = ast_init_node_inst(ast_ctx,
-				AST_NODE_NEW, STG_NO_LOC, main_mod_cons_obj, NULL, 0);
-
-		main_mod_init_func = ast_init_node_func(ast_ctx,
-				AST_NODE_NEW, STG_NO_LOC,
-				NULL, NULL, 0,
-				main_mod_ret, main_mod_inst);
-
-		int err;
-		err = ast_node_typecheck(ast_ctx, main_mod,
-				main_mod_init_func, NULL, 0, TYPE_UNSET);
-		if (err) {
-			print_errors(&ctx.err);
-			printf("Failed typechecking initialize function for main module.\n");
-			return -1;
-		}
-
-		struct bc_env *bc_env;
-		bc_env = ast_func_gen_bytecode(ast_ctx, main_mod,
-				NULL, NULL, 0, main_mod_init_func);
-		if (!bc_env) {
-			print_errors(&ctx.err);
-			printf("Failed codegen for main module.\n");
-			return -1;
-		}
-
-		struct func func = {0};
-
-		func.type = stg_register_func_type(
-				main_mod->stg_mod, main_mod->type, NULL, 0);
-
-		func.kind = FUNC_BYTECODE;
-		func.bytecode = bc_env;
-
-		init_func = 
-			stg_register_func(main_mod->stg_mod, func);
-	}
-
 	print_errors(&ctx.err);
 
 	if (ctx.err.num_errors > 0) {
 		ctx.ast_ctx->err = NULL;
 		return -1;
 	}
-
-	vm->init_func = init_func;
-	vm->program_object_type = main_mod->type;
 
 	ctx.ast_ctx->err = NULL;
 	return 0;

@@ -42,9 +42,6 @@ struct vm {
 		type_id string;
 		type_id boolean;
 	} default_types;
-
-	func_id init_func;
-	type_id program_object_type;
 };
 
 struct ast_context;

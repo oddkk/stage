@@ -157,8 +157,14 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 			{
 				struct st_node *mod_stmt;
 				mod_stmt = stmt->STMT.stmt;
-				ast_module_add_dependency(ctx, mod, struct_node,
-						mod_stmt->MOD_STMT.ident);
+
+				struct ast_node *target_node;
+				target_node = st_node_visit_expr(
+						ctx, mod, NULL, mod_stmt);
+
+				ast_node_composite_add_use(
+						ctx, mod_stmt->loc,
+						struct_node, target_node);
 			}
 			break;
 
@@ -867,6 +873,15 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 		return ast_init_node_lookup(
 				ctx, AST_NODE_NEW, node->loc,
 				node->TEMPLATE_VAR.name);
+
+	case ST_NODE_MOD_STMT:
+		{
+			ast_module_add_dependency(
+					ctx, mod, node->MOD_STMT.ident);
+			return ast_init_node_mod(
+					ctx, AST_NODE_NEW, node->loc,
+					node->MOD_STMT.ident);
+		}
 
 	default:
 		panic("Invalid node '%.*s' in expr.",

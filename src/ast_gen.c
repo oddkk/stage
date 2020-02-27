@@ -824,6 +824,26 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			}
 			return result;
 
+		case AST_NODE_MOD:
+			{
+				struct ast_module *mod_ref = NULL;
+
+				for (size_t i = 0; i < mod->num_dependencies; i++) {
+					if (mod->dependencies[i].name == node->mod.name) {
+						mod_ref = mod->dependencies[i].mod;
+						break;
+					}
+				}
+
+				struct bc_instr *mod_instr;
+				mod_instr = bc_gen_load(bc_env, BC_VAR_NEW, mod_ref->instance);
+
+				append_bc_instr(&result, mod_instr);
+
+				result.out_var = mod_instr->load.target;
+			}
+			return result;
+
 		case AST_NODE_COMPOSITE:
 			{
 				type_id type;

@@ -336,11 +336,11 @@ use_stmt:		"use" use_expr             { $$ = MKNODE(USE_STMT, .ident=$2); }
 
 use_expr:		use_expr1                  { $$ = $1; }
 		|		use_expr1 '.' '*'          { $$ = MKNODE(USE_ALL, .target=$1); }
-		|		mod_stmt                   { $$ = $1; }
 		;
 
 use_expr1:		use_expr1 '.' IDENTIFIER   { $$ = MKNODE(ACCESS, .target=$1, .name=$3); }
 		|		ident                      { $$ = $1; }
+		|		mod_stmt                   { $$ = $1; }
 		;
 
 /*

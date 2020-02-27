@@ -610,6 +610,36 @@ ast_node_constraints(
 		}
 		break;
 
+		case AST_NODE_MOD:
+		{
+			ast_slot_id res_slot;
+			res_slot = ast_slot_alloc(env);
+			node->typecheck_slot = res_slot;
+
+			struct ast_module *mod_ref = NULL;
+
+			for (size_t i = 0; i < mod->num_dependencies; i++) {
+				if (mod->dependencies[i].name == node->mod.name) {
+					mod_ref = mod->dependencies[i].mod;
+					break;
+				}
+			}
+
+			if (!mod_ref) {
+				panic("Attempted to access module that was not registered as a dependency.");
+				ast_slot_value_error(
+						env, node->loc, AST_CONSTR_SRC_MOD, res_slot);
+				break;
+			}
+
+			assert(mod_ref->instance.type != TYPE_UNSET);
+
+			ast_slot_require_is_obj(
+					env, node->loc, AST_CONSTR_SRC_MOD,
+					res_slot, mod_ref->instance);
+		}
+		break;
+
 		case AST_NODE_COMPOSITE:
 		{
 			ast_slot_id res_slot;

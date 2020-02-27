@@ -243,6 +243,11 @@ ast_print_internal(struct ast_context *ctx,
 			ast_print_name_ref(node->lookup.ref);
 			printf(")\n");
 			break;
+
+		case AST_NODE_MOD:
+			print_indent(depth);
+			printf("mod '%.*s'\n", ALIT(node->mod.name));
+			break;
 	}
 }
 
@@ -343,6 +348,10 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 
 		case AST_NODE_LOOKUP:
 			printf("%.*s", ALIT(node->lookup.name));
+			break;
+
+		case AST_NODE_MOD:
+			printf("mod %.*s", ALIT(node->mod.name));
 			break;
 
 		case AST_NODE_COMPOSITE:
