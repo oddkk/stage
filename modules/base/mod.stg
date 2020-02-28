@@ -1,10 +1,4 @@
-Type   := @native("Type");
-
-int    := @native("int");
-String := @native("Type");
-
-Unit  := @native("Unit");
-unit  := @native("unit");
+use prelude.*;
 
 Bool := Variant { True, False };
 Maby := [T: Type] Variant { Some T, None };

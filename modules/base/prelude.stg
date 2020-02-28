@@ -1,0 +1,7 @@
+Type   := @native("Type");
+
+int    := @native("int");
+String := @native("Type");
+
+Unit   := @native("Unit");
+unit   := @native("unit");

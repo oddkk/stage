@@ -452,10 +452,16 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 					ast_module_add_dependency(ctx->ast_ctx, &mod->mod,
 							base_mod_name);
 
-					struct ast_node *use_base_target_node;
-					use_base_target_node = ast_init_node_mod(
+					struct ast_node *use_base_mod_node;
+					use_base_mod_node = ast_init_node_mod(
 							ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC,
 							base_mod_name);
+
+					struct ast_node *use_base_target_node;
+					use_base_target_node = ast_init_node_access(
+							ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC,
+							use_base_mod_node,
+							vm_atoms(ctx->vm, "prelude"));
 
 					ast_node_composite_add_use(
 							ctx->ast_ctx, STG_NO_LOC,
