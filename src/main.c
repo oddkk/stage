@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
 
 	// Temporarly set default project for development.
 	// TODO: Remove.
-	args.project_path = STR("./config");
+	args.project_path = STR("./examples/test.stg");
 
 	argp_parse(&argp, argc, argv, 0, 0, &args);
 

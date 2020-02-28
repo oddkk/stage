@@ -1567,7 +1567,7 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 			}
 
 			if (num_binds == 0) {
-				printf("TODO: Treat free expressions as bindless expressions.");
+				// TODO: Handle free expressions
 				continue;
 			}
 

@@ -15,7 +15,6 @@
 #define OBJ_NONE ((struct object){.type=TYPE_NONE})
 
 struct stg_module;
-struct stg_module_info;
 
 struct stg_native_module;
 struct bc_instr_store;
