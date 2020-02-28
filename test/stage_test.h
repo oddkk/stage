@@ -34,13 +34,9 @@ stg_test_bootstrap(
 	*ctx = ast_init_context(
 			NULL, &vm->atom_table, vm);
 
-	struct stg_module_info mod_info = {
-		.name = STR("test"),
-		.version = {.major = 0, .minor = 1},
-	};
-
-	*out_mod = vm_register_module(
-			vm, ctx, NULL, &mod_info);
+	*out_mod = vm_request_module(
+			vm, VM_REQUEST_PINNED, NULL,
+			VM_REQUEST_MOD_NO_LOC);
 
 	return 0;
 }
