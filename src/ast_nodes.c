@@ -445,13 +445,15 @@ ast_node_composite_add_free_expr(
 void
 ast_node_composite_add_use(
 		struct ast_context *ctx, struct stg_location loc,
-		struct ast_node *target, struct ast_node *expr)
+		struct ast_node *target, struct ast_node *expr,
+		struct atom *as_name)
 {
 	assert(target && expr);
 
 	struct ast_datatype_use use;
 	use.target = expr;
 	use.loc = loc;
+	use.as_name = as_name;
 
 	dlist_append(
 			target->composite.uses,

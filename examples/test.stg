@@ -1,4 +1,5 @@
-use mod base.init;
+use mod base.*;
+use mod base.init.*;
 
 main := bind[](
 	bind[](

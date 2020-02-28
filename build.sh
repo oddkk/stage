@@ -11,5 +11,8 @@ FLAGS="-lssl -lcrypto -lffi -ldl"
 
 FLAGS="$FLAGS $(libftdi1-config --libs) $(libftdi1-config --cflags) -DSTAGE_DMX"
 
+# ASan
+# FLAGS="$FLAGS -fsanitize=address -fno-omit-frame-pointer"
+
 echo "Compiling"
 $CC -g -std=gnu11 -rdynamic -lm -Wall -pedantic $FLAGS -pthread ${SRC[*]} -o stage || exit

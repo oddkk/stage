@@ -106,6 +106,7 @@ struct ast_dt_member {
 
 struct ast_dt_use {
 	ast_dt_expr_id expr;
+	struct atom *as_name;
 
 	type_id type;
 
@@ -1190,7 +1191,8 @@ ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
 }
 
 static ast_use_id
-ast_dt_register_use(struct ast_dt_context *ctx, ast_dt_expr_id expr_id)
+ast_dt_register_use(struct ast_dt_context *ctx,
+		ast_dt_expr_id expr_id, struct atom *as_name)
 {
 	ast_use_id use_id;
 	use_id = ast_dt_alloc_use(ctx);
@@ -1202,6 +1204,7 @@ ast_dt_register_use(struct ast_dt_context *ctx, ast_dt_expr_id expr_id)
 	expr = get_expr(ctx, expr_id);
 
 	use->expr = expr_id;
+	use->as_name = as_name;
 
 	use->const_resolved = ast_dt_job_use(ctx, use_id,
 			AST_DT_JOB_USE_CONST_EVAL);
@@ -1493,7 +1496,8 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		expr_id = ast_dt_register_expr(ctx,
 					node->composite.uses[i].target);
 
-		ast_dt_register_use(ctx, expr_id);
+		ast_dt_register_use(ctx, expr_id,
+				node->composite.uses[i].as_name);
 	}
 }
 

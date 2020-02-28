@@ -82,8 +82,10 @@ ast_try_lookup_in_scope(struct ast_context *ctx,
 					res.kind == AST_NAME_REF_CLOSURE) {
 				res = scope->names[i].ref;
 			} else {
-				assert(scope->names[i].ref.kind == AST_NAME_REF_NOT_FOUND ||
-						scope->names[i].ref.kind == AST_NAME_REF_CLOSURE);
+				if (scope->names[i].ref.kind != AST_NAME_REF_NOT_FOUND &&
+						scope->names[i].ref.kind != AST_NAME_REF_CLOSURE) {
+					panic("Conflicting scope name '%.*s'\n", ALIT(name));
+				}
 			}
 		}
 	}
@@ -497,17 +499,21 @@ ast_composite_scope_num_names(struct ast_context *ctx, struct ast_node *comp)
 			continue;
 		}
 
-		struct type *type = vm_get_type(ctx->vm, target_type);
+		if (!comp->composite.uses[i].as_name) {
+			struct type *type = vm_get_type(ctx->vm, target_type);
 
-		if (!type->obj_inst) {
-			printf("Use target does not have an object inst.\n");
-			continue;
+			if (!type->obj_inst) {
+				printf("Use target does not have an object inst.\n");
+				continue;
+			}
+
+			struct object_cons *cons;
+			cons = type->obj_inst->cons;
+
+			num_use_fields += cons->num_params;
+		} else {
+			num_use_fields += 1;
 		}
-
-		struct object_cons *cons;
-		cons = type->obj_inst->cons;
-
-		num_use_fields += cons->num_params;
 	}
 
 	return comp->composite.num_members + num_use_fields;
@@ -541,30 +547,41 @@ ast_composite_setup_scope(struct ast_context *ctx, struct ast_scope *target_scop
 			continue;
 		}
 
-		struct type *type = vm_get_type(ctx->vm, target_type);
+		if (!comp->composite.uses[use_i].as_name) {
+			struct type *type = vm_get_type(ctx->vm, target_type);
 
-		if (!type->obj_inst) {
-			continue;
-		}
+			if (!type->obj_inst) {
+				continue;
+			}
 
-		struct object_cons *cons;
-		cons = type->obj_inst->cons;
+			struct object_cons *cons;
+			cons = type->obj_inst->cons;
 
-		int local_descendent_ids[cons->num_params];
-		object_cons_local_descendent_ids(
-				ctx->vm, cons, local_descendent_ids);
+			int local_descendent_ids[cons->num_params];
+			object_cons_local_descendent_ids(
+					ctx->vm, cons, local_descendent_ids);
 
-		for (size_t param_i = 0; param_i < cons->num_params; param_i++) {
+			for (size_t param_i = 0; param_i < cons->num_params; param_i++) {
+				struct ast_scope_name *name;
+				name = &names_buffer[names_offset+param_i];
+
+				name->name = cons->params[param_i].name;
+				name->ref.kind = AST_NAME_REF_USE;
+				name->ref.use.id = use_i;
+				name->ref.use.param = local_descendent_ids[param_i];
+			}
+			names_offset += cons->num_params;
+		} else {
 			struct ast_scope_name *name;
-			name = &names_buffer[names_offset+param_i];
+			name = &names_buffer[names_offset];
 
-			name->name = cons->params[param_i].name;
+			name->name = comp->composite.uses[use_i].as_name;
 			name->ref.kind = AST_NAME_REF_USE;
 			name->ref.use.id = use_i;
-			name->ref.use.param = local_descendent_ids[param_i];
-		}
+			name->ref.use.param = 0;
 
-		names_offset += cons->num_params;
+			names_offset += 1;
+		}
 	}
 
 	target_scope->names = names_buffer;

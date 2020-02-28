@@ -460,7 +460,8 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 					ast_node_composite_add_use(
 							ctx->ast_ctx, STG_NO_LOC,
 							mod->mod.root,
-							use_base_target_node);
+							use_base_target_node,
+							NULL);
 				}
 
 				if (should_discover_files) {

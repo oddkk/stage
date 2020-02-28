@@ -410,6 +410,10 @@ struct ast_datatype_bind {
 struct ast_datatype_use {
 	struct ast_node *target;
 	struct stg_location loc;
+
+	// If as_name is not NULL, the name as_name will be exposed with the value
+	// of target. If as_name is NULL all the members of target will be exposed.
+	struct atom *as_name;
 };
 
 struct ast_closure_member {
@@ -734,7 +738,8 @@ ast_node_composite_add_free_expr(
 void
 ast_node_composite_add_use(
 		struct ast_context *ctx, struct stg_location,
-		struct ast_node *target, struct ast_node *expr);
+		struct ast_node *target, struct ast_node *expr,
+		struct atom *as_name);
 
 struct ast_node *
 ast_init_node_variant(

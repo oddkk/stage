@@ -124,6 +124,24 @@ st_node_unpack_func_proto(struct st_node *proto_node,
 	}
 }
 
+struct atom *
+ast_node_use_expr_name(struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_ACCESS:
+			return node->access.name;
+
+		case AST_NODE_LOOKUP:
+			return node->access.name;
+
+		case AST_NODE_MOD:
+			return node->mod.name;
+
+		default:
+			return NULL;
+	}
+}
+
 void
 st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 		struct ast_node *struct_node, struct st_node *stmt)
@@ -142,13 +160,29 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 				struct st_node *use_stmt;
 				use_stmt = stmt->STMT.stmt;
 
+				struct st_node *target_expr;
+				target_expr = use_stmt->USE_STMT.ident;
+				bool use_all = false;
+
+				if (target_expr->type == ST_NODE_USE_ALL) {
+					use_all = true;
+					target_expr = target_expr->USE_ALL.target;
+				}
+
 				struct ast_node *target;
 				target = st_node_visit_expr(
-						ctx, mod, NULL, use_stmt->USE_STMT.ident);
+						ctx, mod, NULL, target_expr);
 				if (target) {
+					struct atom *as_name = NULL;
+
+					if (!use_all) {
+						as_name = ast_node_use_expr_name(target);
+					}
+
 					ast_node_composite_add_use(
 							ctx, use_stmt->loc,
-							struct_node, target);
+							struct_node, target,
+							as_name);
 				}
 			}
 			break;
@@ -164,7 +198,8 @@ st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
 
 				ast_node_composite_add_use(
 						ctx, mod_stmt->loc,
-						struct_node, target_node);
+						struct_node, target_node,
+						mod_stmt->MOD_STMT.ident);
 			}
 			break;
 
