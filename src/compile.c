@@ -263,7 +263,7 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 				struct atom *atom = vm_atom(ctx->vm, name);
 				struct ast_node *file_ns;
 
-				if (atom == vm_atoms(ctx->vm, "mod")) {
+				if (atom == vm_atoms(ctx->vm, "mod") || f->fts_level == 0) {
 					file_ns = dir_ns_stack[dir_ns_head];
 				} else {
 					file_ns = ast_namespace_add_ns(
