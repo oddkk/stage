@@ -371,6 +371,9 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 		case AST_NODE_LIT:
 			break;
 
+		case AST_NODE_LIT_NATIVE:
+			break;
+
 		case AST_NODE_MOD:
 			break;
 

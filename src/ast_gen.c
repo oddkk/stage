@@ -824,6 +824,25 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			}
 			return result;
 
+		case AST_NODE_LIT_NATIVE:
+			{
+				struct object obj;
+
+				int err;
+				err = stg_mod_lookup_native_object(
+						mod->stg_mod, node->lit_native.name, &obj);
+				// Missing objects should have been caught by the typecheck.
+				assert(!err);
+
+				struct bc_instr *lit_instr;
+				lit_instr = bc_gen_load(bc_env, BC_VAR_NEW, obj);
+
+				append_bc_instr(&result, lit_instr);
+
+				result.out_var = lit_instr->load.target;
+			}
+			return result;
+
 		case AST_NODE_MOD:
 			{
 				struct stg_module *mod_ref = NULL;

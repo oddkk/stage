@@ -89,61 +89,29 @@ stg_base_pre_compile(struct ast_context *ctx, struct stg_module *mod)
 	info = calloc(1, sizeof(struct stg_base_mod_info));
 	mod->data = info;
 
-	struct ast_node *int_type_expr;
-	struct object int_obj = {0};
-	int_obj.type = ctx->types.type;
-	int_obj.data = &ctx->types.integer;
-	int_obj = register_object(ctx->vm, &mod->store, int_obj);
+	stg_mod_register_native_type(mod,
+			mod_atoms(mod, "int"),
+			mod->vm->default_types.integer);
 
-	int_type_expr = ast_init_node_lit(
-			ctx, AST_NODE_NEW, STG_NO_LOC, int_obj);
-	ast_namespace_add_decl(ctx, &mod->mod,
-			mod->mod.root, mod_atoms(mod, "int"), int_type_expr);
+	stg_mod_register_native_type(mod,
+			mod_atoms(mod, "Type"),
+			mod->vm->default_types.type);
 
-	struct ast_node *type_type_expr;
-	struct object type_obj = {0};
-	type_obj.type = ctx->types.type;
-	type_obj.data = &ctx->types.type;
-	type_obj = register_object(ctx->vm, &mod->store, type_obj);
+	stg_mod_register_native_type(mod,
+			mod_atoms(mod, "Unit"),
+			mod->vm->default_types.unit);
 
-	type_type_expr = ast_init_node_lit(
-			ctx, AST_NODE_NEW, STG_NO_LOC, type_obj);
-	ast_namespace_add_decl(ctx, &mod->mod,
-			mod->mod.root, mod_atoms(mod, "Type"), type_type_expr);
-
-	struct ast_node *unit_type_expr;
-	struct object unit_obj = {0};
-	unit_obj.type = ctx->types.type;
-	unit_obj.data = &ctx->types.unit;
-	unit_obj = register_object(ctx->vm, &mod->store, unit_obj);
-
-	unit_type_expr = ast_init_node_lit(
-			ctx, AST_NODE_NEW, STG_NO_LOC, unit_obj);
-	ast_namespace_add_decl(ctx, &mod->mod,
-			mod->mod.root, mod_atoms(mod, "Unit"), unit_type_expr);
-
-	struct ast_node *unit_inst_expr;
 	struct object unit_inst = {0};
 	unit_inst.type = ctx->types.unit;
 	unit_inst.data = NULL;
 
-	unit_inst_expr = ast_init_node_lit(
-			ctx, AST_NODE_NEW, STG_NO_LOC, unit_inst);
-	ast_namespace_add_decl(ctx, &mod->mod,
-			mod->mod.root, mod_atoms(mod, "unit"), unit_inst_expr);
+	stg_mod_register_native_object(mod,
+			mod_atoms(mod, "unit"),
+			unit_inst);
 
-
-	struct ast_node *string_type_expr;
-	struct object string_obj = {0};
-	string_obj.type = ctx->types.type;
-	string_obj.data = &ctx->types.string;
-	string_obj = register_object(ctx->vm, &mod->store, string_obj);
-
-	string_type_expr = ast_init_node_lit(
-			ctx, AST_NODE_NEW, STG_NO_LOC, string_obj);
-	ast_namespace_add_decl(ctx, &mod->mod,
-			mod->mod.root, mod_atoms(mod, "String"), string_type_expr);
-
+	stg_mod_register_native_type(mod,
+			mod_atoms(mod, "String"),
+			mod->vm->default_types.string);
 
 	base_init_register_cons(ctx, mod);
 	base_init_register_init(ctx, mod);

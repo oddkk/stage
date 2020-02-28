@@ -566,6 +566,33 @@ ast_node_constraints(
 			}
 			break;
 
+		case AST_NODE_LIT_NATIVE:
+			{
+				ast_slot_id res_slot;
+				res_slot = ast_slot_alloc(env);
+
+				struct object obj = {0};
+
+				int err;
+				err = stg_mod_lookup_native_object(
+						mod->stg_mod, node->lit_native.name, &obj);
+				if (err) {
+					stg_error(ctx->err, node->loc,
+							"Module '%.*s' has no native object '%.*s'.",
+							ALIT(mod->stg_mod->name), ALIT(node->lit_native.name));
+					ast_slot_value_error(
+							env, node->loc, AST_CONSTR_SRC_LIT,
+							res_slot);
+				} else {
+					ast_slot_require_is_obj(
+							env, node->loc, AST_CONSTR_SRC_LIT,
+							res_slot, obj);
+				}
+
+				node->typecheck_slot = res_slot;
+			}
+			break;
+
 		case AST_NODE_FUNC_TYPE:
 			{
 				ast_slot_id type_slot;

@@ -809,6 +809,53 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 		return variant;
 	}
 
+	case ST_NODE_SPECIAL:
+		if (node->SPECIAL.name == vm_atoms(ctx->vm, "native")) {
+			struct st_node *args = node->SPECIAL.args;
+
+			if (!args || args->next_sibling) {
+				size_t num_args_provided = 0;
+				for (struct st_node *nd = args;
+						nd != NULL; nd = nd->next_sibling) {
+					num_args_provided += 1;
+				}
+				stg_error(ctx->err, node->loc,
+						"@%.*s expected exactly one argument, got %zu.",
+						ALIT(node->SPECIAL.name),
+						num_args_provided);
+				return NULL;
+			}
+
+			if (args->type != ST_NODE_STR_LIT) {
+				char *arg_kind = NULL;
+				switch (args->type) {
+					case ST_NODE_NUM_LIT:
+						arg_kind = "integer";
+						break;
+
+					default:
+						panic("Invalid node as argument for SPECIAL.");
+				}
+
+				assert(arg_kind);
+
+				stg_error(ctx->err, args->loc,
+						"Expected string, got %s.", arg_kind);
+				return NULL;
+			}
+
+			struct atom *native_obj_name;
+			native_obj_name = vm_atom(ctx->vm, args->STR_LIT);
+
+			return ast_init_node_lit_native(
+					ctx, AST_NODE_NEW, node->loc, native_obj_name);
+		} else {
+			stg_error(ctx->err, node->loc,
+					"Invalid special expression '%.*s'.",
+					ALIT(node->SPECIAL.name));
+			return NULL;
+		}
+
 	case ST_NODE_TUPLE_DECL: {
 		/*
 		struct expr_node *first_arg = NULL, *last_arg = NULL;

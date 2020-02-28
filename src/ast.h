@@ -356,6 +356,7 @@ enum ast_node_kind {
 	AST_NODE_ACCESS,
 	AST_NODE_TEMPL,
 	AST_NODE_LIT,
+	AST_NODE_LIT_NATIVE,
 	AST_NODE_FUNC_TYPE,
 	AST_NODE_LOOKUP,
 	AST_NODE_MOD,
@@ -506,6 +507,10 @@ struct ast_node {
 
 		struct {
 			struct atom *name;
+		} lit_native;
+
+		struct {
+			struct atom *name;
 			struct ast_name_ref ref;
 		} lookup;
 
@@ -595,6 +600,8 @@ ast_node_name(enum ast_node_kind);
 			}																	\
 			break;																\
 		case AST_NODE_LIT:														\
+			break;																\
+		case AST_NODE_LIT_NATIVE:												\
 			break;																\
 		case AST_NODE_LOOKUP:													\
 			break;																\
@@ -686,6 +693,12 @@ ast_init_node_lit(
 		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct object);
+
+struct ast_node *
+ast_init_node_lit_native(
+		struct ast_context *ctx,
+		struct ast_node *target, struct stg_location,
+		struct atom *name);
 
 struct ast_node *
 ast_init_node_lookup(

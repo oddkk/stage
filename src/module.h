@@ -25,6 +25,11 @@ stg_mod_state_ok(enum stg_module_lifetime state) {
 		state == STG_MOD_LIFE_RUNNING;
 }
 
+struct stg_module_native_object {
+	struct atom *name;
+	struct object obj;
+};
+
 struct stg_module {
 	stg_mod_id id;
 	enum stg_module_lifetime state;
@@ -48,6 +53,10 @@ struct stg_module {
 
 	bool has_native_module_ext;
 	struct string native_module_ext;
+
+	struct stg_module_native_object *native_objs;
+	size_t num_native_objs;
+
 
 	void *data;
 };
@@ -78,6 +87,23 @@ stg_register_type(struct stg_module *, struct type);
 
 func_id
 stg_register_func(struct stg_module *, struct func);
+
+// The object will be copied to the module's object storage.
+void
+stg_mod_register_native_object(struct stg_module *,
+		struct atom *name, struct object);
+
+int
+stg_mod_lookup_native_object(
+		struct stg_module *, struct atom *name, struct object *out);
+
+void
+stg_mod_register_native_type(struct stg_module *,
+		struct atom *name, type_id);
+
+void
+stg_mod_register_native_cons(struct stg_module *,
+		struct atom *name, struct object_cons *);
 
 struct stg_module *
 stg_mod_find_module(struct stg_module *, struct atom *name);

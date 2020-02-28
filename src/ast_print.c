@@ -237,6 +237,11 @@ ast_print_internal(struct ast_context *ctx,
 			printf("\n");
 			break;
 
+		case AST_NODE_LIT_NATIVE:
+			print_indent(depth);
+			printf("lit native: %.*s\n", ALIT(node->lit_native.name));
+			break;
+
 		case AST_NODE_LOOKUP:
 			print_indent(depth);
 			printf("lookup '%.*s': (", ALIT(node->lookup.name));
@@ -344,6 +349,10 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 
 		case AST_NODE_LIT:
 			print_obj_repr(ctx->vm, node->lit.obj);
+			break;
+
+		case AST_NODE_LIT_NATIVE:
+			printf("@native(\"%.*s\")", ALIT(node->lit_native.name));
 			break;
 
 		case AST_NODE_LOOKUP:

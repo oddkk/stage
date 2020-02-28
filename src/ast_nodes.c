@@ -21,6 +21,7 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_ACCESS:		return "ACCESS";
 		case AST_NODE_TEMPL:		return "TEMPL";
 		case AST_NODE_LIT:			return "LIT";
+		case AST_NODE_LIT_NATIVE:	return "LIT_NATIVE";
 		case AST_NODE_LOOKUP:		return "LOOKUP";
 		case AST_NODE_MOD:			return "MOD";
 
@@ -262,6 +263,27 @@ ast_init_node_lit(
 	node->loc = loc;
 
 	node->lit.obj = lit;
+
+	return node;
+}
+
+struct ast_node *
+ast_init_node_lit_native(
+		struct ast_context *ctx,
+		struct ast_node *node, struct stg_location loc,
+		struct atom *name)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(node);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_LIT_NATIVE;
+	node->loc = loc;
+
+	node->lit_native.name = name;
 
 	return node;
 }
@@ -749,6 +771,10 @@ ast_node_deep_copy(struct ast_node *src)
 
 	case AST_NODE_LIT:
 		DCP_LIT(lit);
+		break;
+
+	case AST_NODE_LIT_NATIVE:
+		DCP_LIT(lit_native.name);
 		break;
 
 	case AST_NODE_MOD:

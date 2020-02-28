@@ -2,6 +2,7 @@
 #include "str.h"
 #include "base/mod.h"
 #include "native.h"
+#include "dlist.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,6 +48,62 @@ stg_mod_find_module(struct stg_module *mod, struct atom *name)
 	}
 
 	return NULL;
+}
+
+void
+stg_mod_register_native_object(struct stg_module *mod,
+		struct atom *name, struct object obj)
+{
+	for (size_t i = 0; i < mod->num_native_objs; i++) {
+		if (mod->native_objs[i].name == name) {
+			printf("Module '%.*s' has conflicting native objects named '%.*s'.\n",
+					ALIT(mod->name), ALIT(name));
+			return;
+		}
+	}
+
+	struct stg_module_native_object nobj = {0};
+	nobj.name = name;
+	nobj.obj = register_object(mod->vm, &mod->store, obj);
+
+	dlist_append(
+			mod->native_objs,
+			mod->num_native_objs,
+			&nobj);
+}
+
+void
+stg_mod_register_native_type(struct stg_module *mod,
+		struct atom *name, type_id tid)
+{
+	struct object obj = {0};
+	obj.type = mod->vm->default_types.type;
+	obj.data = &tid;
+	stg_mod_register_native_object(mod, name, obj);
+}
+
+void
+stg_mod_register_native_cons(struct stg_module *mod,
+		struct atom *name, struct object_cons *cons)
+{
+	struct object obj = {0};
+	obj.type = mod->vm->default_types.cons;
+	obj.data = &cons;
+	stg_mod_register_native_object(mod, name, obj);
+}
+
+int
+stg_mod_lookup_native_object(
+		struct stg_module *mod, struct atom *name, struct object *out)
+{
+	for (size_t i = 0; i < mod->num_native_objs; i++) {
+		if (mod->native_objs[i].name == name) {
+			*out = mod->native_objs[i].obj;
+			return 0;
+		}
+	}
+
+	return -1;
 }
 
 int
