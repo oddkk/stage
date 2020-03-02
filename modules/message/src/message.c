@@ -1,4 +1,5 @@
 #include "message.h"
+#include <ast.h>
 #include <bytecode.h>
 #include <native_bytecode.h>
 #include <base/mod.h>

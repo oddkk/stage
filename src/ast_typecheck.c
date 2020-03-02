@@ -655,11 +655,11 @@ ast_node_constraints(
 				break;
 			}
 
-			assert(mod_ref->mod.instance.type != TYPE_UNSET);
+			assert(mod_ref->instance.type != TYPE_UNSET);
 
 			ast_slot_require_is_obj(
 					env, node->loc, AST_CONSTR_SRC_MOD,
-					res_slot, mod_ref->mod.instance);
+					res_slot, mod_ref->instance);
 		}
 		break;
 

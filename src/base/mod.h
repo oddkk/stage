@@ -22,16 +22,13 @@ void
 base_integer_register_native(struct stg_native_module *mod);
 
 void
-base_init_register_cons(struct ast_context *ctx, struct stg_module *mod);
-
-void
-base_init_register_init(struct ast_context *ctx, struct stg_module *mod);
+base_init_register_init(struct stg_module *mod);
 
 void
 base_init_register_native(struct stg_native_module *mod);
 
 void
-base_init_register_io(struct ast_context *ctx, struct stg_module *mod);
+base_init_register_io(struct stg_module *mod);
 
 void
 base_io_register_native(struct stg_native_module *mod);

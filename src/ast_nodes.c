@@ -838,6 +838,7 @@ struct ast_templ_cons_param {
 };
 
 struct ast_templ_cons_info {
+	struct ast_module ast_mod;
 	struct ast_node *templ_node;
 
 	struct ast_templ_cons_param *params;
@@ -864,7 +865,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 		param_values[i].data = params[i];
 
 		param_values[i] = register_object(
-				ctx->vm, mod->mod.env.store, param_values[i]);
+				ctx->vm, &mod->store, param_values[i]);
 	}
 
 	// Check if we already have instantiated this template with the given
@@ -916,7 +917,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 
 	size_t num_errors_pre = ctx->err->num_errors;
 	int err;
-	err = ast_node_typecheck(ctx, &mod->mod,
+	err = ast_node_typecheck(ctx, &info->ast_mod,
 			body, body_deps, num_body_deps, TYPE_UNSET);
 	if (err) {
 		return -1;
@@ -971,7 +972,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 
 	struct ast_gen_bc_result bc;
 	bc = ast_node_gen_bytecode(
-			ctx, &mod->mod, &gen_info,
+			ctx, &info->ast_mod, &gen_info,
 			&bc_env, body);
 	if (bc.err) {
 		return -1;
@@ -1001,7 +1002,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 
 	arena_pop(&ctx->vm->memory, exec_ctx.heap);
 
-	res = register_object(ctx->vm, mod->mod.env.store, res);
+	res = register_object(ctx->vm, &mod->store, res);
 
 	struct ast_templ_cons_inst inst = {0};
 
@@ -1012,7 +1013,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	for (size_t i = 0; i < info->num_params; i++) {
 		inst.params[i] =
 			register_object(ctx->vm,
-					mod->mod.env.store, param_values[i]);
+					&mod->store, param_values[i]);
 	}
 
 	inst.result = res;
@@ -1125,7 +1126,7 @@ void ast_templ_impose_constraints(
 
 	ast_slot_id result_slot;
 	result_slot = ast_node_constraints(
-			ctx, &mod->mod, env, body_deps, num_body_deps,
+			ctx, &info->ast_mod, env, body_deps, num_body_deps,
 			info->templ_node->templ.body);
 
 	ast_slot_require_type(
@@ -1169,6 +1170,8 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 
 	struct ast_templ_cons_info *info;
 	info = calloc(1, sizeof(struct ast_templ_cons_info));
+
+	info->ast_mod = *mod;
 
 	info->num_params = templ_node->templ.num_params;
 	info->params = calloc(def->num_params,

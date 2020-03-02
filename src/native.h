@@ -35,6 +35,7 @@ struct stg_native_type {
 struct vm;
 struct atom;
 struct stg_module;
+struct ast_module;
 struct ast_context;
 
 struct stg_native_module {
@@ -47,9 +48,13 @@ struct stg_native_module {
 	struct stg_native_type *types;
 	size_t num_types;
 
+	// Called before the module is compiled to allow registering native
+	// objects.
+	int  (*hook_register   )(struct stg_module *);
+
 	// Called before the AST is compiled to allow the module to make changes to
 	// the tree.
-	int  (*hook_pre_compile)(struct ast_context *, struct stg_module *);
+	int  (*hook_pre_compile)(struct ast_context *, struct ast_module *);
 
 	// Called when the module is about to be started, right before and after
 	// this module's init monad is called.

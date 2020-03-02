@@ -3,6 +3,7 @@ COMPILE_JOB(load_module, struct {
 	struct string module_src_dir;
 
 	struct stg_module *stg_mod;
+	struct ast_module ast_mod;
 
 	enum job_load_module_state state;
 	int num_unparsed_files;

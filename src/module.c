@@ -1,5 +1,6 @@
 #include "module.h"
 #include "str.h"
+#include "ast.h"
 #include "base/mod.h"
 #include "native.h"
 #include "dlist.h"
@@ -107,10 +108,22 @@ stg_mod_lookup_native_object(
 }
 
 int
-stg_mod_invoke_pre_compile(struct ast_context *ctx, struct stg_module *mod)
+stg_mod_invoke_register(struct stg_module *mod)
 {
+	if (mod->native_mod && mod->native_mod->hook_register) {
+		return mod->native_mod->hook_register(mod);
+	}
+
+	return 0;
+}
+
+int
+stg_mod_invoke_pre_compile(struct ast_context *ctx, struct ast_module *ast_mod)
+{
+	struct stg_module *mod;
+	mod = ast_mod->stg_mod;
 	if (mod->native_mod && mod->native_mod->hook_pre_compile) {
-		return mod->native_mod->hook_pre_compile(ctx, mod);
+		return mod->native_mod->hook_pre_compile(ctx, ast_mod);
 	}
 
 	return 0;

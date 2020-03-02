@@ -955,8 +955,6 @@ struct ast_module {
 	struct ast_env env;
 
 	struct ast_node *root;
-
-	struct object instance;
 };
 
 int

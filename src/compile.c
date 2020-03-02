@@ -442,14 +442,16 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 					should_discover_files = module_found;
 				}
+				data->ast_mod.env.store = &mod->store;
+				data->ast_mod.stg_mod = mod;
 
-				mod->mod.root = ast_init_node_composite(
+				data->ast_mod.root = ast_init_node_composite(
 						ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC);
 
 				struct atom *base_mod_name = vm_atoms(ctx->vm, "base");
 
 				if (mod->name != base_mod_name) {
-					ast_module_add_dependency(ctx->ast_ctx, &mod->mod,
+					ast_module_add_dependency(ctx->ast_ctx, &data->ast_mod,
 							base_mod_name);
 
 					struct ast_node *use_base_mod_node;
@@ -465,13 +467,13 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 					ast_node_composite_add_use(
 							ctx->ast_ctx, STG_NO_LOC,
-							mod->mod.root,
+							data->ast_mod.root,
 							use_base_target_node,
 							NULL);
 				}
 
 				if (should_discover_files) {
-					discover_module_files(ctx, &mod->mod,
+					discover_module_files(ctx, &data->ast_mod,
 							mod->src_dir,
 							&data->num_unparsed_files);
 				}
@@ -507,7 +509,8 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				}
 			}
 
-			stg_mod_invoke_pre_compile(ctx->ast_ctx, mod);
+			stg_mod_invoke_register(mod);
+			stg_mod_invoke_pre_compile(ctx->ast_ctx, &data->ast_mod);
 
 			data->state = JOB_LOAD_MODULE_DONE;
 			// fallthrough
@@ -515,7 +518,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 		case JOB_LOAD_MODULE_DONE:
 			{
 				int err;
-				err = ast_module_finalize(ctx->ast_ctx, &mod->mod);
+				err = ast_module_finalize(ctx->ast_ctx, &data->ast_mod);
 
 				if (err) {
 					print_error("compile", "Failed to initialize module '%.*s'",

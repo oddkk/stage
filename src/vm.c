@@ -47,7 +47,7 @@ static int
 vm_mod_init(struct stg_module *mod)
 {
 	struct object mod_obj;
-	mod_obj = mod->mod.instance;
+	mod_obj = mod->instance;
 	struct type *mod_type;
 	mod_type = vm_get_type(mod->vm, mod_obj.type);
 
@@ -219,9 +219,6 @@ vm_request_module(struct vm *vm,
 			vm->modules, vm->num_modules, &mod);
 
 	mod->store.mod_id = mod->id;
-
-	mod->mod.env.store = &mod->store;
-	mod->mod.stg_mod = mod;
 
 	struct atom *base_atom = vm_atoms(vm, "base");
 	if (mod->name != base_atom) {

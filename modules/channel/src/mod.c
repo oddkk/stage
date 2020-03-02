@@ -1,5 +1,6 @@
 #include "mod.h"
 #include "channel.h"
+#include <ast.h>
 #include <module.h>
 #include <native.h>
 #include <utils.h>
@@ -110,10 +111,12 @@ cnl_register_channel_type(struct stg_module *mod, type_id cnl_type)
 }
 
 int
-mod_channel_pre_compile(struct ast_context *ctx, struct stg_module *mod)
+mod_channel_pre_compile(struct ast_context *ctx, struct ast_module *ast_mod)
 {
 	struct cnl_context *cctx;
 	cctx = calloc(1, sizeof(struct cnl_context));
+	struct stg_module *mod;
+	mod = ast_mod->stg_mod;
 	mod->data = cctx;
 
 	{
@@ -133,8 +136,6 @@ mod_channel_pre_compile(struct ast_context *ctx, struct stg_module *mod)
 		cnl_type_def->data = mod;
 
 		cctx->channel_type_cons = cnl_type_def;
-
-		struct ast_module *ast_mod = &mod->mod;
 
 		struct object res = {0};
 		res.type = ctx->types.cons;

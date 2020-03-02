@@ -851,7 +851,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				assert(mod_ref);
 
 				struct bc_instr *mod_instr;
-				mod_instr = bc_gen_load(bc_env, BC_VAR_NEW, mod_ref->mod.instance);
+				mod_instr = bc_gen_load(bc_env, BC_VAR_NEW, mod_ref->instance);
 
 				append_bc_instr(&result, mod_instr);
 

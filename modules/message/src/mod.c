@@ -1,5 +1,6 @@
 #include "mod.h"
 #include "message.h"
+#include <ast.h>
 #include <module.h>
 #include <native.h>
 #include <utils.h>
@@ -152,10 +153,12 @@ msg_endpoint_cons(struct msg_endpoint_cons_info *info, msg_node_id in)
 }
 
 int
-mod_message_pre_compile(struct ast_context *ast_ctx, struct stg_module *mod)
+mod_message_pre_compile(struct ast_context *ast_ctx, struct ast_module *ast_mod)
 {
 	struct msg_context *ctx;
 	ctx = calloc(1, sizeof(struct msg_context));
+	struct stg_module *mod;
+	mod = ast_mod->stg_mod;
 	mod->data = ctx;
 
 	ctx->sys.vm = mod->vm;
@@ -205,8 +208,6 @@ mod_message_pre_compile(struct ast_context *ast_ctx, struct stg_module *mod)
 
 		ctx->msg_type_cons = msg_type_def;
 
-		struct ast_module *ast_mod = &mod->mod;
-
 		struct object res = {0};
 		res.type = ast_ctx->types.cons;
 		res.data = &ctx->msg_type_cons;
@@ -228,7 +229,7 @@ mod_message_pre_compile(struct ast_context *ast_ctx, struct stg_module *mod)
 				mod, ast_ctx->types.unit);
 		res.data = &ctx->on_start_msg;
 
-		res = register_object(ast_ctx->vm, mod->mod.env.store, res);
+		res = register_object(ast_ctx->vm, &mod->store, res);
 
 		struct ast_node *expr;
 		expr = ast_init_node_lit(
@@ -236,7 +237,7 @@ mod_message_pre_compile(struct ast_context *ast_ctx, struct stg_module *mod)
 
 		struct atom *start_msg_name = vm_atoms(ast_ctx->vm, "onStart");
 
-		ast_namespace_add_decl(ast_ctx, &mod->mod, mod->mod.root,
+		ast_namespace_add_decl(ast_ctx, ast_mod, ast_mod->root,
 				start_msg_name, expr);
 	}
 

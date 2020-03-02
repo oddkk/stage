@@ -185,7 +185,7 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 		exec_ctx = vm_init_exec_context(ctx->vm);
 		vm_call_func(ctx->vm, &exec_ctx, init_func, NULL, 0, &mod_obj);
 
-		mod->instance =
+		mod->stg_mod->instance =
 			register_object(ctx->vm, mod->env.store, mod_obj);
 
 		vm_release_exec_context(ctx->vm, &exec_ctx);

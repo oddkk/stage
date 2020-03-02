@@ -2,7 +2,6 @@
 #define STAGE_MODULE_H
 
 #include "vm.h"
-#include "ast.h"
 #include "atom.h"
 #include "objstore.h"
 
@@ -48,7 +47,8 @@ struct stg_module {
 	struct atom_table *atom_table;
 	struct vm *vm;
 
-	struct ast_module mod;
+	struct object instance;
+
 	struct stg_native_module *native_mod;
 
 	bool has_native_module_ext;
@@ -109,7 +109,10 @@ struct stg_module *
 stg_mod_find_module(struct stg_module *, struct atom *name);
 
 int
-stg_mod_invoke_pre_compile(struct ast_context *ctx, struct stg_module *mod);
+stg_mod_invoke_register(struct stg_module *mod);
+
+int
+stg_mod_invoke_pre_compile(struct ast_context *ctx, struct ast_module *mod);
 
 int
 stg_mod_invoke_pre_init(struct stg_module *mod);

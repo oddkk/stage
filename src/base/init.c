@@ -152,7 +152,7 @@ stg_register_init_type(struct stg_module *mod, type_id res_type)
 }
 
 void
-base_init_register_init(struct ast_context *ctx, struct stg_module *mod)
+base_init_register_init(struct stg_module *mod)
 {
 	struct stg_base_mod_info *mod_info;
 	mod_info = mod->data;
@@ -176,21 +176,8 @@ base_init_register_init(struct ast_context *ctx, struct stg_module *mod)
 		mod_info->init_cons = cons;
 	}
 
-	{
-		struct object res = {0};
-		res.type = ctx->types.cons;
-		res.data = &mod_info->init_cons;
-		res = register_object(ctx->vm, &mod->store, res);
-
-		struct atom *cons_name = vm_atoms(ctx->vm, "Init");
-
-		struct ast_node *expr;
-		expr = ast_init_node_lit(
-				ctx, AST_NODE_NEW, STG_NO_LOC, res);
-
-		ast_namespace_add_decl(ctx, &mod->mod, mod->mod.root,
-				cons_name, expr);
-	}
+	stg_mod_register_native_cons(mod,
+			mod_atoms(mod, "Init"), mod_info->init_cons);
 }
 
 struct init_print_int_data {

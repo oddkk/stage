@@ -44,8 +44,3 @@ base_bootstrap_register_cons(struct stg_module *mod)
 		mod->vm->default_types.inst = tid;
 	}
 }
-
-void
-base_init_register_cons(struct ast_context *ctx, struct stg_module *mod)
-{
-}

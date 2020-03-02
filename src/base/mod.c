@@ -83,7 +83,7 @@ stg_base_bootstrap_pre_compile(struct stg_module *mod) {
 }
 
 static int
-stg_base_pre_compile(struct ast_context *ctx, struct stg_module *mod)
+stg_base_register(struct stg_module *mod)
 {
 	struct stg_base_mod_info *info;
 	info = calloc(1, sizeof(struct stg_base_mod_info));
@@ -102,7 +102,7 @@ stg_base_pre_compile(struct ast_context *ctx, struct stg_module *mod)
 			mod->vm->default_types.unit);
 
 	struct object unit_inst = {0};
-	unit_inst.type = ctx->types.unit;
+	unit_inst.type = mod->vm->default_types.unit;
 	unit_inst.data = NULL;
 
 	stg_mod_register_native_object(mod,
@@ -113,9 +113,8 @@ stg_base_pre_compile(struct ast_context *ctx, struct stg_module *mod)
 			mod_atoms(mod, "String"),
 			mod->vm->default_types.string);
 
-	base_init_register_cons(ctx, mod);
-	base_init_register_init(ctx, mod);
-	base_init_register_io(ctx, mod);
+	base_init_register_init(mod);
+	base_init_register_io(mod);
 
 	return 0;
 }
@@ -141,5 +140,5 @@ stg_base_load(struct vm *vm)
 	base_io_register_native(mod);
 	stg_native_register_funcs(mod, print_int, STG_NATIVE_FUNC_IMPURE);
 
-	mod->hook_pre_compile = stg_base_pre_compile;
+	mod->hook_register = stg_base_register;
 }
