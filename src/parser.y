@@ -168,11 +168,12 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 %token END 0
 %token IDENTIFIER "identifier" NUMLIT "number" STRINGLIT "string"
 %token NAMESPACE "namespace" VARIANT "Variant" STRUCT "Struct" USE "use" MOD "mod"
+%token IMPL "impl" CLASS "class"
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
 %token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>"
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_stmt impl_stmt
 
 %type <struct atom *> IDENTIFIER
 %type <struct string> STRINGLIT
@@ -218,11 +219,13 @@ stmt:			stmt1					{ $$ = MKNODE(STMT, .stmt=$1); }
 		;
 
 stmt1:			';'                     { $$ = NULL; }
-		|		mod_stmt    ';'         { $$ = $1; }
-		|		use_stmt    ';'         { $$ = $1; }
-		|		assign_stmt ';'         { $$ = $1; }
-		|		expr        ';'         { $$ = $1; }
-		|		error       ';'         { $$ = NULL; }
+		|		mod_stmt        ';'     { $$ = $1; }
+		|		use_stmt        ';'     { $$ = $1; }
+		|		type_class_stmt ';'     { $$ = $1; }
+		|		impl_stmt       ';'     { $$ = $1; }
+		|		assign_stmt     ';'     { $$ = $1; }
+		|		expr            ';'     { $$ = $1; }
+		|		error           ';'     { $$ = NULL; }
 		;
 
 assign_stmt:
@@ -234,6 +237,33 @@ assign_stmt:
 		|		ident  ':' expr "~=" expr { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=$3,   .body=$5,   .decl=true,  .overridable=true);  }
 		|		expr   "~=" expr          { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=NULL, .body=$3,   .decl=false, .overridable=true);  }
 		;
+
+type_class_stmt:
+				"class" IDENTIFIER '[' templ_decl_params ']' object_decl1
+					{ $$ = MKNODE(TYPE_CLASS_STMT, .ident=$2, .params=$4, .body=$6); }
+		;
+
+impl_stmt:
+				"impl" expr1 '[' func_args ']' object_decl1
+					{ $$ = MKNODE(IMPL_STMT, .target=$2, .args=$4, .body=$6); }
+
+templ_decl_params:
+				templ_decl_params1        { $$ = $1; }
+		|		templ_decl_params1 ','    { $$ = $1; }
+		;
+
+templ_decl_params1:
+				templ_decl_params1 ',' templ_decl_param
+					{ $$ = MKNODE(INTERNAL_LIST, .head=$3, .tail=$1); }
+		|		templ_decl_param
+					{ $$ = MKNODE(INTERNAL_LIST, .head=$1, .tail=NULL); }
+		;
+
+templ_decl_param:
+				expr                { $$ = $1; }
+		|		IDENTIFIER ':' expr { $$ = MKNODE(TEMPLATE_VAR, .name=$1, .type=$3); }
+		;
+				
 
 special: 		'@' IDENTIFIER '(' special_args ')' { $$ = MKNODE(SPECIAL, .name=$2, .args=$4  ); }
 		;
@@ -506,6 +536,8 @@ re2c:define:YYFILL:naked = 1;
 "Struct"      { lloc_col(ctx, lloc, CURRENT_LEN); return STRUCT; }
 "namespace"   { lloc_col(ctx, lloc, CURRENT_LEN); return NAMESPACE; }
 "use"         { lloc_col(ctx, lloc, CURRENT_LEN); return USE; }
+"class"       { lloc_col(ctx, lloc, CURRENT_LEN); return CLASS; }
+"impl"        { lloc_col(ctx, lloc, CURRENT_LEN); return IMPL; }
 ".."          { lloc_col(ctx, lloc, CURRENT_LEN); return RANGE; }
 /* "..."         { lloc_col(ctx, lloc, CURRENT_LEN); return ELLIPSIS; } */
 "<-"          { lloc_col(ctx, lloc, CURRENT_LEN); return BIND_LEFT; }

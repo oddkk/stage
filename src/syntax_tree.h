@@ -116,6 +116,18 @@ extern struct string st_node_names[ST_NODES_LEN];
 		TREE_VISIT_NODE((node), USE_ALL, target);		\
 		break;											\
 														\
+	case ST_NODE_TYPE_CLASS_STMT:						\
+		TREE_VISIT_ATOM((node), TYPE_CLASS_STMT, ident);\
+		TREE_VISIT_NODE((node), TYPE_CLASS_STMT, params);	\
+		TREE_VISIT_NODE((node), TYPE_CLASS_STMT, body);	\
+		break;											\
+														\
+	case ST_NODE_IMPL_STMT:								\
+		TREE_VISIT_NODE((node), IMPL_STMT, target);		\
+		TREE_VISIT_NODE((node), IMPL_STMT, args);		\
+		TREE_VISIT_NODE((node), IMPL_STMT, body);		\
+		break;											\
+														\
 	case ST_NODE_ASSERT_STMT:							\
 		TREE_VISIT_NODE((node), ASSERT_STMT, expr);		\
 		break;											\
@@ -143,6 +155,7 @@ extern struct string st_node_names[ST_NODES_LEN];
 														\
 	case ST_NODE_TEMPLATE_VAR:							\
 		TREE_VISIT_ATOM((node), TEMPLATE_VAR, name);	\
+		TREE_VISIT_NODE((node), TEMPLATE_VAR, type);	\
 		break;											\
 														\
 	case ST_NODE_ACCESS:								\

@@ -45,6 +45,18 @@ ST_NODE(USE_ALL, struct {
 	struct st_node *target;
 })
 
+ST_NODE(TYPE_CLASS_STMT, struct {
+	struct atom *ident;
+	struct st_node *params;
+	struct st_node *body;
+})
+
+ST_NODE(IMPL_STMT, struct {
+	struct st_node *target;
+	struct st_node *args;
+	struct st_node *body;
+})
+
 ST_NODE(ASSERT_STMT, struct {
 	struct st_node *expr;
 })
@@ -74,6 +86,7 @@ ST_NODE(NAMESPACE, struct {
 
 ST_NODE(TEMPLATE_VAR, struct {
 	struct atom *name;
+	struct st_node *type;
 })
 
 ST_NODE(ACCESS, struct {
