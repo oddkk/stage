@@ -267,13 +267,13 @@ void print_type_repr(struct vm *vm, struct type *type)
 struct string
 type_repr_to_alloced_string(struct vm *vm, struct type *type)
 {
-	struct arena mem = arena_push(&vm->memory);
+	arena_mark mem = arena_checkpoint(&vm->memory);
 	struct string res;
 
 	if (type->base->repr) {
-		res = type->base->repr(vm, &mem, type);
+		res = type->base->repr(vm, &vm->memory, type);
 	} else {
-		res = default_type_repr(vm, &mem, type);
+		res = default_type_repr(vm, &vm->memory, type);
 	}
 
 	struct string alloced;
@@ -282,42 +282,41 @@ type_repr_to_alloced_string(struct vm *vm, struct type *type)
 
 	memcpy(alloced.text, res.text, alloced.length);
 
-	arena_pop(&vm->memory, mem);
+	arena_reset(&vm->memory, mem);
 
 	return alloced;
 }
 
 void print_obj_repr(struct vm *vm, struct object obj)
 {
-	struct arena mem = {0};
-	// TODO: We should probably use some scratch memory for this print.
-	uint8_t buffer[4096];
+	struct arena *mem = &vm->transient;
 
-	mem.data = buffer;
-	mem.capacity = sizeof(buffer);
+	arena_mark mark = arena_checkpoint(mem);
 
 	struct type *type = vm_get_type(vm, obj.type);
 	struct string res;
 
 	if (type->base->obj_repr) {
-		res = type->base->obj_repr(vm, &mem, &obj);
+		res = type->base->obj_repr(vm, mem, &obj);
 	} else {
-		res = default_obj_repr(vm, &mem, &obj);
+		res = default_obj_repr(vm, mem, &obj);
 	}
 	printf("%.*s", LIT(res));
+
+	arena_reset(mem, mark);
 }
 
 struct string
 obj_repr_to_alloced_string(struct vm *vm, struct object obj)
 {
-	struct arena mem = arena_push(&vm->memory);
+	arena_mark mem = arena_checkpoint(&vm->memory);
 	struct type *type = vm_get_type(vm, obj.type);
 	struct string res;
 
 	if (type->base->obj_repr) {
-		res = type->base->obj_repr(vm, &mem, &obj);
+		res = type->base->obj_repr(vm, &vm->memory, &obj);
 	} else {
-		res = default_obj_repr(vm, &mem, &obj);
+		res = default_obj_repr(vm, &vm->memory, &obj);
 	}
 
 	struct string alloced;
@@ -326,7 +325,7 @@ obj_repr_to_alloced_string(struct vm *vm, struct object obj)
 
 	memcpy(alloced.text, res.text, alloced.length);
 
-	arena_pop(&vm->memory, mem);
+	arena_reset(&vm->memory, mem);
 
 	return alloced;
 }
@@ -337,13 +336,13 @@ arena_string_append_type_repr(struct string *str, struct vm *vm,
 {
 	struct string type_repr;
 
-	struct arena tmp_mem = arena_push(mem);
+	arena_mark mark = arena_checkpoint(mem);
 	if (type->base->repr) {
-		type_repr = type->base->repr(vm, &tmp_mem, type);
+		type_repr = type->base->repr(vm, mem, type);
 	} else {
-		type_repr = default_type_repr(vm, &tmp_mem, type);
+		type_repr = default_type_repr(vm, mem, type);
 	}
-	arena_pop(mem, tmp_mem);
+	arena_reset(mem, mark);
 
 	arena_string_append(mem, str, type_repr);
 }
@@ -356,13 +355,13 @@ arena_string_append_obj_repr(struct string *str, struct vm *vm,
 	struct type *type;
 	type = vm_get_type(vm, object->type);
 
-	struct arena tmp_mem = arena_push(mem);
+	arena_mark mark = arena_checkpoint(mem);
 	if (type->base->obj_repr) {
-		repr = type->base->obj_repr(vm, &tmp_mem, object);
+		repr = type->base->obj_repr(vm, mem, object);
 	} else {
-		repr = default_obj_repr(vm, &tmp_mem, object);
+		repr = default_obj_repr(vm, mem, object);
 	}
-	arena_pop(mem, tmp_mem);
+	arena_reset(mem, mark);
 
 	arena_string_append(mem, str, repr);
 }

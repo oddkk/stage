@@ -141,14 +141,14 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 		mod_obj.data = mod_obj_buffer;
 		mod_obj.type = type;
 
-		struct stg_exec exec_ctx;
-		exec_ctx = vm_init_exec_context(ctx->vm);
+		struct stg_exec exec_ctx = {0};
+		mod_arena(mod->stg_mod, &exec_ctx.heap);
 		vm_call_func(ctx->vm, &exec_ctx, init_func, NULL, 0, &mod_obj);
 
 		mod->stg_mod->instance =
 			register_object(ctx->vm, mod->env.store, mod_obj);
 
-		vm_release_exec_context(ctx->vm, &exec_ctx);
+		arena_destroy(&exec_ctx.heap);
 	}
 
 	return 0;

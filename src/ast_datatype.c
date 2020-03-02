@@ -1274,9 +1274,12 @@ ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
 	obj.type = expr->value.node->type;
 	obj.data = buffer;
 
+	struct stg_exec exec_ctx = {0};
+	arena_init(&exec_ctx.heap, &ctx->ast_ctx->vm->mem);
+
 	int err;
 	err = vm_call_func(
-			ctx->ast_ctx->vm, NULL, fid, dep_member_obj,
+			ctx->ast_ctx->vm, &exec_ctx, fid, dep_member_obj,
 			expr->num_member_deps, &obj);
 	if (err) {
 		printf("Failed to evaluate constant member.\n");
@@ -1286,6 +1289,9 @@ ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
 	expr->const_value =
 		register_object(ctx->ast_ctx->vm,
 				ctx->ast_mod->env.store, obj);
+
+	arena_destroy(&exec_ctx.heap);
+
 	expr->constant = true;
 	*out = expr->const_value;
 
@@ -3192,10 +3198,10 @@ ast_dt_finalize_variant(
 			type_id out_type = TYPE_UNSET;
 
 			struct stg_exec exec_ctx = {0};
-			exec_ctx.heap = arena_push(&ctx->vm->memory);
+			mod_arena(mod->stg_mod, &exec_ctx.heap);
 			nbc_exec(ctx->vm, &exec_ctx, type_expr_bc->nbc,
 					NULL, 0, NULL, &out_type);
-			arena_pop(&ctx->vm->memory, exec_ctx.heap);
+			arena_destroy(&exec_ctx.heap);
 
 			assert(out_type != TYPE_UNSET);
 

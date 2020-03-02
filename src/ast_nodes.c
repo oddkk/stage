@@ -995,12 +995,12 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	res.data = buffer;
 
 	struct stg_exec exec_ctx = {0};
-	exec_ctx.heap = arena_push(&ctx->vm->memory);
+	mod_arena(mod, &exec_ctx.heap);
 
 	nbc_exec(ctx->vm, &exec_ctx, &nbc_func,
 			NULL, 0, NULL, buffer);
 
-	arena_pop(&ctx->vm->memory, exec_ctx.heap);
+	arena_destroy(&exec_ctx.heap);
 
 	res = register_object(ctx->vm, &mod->store, res);
 

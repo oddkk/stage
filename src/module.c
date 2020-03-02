@@ -13,6 +13,12 @@ mod_atom(struct stg_module *mod, struct string name)
 	return atom_create(&mod->vm->atom_table, name);
 }
 
+void
+mod_arena(struct stg_module *mod, struct arena *out)
+{
+	arena_init(out, &mod->vm->mem);
+}
+
 type_id
 stg_register_type(struct stg_module *mod, struct type t)
 {

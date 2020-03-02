@@ -123,12 +123,12 @@ int arena_string_append(struct arena *mem, struct string *str, struct string in)
 
 void arena_string_append_vsprintf(struct arena *mem, struct string *str, char *fmt, va_list ap)
 {
-	struct arena tmp_mem = arena_push(mem);
+	arena_mark mark = arena_checkpoint(mem);
 
 	struct string result;
-	result = arena_vsprintf(&tmp_mem, fmt, ap);
+	result = arena_vsprintf(mem, fmt, ap);
 
-	arena_pop(mem, tmp_mem);
+	arena_reset(mem, mark);
 
 	arena_string_append(mem, str, result);
 }

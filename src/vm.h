@@ -26,7 +26,11 @@ struct stg_compile_options {
 
 struct vm {
 	/* struct objstore store; */
+	struct stg_memory mem;
+
 	struct arena memory;
+	struct arena transient;
+
 	struct atom_table atom_table;
 
 	struct stg_compile_options compile_options;
@@ -76,12 +80,6 @@ vm_get_type(struct vm *, type_id);
 
 struct func *
 vm_get_func(struct vm *, func_id);
-
-struct stg_exec
-vm_init_exec_context(struct vm *);
-
-void
-vm_release_exec_context(struct vm *, struct stg_exec *);
 
 // Note that this function expects ret to have its type set to the expected
 // return, and to have data point to a memory location where the result will be

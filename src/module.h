@@ -82,6 +82,9 @@ mod_atom(struct stg_module *, struct string name);
 // Create an atom from a cstr.
 #define mod_atoms(mod, str) mod_atom(mod, STR(str))
 
+void
+mod_arena(struct stg_module *mod, struct arena *out);
+
 type_id
 stg_register_type(struct stg_module *, struct type);
 

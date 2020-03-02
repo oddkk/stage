@@ -12,14 +12,17 @@
 
 int vm_init(struct vm *vm)
 {
+	zero_memory(vm, sizeof(struct vm));
+
 	int err;
 
-	zero_memory(vm, sizeof(struct vm));
-	err = arena_init(&vm->memory, MEGABYTE(10));
-
+	err = stg_memory_init(&vm->mem);
 	if (err) {
 		return -1;
 	}
+
+	arena_init(&vm->memory, &vm->mem);
+	arena_init(&vm->transient, &vm->mem);
 
 	vm->atom_table.string_arena = &vm->memory;
 	atom_table_rehash(&vm->atom_table, 64);
@@ -40,6 +43,7 @@ void vm_destroy(struct vm *vm)
 
 	free(vm->modules);
 	free(vm->memory.data);
+	stg_memory_destroy(&vm->mem);
 	// TODO: Free atom table
 }
 
@@ -107,10 +111,10 @@ vm_mod_init(struct stg_module *mod)
 	memset(result_buffer, 0, inner_type->size);
 	result.data = result_buffer;
 
-	struct stg_exec exec_ctx;
-	exec_ctx = vm_init_exec_context(mod->vm);
+	struct stg_exec exec_ctx = {0};
+	mod_arena(mod, &exec_ctx.heap);
 	stg_unsafe_call_init(mod->vm, &exec_ctx, main_obj, &result);
-	vm_release_exec_context(mod->vm, &exec_ctx);
+	arena_destroy(&exec_ctx.heap);
 
 	return 0;
 }
@@ -288,21 +292,6 @@ vm_get_func(struct vm *vm, func_id fid)
 	return store_get_func(&vm->modules[mid]->store, mfid);
 }
 
-struct stg_exec
-vm_init_exec_context(struct vm *vm)
-{
-	struct stg_exec res = {0};
-	res.heap = arena_push(&vm->memory);
-	return res;
-}
-
-void
-vm_release_exec_context(struct vm *vm, struct stg_exec *ctx)
-{
-	arena_pop(&vm->memory, ctx->heap);
-	memset(ctx, 0, sizeof(struct stg_exec));
-}
-
 int
 vm_call_func_obj(
 		struct vm *vm, struct stg_exec *ctx,
@@ -328,9 +317,10 @@ vm_call_func_obj(
 	assert(ret->data != NULL || ret_type->size == 0);
 
 	bool tmp_exec_ctx = !ctx;
-	struct stg_exec _tmp_exec_ctx;
+	struct stg_exec _tmp_exec_ctx = {0};
+
 	if (tmp_exec_ctx) {
-		_tmp_exec_ctx = vm_init_exec_context(vm);
+		arena_init(&_tmp_exec_ctx.heap, &vm->mem);
 		ctx = &_tmp_exec_ctx;
 	}
 
@@ -386,7 +376,7 @@ vm_call_func_obj(
 	}
 
 	if (tmp_exec_ctx) {
-		vm_release_exec_context(vm, ctx);
+		arena_destroy(&_tmp_exec_ctx.heap);
 	}
 
 	return 0;
