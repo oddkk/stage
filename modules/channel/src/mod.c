@@ -111,13 +111,11 @@ cnl_register_channel_type(struct stg_module *mod, type_id cnl_type)
 }
 
 int
-mod_channel_pre_compile(struct ast_context *ctx, struct ast_module *ast_mod)
+mod_channel_register(struct stg_module *mod)
 {
-	struct cnl_context *cctx;
-	cctx = calloc(1, sizeof(struct cnl_context));
-	struct stg_module *mod;
-	mod = ast_mod->stg_mod;
-	mod->data = cctx;
+	struct cnl_context *ctx;
+	ctx = calloc(1, sizeof(struct cnl_context));
+	mod->data = ctx;
 
 	{
 		struct object_cons *cnl_type_def;
@@ -126,8 +124,8 @@ mod_channel_pre_compile(struct ast_context *ctx, struct ast_module *ast_mod)
 		cnl_type_def->num_params = 1;
 		cnl_type_def->params = calloc(1, sizeof(struct object_cons_param));
 
-		cnl_type_def->params[0].name = vm_atoms(ctx->vm, "T");
-		cnl_type_def->params[0].type = ctx->types.type;
+		cnl_type_def->params[0].name = mod_atoms(mod, "T");
+		cnl_type_def->params[0].type = mod->vm->default_types.type;
 
 		cnl_type_def->pack      = channel_type_pack;
 		cnl_type_def->pack_type = channel_type_pack_type;
@@ -135,24 +133,13 @@ mod_channel_pre_compile(struct ast_context *ctx, struct ast_module *ast_mod)
 
 		cnl_type_def->data = mod;
 
-		cctx->channel_type_cons = cnl_type_def;
+		ctx->channel_type_cons = cnl_type_def;
 
-		struct object res = {0};
-		res.type = ctx->types.cons;
-		res.data = &cctx->channel_type_cons;
-		res = register_object(ctx->vm, ast_mod->env.store, res);
-
-		struct atom *cons_name = vm_atoms(ctx->vm, "Channel");
-
-		struct ast_node *expr;
-		expr = ast_init_node_lit(
-				ctx, AST_NODE_NEW, STG_NO_LOC, res);
-
-		ast_namespace_add_decl(ctx, ast_mod, ast_mod->root,
-				cons_name, expr);
+		stg_mod_register_native_cons(mod,
+				mod_atoms(mod, "Channel"), ctx->channel_type_cons);
 	}
 
-	channel_system_init(&cctx->sys, 1024, mod->vm);
+	channel_system_init(&ctx->sys, 1024, mod->vm);
 
 	return 0;
 }
@@ -178,7 +165,7 @@ mod_channel_destroy(struct stg_module *mod)
 int
 mod_channel_load(struct stg_native_module *mod)
 {
-	mod->hook_pre_compile = mod_channel_pre_compile;
+	mod->hook_register = mod_channel_register;
 	mod->hook_destroy = mod_channel_destroy;
 	mod->hook_start = mod_channel_start;
 

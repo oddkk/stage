@@ -429,7 +429,7 @@ channel_system_run(void *data)
 		}
 	}
 
-	printf("Channel system stopped.\n");
+	printf("Stopped channel system.\n");
 
 	return NULL;
 }

@@ -1,1 +1,1 @@
-cnlfoo := 2;
+Channel := @native("Channel");

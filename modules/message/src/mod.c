@@ -153,12 +153,10 @@ msg_endpoint_cons(struct msg_endpoint_cons_info *info, msg_node_id in)
 }
 
 int
-mod_message_pre_compile(struct ast_context *ast_ctx, struct ast_module *ast_mod)
+mod_message_register(struct stg_module *mod)
 {
 	struct msg_context *ctx;
 	ctx = calloc(1, sizeof(struct msg_context));
-	struct stg_module *mod;
-	mod = ast_mod->stg_mod;
 	mod->data = ctx;
 
 	ctx->sys.vm = mod->vm;
@@ -197,8 +195,8 @@ mod_message_pre_compile(struct ast_context *ast_ctx, struct ast_module *ast_mod)
 				msg_type_def->num_params,
 				sizeof(struct object_cons_param));
 
-		msg_type_def->params[0].name = vm_atoms(ast_ctx->vm, "T");
-		msg_type_def->params[0].type = ast_ctx->types.type;
+		msg_type_def->params[0].name = mod_atoms(mod, "T");
+		msg_type_def->params[0].type = mod->vm->default_types.type;
 
 		msg_type_def->pack      = msg_type_pack;
 		msg_type_def->pack_type = msg_type_pack_type;
@@ -208,37 +206,18 @@ mod_message_pre_compile(struct ast_context *ast_ctx, struct ast_module *ast_mod)
 
 		ctx->msg_type_cons = msg_type_def;
 
-		struct object res = {0};
-		res.type = ast_ctx->types.cons;
-		res.data = &ctx->msg_type_cons;
-		res = register_object(ast_ctx->vm, ast_mod->env.store, res);
-
-		struct atom *cons_name = vm_atoms(ast_ctx->vm, "Msg");
-
-		struct ast_node *expr;
-		expr = ast_init_node_lit(
-				ast_ctx, AST_NODE_NEW, STG_NO_LOC, res);
-
-		ast_namespace_add_decl(ast_ctx, ast_mod, ast_mod->root,
-				cons_name, expr);
+		stg_mod_register_native_cons(mod,
+				mod_atoms(mod, "Msg"), ctx->msg_type_cons);
 	}
 
 	{
 		struct object res = {0};
 		res.type = msg_register_msg_type(
-				mod, ast_ctx->types.unit);
+				mod, mod->vm->default_types.unit);
 		res.data = &ctx->on_start_msg;
 
-		res = register_object(ast_ctx->vm, &mod->store, res);
-
-		struct ast_node *expr;
-		expr = ast_init_node_lit(
-				ast_ctx, AST_NODE_NEW, STG_NO_LOC, res);
-
-		struct atom *start_msg_name = vm_atoms(ast_ctx->vm, "onStart");
-
-		ast_namespace_add_decl(ast_ctx, ast_mod, ast_mod->root,
-				start_msg_name, expr);
+		stg_mod_register_native_object(mod,
+				mod_atoms(mod, "onStart"), res);
 	}
 
 	return 0;
@@ -356,7 +335,7 @@ mod_message_destroy(struct stg_module *mod)
 int
 mod_message_load(struct stg_native_module *mod)
 {
-	mod->hook_pre_compile = mod_message_pre_compile;
+	mod->hook_register    = mod_message_register;
 	mod->hook_post_init   = mod_message_post_init;
 	mod->hook_destroy     = mod_message_destroy;
 	mod->hook_start       = mod_message_start;

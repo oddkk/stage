@@ -1,6 +1,5 @@
-int := base.int;
-Unit := base.Unit;
-Type := base.Type;
+Msg := @native("Msg");
+onStart := @native("onStart");
 
 map := (a: Msg[$T], fn: (T) -> $U) -> Msg[U]
 	=> ((a: Msg[T], fn: (T) -> U, typeIn: Type, typeOut: Type) -> Msg[U]
