@@ -958,8 +958,11 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 
 	case ST_NODE_MOD_STMT:
 		{
-			ast_module_add_dependency(
-					ctx, mod, node->MOD_STMT.ident);
+			vm_request_module(ctx->vm,
+					mod->stg_mod->id,
+					node->MOD_STMT.ident,
+					VM_REQUEST_MOD_NO_LOC);
+
 			return ast_init_node_mod(
 					ctx, AST_NODE_NEW, node->loc,
 					node->MOD_STMT.ident);

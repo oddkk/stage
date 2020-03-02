@@ -27,37 +27,6 @@ ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, s
 	return ctx;
 }
 
-int
-ast_namespace_add_decl(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_node *ns, struct atom *name, struct ast_node *expr)
-{
-	struct ast_node *target;
-	target = ast_init_node_lookup(
-			ctx, AST_NODE_NEW, STG_NO_LOC, name);
-
-	int bind_id;
-	bind_id = ast_node_composite_bind(
-			ctx, ns, target, expr, false);
-
-	int err;
-	err = ast_node_composite_add_member(
-			ctx, ns, name, NULL, bind_id);
-	if (err) {
-		return err;
-	}
-
-	return 0;
-}
-
-void
-ast_namespace_add_free_expr(struct ast_context *ctx, struct ast_module *mod,
-		struct ast_node *ns, struct ast_node *expr)
-{
-	ast_node_composite_add_free_expr(
-			ctx, ns, expr);
-}
-
-
 struct ast_node *
 ast_namespace_add_ns(struct ast_context *ctx,
 		struct ast_node *ns, struct atom *name)
@@ -81,15 +50,6 @@ ast_namespace_add_ns(struct ast_context *ctx,
 	assert(!err);
 
 	return ns_type;
-}
-
-void
-ast_module_add_dependency(struct ast_context *ctx,
-		struct ast_module *mod, struct atom *name)
-{
-	vm_request_module(
-			ctx->vm, mod->stg_mod->id, name,
-			VM_REQUEST_MOD_NO_LOC);
 }
 
 int

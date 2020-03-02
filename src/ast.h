@@ -957,21 +957,9 @@ struct ast_module {
 	struct ast_node *root;
 };
 
-int
-ast_namespace_add_decl(struct ast_context *, struct ast_module *,
-		struct ast_node *, struct atom *name, struct ast_node *expr);
-
-void
-ast_namespace_add_free_expr(struct ast_context *, struct ast_module *,
-		struct ast_node *, struct ast_node *expr);
-
 struct ast_node *
 ast_namespace_add_ns(struct ast_context *,
 		struct ast_node *, struct atom *name);
-
-void
-ast_module_add_dependency(struct ast_context *,
-		struct ast_module *, struct atom *name);
 
 int
 ast_module_finalize(struct ast_context *, struct ast_module *);

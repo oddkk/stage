@@ -451,8 +451,8 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				struct atom *base_mod_name = vm_atoms(ctx->vm, "base");
 
 				if (mod->name != base_mod_name) {
-					ast_module_add_dependency(ctx->ast_ctx, &data->ast_mod,
-							base_mod_name);
+					vm_request_module(ctx->vm, mod->id,
+							base_mod_name, VM_REQUEST_MOD_NO_LOC);
 
 					struct ast_node *use_base_mod_node;
 					use_base_mod_node = ast_init_node_mod(
