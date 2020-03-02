@@ -108,6 +108,9 @@ stg_unsafe_call_init(
 		struct vm *vm, struct stg_exec *ctx,
 		struct object obj, struct object *out);
 
+void
+stg_monad_init_copy(struct stg_exec *new_ctx, struct stg_init_data *);
+
 bool
 stg_type_is_init(struct vm *, type_id);
 
@@ -141,6 +144,9 @@ void
 stg_unsafe_call_io(
 		struct vm *vm, struct stg_exec *ctx,
 		struct object obj, struct object *out);
+
+void
+stg_monad_io_copy(struct stg_exec *new_ctx, struct stg_io_data *);
 
 type_id
 stg_io_get_return_type(struct vm *, type_id);

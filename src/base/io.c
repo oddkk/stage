@@ -41,9 +41,17 @@ static void
 io_obj_copy(struct stg_exec *ctx, void *type_data, void *obj_data)
 {
 	struct stg_io_data *data = obj_data;
+	stg_monad_io_copy(ctx, data);
+}
 
-	void *new_closure = stg_alloc(ctx, 1, data->data_size);
-	memcpy(new_closure, data->data, data->data_size);
+void
+stg_monad_io_copy(struct stg_exec *ctx, struct stg_io_data *data)
+{
+	void *new_closure = NULL;
+	if (data->data_size > 0) {
+		new_closure = stg_alloc(ctx, 1, data->data_size);
+		memcpy(new_closure, data->data, data->data_size);
+	}
 
 	data->data = new_closure;
 
@@ -200,6 +208,15 @@ io_return_copy(struct stg_exec *ctx, void *data)
 {
 	struct io_return_data *closure = data;
 
+	void *new_value = NULL;
+
+	if (closure->size > 0) {
+		new_value = stg_alloc(ctx, 1, closure->size);
+		memcpy(new_value, closure->value, closure->size);
+	}
+
+	closure->value = new_value;
+
 	if (closure->value_copy) {
 		closure->value_copy(
 				ctx, closure->type_data,
@@ -279,9 +296,7 @@ io_bind_copy(struct stg_exec *ctx, void *data)
 {
 	struct io_bind_data *closure = data;
 
-	if (closure->monad.copy) {
-		closure->monad.copy(ctx, closure->monad.data);
-	}
+	stg_monad_io_copy(ctx, &closure->monad);
 }
 
 static struct stg_io_data
