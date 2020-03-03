@@ -180,13 +180,7 @@ struct ast_dt_context {
 	// root_node->composite.members. The lenght is root_node->composite.num_members.
 	ast_member_id *local_member_ids;
 
-	size_t page_size;
-
-	struct ast_dt_job **job_pages;
-	size_t num_job_pages;
-
-	// struct paged_list jobs;
-
+	struct paged_list jobs;
 	ast_dt_job_id free_list;
 	// A linked list of nodes that have no incoming edges.
 	ast_dt_job_id terminal_jobs;
@@ -220,11 +214,7 @@ struct ast_dt_context {
 static inline struct ast_dt_job *
 get_job(struct ast_dt_context *ctx, ast_dt_job_id id)
 {
-	assert(ctx->page_size > 0);
-	size_t jobs_per_page = ctx->page_size / sizeof(struct ast_dt_job);
-	assert(id >= 0 && id < jobs_per_page * ctx->num_job_pages);
-
-	return &ctx->job_pages[id / jobs_per_page][id % jobs_per_page];
+	return paged_list_get(&ctx->jobs, id);
 }
 
 static inline struct ast_dt_expr *
@@ -314,53 +304,14 @@ ast_dt_free_job(struct ast_dt_context *ctx, ast_dt_job_id id)
 static ast_dt_job_id
 ast_dt_alloc_job(struct ast_dt_context *ctx)
 {
-	if (ctx->page_size == 0) {
-		ctx->page_size = sysconf(_SC_PAGESIZE);
+	ast_dt_job_id res = -1;
+	if (ctx->free_list == -1) {
+		res = ctx->free_list;
+	} else {
+		res = paged_list_push(&ctx->jobs);
 	}
 
-	size_t jobs_per_page = ctx->page_size / sizeof(struct ast_dt_job);
-
-	if (ctx->job_pages == NULL || ctx->free_list == -1) {
-		size_t new_size = (ctx->num_job_pages + 1) * sizeof(struct ast_dt_job *);
-		struct ast_dt_job **new_pages = realloc(ctx->job_pages, new_size);
-
-		if (!new_pages) {
-			perror("realloc");
-			return -1;
-		}
-
-		ctx->job_pages = new_pages;
-
-		struct ast_dt_job *new_jobs;
-		new_jobs = mmap(
-				NULL, ctx->page_size,
-				PROT_READ|PROT_WRITE,
-				MAP_PRIVATE|MAP_ANONYMOUS,
-				-1, 0);
-
-		new_pages[ctx->num_job_pages] = new_jobs;
-
-		if (new_pages[ctx->num_job_pages] == MAP_FAILED) {
-			perror("mmap");
-			return -1;
-		}
-
-		ctx->num_job_pages += 1;
-
-		size_t first_in_page = jobs_per_page * (ctx->num_job_pages-1);
-
-		for (size_t i = 0; i < jobs_per_page-1; i++) {
-			new_jobs[i].free_list = first_in_page+i+1;
-		}
-
-		new_jobs[jobs_per_page-1].free_list = -1;
-		ctx->free_list = jobs_per_page * (ctx->num_job_pages-1);
-	}
-
-	assert(ctx->free_list >= 0);
-
-	ast_dt_job_id res;
-	res = ctx->free_list;
+	assert(res >= 0);
 
 	struct ast_dt_job *job;
 	job = get_job(ctx, res);
@@ -2810,10 +2761,10 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	dt_ctx.closures = closures;
 	dt_ctx.num_closures  = num_closures;
 
-	// paged_list_init(
-	// 		&dt_ctx.jobs,
-	// 		&ctx->vm->mem,
-	// 		sizeof(struct ast_dt_expr));
+	paged_list_init(
+			&dt_ctx.jobs,
+			&ctx->vm->mem,
+			sizeof(struct ast_dt_expr));
 
 	paged_list_init(
 			&dt_ctx.exprs,
@@ -2867,19 +2818,10 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		free(expr->member_deps);
 	}
 
-	// paged_list_destroy(&dt_ctx.jobs);
+	paged_list_destroy(&dt_ctx.jobs);
 	paged_list_destroy(&dt_ctx.exprs);
 	paged_list_destroy(&dt_ctx.binds);
 	paged_list_destroy(&dt_ctx.members);
-
-	for (size_t i = 0; i < dt_ctx.num_job_pages; i++) {
-		int err;
-		err = munmap(dt_ctx.job_pages[i], dt_ctx.page_size);
-		if (err) {
-			perror("munmap");
-		}
-	}
-	free(dt_ctx.job_pages);
 
 #if AST_DT_DEBUG_JOBS
 	printf("end composite ");
