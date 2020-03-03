@@ -34,6 +34,27 @@ stg_memory_init(struct stg_memory *mem);
 void
 stg_memory_destroy(struct stg_memory *mem);
 
+struct paged_list {
+	struct stg_memory *mem;
+	struct stg_memory_page **pages;
+	size_t num_pages;
+	size_t length;
+	size_t element_size;
+	size_t elements_per_page;
+};
+
+void
+paged_list_init(struct paged_list *, struct stg_memory *, size_t element_size);
+
+void
+paged_list_destroy(struct paged_list *);
+
+size_t
+paged_list_push(struct paged_list *);
+
+void *
+paged_list_get(struct paged_list *, size_t id);
+
 enum arena_flags {
 	ARENA_NO_CHECKPOINT = (1<<0),
 	ARENA_RESERVED      = (1<<1),

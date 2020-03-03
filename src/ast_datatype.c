@@ -184,22 +184,17 @@ struct ast_dt_context {
 
 	struct ast_dt_job **job_pages;
 	size_t num_job_pages;
+
+	// struct paged_list jobs;
+
 	ast_dt_job_id free_list;
 	// A linked list of nodes that have no incoming edges.
 	ast_dt_job_id terminal_jobs;
 	size_t unvisited_job_deps;
 
-	struct ast_dt_expr **expr_pages;
-	size_t num_expr_pages;
-	size_t num_expr_alloced;
-
-	struct ast_dt_bind **bind_pages;
-	size_t num_bind_pages;
-	size_t num_bind_alloced;
-
-	struct ast_dt_member **member_pages;
-	size_t num_member_pages;
-	size_t num_member_alloced;
+	struct paged_list exprs;
+	struct paged_list binds;
+	struct paged_list members;
 
 	struct ast_dt_use *uses;
 	size_t num_uses;
@@ -235,31 +230,19 @@ get_job(struct ast_dt_context *ctx, ast_dt_job_id id)
 static inline struct ast_dt_expr *
 get_expr(struct ast_dt_context *ctx, ast_dt_expr_id id)
 {
-	assert(ctx->page_size > 0);
-	size_t exprs_per_page = ctx->page_size / sizeof(struct ast_dt_expr);
-	assert(id >= 0 && id < ctx->num_expr_alloced);
-
-	return &ctx->expr_pages[id / exprs_per_page][id % exprs_per_page];
+	return paged_list_get(&ctx->exprs, id);
 }
 
 static inline struct ast_dt_bind *
 get_bind(struct ast_dt_context *ctx, ast_dt_bind_id id)
 {
-	assert(ctx->page_size > 0);
-	size_t binds_per_page = ctx->page_size / sizeof(struct ast_dt_bind);
-	assert(id >= 0 && id < ctx->num_bind_alloced);
-
-	return &ctx->bind_pages[id / binds_per_page][id % binds_per_page];
+	return paged_list_get(&ctx->binds, id);
 }
 
 static inline struct ast_dt_member *
 get_member(struct ast_dt_context *ctx, ast_member_id id)
 {
-	assert(ctx->page_size > 0);
-	size_t members_per_page = ctx->page_size / sizeof(struct ast_dt_member);
-	assert(id >= 0 && id < ctx->num_member_alloced);
-
-	return &ctx->member_pages[id / members_per_page][id % members_per_page];
+	return paged_list_get(&ctx->members, id);
 }
 
 static inline struct ast_dt_use *
@@ -289,151 +272,19 @@ ast_dt_member_get_descendant(struct ast_dt_context *ctx,
 static ast_dt_expr_id
 ast_dt_alloc_expr(struct ast_dt_context *ctx)
 {
-	if (ctx->page_size == 0) {
-		ctx->page_size = sysconf(_SC_PAGESIZE);
-	}
-
-	const size_t exprs_per_page =
-		ctx->page_size / sizeof(struct ast_dt_expr);
-
-	if ((ctx->num_expr_alloced + exprs_per_page) / exprs_per_page > ctx->num_expr_pages) {
-		size_t new_size = (ctx->num_expr_pages + 1) * sizeof(struct ast_dt_expr *);
-		struct ast_dt_expr **new_pages = realloc(ctx->expr_pages, new_size);
-
-		if (!new_pages) {
-			perror("realloc");
-			return -1;
-		}
-
-		ctx->expr_pages = new_pages;
-
-		struct ast_dt_expr *new_exprs;
-		new_exprs = mmap(
-				NULL, ctx->page_size,
-				PROT_READ|PROT_WRITE,
-				MAP_PRIVATE|MAP_ANONYMOUS,
-				-1, 0);
-
-		new_pages[ctx->num_expr_pages] = new_exprs;
-
-		if (new_pages[ctx->num_expr_pages] == MAP_FAILED) {
-			perror("mmap");
-			return -1;
-		}
-
-		ctx->num_expr_pages += 1;
-	}
-
-	ast_dt_expr_id res;
-	res = ctx->num_expr_alloced;
-	ctx->num_expr_alloced += 1;
-
-	struct ast_dt_expr *expr;
-	expr = get_expr(ctx, res);
-
-	memset(expr, 0, sizeof(struct ast_dt_expr));
-
-	return res;
+	return paged_list_push(&ctx->exprs);
 }
 
 static ast_dt_expr_id
 ast_dt_alloc_bind(struct ast_dt_context *ctx)
 {
-	if (ctx->page_size == 0) {
-		ctx->page_size = sysconf(_SC_PAGESIZE);
-	}
-
-	const size_t binds_per_page =
-		ctx->page_size / sizeof(struct ast_dt_bind);
-
-	if ((ctx->num_bind_alloced + binds_per_page) / binds_per_page > ctx->num_bind_pages) {
-		size_t new_size = (ctx->num_bind_pages + 1) * sizeof(struct ast_dt_bind *);
-		struct ast_dt_bind **new_pages = realloc(ctx->bind_pages, new_size);
-
-		if (!new_pages) {
-			perror("realloc");
-			return -1;
-		}
-
-		ctx->bind_pages = new_pages;
-
-		struct ast_dt_bind *new_binds;
-		new_binds = mmap(
-				NULL, ctx->page_size,
-				PROT_READ|PROT_WRITE,
-				MAP_PRIVATE|MAP_ANONYMOUS,
-				-1, 0);
-
-		new_pages[ctx->num_bind_pages] = new_binds;
-
-		if (new_pages[ctx->num_bind_pages] == MAP_FAILED) {
-			perror("mmap");
-			return -1;
-		}
-
-		ctx->num_bind_pages += 1;
-	}
-
-	ast_dt_bind_id res;
-	res = ctx->num_bind_alloced;
-	ctx->num_bind_alloced += 1;
-
-	struct ast_dt_bind *bind;
-	bind = get_bind(ctx, res);
-
-	memset(bind, 0, sizeof(struct ast_dt_bind));
-
-	return res;
+	return paged_list_push(&ctx->binds);
 }
 
 static ast_dt_expr_id
 ast_dt_alloc_member(struct ast_dt_context *ctx)
 {
-	if (ctx->page_size == 0) {
-		ctx->page_size = sysconf(_SC_PAGESIZE);
-	}
-
-	const size_t members_per_page =
-		ctx->page_size / sizeof(struct ast_dt_member);
-
-	if ((ctx->num_member_alloced + members_per_page) / members_per_page > ctx->num_member_pages) {
-		size_t new_size = (ctx->num_member_pages + 1) * sizeof(struct ast_dt_member *);
-		struct ast_dt_member **new_pages = realloc(ctx->member_pages, new_size);
-
-		if (!new_pages) {
-			perror("realloc");
-			return -1;
-		}
-
-		ctx->member_pages = new_pages;
-
-		struct ast_dt_member *new_members;
-		new_members = mmap(
-				NULL, ctx->page_size,
-				PROT_READ|PROT_WRITE,
-				MAP_PRIVATE|MAP_ANONYMOUS,
-				-1, 0);
-
-		new_pages[ctx->num_member_pages] = new_members;
-
-		if (new_pages[ctx->num_member_pages] == MAP_FAILED) {
-			perror("mmap");
-			return -1;
-		}
-
-		ctx->num_member_pages += 1;
-	}
-
-	ast_member_id res;
-	res = ctx->num_member_alloced;
-	ctx->num_member_alloced += 1;
-
-	struct ast_dt_member *member;
-	member = get_member(ctx, res);
-
-	memset(member, 0, sizeof(struct ast_dt_member));
-
-	return res;
+	return paged_list_push(&ctx->members);
 }
 
 static ast_use_id
@@ -2666,7 +2517,7 @@ ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 		// Members can not have persistant ID 0 as that ID is reserved for the
 		// top-level object.
 		assert(mbr->persistant_id > 0 &&
-				mbr->persistant_id < ctx->num_member_alloced + 1);
+				mbr->persistant_id < ctx->members.length + 1);
 		return mbr->persistant_id;
 	} else {
 		struct ast_dt_member *local_anscestor;
@@ -2680,7 +2531,7 @@ ast_dt_calculate_persistant_id(struct ast_dt_context *ctx, ast_member_id mbr_id)
 		result = 1 + local_anscestor->persistant_id +
 			(mbr_id - local_anscestor->first_child);
 
-		assert(result > 0 && result < ctx->num_member_alloced + 1);
+		assert(result > 0 && result < ctx->members.length + 1);
 
 		return result;
 	}
@@ -2844,7 +2695,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 	def->num_params = comp->composite.num_members;
 
 	size_t num_bound_members = 0;
-	for (ast_member_id mbr = 0; mbr < ctx->num_member_alloced; mbr++) {
+	for (ast_member_id mbr = 0; mbr < ctx->members.length; mbr++) {
 		if (get_member(ctx, mbr)->bound >= 0) {
 			num_bound_members += 1;
 		}
@@ -2854,14 +2705,14 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 			sizeof(struct object_inst_bind));
 
 	struct object_inst_expr *exprs;
-	exprs = calloc(ctx->num_expr_alloced,
+	exprs = calloc(ctx->exprs.length,
 			sizeof(struct object_inst_expr));
 
 	struct object_inst *inst;
 	inst = calloc(1, sizeof(struct object_inst));
 
 	for (ast_dt_expr_id expr_i = 0;
-			expr_i < ctx->num_expr_alloced; expr_i++) {
+			expr_i < ctx->exprs.length; expr_i++) {
 		struct ast_dt_expr *expr;
 		expr = get_expr(ctx, expr_i);
 
@@ -2888,10 +2739,10 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 	}
 
 	inst->exprs = exprs;
-	inst->num_exprs = ctx->num_expr_alloced;
+	inst->num_exprs = ctx->exprs.length;
 
 	size_t bind_i = 0;
-	for (size_t mbr_i = 0; mbr_i < ctx->num_member_alloced; mbr_i++) {
+	for (size_t mbr_i = 0; mbr_i < ctx->members.length; mbr_i++) {
 		struct ast_dt_member *mbr = get_member(ctx, mbr_i);
 
 		if (mbr->bound < 0) {
@@ -2959,6 +2810,26 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 	dt_ctx.closures = closures;
 	dt_ctx.num_closures  = num_closures;
 
+	// paged_list_init(
+	// 		&dt_ctx.jobs,
+	// 		&ctx->vm->mem,
+	// 		sizeof(struct ast_dt_expr));
+
+	paged_list_init(
+			&dt_ctx.exprs,
+			&ctx->vm->mem,
+			sizeof(struct ast_dt_expr));
+
+	paged_list_init(
+			&dt_ctx.binds,
+			&ctx->vm->mem,
+			sizeof(struct ast_dt_bind));
+
+	paged_list_init(
+			&dt_ctx.members,
+			&ctx->vm->mem,
+			sizeof(struct ast_dt_member));
+
 #if AST_DT_DEBUG_JOBS
 	static size_t next_run_i = 0;
 	dt_ctx.run_i  = next_run_i++;
@@ -2988,39 +2859,18 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 		result = ast_dt_composite_make_type(&dt_ctx, mod);
 	}
 
-	for (size_t i = 0; i < dt_ctx.num_member_pages; i++) {
-		int err;
-		err = munmap(dt_ctx.member_pages[i], dt_ctx.page_size);
-		if (err) {
-			perror("munmap");
-		}
-	}
-	free(dt_ctx.member_pages);
 	free(dt_ctx.local_member_ids);
 
-	for (size_t expr_i = 0; expr_i < dt_ctx.num_expr_alloced; expr_i++) {
+	for (size_t expr_i = 0; expr_i < dt_ctx.exprs.length; expr_i++) {
 		struct ast_dt_expr *expr;
 		expr = get_expr(&dt_ctx, expr_i);
 		free(expr->member_deps);
 	}
 
-	for (size_t i = 0; i < dt_ctx.num_expr_pages; i++) {
-		int err;
-		err = munmap(dt_ctx.expr_pages[i], dt_ctx.page_size);
-		if (err) {
-			perror("munmap");
-		}
-	}
-	free(dt_ctx.expr_pages);
-
-	for (size_t i = 0; i < dt_ctx.num_bind_pages; i++) {
-		int err;
-		err = munmap(dt_ctx.bind_pages[i], dt_ctx.page_size);
-		if (err) {
-			perror("munmap");
-		}
-	}
-	free(dt_ctx.bind_pages);
+	// paged_list_destroy(&dt_ctx.jobs);
+	paged_list_destroy(&dt_ctx.exprs);
+	paged_list_destroy(&dt_ctx.binds);
+	paged_list_destroy(&dt_ctx.members);
 
 	for (size_t i = 0; i < dt_ctx.num_job_pages; i++) {
 		int err;

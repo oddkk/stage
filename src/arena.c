@@ -184,6 +184,78 @@ stg_memory_destroy(struct stg_memory *mem)
 	memset(mem, 0, sizeof(struct stg_memory));
 }
 
+void
+paged_list_init(struct paged_list *list,
+		struct stg_memory *mem, size_t element_size)
+{
+	memset(list, 0, sizeof(struct paged_list));
+	list->mem = mem;
+	list->element_size = element_size;
+	list->elements_per_page = mem->sys_page_size / element_size;
+	if (list->elements_per_page == 0) {
+		list->elements_per_page = 1;
+	}
+}
+
+void
+paged_list_destroy(struct paged_list *list)
+{
+	for (size_t i = 0; i < list->num_pages; i++) {
+		stg_memory_release_page(list->mem, list->pages[i]);
+	}
+
+	free(list->pages);
+	memset(list, 0, sizeof(struct paged_list));
+}
+
+size_t
+paged_list_push(struct paged_list *list)
+{
+	size_t num_pages = list->num_pages;
+	size_t num_alloced = list->length;
+	size_t per_page = list->elements_per_page;
+
+	if ((num_alloced + per_page) / per_page > num_pages) {
+		size_t new_size;
+		struct stg_memory_page **new_pages;
+
+		new_size = (num_pages + 1) * sizeof(struct stg_memory_page *);
+		new_pages = realloc(list->pages, new_size);
+		if (!new_pages) {
+			perror("realloc");
+			panic("realloc");
+			return 0;
+		}
+
+		list->pages = new_pages;
+
+		list->pages[num_pages] =
+			stg_memory_request_page(
+					list->mem, per_page * list->element_size);
+
+		list->num_pages += 1;
+	}
+
+	size_t id;
+	id = list->length;
+	list->length += 1;
+
+	void *data = paged_list_get(list, id);
+	VALGRIND_MAKE_MEM_UNDEFINED(data, list->element_size);
+	memset(data, 0, list->element_size);
+
+	return id;
+}
+
+void *
+paged_list_get(struct paged_list *list, size_t id)
+{
+	assert(id < list->length);
+	struct stg_memory_page *page;
+	page = list->pages[id / list->elements_per_page];
+	return (uint8_t *)page->data + (id % list->elements_per_page) * list->element_size;
+}
+
 int arena_init(struct arena *arena, struct stg_memory *mem)
 {
 	memset(arena, 0, sizeof(struct arena));
@@ -310,7 +382,6 @@ void *arena_reset_and_keep(struct arena *arena, arena_mark mark,
 	} else {
 		new_page = stg_memory_request_page(arena->mem, keep_size);
 		new_page->next = page;
-		// VALGRIND_MAKE_MEM_NOACCESS(new_page->data, new_page->size);
 
 		assert(keep_size <= new_page->size);
 		result = new_page->data;
