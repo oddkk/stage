@@ -34,6 +34,11 @@ stg_memory_init(struct stg_memory *mem);
 void
 stg_memory_destroy(struct stg_memory *mem);
 
+enum arena_flags {
+	ARENA_NO_CHECKPOINT = (1<<0),
+	ARENA_RESERVED      = (1<<1),
+};
+
 struct arena {
 	struct stg_memory *mem;
 	struct stg_memory_page *head_page;
@@ -41,9 +46,7 @@ struct arena {
 	size_t head_page_i;
 	size_t head_page_head;
 
-	uint8_t *data;
-	size_t head;
-	size_t capacity;
+	enum arena_flags flags;
 };
 
 int arena_init(struct arena *arena, struct stg_memory *mem);
@@ -51,12 +54,19 @@ void arena_destroy(struct arena *arena);
 void *arena_alloc(struct arena *arena, size_t length);
 void *arena_alloc_no_zero(struct arena *arena, size_t length);
 
-typedef size_t arena_mark;
+struct _arena_mark {
+	size_t page_i;
+	size_t page_head;
+};
+
+typedef struct _arena_mark arena_mark;
 
 arena_mark arena_checkpoint(struct arena *arena);
 void arena_reset(struct arena *arena, arena_mark);
+void *arena_reset_and_keep(struct arena *arena, arena_mark, void *keep, size_t keep_size);
 
-void arena_print_usage(struct arena *arena);
+arena_mark arena_reserve_page(struct arena *arena, void **out_memory, size_t *out_size);
+void arena_take_reserved(struct arena *arena, arena_mark res, size_t length);
 
 #define arena_alloc_struct(arena, struct) arena_alloc(arena, sizeof(struct))
 #define arena_alloc_nstruct(arena, struct, n) arena_alloc(arena, sizeof(struct) * n)

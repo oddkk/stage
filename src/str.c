@@ -54,27 +54,40 @@ struct string string_duplicate_cstr(char *str)
 static inline struct string
 arena_vsprintf(struct arena *arena, char *fmt, va_list ap)
 {
-	char *out = (char *)&arena->data[arena->head];
-
-	size_t cap = arena->capacity - arena->head;
+	va_list tmp_ap;
+	size_t cap;
+	void *buffer;
 	int err;
-	err = vsnprintf(out, cap, fmt, ap);
 
-	va_end(ap);
+	arena_mark reservation;
+	reservation = arena_reserve_page(arena, &buffer, &cap);
 
-	struct string result = {0};
+	va_copy(tmp_ap, ap);
+	err = vsnprintf(buffer, cap, fmt, tmp_ap);
+	va_end(tmp_ap);
 
 	if (err < 0) {
 		perror("vsnprintf");
-		return result;
+		return STR_EMPTY;
 	}
 
-	if (err >= cap) {
-		printf("Warning: String truncated due to insufficient space in arena.\n");
-		err = (int)cap;
+	if (err > cap) {
+		arena_take_reserved(arena, reservation, 0);
+
+		cap = err + 1;
+		buffer = arena_alloc(arena, cap);
+
+		va_copy(tmp_ap, ap);
+		vsnprintf(buffer, cap, fmt, tmp_ap);
+		va_end(tmp_ap);
+
+	} else {
+		arena_take_reserved(arena, reservation, err);
 	}
 
-	result.text = out;
+	struct string result = {0};
+
+	result.text = buffer;
 	result.length = err;
 
 	return result;
@@ -94,43 +107,34 @@ struct string arena_sprintf(struct arena *arena, char *fmt, ...)
 	return result;
 }
 
-struct string arena_string_init(struct arena *mem)
-{
-	struct string res = {0};
-	res.text = arena_alloc(mem, 0);
-	res.length = 0;
-	return res;
-}
-
 int arena_string_append(struct arena *mem, struct string *str, struct string in)
 {
-	assert((mem->data + mem->head) == (uint8_t *)(str->text + str->length));
+	char *new_buffer;
+	new_buffer = arena_alloc(mem, str->length + in.length + 1);
 
-	uint8_t *appendage = arena_alloc_no_zero(mem, in.length);
-
-	if (!appendage) {
+	if (!new_buffer) {
 		return -1;
 	}
 
-	assert(appendage == (uint8_t *)(str->text + str->length));
-	memmove(appendage, in.text, in.length);
-	str->length += in.length;
+	memcpy(new_buffer, str->text, str->length);
+	memcpy(new_buffer+str->length, in.text, in.length);
+	new_buffer[str->length + in.length] = 0;
 
-	appendage[in.length + 1] = 0;
+	str->length = str->length + in.length;
+	str->text = new_buffer;
 
 	return 0;
 }
 
 void arena_string_append_vsprintf(struct arena *mem, struct string *str, char *fmt, va_list ap)
 {
-	arena_mark mark = arena_checkpoint(mem);
+	arena_mark cp = arena_checkpoint(mem);
 
 	struct string result;
 	result = arena_vsprintf(mem, fmt, ap);
-
-	arena_reset(mem, mark);
-
 	arena_string_append(mem, str, result);
+
+	str->text = arena_reset_and_keep(mem, cp, str->text, str->length);
 }
 
 void arena_string_append_sprintf(struct arena *mem, struct string *str, char *fmt, ...)

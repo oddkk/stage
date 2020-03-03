@@ -67,7 +67,7 @@ channel_type_repr(struct vm *vm, struct arena *mem, struct type *type)
 	struct cnl_channel_type_info *info;
 	info = (struct cnl_channel_type_info *)type->data;
 
-	struct string res = arena_string_init(mem);
+	struct string res = {0};
 	arena_string_append(mem, &res, STR("Channel("));
 
 	struct type *item_type;

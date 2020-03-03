@@ -7,7 +7,7 @@ obj_type_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
 	type_id tid = *(type_id *)obj->data;
 	struct type *type = vm_get_type(vm, tid);
-	struct string res = arena_string_init(mem);
+	struct string res = {0};
 
 	arena_string_append(mem, &res, STR("Type("));
 	arena_string_append_type_repr(&res, vm, mem, type);

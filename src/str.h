@@ -13,6 +13,8 @@ struct string {
 #define STR(cstr) (struct string){cstr, sizeof(cstr)-1}
 #define STR_BE(begin, end) (struct string){(begin), (end)-(begin)}
 
+#define STR_EMPTY ((struct string){NULL, 0})
+
 bool string_equal(struct string lhs, struct string rhs);
 
 struct arena;
@@ -25,7 +27,6 @@ struct string arena_sprintf(struct arena *, char *fmt, ...)
 // TODO: Make this cross-compiler compliant.
 	__attribute__((__format__ (__printf__, 2, 3)));
 
-struct string arena_string_init(struct arena *);
 int arena_string_append(struct arena *, struct string *, struct string);
 void arena_string_append_sprintf(struct arena *, struct string *, char *fmt, ...)
 // TODO: Make this cross-compiler compliant.

@@ -10,7 +10,7 @@ static struct string
 base_type_func_repr(struct vm *vm, struct arena *mem, struct type *type)
 {
 	struct stg_func_type *func_info = type->data;
-	struct string res = arena_string_init(mem);
+	struct string res = {0};
 
 	struct type *ret_type;
 

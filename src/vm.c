@@ -42,7 +42,6 @@ void vm_destroy(struct vm *vm)
 	}
 
 	free(vm->modules);
-	free(vm->memory.data);
 	stg_memory_destroy(&vm->mem);
 	// TODO: Free atom table
 }

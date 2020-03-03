@@ -53,7 +53,7 @@ stg_msgv(struct stg_error_context *err, struct stg_location loc,
 	msg.level = lvl;
 	msg.loc = loc;
 
-	msg.msg = arena_string_init(err->string_arena);
+	memset(&msg.msg, 0, sizeof(struct string));
 	arena_string_append_vsprintf(err->string_arena, &msg.msg, (char *)fmt, ap);
 
 	dlist_append(err->msgs, err->num_msgs, &msg);

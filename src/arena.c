@@ -41,13 +41,11 @@ stg_memory_alloc_page(struct stg_memory *mem, size_t hint_size)
 	memset(page.data, 0, page.size);
 	VALGRIND_MAKE_MEM_NOACCESS(page.data, page.size);
 
-	// printf("alloc page data %p\n", page.data);
-
 	return page;
 }
 
-struct stg_memory_page *
-stg_memory_request_page(struct stg_memory *mem, size_t hint_size)
+static struct stg_memory_page *
+stg_memory_try_alloc_from_free_list(struct stg_memory *mem, size_t hint_size)
 {
 	struct stg_memory_page **page;
 	page = &mem->free_list;
@@ -58,67 +56,81 @@ stg_memory_request_page(struct stg_memory *mem, size_t hint_size)
 			res = *page;
 			*page = res->next;
 			res->next = NULL;
-			VALGRIND_MAKE_MEM_UNDEFINED(res->data, res->size);
+			assert(!res->in_use);
+			res->in_use = true;
+
+			// VALGRIND_MAKE_MEM_UNDEFINED(res->data, res->size);
 			return res;
 		}
 		page = &(*page)->next;
 	}
 
+	return NULL;
+}
+
+// Note that this routine only allocates the stg_memory_page structure. It does
+// not allocate the memory pointed to by that structure.
+static struct stg_memory_page *
+stg_memory_request_page_slot(struct stg_memory *mem)
+{
 	if (!mem->head_index_page ||
 			mem->head_num_pages_alloced >= mem->head_index_page->num_pages) {
-		struct stg_memory_page *index_page;
-		if (mem->free_list) {
-			index_page = mem->free_list;
-			mem->free_list = index_page->next;
-			mem->head_num_pages_alloced = 1;
-		} else {
-			struct stg_memory_page new_index_page;
-			new_index_page = stg_memory_alloc_page(mem, 0);
-			new_index_page.in_use = true;
+		struct stg_memory_page index_page;
+		index_page = stg_memory_alloc_page(mem, 0);
+		index_page.next = NULL;
+		index_page.in_use = true;
 
-			VALGRIND_MAKE_MEM_DEFINED(new_index_page.data, new_index_page.size);
+		VALGRIND_MAKE_MEM_UNDEFINED(index_page.data, index_page.size);
 
-			struct stg_memory_index_page *index;
-			index = new_index_page.data;
+		struct stg_memory_index_page *index;
+		index = index_page.data;
 
-			index->next = NULL;
-			index->num_pages =
-				(new_index_page.size - sizeof(struct stg_memory_index_page)) /
-				sizeof(struct stg_memory_page);
+		index->next = mem->head_index_page;
+		index->num_pages =
+			(index_page.size - sizeof(struct stg_memory_index_page)) /
+			sizeof(struct stg_memory_page);
 
-			index->pages[0] = new_index_page;
+		index->pages[0] = index_page;
 
-			mem->head_index_page = index;
-			mem->head_num_pages_alloced = 1;
-			mem->num_pages_alloced += 1;
-		}
+		mem->head_index_page = index;
 	}
 
-	assert(mem->head_num_pages_alloced < mem->head_index_page->num_pages);
-
-	struct stg_memory_page new_page;
-	new_page = stg_memory_alloc_page(mem, hint_size);
-	new_page.in_use = true;
-	new_page.next = NULL;
-
-	VALGRIND_MAKE_MEM_UNDEFINED(new_page.data, new_page.size);
-
-	struct stg_memory_index_page *current_index;
-	current_index = mem->head_index_page;
-
-	size_t page_i = mem->head_num_pages_alloced;
+	struct stg_memory_page *slot = NULL;
+	slot = &mem->head_index_page->pages[mem->head_num_pages_alloced];
 	mem->head_num_pages_alloced += 1;
 
-	current_index->pages[page_i] = new_page;
+	return slot;
+}
 
-	return &current_index->pages[page_i];
+struct stg_memory_page *
+stg_memory_request_page(struct stg_memory *mem, size_t hint_size)
+{
+	struct stg_memory_page *page;
+
+	page = stg_memory_try_alloc_from_free_list(mem, hint_size);
+
+	if (!page) {
+		page = stg_memory_request_page_slot(mem);
+
+		*page = stg_memory_alloc_page(mem, hint_size);
+		if (!page->data) {
+			return NULL;
+		}
+		assert(!page->in_use);
+		page->in_use = true;
+		page->next = NULL;
+	}
+
+	return page;
 }
 
 void
 stg_memory_release_page(struct stg_memory *mem, struct stg_memory_page *page)
 {
+	VALGRIND_MAKE_MEM_UNDEFINED(page->data, page->size);
 	memset(page->data, 0, page->size);
 	page->next = mem->free_list;
+	assert(page->in_use);
 	page->in_use = false;
 	mem->free_list = page;
 
@@ -131,31 +143,6 @@ stg_memory_init(struct stg_memory *mem)
 	memset(mem, 0, sizeof(struct stg_memory));
 
 	mem->sys_page_size = sysconf(_SC_PAGESIZE);
-
-	struct stg_memory_page index_page;
-	index_page = stg_memory_alloc_page(mem, 0);
-	index_page.in_use = true;
-
-	if (!index_page.data) {
-		return -1;
-	}
-
-	VALGRIND_MAKE_MEM_DEFINED(index_page.data, index_page.size);
-
-	struct stg_memory_index_page *index;
-	index = index_page.data;
-
-	index->next = NULL;
-	index->num_pages =
-		(index_page.size - sizeof(struct stg_memory_index_page)) /
-		sizeof(struct stg_memory_page);
-
-	index->pages[0] = index_page;
-
-	mem->head_index_page = index;
-	mem->head_num_pages_alloced = 1;
-	mem->num_pages_alloced = 1;
-
 	mem->free_list = NULL;
 
 	return 0;
@@ -174,7 +161,11 @@ stg_memory_destroy(struct stg_memory *mem)
 
 		// We free the pages in reverse allocation order to make sure we free
 		// the index pages after all their pages have been freed.
-		for (ssize_t i = index->num_pages; i >= 0; i--) {
+		size_t index_num_pages = index->num_pages;
+		if (index == mem->head_index_page) {
+			index_num_pages = mem->head_num_pages_alloced;
+		}
+		for (ssize_t i = index_num_pages-1; i >= 0; i--) {
 			struct stg_memory_page *page;
 			page = &index->pages[i];
 			if (page->data) {
@@ -213,6 +204,8 @@ void arena_destroy(struct arena *arena)
 
 		page = next_page;
 	}
+
+	memset(arena, 0, sizeof(struct arena));
 }
 
 void *arena_alloc(struct arena *arena, size_t length)
@@ -226,6 +219,8 @@ void *arena_alloc(struct arena *arena, size_t length)
 
 void *arena_alloc_no_zero(struct arena *arena, size_t length)
 {
+	assert((arena->flags & ARENA_RESERVED) == 0);
+
 	if (!arena->head_page || arena->head_page_head + length > arena->head_page->size) {
 		struct stg_memory_page *new_page;
 		new_page = stg_memory_request_page(arena->mem, length);
@@ -236,55 +231,162 @@ void *arena_alloc_no_zero(struct arena *arena, size_t length)
 
 		new_page->next = arena->head_page;
 		arena->head_page = new_page;
-
 		arena->head_page_head = 0;
 	}
 
 	void *result;
 	result = (uint8_t *)arena->head_page->data + arena->head_page_head;
-
-	// printf("arena alloc %p (%zu) from %p (%zu) + %zu\n",
-	// 		result, length, arena->head_page->data, arena->head_page->size, arena->head_page_head);
-
+	VALGRIND_MAKE_MEM_UNDEFINED(result, length);
 	arena->head_page_head += length;
 
 	return result;
 }
 
-
-struct arena arena_push(struct arena *arena)
-{
-	struct arena tmp = {0};
-
-	tmp.data = arena->data + arena->head;
-	tmp.capacity = arena->capacity - arena->head;
-	arena->head = arena->capacity;
-
-	return tmp;
-}
-
-void arena_pop(struct arena *arena, struct arena tmp)
-{
-	assert(tmp.data >= arena->data &&
-		   tmp.data < arena->data + arena->capacity);
-
-	arena->head = tmp.data - arena->data;
-}
-
 arena_mark
 arena_checkpoint(struct arena *arena)
 {
-	return arena->head;
+	struct _arena_mark mark = {0};
+
+	assert((arena->flags & (ARENA_NO_CHECKPOINT|ARENA_RESERVED)) == 0);
+
+	mark.page_i = arena->head_page_i;
+	mark.page_head = arena->head_page_head;
+
+	return mark;
 }
 
 void
 arena_reset(struct arena *arena, arena_mark mark)
 {
-	assert(arena->head >= mark);
-	arena->head = mark;
+	assert(arena->head_page_i > mark.page_i ||
+			(arena->head_page_i == mark.page_i &&
+			 arena->head_page_head >= mark.page_head));
+
+	while (arena->head_page_i > mark.page_i) {
+		struct stg_memory_page *page;
+		page = arena->head_page;
+		arena->head_page = page->next;
+		arena->head_page_i -= 1;
+
+		stg_memory_release_page(arena->mem, page);
+	}
+
+	arena->head_page_head = mark.page_head;
+
+	if (arena->head_page) {
+		void *head_ptr = (uint8_t *)arena->head_page->data + arena->head_page_head;
+		size_t unused_size = arena->head_page->size - arena->head_page_head;
+
+		VALGRIND_MAKE_MEM_UNDEFINED(head_ptr, unused_size);
+		memset(head_ptr, 0, unused_size);
+		VALGRIND_MAKE_MEM_NOACCESS(head_ptr, unused_size);
+	}
 }
 
-void arena_print_usage(struct arena *arena)
+void *arena_reset_and_keep(struct arena *arena, arena_mark mark,
+		void *keep, size_t keep_size)
 {
-	printf("%lu / %lu", arena->head, arena->capacity);
+	assert(arena->head_page_i > mark.page_i ||
+			(arena->head_page_i == mark.page_i &&
+			 arena->head_page_head >= mark.page_head));
+
+	struct stg_memory_page *page;
+	page = arena->head_page;
+	for (size_t page_i = arena->head_page_i;
+			page_i > mark.page_i; page_i--) {
+		assert(page);
+		page = page->next;
+	}
+
+	void *result = NULL;
+	struct stg_memory_page *new_page = NULL;
+	size_t new_page_head = 0;
+
+	if (keep_size <= (page->size - mark.page_head)) {
+		result = (uint8_t *)page->data + mark.page_head;
+		memmove(result, keep, keep_size);
+
+		new_page_head = mark.page_head + keep_size;
+	} else {
+		new_page = stg_memory_request_page(arena->mem, keep_size);
+		new_page->next = page;
+		// VALGRIND_MAKE_MEM_NOACCESS(new_page->data, new_page->size);
+
+		assert(keep_size <= new_page->size);
+		result = new_page->data;
+		VALGRIND_MAKE_MEM_UNDEFINED(new_page->data, keep_size);
+		memcpy(new_page->data, keep, keep_size);
+		new_page_head = keep_size;
+	}
+
+	while (arena->head_page_i > mark.page_i) {
+		struct stg_memory_page *page;
+		page = arena->head_page;
+		arena->head_page = page->next;
+		arena->head_page_i -= 1;
+
+		stg_memory_release_page(arena->mem, page);
+	}
+
+	assert(arena->head_page == page);
+
+	if (new_page) {
+		if (arena->head_page) {
+			arena->head_page_i += 1;
+		}
+
+		arena->head_page = new_page;
+	}
+
+	return result;
+}
+
+arena_mark
+arena_reserve_page(struct arena *arena, void **out_memory, size_t *out_size)
+{
+	arena_mark cp = arena_checkpoint(arena);
+	assert((arena->flags & ARENA_RESERVED) == 0);
+	arena->flags |= ARENA_RESERVED;
+
+	if (!arena->head_page) {
+		*out_memory = NULL;
+		*out_size = 0;
+
+		arena_mark res = {0};
+		return res;
+	}
+
+	size_t size;
+	size = arena->head_page->size - arena->head_page_head;
+
+	void *result;
+	result = (uint8_t *)arena->head_page->data + arena->head_page_head;
+	VALGRIND_MAKE_MEM_UNDEFINED(result, size);
+
+	arena->head_page_head = arena->head_page->size;
+
+	if (out_size) {
+		*out_size = size;
+	}
+
+	if (out_memory) {
+		memset(result, 0, size);
+		*out_memory = result;
+	}
+
+	return cp;
+}
+
+void
+arena_take_reserved(struct arena *arena, arena_mark cp, size_t length)
+{
+	assert((arena->flags & ARENA_RESERVED) != 0);
+	arena->flags &= ~ARENA_RESERVED;
+
+	assert(cp.page_head + length <= arena->head_page->size);
+	assert(cp.page_i == arena->head_page_i);
+
+	cp.page_head += length;
+
+	arena_reset(arena, cp);
 }

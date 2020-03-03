@@ -2703,7 +2703,7 @@ static struct string
 ast_dt_composite_repr(struct vm *vm, struct arena *mem, struct type *type)
 {
 	struct ast_dt_composite_info *info = type->data;
-	struct string res = arena_string_init(mem);
+	struct string res = {0};
 
 	arena_string_append(mem, &res, STR("Struct { "));
 
@@ -2725,7 +2725,7 @@ ast_dt_composite_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
 	struct type *type = vm_get_type(vm, obj->type);
 	struct ast_dt_composite_info *info = type->data;
-	struct string res = arena_string_init(mem);
+	struct string res = {0};
 
 	arena_string_append(mem, &res, STR("{ "));
 
@@ -3088,7 +3088,7 @@ static struct string
 ast_dt_variant_repr(struct vm *vm, struct arena *mem, struct type *type)
 {
 	struct stg_type_variant_info *info = type->data;
-	struct string res = arena_string_init(mem);
+	struct string res = {0};
 
 	arena_string_append(mem, &res, STR("Variant { "));
 
@@ -3117,7 +3117,7 @@ ast_dt_variant_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
 	struct type *type = vm_get_type(vm, obj->type);
 	struct stg_type_variant_info *info = type->data;
-	struct string res = arena_string_init(mem);
+	struct string res = {0};
 
 	struct ast_dt_variant var;
 	var = ast_dt_decode_variant(info, obj->data);

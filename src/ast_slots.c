@@ -417,6 +417,7 @@ ast_constraint_source_name(enum ast_constraint_source source)
 		SRC_NAME(CALL_ARG);
 		SRC_NAME(CONS_ARG);
 		SRC_NAME(ACCESS);
+		SRC_NAME(MOD);
 		SRC_NAME(LIT);
 		SRC_NAME(LOOKUP);
 		SRC_NAME(DECAY);
