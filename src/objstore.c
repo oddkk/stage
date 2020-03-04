@@ -81,51 +81,19 @@ obj_equals(struct vm *vm, struct object lhs, struct object rhs)
 	return memcmp(lhs.data, rhs.data, lhs_type->size) == 0;
 }
 
+void
+objstore_init(struct objstore *store, stg_mod_id mod_id, struct stg_memory *mem)
+{
+	store->mod_id = mod_id;
+	arena_init(&store->data, mem);
+	paged_list_init(&store->types, mem, sizeof(struct type));
+	paged_list_init(&store->funcs, mem, sizeof(struct func));
+}
+
 void *
 objstore_alloc(struct objstore *store, size_t num_bytes)
 {
-	if (store->page_size == 0) {
-		store->page_size = sysconf(_SC_PAGESIZE);
-	}
-
-	if (num_bytes == 0) {
-		return NULL;
-	}
-
-	if (store->data_pages == NULL ||
-		store->last_data_page_used + num_bytes >= store->page_size) {
-		size_t new_size = (store->num_data_pages + 1) * sizeof(uint8_t *);
-		uint8_t **new_pages = realloc(store->data_pages, new_size);
-
-		if (!new_pages) {
-			perror("realloc");
-			return NULL;
-		}
-
-		store->data_pages = new_pages;
-
-		new_pages[store->num_data_pages] = mmap(NULL, store->page_size,
-										   PROT_READ|PROT_WRITE,
-										   MAP_PRIVATE|MAP_ANONYMOUS,
-										   -1, 0);
-
-		if (new_pages[store->num_data_pages] == MAP_FAILED) {
-			perror("mmap");
-			return NULL;
-		}
-
-		store->num_data_pages = store->num_data_pages + 1;
-		store->last_data_page_used = 0;
-	}
-
-	size_t addr = ((store->num_data_pages - 1) * store->page_size
-			+ store->last_data_page_used);
-	store->last_data_page_used += num_bytes;
-
-	void *result;
-	result = &store->data_pages[addr / store->page_size][addr % store->page_size];
-
-	return result;
+	return arena_alloc(&store->data, num_bytes);
 }
 
 struct object
@@ -154,27 +122,9 @@ register_object(struct vm *vm, struct objstore *store, struct object obj) {
 }
 
 void free_objstore(struct objstore *store) {
-	for (size_t i = 0; i < store->num_data_pages; i++) {
-		int err;
-		err = munmap(store->data_pages[i], store->page_size);
-		if (err != 0) {
-			perror("munmap");
-		}
-	}
-
-	if (store->data_pages) {
-		free(store->data_pages);
-	}
-
-	if (store->types) {
-		free(store->types);
-		store->types = NULL;
-	}
-
-	if (store->funcs) {
-		free(store->funcs);
-		store->funcs = NULL;
-	}
+	arena_destroy(&store->data);
+	paged_list_destroy(&store->types);
+	paged_list_destroy(&store->funcs);
 }
 
 void *
@@ -198,7 +148,8 @@ modtype_id
 store_register_type(struct objstore *store, struct type type)
 {
 	modtype_id mtid;
-	mtid = dlist_append(store->types, store->num_types, &type);
+	mtid = paged_list_push(&store->types);
+	*(struct type *)paged_list_get(&store->types, mtid) = type;
 	return TYPE_ID(store->mod_id, mtid);
 }
 
@@ -206,7 +157,8 @@ modfunc_id
 store_register_func(struct objstore *store, struct func func)
 {
 	modfunc_id mfid;
-	mfid = dlist_append(store->funcs, store->num_funcs, &func);
+	mfid = paged_list_push(&store->funcs);
+	*(struct func *)paged_list_get(&store->funcs, mfid) = func;
 	return FUNC_ID(store->mod_id, mfid);
 }
 

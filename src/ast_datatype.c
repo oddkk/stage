@@ -1913,6 +1913,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						AST_NAME_DEP_REQUIRE_VALUE,
 						&dep_members, &num_dep_members);
 				if (fid == FUNC_UNSET) {
+					free(dep_members);
 					return -1;
 				}
 
@@ -1925,6 +1926,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 					const_member_values[i] = dep_mbr->const_value;
 				}
+
+				free(dep_members);
 
 				type_id out_type = TYPE_UNSET;
 				struct object out = {0};

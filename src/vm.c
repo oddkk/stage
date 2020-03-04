@@ -232,7 +232,7 @@ vm_request_module(struct vm *vm,
 	mod->id = dlist_append(
 			vm->modules, vm->num_modules, &mod);
 
-	mod->store.mod_id = mod->id;
+	objstore_init(&mod->store, mod->id, &vm->mem);
 
 	struct atom *base_atom = vm_atoms(vm, "base");
 	if (mod->name != base_atom) {

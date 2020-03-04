@@ -3,6 +3,7 @@
 
 #include "intdef.h"
 #include "atom.h"
+#include "arena.h"
 #include "utils.h"
 #include "errors.h"
 
@@ -135,18 +136,25 @@ struct objstore {
 	size_t page_size;
 	stg_mod_id mod_id;
 
-	uint8_t **data_pages;
-	size_t num_data_pages;
-	size_t last_data_page_used;
+	struct arena data;
+	struct paged_list types;
+	struct paged_list funcs;
 
+	/*
 	// TODO: Better data structure?
 	struct type *types;
 	size_t num_types;
+	*/
 
+	/*
 	// TODO: Better data structure?
 	struct func *funcs;
 	size_t num_funcs;
+	*/
 };
+
+void
+objstore_init(struct objstore *store, stg_mod_id mod_id, struct stg_memory *mem);
 
 modtype_id
 store_register_type(struct objstore *store, struct type type);
@@ -176,21 +184,11 @@ struct object
 register_object(struct vm *, struct objstore *store, struct object obj);
 
 static inline struct type *store_get_type(struct objstore *store, type_id id) {
-	struct type *type;
-
-	assert(id < store->num_types);
-	type = &store->types[id];
-
-	return type;
+	return paged_list_get(&store->types, id);
 }
 
 static inline struct func *store_get_func(struct objstore *store, func_id id) {
-	struct func *func;
-
-	assert(id < store->num_funcs);
-	func = &store->funcs[id];
-
-	return func;
+	return paged_list_get(&store->funcs, id);
 }
 
 struct ast_context;

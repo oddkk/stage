@@ -190,4 +190,5 @@ stg_module_destroy(struct stg_module *mod)
 	}
 
 	free(mod->dependencies);
+	free_objstore(&mod->store);
 }
