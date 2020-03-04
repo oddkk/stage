@@ -103,4 +103,7 @@ typedef struct stg_module_magic *(*stg_magic_func)(void);
 struct stg_native_module *
 stg_native_load_module_ext(struct vm *, struct string name);
 
+void
+stg_native_module_destroy(struct stg_native_module *);
+
 #endif

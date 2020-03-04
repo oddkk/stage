@@ -28,6 +28,8 @@ void atom_table_rehash(struct atom_table *table, size_t new_num_buckets);
 
 void atom_table_print(struct atom_table *table);
 
+void atom_table_destroy(struct atom_table *table);
+
 #define ALIT_NONE_LABEL "(none)"
 
 #define ALIT(atom) (atom ? (int)(atom)->name.length : (int)(sizeof(ALIT_NONE_LABEL)-1)), (char*)(atom ? (atom)->name.text : ALIT_NONE_LABEL)

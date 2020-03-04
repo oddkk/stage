@@ -130,3 +130,16 @@ stg_native_load_module_ext(struct vm *vm, struct string name)
 
 	return mod;
 }
+
+void
+stg_native_module_destroy(struct stg_native_module *mod)
+{
+	if (mod->dl_handle) {
+		dlclose(mod->dl_handle);
+	}
+
+	free(mod->funcs);
+	free(mod->types);
+
+	memset(mod, 0, sizeof(struct stg_native_module));
+}

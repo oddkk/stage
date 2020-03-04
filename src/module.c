@@ -172,3 +172,22 @@ stg_mod_invoke_destroy(struct stg_module *mod)
 		mod->native_mod->hook_destroy(mod);
 	}
 }
+
+void
+stg_module_destroy(struct stg_module *mod)
+{
+	if (mod->native_mod) {
+		bool native_module_is_precompiled = false;
+		for (size_t i = 0; i < mod->vm->num_precompiled_native_modules; i++) {
+			if (mod->vm->precompiled_native_modules[i] == mod->native_mod) {
+				native_module_is_precompiled = true;
+				break;
+			}
+		}
+		if (!native_module_is_precompiled) {
+			stg_native_module_destroy(mod->native_mod);
+		}
+	}
+
+	free(mod->dependencies);
+}

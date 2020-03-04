@@ -123,3 +123,16 @@ void atom_table_print(struct atom_table *table)
 		}
 	}
 }
+
+void atom_table_destroy(struct atom_table *table)
+{
+	struct atom_page *page;
+	page = table->first_page;
+	while (page) {
+		struct atom_page *current;
+		current = page;
+		page = page->next;
+		free(current);
+	}
+	free(table->buckets);
+}

@@ -38,12 +38,23 @@ void vm_destroy(struct vm *vm)
 		struct stg_module *mod = vm->modules[i];
 
 		stg_mod_invoke_destroy(mod);
+		stg_module_destroy(mod);
 		free(mod);
 	}
 
 	free(vm->modules);
+
+	for (size_t i = 0; i < vm->num_precompiled_native_modules; i++) {
+		stg_native_module_destroy(vm->precompiled_native_modules[i]);
+		free(vm->precompiled_native_modules[i]);
+	}
+	free(vm->precompiled_native_modules);
+
+	free(vm->instr_store);
+	atom_table_destroy(&vm->atom_table);
 	stg_memory_destroy(&vm->mem);
-	// TODO: Free atom table
+
+	memset(vm, 0, sizeof(struct vm));
 }
 
 static int

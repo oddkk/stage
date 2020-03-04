@@ -57,7 +57,6 @@ struct stg_module {
 	struct stg_module_native_object *native_objs;
 	size_t num_native_objs;
 
-
 	void *data;
 };
 
@@ -128,5 +127,8 @@ stg_mod_invoke_start(struct stg_module *mod);
 
 void
 stg_mod_invoke_destroy(struct stg_module *mod);
+
+void
+stg_module_destroy(struct stg_module *mod);
 
 #endif

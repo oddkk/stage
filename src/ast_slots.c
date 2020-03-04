@@ -2904,6 +2904,7 @@ ast_slot_try_solve(
 #endif
 
 	ast_env_free(ctx->env);
+	free(ctx->extra_slots);
 
 	return -num_errors;
 }
