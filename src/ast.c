@@ -53,15 +53,16 @@ ast_namespace_add_ns(struct ast_context *ctx,
 }
 
 int
-ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
+ast_module_finalize(struct ast_context *ctx, struct stg_module *mod,
+		struct ast_node *root)
 {
 	int err;
 	err = ast_node_discover_potential_closures(
-			ctx, NULL, true, mod->root);
+			ctx, NULL, true, root);
 
 	type_id type;
 	type = ast_dt_finalize_composite(ctx, mod,
-			mod->root, NULL, 0);
+			root, NULL, 0);
 
 	func_id init_func;
 
@@ -107,7 +108,7 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 				mod_init_func, NULL, 0, TYPE_UNSET);
 		if (err) {
 			printf("Failed typechecking initialize function for module '%.*s'.\n",
-					ALIT(mod->stg_mod->name));
+					ALIT(mod->name));
 			return -1;
 		}
 
@@ -116,20 +117,20 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 				NULL, NULL, 0, mod_init_func);
 		if (!bc_env) {
 			printf("Failed codegen for module '%.*s'.\n",
-					ALIT(mod->stg_mod->name));
+					ALIT(mod->name));
 			return -1;
 		}
 
 		struct func func = {0};
 
 		func.type = stg_register_func_type(
-				mod->stg_mod, type, NULL, 0);
+				mod, type, NULL, 0);
 
 		func.kind = FUNC_BYTECODE;
 		func.bytecode = bc_env;
 
 
-		init_func = stg_register_func(mod->stg_mod, func);
+		init_func = stg_register_func(mod, func);
 	}
 
 	{
@@ -142,11 +143,11 @@ ast_module_finalize(struct ast_context *ctx, struct ast_module *mod)
 		mod_obj.type = type;
 
 		struct stg_exec exec_ctx = {0};
-		mod_arena(mod->stg_mod, &exec_ctx.heap);
+		mod_arena(mod, &exec_ctx.heap);
 		vm_call_func(ctx->vm, &exec_ctx, init_func, NULL, 0, &mod_obj);
 
-		mod->stg_mod->instance =
-			register_object(ctx->vm, mod->env.store, mod_obj);
+		mod->instance =
+			register_object(ctx->vm, &mod->store, mod_obj);
 
 		arena_destroy(&exec_ctx.heap);
 	}

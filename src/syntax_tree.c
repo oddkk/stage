@@ -143,7 +143,7 @@ ast_node_use_expr_name(struct ast_node *node)
 }
 
 void
-st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
+st_node_visit_stmt(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *struct_node, struct st_node *stmt)
 {
 	assert(stmt->type == ST_NODE_STMT);
@@ -317,7 +317,7 @@ st_node_has_templ_params(struct st_node *node)
 }
 
 struct ast_node *
-st_node_create_template(struct ast_context *ctx, struct ast_module *mod,
+st_node_create_template(struct ast_context *ctx, struct stg_module *mod,
 		struct st_node *params_node, struct ast_node *node)
 {
 	struct st_tuple_members params;
@@ -349,7 +349,7 @@ st_node_create_template(struct ast_context *ctx, struct ast_module *mod,
 }
 
 struct ast_node *
-st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
+st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *templ_node, struct st_node *node)
 {
 	switch (node->type) {
@@ -921,7 +921,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 
 		return ast_init_node_lit(
 				ctx, AST_NODE_NEW, node->loc,
-				register_object(ctx->vm, mod->env.store, obj));
+				register_object(ctx->vm, &mod->store, obj));
 	} break;
 
 	case ST_NODE_STR_LIT:
@@ -933,7 +933,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 
 		return ast_init_node_lit(
 				ctx, AST_NODE_NEW, node->loc,
-				register_object(ctx->vm, mod->env.store, obj));
+				register_object(ctx->vm, &mod->store, obj));
 	}
 	break;
 
@@ -959,7 +959,7 @@ st_node_visit_expr(struct ast_context *ctx, struct ast_module *mod,
 	case ST_NODE_MOD_STMT:
 		{
 			vm_request_module(ctx->vm,
-					mod->stg_mod->id,
+					mod->id,
 					node->MOD_STMT.ident,
 					VM_REQUEST_MOD_NO_LOC);
 

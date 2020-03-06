@@ -239,17 +239,17 @@ void st_clean(struct st_node **tree);
 
 struct ast_node;
 struct ast_context;
-struct ast_module;
+struct stg_module;
 
 bool
 st_node_has_templ_params(struct st_node *node);
 
 void
-st_node_visit_stmt(struct ast_context *ctx, struct ast_module *mod,
+st_node_visit_stmt(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *struct_node, struct st_node *stmt);
 
 struct ast_node *
-st_node_visit_expr(struct ast_context *, struct ast_module *mod,
+st_node_visit_expr(struct ast_context *, struct stg_module *mod,
 		struct ast_node *templ_node, struct st_node *);
 
 #endif

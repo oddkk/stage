@@ -454,7 +454,7 @@ arena_take_reserved(struct arena *arena, arena_mark cp, size_t length)
 	assert((arena->flags & ARENA_RESERVED) != 0);
 	arena->flags &= ~ARENA_RESERVED;
 
-	assert(cp.page_head + length <= arena->head_page->size);
+	assert(cp.page_head + length <= (arena->head_page ? arena->head_page->size : 0));
 	assert(cp.page_i == arena->head_page_i);
 
 	cp.page_head += length;

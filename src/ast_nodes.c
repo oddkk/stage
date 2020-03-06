@@ -838,7 +838,7 @@ struct ast_templ_cons_param {
 };
 
 struct ast_templ_cons_info {
-	struct ast_module ast_mod;
+	struct stg_module *mod;
 	struct ast_node *templ_node;
 
 	struct ast_templ_cons_param *params;
@@ -917,7 +917,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 
 	size_t num_errors_pre = ctx->err->num_errors;
 	int err;
-	err = ast_node_typecheck(ctx, &info->ast_mod,
+	err = ast_node_typecheck(ctx, info->mod,
 			body, body_deps, num_body_deps, TYPE_UNSET);
 	if (err) {
 		return -1;
@@ -972,7 +972,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 
 	struct ast_gen_bc_result bc;
 	bc = ast_node_gen_bytecode(
-			ctx, &info->ast_mod, &gen_info,
+			ctx, info->mod, &gen_info,
 			&bc_env, body);
 	if (bc.err) {
 		return -1;
@@ -1126,7 +1126,7 @@ void ast_templ_impose_constraints(
 
 	ast_slot_id result_slot;
 	result_slot = ast_node_constraints(
-			ctx, &info->ast_mod, env, body_deps, num_body_deps,
+			ctx, info->mod, env, body_deps, num_body_deps,
 			info->templ_node->templ.body);
 
 	ast_slot_require_type(
@@ -1151,7 +1151,7 @@ ast_templ_can_unpack(struct ast_context *ctx, struct ast_env *env,
 */
 
 struct object_cons *
-ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
+ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *templ_node,
 		struct ast_typecheck_dep *outer_deps, size_t num_outer_deps,
 		struct ast_typecheck_dep *inner_deps, size_t num_inner_deps)
@@ -1171,7 +1171,7 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 	struct ast_templ_cons_info *info;
 	info = calloc(1, sizeof(struct ast_templ_cons_info));
 
-	info->ast_mod = *mod;
+	info->mod = mod;
 
 	info->num_params = templ_node->templ.num_params;
 	info->params = calloc(def->num_params,
@@ -1186,7 +1186,7 @@ ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
 
 	// Partially typecheck to determine the type of the template's parameters.
 	struct ast_env inner_env = {0};
-	inner_env.store = mod->env.store;
+	inner_env.store = &mod->store;
 
 	size_t num_param_deps = num_outer_deps;
 	struct ast_typecheck_dep param_deps[num_param_deps];

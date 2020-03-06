@@ -218,7 +218,8 @@ has_extension(struct string str, struct string ext)
 }
 
 static void
-discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
+discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
+		struct ast_node *mod_root,
 					  struct string src_dir, int *num_unparsed_files)
 {
 	char zero_terminated_src_dir[src_dir.length + 1];
@@ -240,7 +241,7 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 	struct ast_node *dir_ns_stack[DIR_NS_STACK_CAP];
 	size_t dir_ns_head = 0;
 
-	dir_ns_stack[dir_ns_head] = mod->root;
+	dir_ns_stack[dir_ns_head] = mod_root;
 
 	FTSENT *f;
 	while ((f = fts_read(ftsp)) != NULL) {
@@ -280,14 +281,14 @@ discover_module_files(struct compile_ctx *ctx, struct ast_module *mod,
 						.file_name = file_name,
 						.num_unparsed_files = num_unparsed_files);
 			} else if (has_extension(path, STR("module.so")))  {
-				if (mod->stg_mod->has_native_module_ext) {
+				if (mod->has_native_module_ext) {
 					stg_error(&ctx->err, STG_NO_LOC,
 							"Found multiple native module extensions for module.");
 					break;
 				}
 
-				mod->stg_mod->has_native_module_ext = true;
-				string_duplicate(ctx->mem, &mod->stg_mod->native_module_ext, path);
+				mod->has_native_module_ext = true;
+				string_duplicate(ctx->mem, &mod->native_module_ext, path);
 			}
 		} break;
 
@@ -442,10 +443,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 					should_discover_files = module_found;
 				}
-				data->ast_mod.env.store = &mod->store;
-				data->ast_mod.stg_mod = mod;
-
-				data->ast_mod.root = ast_init_node_composite(
+				data->mod_root = ast_init_node_composite(
 						ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC);
 
 				struct atom *base_mod_name = vm_atoms(ctx->vm, "base");
@@ -467,13 +465,13 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 					ast_node_composite_add_use(
 							ctx->ast_ctx, STG_NO_LOC,
-							data->ast_mod.root,
+							data->mod_root,
 							use_base_target_node,
 							NULL);
 				}
 
 				if (should_discover_files) {
-					discover_module_files(ctx, &data->ast_mod,
+					discover_module_files(ctx, mod, data->mod_root,
 							mod->src_dir,
 							&data->num_unparsed_files);
 				}
@@ -510,7 +508,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 			}
 
 			stg_mod_invoke_register(mod);
-			stg_mod_invoke_pre_compile(ctx->ast_ctx, &data->ast_mod);
+			stg_mod_invoke_pre_compile(ctx->ast_ctx, mod, data->mod_root);
 
 			data->state = JOB_LOAD_MODULE_DONE;
 			// fallthrough
@@ -518,7 +516,7 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 		case JOB_LOAD_MODULE_DONE:
 			{
 				int err;
-				err = ast_module_finalize(ctx->ast_ctx, &data->ast_mod);
+				err = ast_module_finalize(ctx->ast_ctx, mod, data->mod_root);
 
 				if (err) {
 					print_error("compile", "Failed to initialize module '%.*s'",

@@ -161,7 +161,7 @@ ast_fill_closure(struct ast_closure_target *closure,
 
 static ast_slot_id
 ast_func_proto_constraints(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_env *env, struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_node *ret_type, struct ast_node **param_types,
 		size_t num_params, struct stg_location decl_loc)
@@ -204,7 +204,7 @@ ast_func_proto_constraints(
 
 void
 ast_node_resolve_datatypes(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_node *node)
 {
@@ -290,7 +290,7 @@ ast_node_resolve_datatypes(
 
 ast_slot_id
 ast_node_constraints(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_env *env, struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_node *node)
 {
@@ -575,11 +575,11 @@ ast_node_constraints(
 
 				int err;
 				err = stg_mod_lookup_native_object(
-						mod->stg_mod, node->lit_native.name, &obj);
+						mod, node->lit_native.name, &obj);
 				if (err) {
 					stg_error(ctx->err, node->loc,
 							"Module '%.*s' has no native object '%.*s'.",
-							ALIT(mod->stg_mod->name), ALIT(node->lit_native.name));
+							ALIT(mod->name), ALIT(node->lit_native.name));
 					ast_slot_value_error(
 							env, node->loc, AST_CONSTR_SRC_LIT,
 							res_slot);
@@ -646,7 +646,7 @@ ast_node_constraints(
 
 			struct stg_module *mod_ref = NULL;
 			mod_ref = stg_mod_find_module(
-					mod->stg_mod, node->mod.name);
+					mod, node->mod.name);
 
 			if (!mod_ref) {
 				panic("Attempted to access module that was not registered as a dependency.");
@@ -955,12 +955,12 @@ ast_typecheck_deps_slots(struct ast_env *env,
 
 int
 ast_node_typecheck(struct ast_context *ctx,
-		struct ast_module *mod, struct ast_node *node,
+		struct stg_module *mod, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		type_id expected_type)
 {
 	struct ast_env env = {0};
-	env.store = mod->env.store;
+	env.store = &mod->store;
 
 	struct ast_typecheck_dep body_deps[num_deps];
 	memcpy(body_deps, deps, num_deps * sizeof(struct ast_typecheck_dep));

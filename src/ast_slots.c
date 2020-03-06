@@ -392,7 +392,7 @@ struct solve_context {
 
 	struct vm *vm;
 	struct stg_error_context *err;
-	struct ast_module *mod;
+	struct stg_module *mod;
 	struct ast_env *env;
 	struct ast_slot_resolve *slots;
 	struct ast_context *ast_ctx;
@@ -1006,7 +1006,7 @@ ast_solve_apply_value_type(
 	type_obj.type = ctx->type;
 	type_obj.data = &type;
 	// TODO: We should have temporary memory for the solve.
-	type_obj = register_object(ctx->vm, &ctx->mod->stg_mod->store, type_obj);
+	type_obj = register_object(ctx->vm, &ctx->mod->store, type_obj);
 
 	// We only abort the application if the decay was as a result of type_obj's
 	// cons. In reality this should never happen for type values.
@@ -1805,7 +1805,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 
 						int err;
 						err = object_ct_unpack_param(
-								ctx->ast_ctx, ctx->mod->stg_mod,
+								ctx->ast_ctx, ctx->mod,
 								cons, obj, param_i, &res);
 						if (err) {
 							slot->flags |= AST_SLOT_HAS_ERROR;
@@ -1909,7 +1909,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			if (all_args_set) {
 				type_id res;
 				res = stg_register_func_type(
-						ctx->mod->stg_mod, arg_types[0],
+						ctx->mod, arg_types[0],
 						&arg_types[1], max_param_i);
 
 				made_change |= ast_solve_apply_value_type(
@@ -1960,7 +1960,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 							SLOT_DEBUG_ARG);
 
 					cons->impose_constraints(
-							ctx->ast_ctx, ctx->mod->stg_mod,
+							ctx->ast_ctx, ctx->mod,
 							cons->data, ctx->env,
 							ret_type_slot, param_slots);
 				}
@@ -2037,7 +2037,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 
 				int err;
 				err = object_ct_pack_type(
-						ctx->ast_ctx, ctx->mod->stg_mod,
+						ctx->ast_ctx, ctx->mod,
 						cons, arg_data, cons->num_params,
 						&res.type);
 				if (err) {
@@ -2055,7 +2055,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				res.data = buffer;
 
 				err = object_ct_pack(
-						ctx->ast_ctx, ctx->mod->stg_mod,
+						ctx->ast_ctx, ctx->mod,
 						cons, arg_data, cons->num_params,
 						&res);
 				if (err) {
@@ -2185,7 +2185,7 @@ ast_slot_verify_member(
 	exp_val.data = buffer;
 
 	err = object_ct_unpack_param(
-			ctx->ast_ctx, ctx->mod->stg_mod,
+			ctx->ast_ctx, ctx->mod,
 			cons, target_val, param_i, &exp_val);
 	if (err) {
 		return -1;
@@ -2675,7 +2675,7 @@ ast_slot_verify_constraint(
 
 int
 ast_slot_try_solve(
-		struct ast_context *ast_ctx, struct ast_module *mod,
+		struct ast_context *ast_ctx, struct stg_module *mod,
 		struct ast_env *in_env, struct ast_slot_result *out_result)
 {
 	struct ast_env _env = {0};

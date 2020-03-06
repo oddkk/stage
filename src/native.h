@@ -35,7 +35,7 @@ struct stg_native_type {
 struct vm;
 struct atom;
 struct stg_module;
-struct ast_module;
+struct ast_node;
 struct ast_context;
 
 struct stg_native_module {
@@ -54,7 +54,8 @@ struct stg_native_module {
 
 	// Called before the AST is compiled to allow the module to make changes to
 	// the tree.
-	int  (*hook_pre_compile)(struct ast_context *, struct ast_module *);
+	int  (*hook_pre_compile)(struct ast_context *,
+			struct stg_module *, struct ast_node *mod_root);
 
 	// Called when the module is about to be started, right before and after
 	// this module's init monad is called.

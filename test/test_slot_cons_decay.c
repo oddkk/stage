@@ -81,7 +81,7 @@ test_cons_decay(struct ast_context *ctx, struct stg_module *mod)
 
 	struct ast_slot_result result[env->num_alloced_slots];
 	int err;
-	err = ast_slot_try_solve(ctx, &mod->mod, env, result);
+	err = ast_slot_try_solve(ctx, mod, env, result);
 	TEST_ASSERT(!err);
 
 

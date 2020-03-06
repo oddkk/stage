@@ -44,7 +44,6 @@ void
 ast_print_name_ref(struct ast_name_ref);
 
 struct ast_node;
-struct ast_module;
 
 struct ast_scope_name {
 	struct atom *name;
@@ -344,7 +343,7 @@ struct ast_slot_result {
 // out_result is expected to be an array of length env->num_alloced_slots.
 int
 ast_slot_try_solve(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_env *env, struct ast_slot_result *out_result);
 
 enum ast_node_kind {
@@ -838,19 +837,19 @@ struct ast_typecheck_dep {
 
 int
 ast_node_typecheck(struct ast_context *ctx,
-		struct ast_module *mod, struct ast_node *node,
+		struct stg_module *mod, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		type_id expected_type);
 
 void
 ast_node_resolve_datatypes(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_node *node);
 
 ast_slot_id
 ast_node_constraints(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_env *env, struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_node *node);
 
@@ -866,7 +865,7 @@ struct ast_node *
 ast_node_deep_copy(struct ast_node *src);
 
 struct object_cons *
-ast_node_create_templ(struct ast_context *ctx, struct ast_module *mod,
+ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *templ_node,
 		struct ast_typecheck_dep *outer_deps, size_t num_outer_deps,
 		struct ast_typecheck_dep *inner_deps, size_t num_inner_deps);
@@ -903,18 +902,18 @@ struct ast_gen_info {
 };
 
 struct ast_gen_bc_result
-ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node);
 
 struct bc_env *
 ast_func_gen_bytecode(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_typecheck_closure *closures, bc_closure *closure_refs,
 		size_t num_closures, struct ast_node *node);
 
 struct bc_env *
 ast_composite_bind_gen_bytecode(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		ast_member_id *members, type_id *member_types,
 		struct object *const_member_values, size_t num_members,
 		struct object *const_use_values, size_t num_use,
@@ -922,12 +921,12 @@ ast_composite_bind_gen_bytecode(
 
 struct bc_env *
 ast_type_expr_gen_bytecode(
-		struct ast_context *ctx, struct ast_module *mod, struct ast_node *expr,
+		struct ast_context *ctx, struct stg_module *mod, struct ast_node *expr,
 		struct ast_typecheck_closure *closures, size_t num_closures);
 
 struct bc_env *
 ast_gen_value_unpack_func(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		type_id value_type, size_t descendent);
 void
 ast_print(struct ast_context *, struct ast_node *);
@@ -936,36 +935,12 @@ void
 ast_print_node(struct ast_context *, struct ast_node *,
 		bool print_type_slot);
 
-enum ast_module_name_kind {
-	AST_MODULE_NAME_DECL,
-	AST_MODULE_NAME_NAMESPACE,
-	AST_MODULE_NAME_IMPORT,
-};
-
-struct ast_module_dependency {
-	struct atom *name;
-	struct ast_module *mod;
-};
-
-struct stg_module;
-
-struct ast_module {
-	// TODO: This should probably not be here.
-	struct stg_module *stg_mod;
-	struct ast_env env;
-
-	struct ast_node *root;
-};
-
 struct ast_node *
 ast_namespace_add_ns(struct ast_context *,
 		struct ast_node *, struct atom *name);
 
 int
-ast_module_finalize(struct ast_context *, struct ast_module *);
-
-void
-ast_print_module(struct ast_context *, struct ast_module *);
+ast_module_finalize(struct ast_context *, struct stg_module *, struct ast_node *root);
 
 struct ast_typecheck_closure {
 	enum ast_name_dep_requirement req;
@@ -983,12 +958,12 @@ ast_fill_closure(struct ast_closure_target *closure,
 		struct ast_typecheck_dep *deps, size_t num_deps);
 
 type_id
-ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
+ast_dt_finalize_composite(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *comp, struct ast_typecheck_closure *closures, size_t num_closures);
 
 type_id
 ast_dt_finalize_variant(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_datatype_variant *options, size_t num_options,
 		struct ast_typecheck_closure *closure_values, size_t num_closures);
 

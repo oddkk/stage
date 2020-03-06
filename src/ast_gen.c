@@ -35,7 +35,7 @@ append_bc_instrs(struct ast_gen_bc_result *res, struct ast_gen_bc_result instrs)
 
 static struct ast_typecheck_closure
 ast_gen_resolve_closure(struct bc_env *bc_env,
-		struct ast_module *mod, struct ast_gen_info *info, struct ast_name_ref ref)
+		struct stg_module *mod, struct ast_gen_info *info, struct ast_name_ref ref)
 {
 	switch (ref.kind) {
 		case AST_NAME_REF_NOT_FOUND:
@@ -121,7 +121,7 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 					return (struct ast_typecheck_closure){0};
 				}
 				// TODO: Is this necessary?
-				obj = register_object(bc_env->vm, mod->env.store, obj);
+				obj = register_object(bc_env->vm, &mod->store, obj);
 
 				struct ast_typecheck_closure res = {0};
 				// TODO: Allow use of non-constant values.
@@ -139,11 +139,11 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 #define AST_GEN_EXPECT_OK(res) do { if ((res).err) { return res; } } while (0);
 
 static struct ast_gen_bc_result
-ast_unpack_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+ast_unpack_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct bc_env *bc_env, bc_var value, size_t descendent);
 
 static struct ast_gen_bc_result
-ast_name_ref_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+ast_name_ref_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info,
 		struct bc_env *bc_env, struct ast_name_ref ref,
 		struct stg_location loc, type_id type)
@@ -244,7 +244,7 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 }
 
 static struct ast_gen_bc_result
-ast_unpack_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+ast_unpack_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct bc_env *bc_env, bc_var value, size_t descendent)
 {
 	struct ast_gen_bc_result result = {0};
@@ -301,7 +301,7 @@ ast_unpack_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 }
 
 struct ast_gen_bc_result
-ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
+ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node)
 {
 	struct ast_gen_bc_result result = {0};
@@ -373,11 +373,11 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				new_func.bytecode = func_bc;
 
 				func_id fid;
-				fid = stg_register_func(mod->stg_mod, new_func);
+				fid = stg_register_func(mod, new_func);
 
 				struct object func_obj = {0};
 				func_obj = stg_register_func_object(
-						ctx->vm, mod->env.store, fid, NULL);
+						ctx->vm, &mod->store, fid, NULL);
 
 				struct stg_func_closure_data *data;
 				data = calloc(1, sizeof(struct stg_func_closure_data));
@@ -455,11 +455,11 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				}
 
 				func_id fid;
-				fid = stg_register_func(mod->stg_mod, new_func);
+				fid = stg_register_func(mod, new_func);
 
 				struct object func_obj = {0};
 				func_obj = stg_register_func_object(
-						ctx->vm, mod->env.store, fid, closure);
+						ctx->vm, &mod->store, fid, closure);
 
 				struct bc_instr *func_instr;
 				func_instr = bc_gen_load(bc_env, BC_VAR_NEW, func_obj);
@@ -745,7 +745,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				obj.type = ctx->types.type;
 				obj.data = &node->func_type.func_type;
 
-				obj = register_object(ctx->vm, mod->env.store, obj);
+				obj = register_object(ctx->vm, &mod->store, obj);
 
 				result.first = result.last =
 					bc_gen_load(bc_env, BC_VAR_NEW, obj);
@@ -759,7 +759,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 				obj.type = ctx->types.cons;
 				obj.data = &node->templ.cons;
 
-				obj = register_object(ctx->vm, mod->env.store, obj);
+				obj = register_object(ctx->vm, &mod->store, obj);
 
 				result.first = result.last =
 					bc_gen_load(bc_env, BC_VAR_NEW, obj);
@@ -830,7 +830,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 				int err;
 				err = stg_mod_lookup_native_object(
-						mod->stg_mod, node->lit_native.name, &obj);
+						mod, node->lit_native.name, &obj);
 				// Missing objects should have been caught by the typecheck.
 				assert(!err);
 
@@ -847,7 +847,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 			{
 				struct stg_module *mod_ref = NULL;
 				mod_ref = stg_mod_find_module(
-						mod->stg_mod, node->mod.name);
+						mod, node->mod.name);
 				assert(mod_ref);
 
 				struct bc_instr *mod_instr;
@@ -875,7 +875,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 				struct bc_instr *lit_instr;
 				lit_instr = bc_gen_load(bc_env, BC_VAR_NEW,
-						register_object(ctx->vm, mod->env.store, obj));
+						register_object(ctx->vm, &mod->store, obj));
 
 				append_bc_instr(&result, lit_instr);
 
@@ -899,7 +899,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 				struct bc_instr *lit_instr;
 				lit_instr = bc_gen_load(bc_env, BC_VAR_NEW,
-						register_object(ctx->vm, mod->env.store, obj));
+						register_object(ctx->vm, &mod->store, obj));
 
 				append_bc_instr(&result, lit_instr);
 
@@ -914,7 +914,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct ast_module *mod,
 
 struct bc_env *
 ast_func_gen_bytecode(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_typecheck_closure *closures, bc_closure *closure_refs,
 		size_t num_closures, struct ast_node *node)
 {
@@ -1012,7 +1012,7 @@ ast_func_gen_bytecode(
 
 struct bc_env *
 ast_composite_bind_gen_bytecode(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		ast_member_id *members, type_id *member_types,
 		struct object *const_member_values, size_t num_members,
 		struct object *const_use_values, size_t num_use,
@@ -1076,7 +1076,7 @@ ast_composite_bind_gen_bytecode(
 
 struct bc_env *
 ast_type_expr_gen_bytecode(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *expr,
 		struct ast_typecheck_closure *closures, size_t num_closures)
 {
@@ -1124,7 +1124,7 @@ ast_type_expr_gen_bytecode(
 
 struct bc_env *
 ast_gen_value_unpack_func(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		type_id value_type, size_t descendent)
 {
 	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));

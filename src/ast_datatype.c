@@ -197,7 +197,7 @@ struct ast_dt_context {
 	ast_dt_job_id use_resolved;
 
 	struct ast_context *ast_ctx;
-	struct ast_module  *ast_mod;
+	struct stg_module  *mod;
 
 	struct ast_typecheck_closure *closures;
 	size_t num_closures;
@@ -1090,7 +1090,7 @@ ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
 
 	expr->const_value =
 		register_object(ctx->ast_ctx->vm,
-				ctx->ast_mod->env.store, obj);
+				&ctx->mod->store, obj);
 
 	arena_destroy(&exec_ctx.heap);
 
@@ -1621,7 +1621,7 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 
 	struct bc_env *bc_env;
 	bc_env = ast_composite_bind_gen_bytecode(
-				ctx->ast_ctx, ctx->ast_mod,
+				ctx->ast_ctx, ctx->mod,
 				dep_members, dep_member_types,
 				dep_member_const, num_dep_members,
 				const_use_values, ctx->num_uses,
@@ -1631,14 +1631,14 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 	}
 
 	struct func func = {0};
-	func.type = stg_register_func_type(ctx->ast_mod->stg_mod,
+	func.type = stg_register_func_type(ctx->mod,
 			node->type, dep_member_types, num_dep_members);
 
 	func.kind = FUNC_BYTECODE;
 	func.bytecode = bc_env;
 
 	func_id fid;
-	fid = stg_register_func(ctx->ast_mod->stg_mod, func);
+	fid = stg_register_func(ctx->mod, func);
 
 	*out_num_dep_members = num_dep_members;
 	*out_dep_members = dep_members;
@@ -1764,7 +1764,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 					}
 
 					// TODO: Is this necessary?
-					obj = register_object(ctx->ast_ctx->vm, ctx->ast_mod->env.store, obj);
+					obj = register_object(ctx->ast_ctx->vm, &ctx->mod->store, obj);
 
 					body_deps[i].ref = deps[i].ref;
 					body_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
@@ -1791,7 +1791,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 	}
 
 	err = ast_node_typecheck(
-			ctx->ast_ctx, ctx->ast_mod, node,
+			ctx->ast_ctx, ctx->mod, node,
 			body_deps, num_deps, expected_type);
 	if (err) {
 		return -1;
@@ -1823,7 +1823,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				int err;
 				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->ast_mod->stg_mod->native_mod,
+						ctx->ast_ctx, ctx->mod->native_mod,
 						NULL, true, ctx->root_node, mbr->type_node,
 						ctx->local_member_ids);
 				if (err) {
@@ -1844,7 +1844,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				int err;
 				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->ast_mod->stg_mod->native_mod,
+						ctx->ast_ctx, ctx->mod->native_mod,
 						NULL, false, ctx->root_node,
 						expr->value.node,
 						ctx->local_member_ids);
@@ -2002,7 +2002,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					int err;
 					type_id res_type;
 					err = object_ct_pack_type(
-							ctx->ast_ctx, ctx->ast_mod->stg_mod,
+							ctx->ast_ctx, ctx->mod,
 							cons, const_member_values, cons->num_params,
 							&res_type);
 					if (err) {
@@ -2017,7 +2017,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					res.data = buffer;
 
 					err = object_ct_pack(
-							ctx->ast_ctx, ctx->ast_mod->stg_mod,
+							ctx->ast_ctx, ctx->mod,
 							cons, const_member_values, cons->num_params,
 							&res);
 					if (err) {
@@ -2025,7 +2025,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					}
 
 					mbr->const_value = register_object(
-							ctx->ast_ctx->vm, ctx->ast_mod->env.store, res);
+							ctx->ast_ctx->vm, &ctx->mod->store, res);
 					mbr->flags |= AST_DT_MEMBER_IS_CONST;
 				} else {
 					if (mbr->bound < 0) {
@@ -2064,7 +2064,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 					mbr->const_value =
 						register_object(ctx->ast_ctx->vm,
-								ctx->ast_mod->env.store, mbr->const_value);
+								&ctx->mod->store, mbr->const_value);
 
 					assert_type_equals(ctx->ast_ctx->vm,
 							mbr->type, mbr->const_value.type);
@@ -2447,7 +2447,7 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 
 static ast_member_id
 ast_dt_num_descendant_members(struct ast_dt_context *ctx,
-		struct ast_module *mod, type_id type)
+		struct stg_module *mod, type_id type)
 {
 	struct type *member_type;
 	member_type = vm_get_type(ctx->ast_ctx->vm, type);
@@ -2595,7 +2595,7 @@ struct type_base ast_dt_composite_base = {
 };
 
 static type_id
-ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
+ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 {
 	struct ast_node *comp = ctx->root_node;
 
@@ -2739,7 +2739,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 	dt_type.data = info;
 
 	type_id result;
-	result = stg_register_type(mod->stg_mod, dt_type);
+	result = stg_register_type(mod, dt_type);
 
 	info->type = result;
 	inst->type = result;
@@ -2748,7 +2748,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct ast_module *mod)
 }
 
 type_id
-ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
+ast_dt_finalize_composite(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *comp, struct ast_typecheck_closure *closures, size_t num_closures)
 {
 	if (comp->composite.type != TYPE_UNSET) {
@@ -2757,7 +2757,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct ast_module *mod,
 
 	struct ast_dt_context dt_ctx = {0};
 	dt_ctx.ast_ctx = ctx;
-	dt_ctx.ast_mod = mod;
+	dt_ctx.mod = mod;
 	dt_ctx.root_node = comp;
 	dt_ctx.terminal_jobs  = -1;
 
@@ -2938,7 +2938,7 @@ struct type_base variant_type_base = {
 
 type_id
 ast_dt_finalize_variant(
-		struct ast_context *ctx, struct ast_module *mod,
+		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_datatype_variant *options, size_t num_options,
 		struct ast_typecheck_closure *closure_values, size_t num_closures)
 {
@@ -2993,7 +2993,7 @@ ast_dt_finalize_variant(
 			type_id out_type = TYPE_UNSET;
 
 			struct stg_exec exec_ctx = {0};
-			mod_arena(mod->stg_mod, &exec_ctx.heap);
+			mod_arena(mod, &exec_ctx.heap);
 			nbc_exec(ctx->vm, &exec_ctx, type_expr_bc->nbc,
 					NULL, 0, NULL, &out_type);
 			arena_destroy(&exec_ctx.heap);
@@ -3042,7 +3042,7 @@ ast_dt_finalize_variant(
 
 	struct type new_type = {0};
 
-	new_type.name = mod_atoms(mod->stg_mod, "Variant");
+	new_type.name = mod_atoms(mod, "Variant");
 	new_type.base = &variant_type_base;
 	new_type.size = tag_size + max_data_size;
 	new_type.data = info;
@@ -3051,5 +3051,5 @@ ast_dt_finalize_variant(
 		new_type.ffi_type = tag_type;
 	}
 
-	return stg_register_type(mod->stg_mod, new_type);
+	return stg_register_type(mod, new_type);
 }

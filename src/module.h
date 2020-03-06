@@ -6,6 +6,7 @@
 #include "objstore.h"
 
 struct stg_module;
+struct ast_node;
 
 enum stg_module_lifetime {
 	STG_MOD_LIFE_PRE_COMPILE = 0,
@@ -114,7 +115,8 @@ int
 stg_mod_invoke_register(struct stg_module *mod);
 
 int
-stg_mod_invoke_pre_compile(struct ast_context *ctx, struct ast_module *mod);
+stg_mod_invoke_pre_compile(struct ast_context *ctx,
+		struct stg_module *mod, struct ast_node *mod_root);
 
 int
 stg_mod_invoke_pre_init(struct stg_module *mod);

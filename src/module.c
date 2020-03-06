@@ -124,12 +124,11 @@ stg_mod_invoke_register(struct stg_module *mod)
 }
 
 int
-stg_mod_invoke_pre_compile(struct ast_context *ctx, struct ast_module *ast_mod)
+stg_mod_invoke_pre_compile(struct ast_context *ctx,
+		struct stg_module *mod, struct ast_node *mod_root)
 {
-	struct stg_module *mod;
-	mod = ast_mod->stg_mod;
 	if (mod->native_mod && mod->native_mod->hook_pre_compile) {
-		return mod->native_mod->hook_pre_compile(ctx, ast_mod);
+		return mod->native_mod->hook_pre_compile(ctx, mod, mod_root);
 	}
 
 	return 0;
