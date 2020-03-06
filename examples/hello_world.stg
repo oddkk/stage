@@ -1,0 +1,3 @@
+use mod base.init.printLn;
+
+main := printLn("Hello, World!");
