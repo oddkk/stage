@@ -54,7 +54,13 @@ stg_msgv(struct stg_error_context *err, struct stg_location loc,
 	msg.loc = loc;
 
 	memset(&msg.msg, 0, sizeof(struct string));
-	arena_string_append_vsprintf(err->string_arena, &msg.msg, (char *)fmt, ap);
+
+	arena_mark cp = arena_checkpoint(err->transient_arena);
+
+	arena_string_append_vsprintf(err->transient_arena, &msg.msg, (char *)fmt, ap);
+	string_duplicate(err->string_arena, &msg.msg, msg.msg);
+
+	arena_reset(err->transient_arena, cp);
 
 	dlist_append(err->msgs, err->num_msgs, &msg);
 

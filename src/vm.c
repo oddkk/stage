@@ -22,6 +22,8 @@ int vm_init(struct vm *vm)
 	}
 
 	arena_init(&vm->memory, &vm->mem);
+	vm->memory.flags |= ARENA_NO_CHECKPOINT;
+
 	arena_init(&vm->transient, &vm->mem);
 
 	vm->atom_table.string_arena = &vm->memory;
