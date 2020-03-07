@@ -87,6 +87,7 @@ enum ast_constraint_kind {
 	AST_SLOT_REQ_IS_TYPE,
 	AST_SLOT_REQ_IS_FUNC_TYPE,
 	AST_SLOT_REQ_EQUALS,
+	AST_SLOT_REQ_CONS_OR_VALUE_FROM,
 	AST_SLOT_REQ_TYPE,
 	AST_SLOT_REQ_MEMBER_NAMED,
 	AST_SLOT_REQ_MEMBER_INDEXED,
@@ -129,6 +130,8 @@ struct ast_slot_constraint {
 		} is;
 
 		ast_slot_id equals;
+
+		ast_slot_id cons_or_value_from;
 
 		ast_slot_id type;
 
@@ -247,6 +250,13 @@ ast_slot_require_equals(
 		AST_SLOT_DEBUG_PARAM);
 
 void
+ast_slot_require_cons_or_value_from(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target, ast_slot_id slot
+		AST_SLOT_DEBUG_PARAM);
+
+void
 ast_slot_require_type(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
@@ -291,6 +301,7 @@ ast_slot_require_inst(
 #	define ast_slot_require_cons(...)         ast_slot_require_cons (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_inst(...)         ast_slot_require_inst (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_equals(...)       ast_slot_require_equals (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_cons_or_value_from(...) ast_slot_require_cons_or_value_from (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_type(...)         ast_slot_require_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_member_named(...) ast_slot_require_member_named (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_member_index(...) ast_slot_require_member_index (__VA_ARGS__, AST_SLOT_DEBUG_ARG)

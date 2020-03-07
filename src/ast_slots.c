@@ -111,6 +111,7 @@ ast_alloc_constraint(
 #	undef ast_slot_require_cons
 #	undef ast_slot_require_inst
 #	undef ast_slot_require_equals
+#	undef ast_slot_require_cons_or_value_from
 #	undef ast_slot_require_type
 #	undef ast_slot_require_member_named
 #	undef ast_slot_require_member_index
@@ -223,6 +224,22 @@ ast_slot_require_equals(
 
 	constr->equals = slot;
 }
+
+void
+ast_slot_require_cons_or_value_from(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target, ast_slot_id slot
+		AST_SLOT_DEBUG_PARAM)
+{
+	struct ast_slot_constraint *constr;
+	constr = ast_alloc_constraint(env,
+			AST_SLOT_REQ_CONS_OR_VALUE_FROM, source, loc, target
+			PASS_DEBUG_PARAM);
+
+	constr->cons_or_value_from = slot;
+}
+
 void
 ast_slot_require_type(
 		struct ast_env *env, struct stg_location loc,
@@ -338,7 +355,8 @@ enum ast_slot_state_flags {
 	AST_SLOT_HAS_TYPE       = (1<<5),
 	AST_SLOT_HAS_VALUE      = (1<<6),
 	AST_SLOT_VALUE_IS_TYPE  = (1<<7),
-	AST_SLOT_CONS_DECAYED   = (1<<8),
+	AST_SLOT_HAS_CONS_OR_VALUE_FROM = (1<<8),
+	AST_SLOT_CONS_DECAYED   = (1<<9),
 };
 
 typedef int32_t ast_constraint_id;
@@ -363,6 +381,7 @@ struct ast_slot_resolve {
 	ast_slot_id subst;
 	ast_slot_id type;
 	ast_slot_id cons;
+	ast_slot_id cons_or_value_from;
 
 	union {
 		type_id type;
@@ -382,6 +401,7 @@ struct ast_slot_resolve {
 		ast_constraint_id type;
 		ast_constraint_id value;
 		ast_constraint_id cons;
+		ast_constraint_id cons_or_value_from;
 	} authority;
 };
 
@@ -519,6 +539,11 @@ ast_print_constraint(
 
 		case AST_SLOT_REQ_EQUALS:
 			printf("equals %i = %i",
+					constr->target, constr->equals);
+			break;
+
+		case AST_SLOT_REQ_CONS_OR_VALUE_FROM:
+			printf("cons or value from %i <- %i",
 					constr->target, constr->equals);
 			break;
 
@@ -751,6 +776,7 @@ enum ast_solve_slot_param {
 	AST_SLOT_PARAM_TYPE,
 	AST_SLOT_PARAM_VALUE,
 	AST_SLOT_PARAM_CONS,
+	AST_SLOT_PARAM_CONS_OR_VALUE_FROM,
 };
 
 static inline bool
@@ -813,6 +839,11 @@ ast_solve_should_apply(
 		case AST_SLOT_PARAM_CONS:
 			flag = AST_SLOT_HAS_CONS;
 			authority = &res->authority.cons;
+			break;
+
+		case AST_SLOT_PARAM_CONS_OR_VALUE_FROM:
+			flag = AST_SLOT_HAS_CONS_OR_VALUE_FROM;
+			authority = &res->authority.cons_or_value_from;
 			break;
 	}
 
@@ -1122,6 +1153,40 @@ ast_solve_apply_func_type(
 	}
 	return false;
 }
+
+static bool
+ast_solve_apply_cons_or_value_from(
+		struct solve_context *ctx,
+		ast_constraint_id constr_id, ast_slot_id slot,
+		ast_slot_id from)
+{
+#if AST_DEBUG_SLOT_SOLVE_APPLY
+	printf("%3i apply cons or value from %i <- %i",
+			constr_id, slot, from);
+#endif
+	struct ast_slot_resolve *res;
+	res = ast_get_slot(ctx, slot);
+
+	ast_slot_id old_from, new_from;
+
+	if ((res->flags & AST_SLOT_HAS_CONS_OR_VALUE_FROM) != 0) {
+		old_from = res->cons_or_value_from;
+		new_from = ast_slot_join(
+				ctx, res->cons_or_value_from, from);
+	} else {
+		old_from = -1;
+		new_from = from;
+	}
+
+	if (ast_solve_should_apply(
+			ctx, constr_id, slot,
+			AST_SLOT_PARAM_CONS_OR_VALUE_FROM)) {
+		res->cons_or_value_from = new_from;
+	}
+
+	return old_from != res->cons_or_value_from;
+}
+
 
 static bool
 ast_solve_apply_type(
@@ -1578,6 +1643,12 @@ ast_slot_solve_impose_constraint(
 					ctx, constr->target, constr->equals);
 			break;
 
+		case AST_SLOT_REQ_CONS_OR_VALUE_FROM:
+			ast_solve_apply_cons_or_value_from(
+					ctx, constr_id,
+					constr->target, constr->cons_or_value_from);
+			break;
+
 		case AST_SLOT_REQ_IS_OBJ:
 			ast_solve_apply_value_obj(
 					ctx, constr_id,
@@ -1662,8 +1733,30 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			ctx, slot_id, OBJ_UNSET);
 	// Tag as changed only if the slot did decay.
 	if (decay_res == 1) {
-		printf("decay made change\n");
 		made_change = true;
+	}
+
+	if ((slot->flags & AST_SLOT_HAS_CONS_OR_VALUE_FROM) != 0) {
+		int err;
+		struct object from_value;
+		err = ast_slot_try_get_value(
+				ctx, slot->cons_or_value_from,
+				TYPE_UNSET, &from_value);
+		if (!err) {
+			ast_constraint_id auth_id;
+			auth_id = slot->authority.cons_or_value_from;
+
+			if (from_value.type == ctx->cons) {
+				// TODO: Is it correct to bind the cons_or_value_from slot as
+				// this slot's cons?
+				made_change |= ast_solve_apply_cons(
+						ctx, auth_id, slot_id,
+						slot->cons_or_value_from, false);
+			} else {
+				made_change |= ast_solve_apply_value_obj(
+						ctx, auth_id, slot_id, from_value);
+			}
+		}
 	}
 
 	if ((slot->flags & (AST_SLOT_HAS_VALUE|AST_SLOT_HAS_TYPE)) ==
@@ -2366,6 +2459,62 @@ ast_slot_verify_constraint(
 			// together.
 			assert(ast_slot_resolve_subst(ctx, constr->target) ==
 					ast_slot_resolve_subst(ctx, constr->equals));
+			return 0;
+
+		case AST_SLOT_REQ_CONS_OR_VALUE_FROM:
+			{
+				int err;
+				struct object from_value;
+
+				err = ast_slot_try_get_value(
+						ctx, constr->cons_or_value_from, TYPE_UNSET,
+						&from_value);
+				if (err) {
+					return 0;
+				}
+
+				if (from_value.type == ctx->cons) {
+					struct object_cons *from_cons;
+
+					from_cons = *(struct object_cons **)from_value.data;
+
+					struct object_cons *to_cons;
+					err = ast_slot_try_get_cons(
+							ctx, constr->target, &to_cons);
+					if (err) {
+						return 0;
+					}
+
+					if (from_cons != to_cons) {
+						stg_error(ctx->err, constr->reason.loc,
+								"Got an unexpected object constructor.");
+						return -1;
+					}
+				} else {
+					struct object to_value;
+					err = ast_slot_try_get_value(
+							ctx, constr->target, TYPE_UNSET,
+							&to_value);
+					if (err) {
+						return 0;
+					}
+
+					if (!obj_equals(ctx->vm, from_value, to_value)) {
+						struct string exp_str, got_str;
+
+						exp_str = obj_repr_to_alloced_string(
+								ctx->vm, from_value);
+						got_str = obj_repr_to_alloced_string(
+								ctx->vm, to_value);
+
+						stg_error(ctx->err, constr->reason.loc,
+								"Expected value '%.*s', got '%.*s'.",
+								LIT(exp_str), LIT(got_str));
+						free(exp_str.text);
+						free(got_str.text);
+					}
+				}
+			}
 			return 0;
 
 		case AST_SLOT_REQ_TYPE:
