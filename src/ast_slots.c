@@ -10,6 +10,7 @@
 
 #include <unistd.h>
 #include <sys/mman.h>
+#include <linux/limits.h>
 
 void
 ast_env_free(struct ast_env *env)
@@ -2822,6 +2823,120 @@ ast_slot_verify_constraint(
 #endif
 }
 
+__attribute__((__format__ (__printf__, 5, 6)))
+static inline void
+dot_slot_rel(FILE *fp, struct solve_context *ctx,
+		ast_slot_id from, ast_slot_id to, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+
+	from = ast_slot_resolve_subst(ctx, from);
+	to   = ast_slot_resolve_subst(ctx, to);
+
+	fprintf(fp, "slot%i -> slot%i [label=\"", from, to);
+	vfprintf(fp, fmt, ap);
+	fprintf(fp, "\"];\n");
+
+	va_end(ap);
+}
+
+void
+ast_slot_print_graph_dot(struct solve_context *ctx, FILE *fp)
+{
+	struct arena *mem = &ctx->vm->transient;
+	fputs("digraph {\nnode[shape=plaintext];\n", fp);
+
+	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots+ctx->num_extra_slots; slot_id++) {
+		struct ast_slot_resolve *slot;
+		slot = ast_get_real_slot(ctx, slot_id);
+
+		if ((slot->flags & AST_SLOT_HAS_SUBST) != 0) {
+			continue;
+		}
+
+		arena_mark cp = arena_checkpoint(mem);
+
+		struct string value_string = {0};
+
+		if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
+			struct object obj = {0};
+			if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
+				obj.type = ctx->type;
+				obj.data = &slot->value.type;
+			} else {
+				obj = slot->value.obj;
+			}
+
+			value_string = obj_repr_to_string(
+					ctx->vm, mem, obj);
+		} else {
+			value_string = STR("none");
+		}
+
+		value_string = string_replace_all_char(
+				mem, value_string, '<', STR("&lt;"));
+		value_string = string_replace_all_char(
+				mem, value_string, '>', STR("&gt;"));
+
+		const char *cons_kind = "none";
+
+		if ((slot->flags & AST_SLOT_HAS_CONS) != 0) {
+			if ((slot->flags & AST_SLOT_IS_INST) != 0) {
+				cons_kind = "inst";
+			} else if ((slot->flags & AST_SLOT_IS_FUNC_TYPE) != 0) {
+				cons_kind = "func type";
+			} else {
+				cons_kind = "cons";
+			}
+		}
+
+		const char *error_attrs = "";
+		if ((slot->flags & AST_SLOT_HAS_ERROR) != 0) {
+			error_attrs = " color=red";
+		}
+
+#define DOT_SLOT_ROW(title, value) \
+		"<tr><td align=\"right\"><b>" title "</b></td><td align=\"left\">" value"</td></tr>"
+
+		fprintf(fp, "slot%i [label=<\
+<table border=\"1\" cellborder=\"0\" cellspacing=\"0\">"
+	DOT_SLOT_ROW("slot", "%i")
+	DOT_SLOT_ROW("value", "%.*s")
+	DOT_SLOT_ROW("cons", "%s")
+"</table>>%s];\n", slot_id, slot_id, LIT(value_string), cons_kind, error_attrs);
+
+#undef DOT_SLOT_ROW
+
+		arena_reset(mem, cp);
+
+		if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
+			dot_slot_rel(fp, ctx, slot->type, slot_id, "type");
+		}
+
+		if ((slot->flags & (AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) ==
+				(AST_SLOT_HAS_CONS)) {
+			dot_slot_rel(fp, ctx, slot->cons, slot_id, "cons");
+		}
+
+		if ((slot->flags & AST_SLOT_REQ_CONS_OR_VALUE_FROM) != 0) {
+			dot_slot_rel(fp, ctx, slot->cons_or_value_from, slot_id, "cons or value");
+		}
+
+		for (size_t i = 0; i < slot->num_members; i++) {
+			if (slot->members[i].ref.named) {
+				dot_slot_rel(fp, ctx, slot->members[i].slot, slot_id,
+						"member %.*s", ALIT(slot->members[i].ref.name));
+			} else {
+				dot_slot_rel(fp, ctx, slot->members[i].slot, slot_id,
+						"member %zu", slot->members[i].ref.index);
+			}
+		}
+	}
+
+	fputs("}", fp);
+}
+
 int
 ast_slot_try_solve(
 		struct ast_context *ast_ctx, struct stg_module *mod,
@@ -2832,6 +2947,11 @@ ast_slot_try_solve(
 
 	struct solve_context _ctx = {0};
 	struct solve_context *ctx = &_ctx;
+
+	static size_t next_invoc_id = 0;
+	size_t invoc_id = next_invoc_id;
+	in_env->invoc_id = invoc_id;
+	next_invoc_id += 1;
 
 	ctx->vm = ast_ctx->vm;
 	ctx->err = ast_ctx->err;
@@ -2990,6 +3110,7 @@ ast_slot_try_solve(
 		}
 
 		if (error) {
+			slot->flags |= AST_SLOT_HAS_ERROR;
 			res->result = AST_SLOT_RES_ERROR;
 			num_errors += 1;
 		}
@@ -3050,6 +3171,20 @@ ast_slot_try_solve(
 	}
 
 	printf("======  end solve slots  ======\n");
+#endif
+
+#if AST_DEBUG_SLOT_SOLVE_GRAPH
+	{
+		char path[PATH_MAX];
+		snprintf(path, PATH_MAX, "./solve_debug/solve%zu.dot", invoc_id);
+		FILE *dot_out = fopen(path, "w");
+		if (!dot_out) {
+			perror("dot out fopen");
+		} else {
+			ast_slot_print_graph_dot(ctx, dot_out);
+			fclose(dot_out);
+		}
+	}
 #endif
 
 	ast_env_free(ctx->env);

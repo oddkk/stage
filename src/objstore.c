@@ -284,6 +284,36 @@ obj_repr_to_alloced_string(struct vm *vm, struct object obj)
 	return alloced;
 }
 
+struct string
+type_repr_to_string(struct vm *vm, struct arena *mem, struct type *type)
+{
+	struct string res;
+
+	if (type->base->obj_repr) {
+		res = type->base->repr(vm, mem, type);
+	} else {
+		res = default_type_repr(vm, mem, type);
+	}
+
+	return res;
+}
+
+struct string
+obj_repr_to_string(struct vm *vm, struct arena *mem, struct object obj)
+{
+	struct type *type = vm_get_type(vm, obj.type);
+	struct string res;
+
+	if (type->base->obj_repr) {
+		res = type->base->obj_repr(vm, mem, &obj);
+	} else {
+		res = default_obj_repr(vm, mem, &obj);
+	}
+
+	return res;
+}
+
+
 void
 arena_string_append_type_repr(struct string *str, struct vm *vm,
 							  struct arena *mem, struct type *type)

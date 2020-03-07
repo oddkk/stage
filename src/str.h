@@ -41,4 +41,7 @@ int read_character(struct string str, char **it);
 bool string_split(struct string in, struct string *result,
 				  struct string *rest, int sep);
 
+struct string string_replace_all_char(struct arena *, struct string str,
+		int target, struct string replacement);
+
 #endif

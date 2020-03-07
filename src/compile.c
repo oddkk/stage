@@ -696,6 +696,7 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx)
 	ctx.vm = vm;
 	ctx.mem = &vm->memory;
 	ctx.err.string_arena = &vm->memory;
+	ctx.err.transient_arena = &vm->transient;
 	ctx.ast_ctx = ast_ctx;
 
 	assert(!ctx.ast_ctx->err);

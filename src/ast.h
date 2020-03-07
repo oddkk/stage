@@ -6,6 +6,7 @@
 
 #define AST_DEBUG_SLOT_SOLVE 0
 #define AST_DEBUG_SLOT_SOLVE_APPLY 0
+#define AST_DEBUG_SLOT_SOLVE_GRAPH 0
 
 typedef int32_t ast_slot_id;
 typedef int ast_member_id;
@@ -171,6 +172,8 @@ struct ast_env {
 	size_t num_borrowed_pages;
 
 	struct objstore *store;
+
+	size_t invoc_id;
 };
 
 void

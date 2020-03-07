@@ -175,6 +175,12 @@ void print_type_repr(struct vm *vm, struct type *);
 void print_obj_repr(struct vm *vm, struct object);
 
 struct string
+type_repr_to_string(struct vm *vm, struct arena *, struct type *type);
+
+struct string
+obj_repr_to_string(struct vm *vm, struct arena *, struct object obj);
+
+struct string
 type_repr_to_alloced_string(struct vm *vm, struct type *type);
 
 struct string

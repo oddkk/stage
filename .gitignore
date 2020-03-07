@@ -5,3 +5,4 @@
 *.y.output
 /test/build/
 module.so
+/solve_debug/

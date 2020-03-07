@@ -3,6 +3,7 @@
 #include "module.h"
 #include "utils.h"
 #include "error.h"
+#include "term_color.h"
 #include "base/mod.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -400,11 +401,17 @@ ast_node_constraints(
 
 		case AST_NODE_CALL:
 			{
-				ast_slot_id func_slot, func_type_slot;
+				ast_slot_id in_func_slot, func_slot, func_type_slot;
 
-				func_slot = ast_node_constraints(
+				in_func_slot = ast_node_constraints(
 						ctx, mod, env, deps, num_deps,
 						node->call.func);
+
+				func_slot = ast_slot_alloc(env);
+
+				ast_slot_require_cons_or_value_from(
+						env, node->loc, AST_CONSTR_SRC_CALL_ARG,
+						func_slot, in_func_slot);
 
 				func_type_slot = ast_slot_alloc(env);
 				ast_slot_require_type(
@@ -436,6 +443,9 @@ ast_node_constraints(
 						env, node->loc, AST_CONSTR_SRC_CALL_ARG,
 						ctx->types.type, func_type_slot, ret_type_slot, arg_types,
 						node->call.num_args);
+
+				// printf("func call (%i -> %i : %i)(...) -> %i:%i\n",
+				// 		in_func_slot, func_slot, func_type_slot, ret_slot, ret_type_slot);
 
 				node->typecheck_slot = ret_slot;
 			}
@@ -998,9 +1008,17 @@ ast_node_typecheck(struct ast_context *ctx,
 	err = ast_slot_try_solve(
 			ctx, mod, &env, result);
 
+#if AST_DEBUG_SLOT_SOLVE_GRAPH
+	printf("#%3zu: ", env.invoc_id);
+	ast_print_node(ctx, node, true);
+#endif
+
 	if (err < 0) {
 #if AST_DEBUG_SLOT_SOLVE
 		printf("Failed (solve).\n\n");
+#endif
+#if AST_DEBUG_SLOT_SOLVE_GRAPH
+		printf(" " TC(TC_RED, "failed") " (solve)\n");
 #endif
 		return -1;
 	}
@@ -1011,11 +1029,18 @@ ast_node_typecheck(struct ast_context *ctx,
 #if AST_DEBUG_SLOT_SOLVE
 		printf("Failed (resolve).\n\n");
 #endif
+#if AST_DEBUG_SLOT_SOLVE_GRAPH
+		printf(TC(TC_RED, " failed") " (resolve)\n");
+#endif
 		return -1;
 	}
 
 #if AST_DEBUG_SLOT_SOLVE
 		printf("OK.\n\n");
+#endif
+
+#if AST_DEBUG_SLOT_SOLVE_GRAPH
+		printf("\n");
 #endif
 
 	ast_env_free(&env);

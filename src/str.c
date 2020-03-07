@@ -229,3 +229,35 @@ bool string_split(struct string in, struct string *result,
 
 	return true;
 }
+
+struct string
+string_replace_all_char(struct arena *mem, struct string str,
+		int target, struct string replacement)
+{
+	size_t new_size = str.length;
+
+	for (size_t i = 0; i < str.length; i++) {
+		if (str.text[i] == target) {
+			new_size += replacement.length-1;
+		}
+	}
+
+	struct string result;
+	result.length = new_size;
+	result.text = arena_alloc(mem, new_size+1);
+
+	size_t cursor = 0;
+	for (size_t i = 0; i < str.length; i++) {
+		if (str.text[i] == target) {
+			memcpy(&result.text[cursor],
+					replacement.text,
+					replacement.length);
+			cursor += replacement.length;
+		} else {
+			result.text[cursor] = str.text[i];
+			cursor += 1;
+		}
+	}
+
+	return result;
+}
