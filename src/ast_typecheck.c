@@ -543,6 +543,14 @@ ast_node_constraints(
 				ast_slot_id res_slot;
 				res_slot = ast_slot_alloc(env);
 
+				for (size_t i = 0; i < node->templ.num_params; i++) {
+					if (node->templ.params[i].type) {
+						ast_node_constraints(
+								ctx, mod, env, deps, num_deps,
+								node->templ.params[i].type);
+					}
+				}
+
 				if (node->templ.cons) {
 					struct object cons_obj = {0};
 					cons_obj.type = ctx->types.cons;
