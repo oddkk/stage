@@ -730,6 +730,109 @@ ast_node_constraints(
 	return node->typecheck_slot;
 }
 
+#define DBG_ERROR_FMT "<%zu:%i>"
+#define DBG_ERROR_ARG(env,slot) , ((env)->invoc_id), (slot)
+
+static inline void
+ast_node_resolve_handle_value_result(
+		struct ast_context *ctx, struct ast_env *env, int *errors,
+		struct ast_node *node, struct ast_slot_result *res,
+		const char *expectation)
+{
+	ast_slot_id slot_id = node->typecheck_slot;
+
+	switch (ast_slot_value_result(res->result)) {
+		case AST_SLOT_RES_VALUE_UNKNOWN:
+		case AST_SLOT_RES_TYPE_FOUND:
+			stg_error(ctx->err, node->loc,
+					"Not enough type information to resolve the value "
+					"of this expression." DBG_ERROR_FMT
+					DBG_ERROR_ARG(env, slot_id));
+			*errors += 1;
+			break;
+
+		case AST_SLOT_RES_VALUE_FOUND_OBJ:
+			{
+				struct string got_str;
+				got_str = obj_repr_to_alloced_string(
+						ctx->vm, res->value.obj);
+				stg_error(ctx->err, node->loc,
+						"Expected %s, got %.*s." DBG_ERROR_FMT,
+						expectation, LIT(got_str)
+						DBG_ERROR_ARG(env, slot_id));
+				free(got_str.text);
+				*errors += 1;
+			}
+			break;
+
+		case AST_SLOT_RES_VALUE_FOUND_TYPE:
+			{
+				struct string got_str;
+				got_str = obj_repr_to_alloced_string(
+						ctx->vm, res->value.obj);
+				stg_error(ctx->err, node->loc,
+						"Expected %s, got Type(%.*s)." DBG_ERROR_FMT,
+						expectation, LIT(got_str)
+						DBG_ERROR_ARG(env, slot_id));
+				free(got_str.text);
+				*errors += 1;
+			}
+			break;
+
+		default:
+			panic("Invalid slot bind result.");
+			break;
+	}
+}
+
+static inline void
+ast_node_resolve_handle_cons_result(
+		struct ast_context *ctx, struct ast_env *env, int *errors,
+		struct ast_node *node, struct ast_slot_result *res,
+		const char *expectation)
+{
+	ast_slot_id slot_id = node->typecheck_slot;
+
+	switch (ast_slot_cons_result(res->result)) {
+		case AST_SLOT_RES_CONS_UNKNOWN:
+			stg_error(ctx->err, node->loc,
+					"Not enough type information to resolve the "
+					"%s of this expression." DBG_ERROR_FMT,
+					expectation
+					DBG_ERROR_ARG(env, slot_id));
+			*errors += 1;
+			break;
+
+		case AST_SLOT_RES_CONS_FOUND:
+			stg_error(ctx->err, node->loc,
+					"Expected %s instantiation, got constructor." DBG_ERROR_FMT,
+					expectation
+					DBG_ERROR_ARG(env, slot_id));
+			*errors += 1;
+			break;
+
+		case AST_SLOT_RES_CONS_FOUND_INST:
+			stg_error(ctx->err, node->loc,
+					"Expected %s, got object instantiator." DBG_ERROR_FMT,
+					expectation
+					DBG_ERROR_ARG(env, slot_id));
+			*errors += 1;
+			break;
+
+		case AST_SLOT_RES_CONS_FOUND_FUNC_TYPE:
+			stg_error(ctx->err, node->loc,
+					"Expected %s, got function type constructor." DBG_ERROR_FMT,
+					expectation
+					DBG_ERROR_ARG(env, slot_id));
+			*errors += 1;
+			break;
+
+		default:
+			panic("Invalid slot bind result.");
+			break;
+	}
+}
+
 static int
 ast_node_resolve_types(
 		struct ast_context *ctx, struct ast_env *env,
@@ -750,14 +853,6 @@ ast_node_resolve_types(
 		errors += 1;
 	} else {
 		switch (ast_slot_value_result(res->result)) {
-			case AST_SLOT_RES_VALUE_UNKNOWN:
-				stg_error(ctx->err, node->loc,
-						"Not enough type information to resolve the type of this "
-						"expression.");
-
-				errors += 1;
-				break;
-
 			case AST_SLOT_RES_VALUE_FOUND_OBJ:
 			case AST_SLOT_RES_VALUE_FOUND_TYPE:
 			case AST_SLOT_RES_TYPE_FOUND:
@@ -765,7 +860,8 @@ ast_node_resolve_types(
 				break;
 
 			default:
-				panic("Invalid slot bind result.");
+				ast_node_resolve_handle_value_result(
+						ctx, env, &errors, node, res, "");
 				break;
 		}
 
@@ -802,15 +898,6 @@ ast_node_resolve_types(
 
 			case AST_NODE_CONS:
 				switch (ast_slot_value_result(res->result)) {
-					case AST_SLOT_RES_VALUE_UNKNOWN:
-					case AST_SLOT_RES_TYPE_FOUND:
-						stg_error(ctx->err, node->loc,
-								"Not enough type information to resolve the value "
-								"of this expression.");
-
-						errors += 1;
-						break;
-
 					case AST_SLOT_RES_VALUE_FOUND_OBJ:
 						node->call.cons_value = res->value.obj;
 						break;
@@ -826,90 +913,44 @@ ast_node_resolve_types(
 						break;
 
 					default:
-						panic("Invalid slot bind result.");
+						ast_node_resolve_handle_value_result(
+								ctx, env, &errors, node, res, "");
 						break;
 				}
 				switch (ast_slot_cons_result(res->result)) {
-					case AST_SLOT_RES_CONS_UNKNOWN:
-						stg_error(ctx->err, node->loc,
-								"Not enough type information to resolve the constructor "
-								"of this expression.");
-
-						errors += 1;
-						break;
-
 					case AST_SLOT_RES_CONS_FOUND:
 						node->call.cons = res->cons;
 						break;
 
-					case AST_SLOT_RES_CONS_FOUND_FUNC_TYPE:
-						stg_error(ctx->err, node->loc,
-								"Expected constructor, got function type constructor.");
-
-						errors += 1;
-						break;
-
 					default:
-						panic("Invalid slot bind result.");
+						ast_node_resolve_handle_cons_result(
+								ctx, env, &errors, node, res, "constructor");
 						break;
 				}
 				break;
 
 			case AST_NODE_INST:
 				switch (ast_slot_cons_result(res->result)) {
-					case AST_SLOT_RES_CONS_UNKNOWN:
-						stg_error(ctx->err, node->loc,
-								"Not enough type information to resolve the "
-								"object instantiation of this expression.");
-						errors += 1;
-						break;
-
-					case AST_SLOT_RES_CONS_FOUND:
-						stg_error(ctx->err, node->loc,
-								"Expected object instantiation, got constructor.");
-						errors += 1;
-						break;
-
 					case AST_SLOT_RES_CONS_FOUND_INST:
 						node->call.inst = res->inst;
 						break;
 
-					case AST_SLOT_RES_CONS_FOUND_FUNC_TYPE:
-						stg_error(ctx->err, node->loc,
-								"Expected object instantiation, got function "
-								"type constructor.");
-						errors += 1;
-						break;
-
 					default:
-						panic("Invalid slot bind result.");
+						ast_node_resolve_handle_cons_result(
+								ctx, env, &errors, node, res, "object instantiator");
 						break;
 				}
 				break;
 
 			case AST_NODE_FUNC_TYPE:
 				switch (ast_slot_value_result(res->result)) {
-					case AST_SLOT_RES_VALUE_UNKNOWN:
-					case AST_SLOT_RES_TYPE_FOUND:
-						stg_error(ctx->err, node->loc,
-								"Not enough type information to resolve the type of this "
-								"expression.");
-						errors += 1;
-						break;
-
-					case AST_SLOT_RES_VALUE_FOUND_OBJ:
-						// TODO: Better error message.
-						stg_error(ctx->err, node->loc,
-								"Expected function type, got another object.");
-						errors += 1;
-						break;
-
 					case AST_SLOT_RES_VALUE_FOUND_TYPE:
 						node->func_type.func_type = res->value.type;
 						break;
 
 					default:
-						panic("Invalid slot bind result.");
+						ast_node_resolve_handle_value_result(
+								ctx, env, &errors, node, res, "function type");
 						break;
 				}
 				break;
