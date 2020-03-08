@@ -2887,6 +2887,26 @@ ast_slot_print_graph_dot(struct solve_context *ctx, FILE *fp)
 		value_string = string_replace_all_char(
 				mem, value_string, '>', STR("&gt;"));
 
+		struct string substs = {0};
+		const size_t substs_cap = 1024;
+		substs.text = arena_alloc(mem, substs_cap);
+
+		for (ast_slot_id i = slot_id+1; i < ctx->num_slots+ctx->num_extra_slots; i++) {
+			struct ast_slot_resolve *potential_subst;
+			potential_subst = ast_get_real_slot(ctx, i);
+			if ((potential_subst->flags & AST_SLOT_HAS_SUBST) != 0 &&
+					potential_subst->subst == slot_id) {
+				int err;
+				err = snprintf(substs.text+substs.length, substs_cap-substs.length, "%s%i",
+						(substs.length > 0) ? "," : "", i);
+				if (err < 0) {
+					perror("snprintf");
+					continue;
+				}
+				substs.length += err;
+			}
+		}
+
 		const char *cons_kind = "none";
 
 		if ((slot->flags & AST_SLOT_HAS_CONS) != 0) {
@@ -2909,10 +2929,10 @@ ast_slot_print_graph_dot(struct solve_context *ctx, FILE *fp)
 
 		fprintf(fp, "slot%i [label=<\
 <table border=\"1\" cellborder=\"0\" cellspacing=\"0\">"
-	DOT_SLOT_ROW("slot", "%i")
+	DOT_SLOT_ROW("slot", "%i (%.*s)")
 	DOT_SLOT_ROW("value", "%.*s")
 	DOT_SLOT_ROW("cons", "%s")
-"</table>>%s];\n", slot_id, slot_id, LIT(value_string), cons_kind, error_attrs);
+"</table>>%s];\n", slot_id, slot_id, LIT(substs), LIT(value_string), cons_kind, error_attrs);
 
 #undef DOT_SLOT_ROW
 
@@ -2924,10 +2944,11 @@ ast_slot_print_graph_dot(struct solve_context *ctx, FILE *fp)
 
 		if ((slot->flags & (AST_SLOT_HAS_CONS|AST_SLOT_IS_FUNC_TYPE)) ==
 				(AST_SLOT_HAS_CONS)) {
-			dot_slot_rel(fp, ctx, slot->cons, slot_id, "cons");
+			dot_slot_rel(fp, ctx, slot->cons, slot_id,
+					((slot->flags & AST_SLOT_IS_INST) != 0) ? "inst" : "cons");
 		}
 
-		if ((slot->flags & AST_SLOT_REQ_CONS_OR_VALUE_FROM) != 0) {
+		if ((slot->flags & AST_SLOT_HAS_CONS_OR_VALUE_FROM) != 0) {
 			dot_slot_rel(fp, ctx, slot->cons_or_value_from, slot_id, "cons or value");
 		}
 
