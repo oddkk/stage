@@ -1754,8 +1754,16 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 						ctx, auth_id, slot_id,
 						slot->cons_or_value_from, false);
 			} else {
-				made_change |= ast_solve_apply_value_obj(
-						ctx, auth_id, slot_id, from_value);
+				// made_change |= ast_solve_apply_value_obj(
+				// 		ctx, auth_id, slot_id, from_value);
+				made_change |= (slot->cons_or_value_from != slot_id);
+				slot->cons_or_value_from =
+					ast_slot_join(ctx,
+							slot->cons_or_value_from,
+							slot_id);
+				if (made_change) {
+					return true;
+				}
 			}
 		}
 	}
