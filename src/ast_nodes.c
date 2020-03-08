@@ -1188,6 +1188,11 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 	struct ast_env inner_env = {0};
 	inner_env.store = &mod->store;
 
+#if AST_DEBUG_UNINITIALIZED_SLOT_ID
+	// Add a slot 0 to debug invalid references.
+	ast_slot_alloc(&inner_env);
+#endif
+
 	size_t num_param_deps = num_outer_deps;
 	struct ast_typecheck_dep param_deps[num_param_deps];
 	memcpy(param_deps, outer_deps,

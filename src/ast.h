@@ -7,6 +7,7 @@
 #define AST_DEBUG_SLOT_SOLVE 0
 #define AST_DEBUG_SLOT_SOLVE_APPLY 0
 #define AST_DEBUG_SLOT_SOLVE_GRAPH 0
+#define AST_DEBUG_UNINITIALIZED_SLOT_ID 0
 
 typedef int32_t ast_slot_id;
 typedef int ast_member_id;

@@ -980,6 +980,11 @@ ast_node_typecheck(struct ast_context *ctx,
 	struct ast_env env = {0};
 	env.store = &mod->store;
 
+#if AST_DEBUG_UNINITIALIZED_SLOT_ID
+	// Add a slot 0 to debug invalid references.
+	ast_slot_alloc(&env);
+#endif
+
 	struct ast_typecheck_dep body_deps[num_deps];
 	memcpy(body_deps, deps, num_deps * sizeof(struct ast_typecheck_dep));
 
