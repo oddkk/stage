@@ -55,7 +55,7 @@ test_cons_decay(struct ast_context *ctx, struct stg_module *mod)
 			AST_CONSTR_SRC_FUNC_DECL,
 			cons_members_slot, cons_obj);
 
-	ast_slot_require_member_named(
+	ast_slot_require_param_named(
 			env, STG_NO_LOC,
 			AST_CONSTR_SRC_FUNC_DECL,
 			cons_members_slot, param_name, cons_member_slot);

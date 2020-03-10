@@ -45,7 +45,7 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 			AST_CONSTR_SRC_FUNC_DECL,
 			param_slot, int_obj);
 
-	ast_slot_require_member_named(
+	ast_slot_require_param_named(
 			env, STG_NO_LOC,
 			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, param_name, param_slot);
@@ -56,8 +56,10 @@ test_value_pack(struct ast_context *ctx, struct stg_module *mod)
 	err = ast_slot_try_solve(ctx, mod, env, result);
 	TEST_ASSERT(!err);
 
-	TEST_ASSERT(result[obj_slot].result ==
-			(AST_SLOT_RES_VALUE_FOUND_OBJ|AST_SLOT_RES_CONS_FOUND));
+	TEST_ASSERT(ast_slot_value_result(result[obj_slot].result) ==
+			AST_SLOT_RES_VALUE_FOUND_OBJ);
+	TEST_ASSERT(ast_slot_cons_result(result[obj_slot].result) ==
+			AST_SLOT_RES_CONS_FOUND);
 	TEST_ASSERT(result[obj_slot].value.obj.type == ctx->types.integer);
 	TEST_ASSERT(result[obj_slot].cons == mock_cons);
 

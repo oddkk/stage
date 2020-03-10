@@ -45,7 +45,7 @@ test_value_unpack(struct ast_context *ctx, struct stg_module *mod)
 			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, int_obj);
 
-	ast_slot_require_member_named(
+	ast_slot_require_param_named(
 			env, STG_NO_LOC,
 			AST_CONSTR_SRC_FUNC_DECL,
 			obj_slot, param_name, param_slot);

@@ -121,7 +121,7 @@ test_cons_propagation_with_value(struct ast_context *ctx, struct stg_module *mod
 			env, STG_NO_LOC, AST_CONSTR_SRC_FUNC_DECL,
 			src_cons_slot, cons_obj);
 
-	ast_slot_require_member_named(
+	ast_slot_require_param_named(
 			env, STG_NO_LOC, AST_CONSTR_SRC_FUNC_DECL,
 			target_value_slot, param_name, src_mbr_slot);
 

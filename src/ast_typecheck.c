@@ -332,7 +332,7 @@ ast_node_constraints(
 					// TODO: Location
 					// Param i is index i+1 becaues index 0 is the return
 					// value.
-					ast_slot_require_member_index(
+					ast_slot_require_param_index(
 							env, STG_NO_LOC, AST_CONSTR_SRC_CLOSURE,
 							type_slot, i+1, param_type_slot);
 
@@ -357,7 +357,7 @@ ast_node_constraints(
 						body_slot, ret_type_slot);
 
 				// Index 0 is the return type of the function.
-				ast_slot_require_member_index(
+				ast_slot_require_param_index(
 						env, node->loc, AST_CONSTR_SRC_FUNC_DECL,
 						type_slot, 0, ret_type_slot);
 
@@ -506,12 +506,12 @@ ast_node_constraints(
 					name = node->call.args[i].name;
 
 					if (name) {
-						ast_slot_require_member_named(
+						ast_slot_require_param_named(
 								env, node->call.args[i].value->loc,
 								AST_CONSTR_SRC_CONS_ARG, res_slot,
 								name, arg_slot);
 					} else {
-						ast_slot_require_member_index(
+						ast_slot_require_param_index(
 								env, node->call.args[i].value->loc,
 								AST_CONSTR_SRC_CONS_ARG, res_slot,
 								i, arg_slot);
@@ -813,18 +813,40 @@ ast_node_resolve_handle_cons_result(
 			*errors += 1;
 			break;
 
-		case AST_SLOT_RES_CONS_FOUND_INST:
+		case AST_SLOT_RES_CONS_FOUND_FUNC_TYPE:
 			stg_error(ctx->err, node->loc,
-					"Expected %s, got object instantiator." DBG_ERROR_FMT,
+					"Expected %s, got function type constructor." DBG_ERROR_FMT,
 					expectation
 					DBG_ERROR_ARG(env, slot_id));
 			*errors += 1;
 			break;
 
-		case AST_SLOT_RES_CONS_FOUND_FUNC_TYPE:
+		default:
+			panic("Invalid slot bind result.");
+			break;
+	}
+}
+
+static inline void
+ast_node_resolve_handle_inst_result(
+		struct ast_context *ctx, struct ast_env *env, int *errors,
+		struct ast_node *node, struct ast_slot_result *res)
+{
+	ast_slot_id slot_id = node->typecheck_slot;
+
+	switch (ast_slot_inst_result(res->result)) {
+		case AST_SLOT_RES_INST_UNKNOWN:
 			stg_error(ctx->err, node->loc,
-					"Expected %s, got function type constructor." DBG_ERROR_FMT,
-					expectation
+					"Not enough type information to resolve the "
+					"object instantiation of this expression." DBG_ERROR_FMT
+					DBG_ERROR_ARG(env, slot_id));
+			*errors += 1;
+			break;
+
+		case AST_SLOT_RES_INST_FOUND:
+			// This should never be reached.
+			stg_error(ctx->err, node->loc,
+					"Got object instantiation unexpectedly." DBG_ERROR_FMT
 					DBG_ERROR_ARG(env, slot_id));
 			*errors += 1;
 			break;
@@ -932,14 +954,14 @@ ast_node_resolve_types(
 				break;
 
 			case AST_NODE_INST:
-				switch (ast_slot_cons_result(res->result)) {
-					case AST_SLOT_RES_CONS_FOUND_INST:
+				switch (ast_slot_inst_result(res->result)) {
+					case AST_SLOT_RES_INST_FOUND:
 						node->call.inst = res->inst;
 						break;
 
 					default:
-						ast_node_resolve_handle_cons_result(
-								ctx, env, &errors, node, res, "object instantiator");
+						ast_node_resolve_handle_inst_result(
+								ctx, env, &errors, node, res);
 						break;
 				}
 				break;

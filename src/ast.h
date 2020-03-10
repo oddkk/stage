@@ -92,7 +92,9 @@ enum ast_constraint_kind {
 	AST_SLOT_REQ_CONS_OR_VALUE_FROM,
 	AST_SLOT_REQ_TYPE,
 	AST_SLOT_REQ_MEMBER_NAMED,
-	AST_SLOT_REQ_MEMBER_INDEXED,
+	// AST_SLOT_REQ_MEMBER_INDEXED,
+	AST_SLOT_REQ_PARAM_NAMED,
+	AST_SLOT_REQ_PARAM_INDEXED,
 	AST_SLOT_REQ_CONS,
 	AST_SLOT_REQ_INST,
 };
@@ -144,6 +146,14 @@ struct ast_slot_constraint {
 				size_t index;
 			};
 		} member;
+
+		struct {
+			ast_slot_id slot;
+			union {
+				struct atom *name;
+				size_t index;
+			};
+		} param;
 
 		struct object_cons *is_cons;
 
@@ -274,11 +284,27 @@ ast_slot_require_member_named(
 		ast_slot_id target, struct atom *name, ast_slot_id member
 		AST_SLOT_DEBUG_PARAM);
 
+/*
 void
 ast_slot_require_member_index(
 		struct ast_env *env, struct stg_location loc,
 		enum ast_constraint_source source,
 		ast_slot_id target, size_t index, ast_slot_id member
+		AST_SLOT_DEBUG_PARAM);
+*/
+
+void
+ast_slot_require_param_named(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target, struct atom *name, ast_slot_id param
+		AST_SLOT_DEBUG_PARAM);
+
+void
+ast_slot_require_param_index(
+		struct ast_env *env, struct stg_location loc,
+		enum ast_constraint_source source,
+		ast_slot_id target, size_t index, ast_slot_id param
 		AST_SLOT_DEBUG_PARAM);
 
 void
@@ -308,7 +334,8 @@ ast_slot_require_inst(
 #	define ast_slot_require_cons_or_value_from(...) ast_slot_require_cons_or_value_from (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_type(...)         ast_slot_require_type (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #	define ast_slot_require_member_named(...) ast_slot_require_member_named (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
-#	define ast_slot_require_member_index(...) ast_slot_require_member_index (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_param_named(...) ast_slot_require_param_named (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
+#	define ast_slot_require_param_index(...) ast_slot_require_param_index (__VA_ARGS__, AST_SLOT_DEBUG_ARG)
 #endif
 
 enum ast_slot_result_state {
@@ -323,10 +350,14 @@ enum ast_slot_result_state {
 
 	AST_SLOT_RES_CONS_UNKNOWN           = 0x10,
 	AST_SLOT_RES_CONS_FOUND             = 0x20,
-	AST_SLOT_RES_CONS_FOUND_INST        = 0x30,
-	AST_SLOT_RES_CONS_FOUND_FUNC_TYPE   = 0x40,
+	AST_SLOT_RES_CONS_FOUND_FUNC_TYPE   = 0x30,
 
-	AST_SLOT_RES_CONS_MASK              = 0x70,
+	AST_SLOT_RES_CONS_MASK              = 0x30,
+
+	AST_SLOT_RES_INST_UNKNOWN           = 0x40,
+	AST_SLOT_RES_INST_FOUND             = 0x80,
+
+	AST_SLOT_RES_INST_MASK              = 0xc0,
 };
 
 static inline enum ast_slot_result_state
@@ -341,6 +372,12 @@ ast_slot_cons_result(enum ast_slot_result_state state)
 	return state & AST_SLOT_RES_CONS_MASK;
 }
 
+static inline enum ast_slot_result_state
+ast_slot_inst_result(enum ast_slot_result_state state)
+{
+	return state & AST_SLOT_RES_INST_MASK;
+}
+
 struct ast_slot_result {
 	enum ast_slot_result_state result;
 	type_id type;
@@ -349,10 +386,8 @@ struct ast_slot_result {
 		struct object obj;
 	} value;
 
-	union {
-		struct object_cons *cons;
-		struct object_inst *inst;
-	};
+	struct object_cons *cons;
+	struct object_inst *inst;
 };
 
 // out_result is expected to be an array of length env->num_alloced_slots.
