@@ -92,11 +92,13 @@ stg_register_func_type(struct stg_module *mod,
 
 	data = calloc(1, sizeof(struct stg_func_type));
 
+	assert(ret_type != TYPE_UNSET);
 	data->return_type = ret_type;
 	data->num_params = num_params;
 	data->params = calloc(num_params, sizeof(type_id));
 
 	for (size_t i = 0; i < num_params; i++) {
+		assert(param_types[i] != TYPE_UNSET);
 		data->params[i] = param_types[i];
 	}
 

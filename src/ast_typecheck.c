@@ -407,11 +407,13 @@ ast_node_constraints(
 						ctx, mod, env, deps, num_deps,
 						node->call.func);
 
-				func_slot = ast_slot_alloc(env);
+				func_slot = in_func_slot;
 
-				ast_slot_require_cons_or_value_from(
-						env, node->loc, AST_CONSTR_SRC_CALL_ARG,
-						func_slot, in_func_slot);
+				// TODO: Fix cons_or_value_from.
+				// func_slot = ast_slot_alloc(env);
+				// ast_slot_require_cons_or_value_from(
+				// 		env, node->loc, AST_CONSTR_SRC_CALL_ARG,
+				// 		func_slot, in_func_slot);
 
 				func_type_slot = ast_slot_alloc(env);
 				ast_slot_require_type(
@@ -660,7 +662,6 @@ ast_node_constraints(
 		{
 			ast_slot_id res_slot;
 			res_slot = ast_slot_alloc(env);
-			node->typecheck_slot = res_slot;
 
 			struct stg_module *mod_ref = NULL;
 			mod_ref = stg_mod_find_module(
@@ -670,14 +671,15 @@ ast_node_constraints(
 				panic("Attempted to access module that was not registered as a dependency.");
 				ast_slot_value_error(
 						env, node->loc, AST_CONSTR_SRC_MOD, res_slot);
-				break;
+			} else {
+				assert(mod_ref->instance.type != TYPE_UNSET);
+
+				ast_slot_require_is_obj(
+						env, node->loc, AST_CONSTR_SRC_MOD,
+						res_slot, mod_ref->instance);
 			}
 
-			assert(mod_ref->instance.type != TYPE_UNSET);
-
-			ast_slot_require_is_obj(
-					env, node->loc, AST_CONSTR_SRC_MOD,
-					res_slot, mod_ref->instance);
+			node->typecheck_slot = res_slot;
 		}
 		break;
 
