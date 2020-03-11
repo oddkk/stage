@@ -769,41 +769,105 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 
 		case AST_NODE_ACCESS:
 			{
-				struct ast_gen_bc_result target = {0};
+				if (node->access.const_target_value_type != TYPE_UNSET) {
+					struct type *target_type;
+					target_type = vm_get_type(ctx->vm,
+							node->access.const_target_value_type);
+					struct object static_obj;
+					static_obj = target_type->static_object;
 
-				target = ast_node_gen_bytecode(
-						ctx, mod, info, bc_env,
-						node->access.target);
-				AST_GEN_EXPECT_OK(target);
+					struct type *val_type;
+					val_type = vm_get_type(ctx->vm, static_obj.type);
 
-				append_bc_instrs(&result, target);
-				append_bc_instr(&result,
-						bc_gen_push_arg(bc_env, target.out_var));
+					if (!val_type->obj_inst) {
+						stg_error(ctx->err, node->access.target->loc,
+								"This type does not have a static scope.");
+						return AST_GEN_ERROR;
+					}
 
-				type_id target_type_id = bc_get_var_type(bc_env, target.out_var);
-				struct type *type = vm_get_type(ctx->vm, target_type_id);
+					ssize_t unpack_id;
+					unpack_id = object_cons_find_param_unpack_id(
+							ctx->vm, val_type->obj_inst->cons,
+							node->access.name);
 
-				// TODO: Support deconstruction using non-default constructors
-				// from pattern matching.
-				assert(type->obj_inst);
+					if (unpack_id < 0) {
+						stg_error(ctx->err, node->loc,
+								"This type has no static member '%.*s'.",
+								ALIT(node->access.name));
+						return AST_GEN_ERROR;
+					}
 
-				struct object_cons *cons;
-				cons = type->obj_inst->cons;
+					type_id res_type_id;
 
-				bool found = false;
-				int param_id = -1;
-				for (size_t i = 0; i < cons->num_params; i++) {
-					 if (cons->params[i].name == node->access.name) {
-						 found = true;
-						 param_id = i;
-					 }
+					int err;
+					err = object_cons_descendant_type(
+							ctx->vm, static_obj.type, unpack_id, &res_type_id);
+					assert(!err);
+
+					struct type *res_type;
+					res_type = vm_get_type(ctx->vm, res_type_id);
+
+					uint8_t buffer[res_type->size];
+					struct object res;
+					res.type = res_type_id;
+					res.data = buffer;
+
+					err = object_unpack(ctx->vm, static_obj,
+							unpack_id, &res);
+					assert(!err);
+
+					res = register_object(ctx->vm, &mod->store, res);
+
+					append_bc_instr(&result,
+							bc_gen_load(bc_env, BC_VAR_NEW, res));
+					result.out_var = result.last->load.target;
+
+				} else {
+					struct ast_gen_bc_result target = {0};
+
+					target = ast_node_gen_bytecode(
+							ctx, mod, info, bc_env,
+							node->access.target);
+					AST_GEN_EXPECT_OK(target);
+
+					append_bc_instrs(&result, target);
+					append_bc_instr(&result,
+							bc_gen_push_arg(bc_env, target.out_var));
+
+					type_id target_type_id = bc_get_var_type(bc_env, target.out_var);
+
+					if (type_equals(ctx->vm, target_type_id, ctx->types.type)) {
+						stg_error(ctx->err, node->loc,
+								"Access to a type's static scope requires the "
+								"type to be constant. Got a non-constant type.");
+						return AST_GEN_ERROR;
+					}
+
+
+					struct type *type = vm_get_type(ctx->vm, target_type_id);
+
+					// TODO: Support deconstruction using non-default constructors
+					// from pattern matching.
+					assert(type->obj_inst);
+
+					struct object_cons *cons;
+					cons = type->obj_inst->cons;
+
+					bool found = false;
+					int param_id = -1;
+					for (size_t i = 0; i < cons->num_params; i++) {
+						 if (cons->params[i].name == node->access.name) {
+							 found = true;
+							 param_id = i;
+						 }
+					}
+					assert(found);
+
+					append_bc_instr(&result,
+							bc_gen_unpack(bc_env, BC_VAR_NEW,
+								cons->unpack, cons->data, param_id, node->type));
+					result.out_var = result.last->unpack.target;
 				}
-				assert(found);
-
-				append_bc_instr(&result,
-						bc_gen_unpack(bc_env, BC_VAR_NEW,
-							cons->unpack, cons->data, param_id, node->type));
-				result.out_var = result.last->unpack.target;
 			}
 			return result;
 

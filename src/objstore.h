@@ -305,6 +305,12 @@ object_cons_find_param(
 		struct object_cons *cons,
 		struct atom *name);
 
+ssize_t
+object_cons_find_param_unpack_id(
+		struct vm *,
+		struct object_cons *cons,
+		struct atom *name);
+
 // Returns a unpack id for the member pointed to by lookup, or -1 if the lookup
 // failed.
 ssize_t

@@ -1796,6 +1796,23 @@ ast_try_get_inst_from_object(
 		struct solve_context *ctx, struct object obj,
 		struct object_inst **out_inst)
 {
+	if (obj.type == ctx->type) {
+		type_id tid = *(type_id *)obj.data;
+		struct type *type = vm_get_type(ctx->vm, tid);
+
+		if (type->static_object.type != TYPE_UNSET) {
+			struct type *static_obj_type;
+			static_obj_type =
+				vm_get_type(ctx->vm, type->static_object.type);
+			assert(static_obj_type->obj_inst);
+
+			*out_inst = static_obj_type->obj_inst;
+			return true;
+		}
+
+		return false;
+	}
+
 	struct type *type;
 	type = vm_get_type(ctx->vm, obj.type);
 	*out_inst = type->obj_inst;
@@ -2229,8 +2246,13 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 
 					struct object obj = {0};
 					if ((slot->flags & AST_SLOT_VALUE_IS_TYPE) != 0) {
-						obj.type = ctx->type;
-						obj.data = &slot->value.type;
+						struct type *val_type;
+						val_type = vm_get_type(ctx->vm, slot->value.type);
+						obj = val_type->static_object;
+
+						struct type *obj_type;
+						obj_type = vm_get_type(ctx->vm, obj.type);
+						assert(obj_type->obj_inst == inst);
 					} else {
 						obj = slot->value.obj;
 					}
@@ -2695,6 +2717,20 @@ ast_slot_verify_member(
 		return -1;
 	} else if (err > 0) {
 		return 1;
+	}
+
+	if (target_val.type == ctx->type) {
+		type_id tid;
+		tid = *(type_id *)target_val.data;
+		struct type *target_val_type;
+		target_val_type = vm_get_type(ctx->vm, tid);
+		if (target_val_type->static_object.type != TYPE_UNSET) {
+			target_val = target_val_type->static_object;
+		} else {
+			stg_error(ctx->err, loc,
+					"This type has no static members.");
+			return -1;
+		}
 	}
 
 	struct object exp_val = {0};

@@ -536,6 +536,7 @@ struct ast_node {
 		struct {
 			struct atom *name;
 			struct ast_node *target;
+			type_id const_target_value_type;
 		} access;
 
 		struct {

@@ -2948,9 +2948,13 @@ ast_dt_variant_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
 	struct stg_type_variant_option *opt;
 	opt = &info->options[var.tag];
 
-	arena_string_append_sprintf(mem, &res, "%.*s(", ALIT(opt->name));
-	arena_string_append_obj_repr(&res, vm, mem, &var.data);
-	arena_string_append(mem, &res, STR(")"));
+	if (opt->data_type != TYPE_UNSET) {
+		arena_string_append_sprintf(mem, &res, "%.*s(", ALIT(opt->name));
+		arena_string_append_obj_repr(&res, vm, mem, &var.data);
+		arena_string_append(mem, &res, STR(")"));
+	} else {
+		arena_string_append(mem, &res, opt->name->name);
+	}
 
 	return res;
 }

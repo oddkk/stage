@@ -365,6 +365,29 @@ object_cons_find_param(
 }
 
 ssize_t
+object_cons_find_param_unpack_id(
+		struct vm *vm,
+		struct object_cons *cons,
+		struct atom *name)
+{
+	int local_ids[cons->num_params];
+	object_cons_local_descendent_ids(
+			vm, cons, local_ids);
+
+	ssize_t param_i;
+	param_i = object_cons_find_param(
+			cons, name);
+
+	if (param_i < 0) {
+		return -1;
+	}
+
+	assert(param_i < cons->num_params);
+
+	return local_ids[param_i];
+}
+
+ssize_t
 object_cons_simple_lookup(
 		struct vm *vm,
 		struct object_cons *cons,

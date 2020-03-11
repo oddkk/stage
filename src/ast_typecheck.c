@@ -863,14 +863,45 @@ ast_node_resolve_types(
 		struct ast_slot_result *slots, struct ast_node *node)
 {
 	int errors = 0;
+
+	struct ast_slot_result *res;
+	res = &slots[node->typecheck_slot];
+
+	if (res->result != AST_SLOT_RES_ERROR) {
+		switch (node->kind) {
+
+			case AST_NODE_ACCESS:
+				{
+					ast_slot_id target_slot_id;
+					struct ast_slot_result *target_res;
+
+					// We have to check the result of the target slot here
+					// because the slot id is removed by the recursive call to
+					// ast_node_resolve_types.
+					target_slot_id = node->access.target->typecheck_slot;
+					target_res = &slots[target_slot_id];
+
+					switch (ast_slot_value_result(target_res->result)) {
+						case AST_SLOT_RES_VALUE_FOUND_TYPE:
+							node->access.const_target_value_type = target_res->value.type;
+							break;
+
+						default:
+							break;
+					}
+				}
+				break;
+
+			default:
+				break;
+		}
+	}
+
 #define VISIT_NODE(child) errors += ast_node_resolve_types(ctx, env, slots, child);
 	AST_NODE_VISIT(node, false, false, true, false);
 #undef VISIT_NODE
 
 	assert(node->type == TYPE_UNSET);
-
-	struct ast_slot_result *res;
-	res = &slots[node->typecheck_slot];
 
 	if (res->result == AST_SLOT_RES_ERROR) {
 		// The error should already have been reported.
