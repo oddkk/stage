@@ -1713,16 +1713,6 @@ ast_slot_try_get_value_cons(
 	if (type_equals(ctx->vm, obj.type, ctx->cons)) {
 		*out_cons = *(struct object_cons **)obj.data;
 		return AST_SLOT_GET_OK;
-	} else if (type_equals(ctx->vm, obj.type, ctx->type)) {
-		type_id tid = *(type_id *)obj.data;
-		struct type *type = vm_get_type(ctx->vm, tid);
-
-		if (!type->obj_def) {
-			return AST_SLOT_GET_TYPE_HAS_NO_CONS;
-		}
-
-		*out_cons = type->obj_def;
-		return AST_SLOT_GET_OK;
 	} else {
 		return AST_SLOT_GET_TYPE_ERROR;
 	}
@@ -2054,49 +2044,6 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			(AST_SLOT_HAS_VALUE|AST_SLOT_HAS_TYPE)) {
 		made_change |=
 			ast_slot_update_type(ctx, slot->authority.value, slot_id);
-	}
-
-	if ((slot->flags & AST_SLOT_HAS_CONS) == 0 && slot->num_params > 0) {
-		type_id type_id;
-
-		enum ast_slot_get_error err;
-		err = ast_slot_try_get_type(ctx, slot_id, &type_id);
-
-		if (!err) {
-			struct type *type;
-			type = vm_get_type(ctx->vm, type_id);
-
-			if (type->obj_def) {
-				if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
-					made_change |= ast_solve_apply_cons(
-							ctx, slot->authority.type,
-							slot_id, slot->type);
-				} else {
-					assert((slot->flags & AST_SLOT_HAS_VALUE) != 0);
-
-					ast_slot_id new_type_slot;
-					new_type_slot = ast_slot_alloc(ctx->env);
-
-					struct ast_slot_constraint *val_constr;
-					val_constr = ast_get_constraint(
-							ctx, slot->authority.value);
-
-					ast_slot_require_is_type(
-							ctx->env, val_constr->reason.loc,
-							AST_CONSTR_SRC_EXPECTED,
-							new_type_slot, type_id
-							SLOT_DEBUG_ARG);
-
-					ast_slot_require_type(
-							ctx->env, val_constr->reason.loc,
-							AST_CONSTR_SRC_EXPECTED,
-							slot_id, new_type_slot
-							SLOT_DEBUG_ARG);
-
-					made_change = true;
-				}
-			}
-		}
 	}
 
 	if ((slot->flags & AST_SLOT_HAS_CONS) != 0 &&

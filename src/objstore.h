@@ -64,7 +64,6 @@ typedef struct _ffi_type ffi_type;
 struct type {
 	struct atom *name;
 	struct type_base *base;
-	struct object_cons *obj_def;
 	struct object_inst *obj_inst;
 	struct object_cons *type_def;
 	ffi_type *ffi_type;

@@ -79,7 +79,7 @@ ast_module_finalize(struct ast_context *ctx, struct stg_module *mod,
 		struct type *mod_type;
 		mod_type = vm_get_type(ctx->vm, type);
 
-		assert(mod_type->obj_def);
+		assert(mod_type->obj_inst);
 
 		struct object cons_obj = {0};
 		cons_obj.type = ctx->types.type;

@@ -67,13 +67,13 @@ vm_mod_init(struct stg_module *mod)
 	struct type *mod_type;
 	mod_type = vm_get_type(mod->vm, mod_obj.type);
 
-	if (!mod_type->obj_def) {
+	if (!mod_type->obj_inst) {
 		return -1;
 	}
 
 	ssize_t main_unpack_id;
 	main_unpack_id = object_cons_simple_lookup(
-			mod->vm, mod_type->obj_def, STR("main"));
+			mod->vm, mod_type->obj_inst->cons, STR("main"));
 
 	if (main_unpack_id < 0) {
 		return 1;

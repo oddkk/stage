@@ -1130,7 +1130,11 @@ ast_dt_resolve_l_expr(struct ast_dt_context *ctx, struct ast_node *node)
 				struct type *mbr_type;
 				mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
 
-				if (!mbr_type->obj_def) {
+				struct object_inst *mbr_inst;
+				mbr_inst = mbr_type->obj_inst;
+
+
+				if (!mbr_inst) {
 					stg_error(ctx->ast_ctx->err, node->access.target->loc,
 							"This object does not have any members.");
 					return -1;
@@ -1138,20 +1142,20 @@ ast_dt_resolve_l_expr(struct ast_dt_context *ctx, struct ast_node *node)
 
 				bool found = false;
 				size_t param_id = 0;
-				for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
-					if (mbr_type->obj_def->params[i].name == node->access.name) {
+				for (size_t i = 0; i < mbr_inst->cons->num_params; i++) {
+					if (mbr_inst->cons->params[i].name == node->access.name) {
 						found = true;
 						break;
 					}
 
 					param_id += 1;
 					struct type *param_type;
-					assert(TYPE_VALID(mbr_type->obj_def->params[i].type));
+					assert(TYPE_VALID(mbr_inst->cons->params[i].type));
 					param_type = vm_get_type(ctx->ast_ctx->vm,
-							mbr_type->obj_def->params[i].type);
-					if (param_type->obj_def) {
+							mbr_inst->cons->params[i].type);
+					if (param_type->obj_inst) {
 						param_id += object_cons_num_descendants(
-								ctx->ast_ctx->vm, param_type->obj_def);
+								ctx->ast_ctx->vm, param_type->obj_inst->cons);
 					}
 				}
 
@@ -1325,9 +1329,9 @@ ast_dt_populate_descendants(
 	struct type *parent_type;
 	parent_type = vm_get_type(ctx->ast_ctx->vm, parent->type);
 
-	if (parent_type->obj_def) {
+	if (parent_type->obj_inst) {
 		struct object_cons *def;
-		def = parent_type->obj_def;
+		def = parent_type->obj_inst->cons;
 
 		for (size_t i = 0; i < def->num_params; i++) {
 			// TODO: Better location.
@@ -1363,7 +1367,6 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 	parent_type = vm_get_type(ctx->ast_ctx->vm, parent->type);
 
 	if (parent_type->obj_inst) {
-		assert(parent_type->obj_inst->cons == parent_type->obj_def);
 		struct object_inst *def;
 		def = parent_type->obj_inst;
 
@@ -1484,9 +1487,9 @@ ast_dt_member_num_descendants(
 	struct type *type;
 	type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
 
-	if (type->obj_def) {
+	if (type->obj_inst) {
 		return object_cons_num_descendants(
-				ctx->ast_ctx->vm, type->obj_def) + 1;
+				ctx->ast_ctx->vm, type->obj_inst->cons) + 1;
 	} else {
 		return 1;
 	}
@@ -1507,7 +1510,7 @@ ast_dt_find_terminal_members(
 	struct type *mbr_type;
 	mbr_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
 
-	if (mbr_type->obj_def) {
+	if (mbr_type->obj_inst) {
 		ast_member_id first_child;
 
 		if ((mbr->flags & AST_DT_MEMBER_IS_LOCAL) != 0) {
@@ -1517,7 +1520,7 @@ ast_dt_find_terminal_members(
 		}
 
 		int num_descendants = 0;
-		for (size_t i = 0; i < mbr_type->obj_def->num_params; i++) {
+		for (size_t i = 0; i < mbr_type->obj_inst->cons->num_params; i++) {
 			num_descendants += ast_dt_find_terminal_members(
 					ctx, first_child + num_descendants,
 					out_members, out_descendant_members, out_num_members,
@@ -1958,9 +1961,9 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				struct type *type;
 				type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
 
-				if (type->obj_def) {
+				if (type->obj_inst) {
 					struct object_cons *cons;
-					cons = type->obj_def;
+					cons = type->obj_inst->cons;
 					bool all_bound = true;
 
 					int local_members_offset[cons->num_params];
@@ -2452,9 +2455,9 @@ ast_dt_num_descendant_members(struct ast_dt_context *ctx,
 	struct type *member_type;
 	member_type = vm_get_type(ctx->ast_ctx->vm, type);
 
-	if (member_type->obj_def) {
+	if (member_type->obj_inst) {
 		return object_cons_num_descendants(
-				ctx->ast_ctx->vm, member_type->obj_def);
+				ctx->ast_ctx->vm, member_type->obj_inst->cons);
 	} else {
 		return 0;
 	}
@@ -2733,7 +2736,6 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 
 	struct type dt_type = {0};
 	dt_type.base = &ast_dt_composite_base;
-	dt_type.obj_def  = def;
 	dt_type.obj_inst = inst;
 	dt_type.size = offset;
 	dt_type.data = info;

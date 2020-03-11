@@ -386,10 +386,10 @@ object_cons_simple_lookup(
 				struct type *mbr_type;
 				mbr_type = vm_get_type(
 						vm, cons->params[i].type);
-				if (mbr_type->obj_def) {
+				if (mbr_type->obj_inst) {
 					offset +=
 						object_cons_num_descendants(
-								vm, mbr_type->obj_def) + 1;
+								vm, mbr_type->obj_inst->cons) + 1;
 				} else {
 					offset += 1;
 				}
@@ -416,9 +416,9 @@ object_cons_num_descendants(
 		member_type = vm_get_type(
 				vm, cons->params[i].type);
 
-		if (member_type->obj_def) {
+		if (member_type->obj_inst) {
 			count += object_cons_num_descendants(
-					vm, member_type->obj_def);
+					vm, member_type->obj_inst->cons);
 		}
 	}
 
@@ -438,9 +438,9 @@ object_cons_local_descendent_ids(
 		member_type = vm_get_type(
 				vm, cons->params[i].type);
 
-		if (member_type->obj_def) {
+		if (member_type->obj_inst) {
 			count += object_cons_num_descendants(
-					vm, member_type->obj_def);
+					vm, member_type->obj_inst->cons);
 		}
 
 		count += 1;
@@ -461,11 +461,12 @@ object_unpack(
 		return 0;
 	}
 
-	struct object_cons *def;
-	def = type->obj_def;
 	// If unpack_id is not 0 it is implied that it must be a child of this
-	// member. If this member does not have a obj_def it can not have children.
-	assert(def);
+	// member. If this member does not have a obj_inst it can not have children.
+	assert(type->obj_inst);
+
+	struct object_cons *def;
+	def = type->obj_inst->cons;
 
 	size_t offset = 1;
 	for (size_t i = 0; i < def->num_params; i++) {
@@ -474,9 +475,9 @@ object_unpack(
 				vm, def->params[i].type);
 
 		size_t num_desc;
-		if (mbr_type->obj_def) {
+		if (mbr_type->obj_inst) {
 			num_desc = object_cons_num_descendants(
-					vm, mbr_type->obj_def);
+					vm, mbr_type->obj_inst->cons);
 		} else {
 			num_desc = 0;
 		}
@@ -632,11 +633,12 @@ object_cons_descendant_type(
 	struct type *type;
 	type = vm_get_type(vm, tid);
 
-	struct object_cons *def;
-	def = type->obj_def;
 	// If unpack_id is not 0 it is implied that it must be a child of this
-	// member. If this member does not have a obj_def it can not have children.
-	assert(def);
+	// member. If this member does not have a obj_inst it can not have children.
+	assert(type->obj_inst);
+
+	struct object_cons *def;
+	def = type->obj_inst->cons;
 
 	size_t offset = 1;
 	for (size_t i = 0; i < def->num_params; i++) {
@@ -645,9 +647,9 @@ object_cons_descendant_type(
 				vm, def->params[i].type);
 
 		size_t num_desc;
-		if (mbr_type->obj_def) {
+		if (mbr_type->obj_inst) {
 			num_desc = object_cons_num_descendants(
-					vm, mbr_type->obj_def);
+					vm, mbr_type->obj_inst->cons);
 		} else {
 			num_desc = 0;
 		}
@@ -1120,10 +1122,10 @@ object_inst_order(
 		struct type *type;
 		type = vm_get_type(vm, ctx->members[i].type);
 
-		if (type->obj_def) {
+		if (type->obj_inst) {
 			ctx->members[i].num_descendants =
 				object_cons_num_descendants(
-						vm, type->obj_def);
+						vm, type->obj_inst->cons);
 		} else {
 			ctx->members[i].num_descendants = 0;
 		}
@@ -1451,9 +1453,9 @@ object_cons_print_internal(
 
 		count += 1;
 
-		if (member_type->obj_def) {
+		if (member_type->obj_inst) {
 			count += object_cons_print_internal(
-					vm, member_type->obj_def,
+					vm, member_type->obj_inst->cons,
 					indent+1, num_desc_digits, id_offset+count);
 		}
 	}

@@ -256,11 +256,11 @@ ast_unpack_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct type *type;
 		type = vm_get_type(bc_env->vm, current_type);
 
-		struct object_cons *def;
-		def = type->obj_def;
-
 		// As descendent is > 0, we expect this child to have children.
-		assert(def);
+		assert(type->obj_inst);
+
+		struct object_cons *def;
+		def = type->obj_inst->cons;
 
 		size_t offset = 1;
 		for (size_t i = 0; i < def->num_params; i++) {
@@ -269,9 +269,9 @@ ast_unpack_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					def->params[i].type);
 
 			size_t num_desc;
-			if (mbr_type->obj_def) {
+			if (mbr_type->obj_inst) {
 				num_desc = object_cons_num_descendants(
-						ctx->vm, mbr_type->obj_def) + 1;
+						ctx->vm, mbr_type->obj_inst->cons) + 1;
 			} else {
 				num_desc = 1;
 			}
@@ -680,7 +680,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 								mbr_type = vm_get_type(ctx->vm, mbr_type_id);
 
 								struct object_cons *mbr_cons;
-								mbr_cons = mbr_type->obj_def;
+								mbr_cons = mbr_type->obj_inst->cons;
 
 
 								assert(mbr_cons);
@@ -785,10 +785,10 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 
 				// TODO: Support deconstruction using non-default constructors
 				// from pattern matching.
-				assert(type->obj_def);
+				assert(type->obj_inst);
 
 				struct object_cons *cons;
-				cons = type->obj_def;
+				cons = type->obj_inst->cons;
 
 				bool found = false;
 				int param_id = -1;
