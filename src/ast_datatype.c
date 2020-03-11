@@ -2840,12 +2840,18 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct stg_module *mod,
 struct stg_type_variant_option {
 	struct atom *name;
 	type_id data_type;
+	size_t size;
+	obj_copy copy;
+	void *type_data;
+	struct stg_location loc;
 };
 
 struct stg_type_variant_info {
 	struct stg_type_variant_option *options;
 	size_t num_options;
 	uint8_t tag_size;
+	struct stg_location loc;
+	type_id type;
 };
 
 struct ast_dt_variant {
@@ -2879,6 +2885,26 @@ ast_dt_decode_variant(struct stg_type_variant_info *info, void *obj_data)
 	var.data.data = data;
 
 	return var;
+}
+
+static void
+ast_dt_encode_variant(struct stg_type_variant_info *info,
+		uint64_t tag, void *in_data, void *out_data)
+{
+	switch (info->tag_size) {
+		case 1: *((uint8_t  *)out_data) = (uint8_t )tag; break;
+		case 2: *((uint16_t *)out_data) = (uint16_t)tag; break;
+		case 4: *((uint32_t *)out_data) = (uint32_t)tag; break;
+		case 8: *((uint64_t *)out_data) = (uint64_t)tag; break;
+		default:
+			panic("Invalid variant tag size");
+			return;
+	}
+
+	void *out_data_ptr = ((uint8_t *)out_data) + info->tag_size;
+	if (info->options[tag].size) {
+		memcpy(out_data_ptr, in_data, info->options[tag].size);
+	}
 }
 
 static struct string
@@ -2929,14 +2955,99 @@ ast_dt_variant_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
 	return res;
 }
 
+static void
+ast_dt_variant_obj_copy(struct stg_exec *heap, void *type_data, void *obj_data)
+{
+	struct stg_type_variant_info *info = type_data;
+	struct ast_dt_variant var;
+	var = ast_dt_decode_variant(info, obj_data);
+
+	struct stg_type_variant_option *opt;
+	opt = &info->options[var.tag];
+
+	if (opt->copy) {
+		opt->copy(heap,
+				opt->type_data,
+				var.data.data);
+	}
+}
+
 struct type_base variant_type_base = {
 	.name     = STR("Variant"),
 	.repr     = ast_dt_variant_repr,
 	.obj_repr = ast_dt_variant_obj_repr,
+	.obj_copy = ast_dt_variant_obj_copy,
 
 	// TODO: Implement
 	// .free = ...,
 };
+
+static struct object
+ast_dt_create_variant_type_scope(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct stg_type_variant_info *info)
+{
+	struct ast_node *scope;
+
+	scope = ast_init_node_composite(
+			ctx, AST_NODE_NEW, info->loc);
+
+	struct type *variant_type;
+	variant_type = vm_get_type(mod->vm, info->type);
+
+	for (size_t tag = 0; tag < info->num_options; tag++) {
+		struct object obj = {0};
+		if (info->options[tag].data_type != TYPE_UNSET) {
+			// TODO: Option constructor functions.
+			continue;
+		} else {
+			uint8_t buffer[variant_type->size];
+			assert(info->options[tag].size == 0);
+			ast_dt_encode_variant(
+					info, tag, NULL, buffer);
+
+			obj.type = info->type;
+			obj.data = buffer;
+			obj = register_object(mod->vm, &mod->store, obj);
+		}
+
+		struct ast_node *value_node;
+		value_node = ast_init_node_lit(
+				ctx, AST_NODE_NEW,
+				info->options[tag].loc, obj);
+
+		struct ast_node *target_node;
+		target_node = ast_init_node_lookup(
+				ctx, AST_NODE_NEW, info->options[tag].loc,
+				info->options[tag].name);
+
+		int bind_id;
+		bind_id = ast_node_composite_bind(
+				ctx, scope, target_node,
+				value_node, false);
+
+		ast_node_composite_add_member(
+				ctx, scope, info->options[tag].name,
+				NULL, bind_id);
+	}
+
+	type_id scope_type;
+	scope_type = ast_dt_finalize_composite(
+			ctx, mod, scope, NULL, 0);
+
+	struct object res = {0};
+
+	int err;
+	err = stg_instantiate_static_object(
+			ctx, mod, scope_type, &res);
+
+	if (err) {
+		printf("Failed to create static object for variant.\n");
+		return OBJ_UNSET;
+	}
+
+	return res;
+}
 
 type_id
 ast_dt_finalize_variant(
@@ -2966,6 +3077,7 @@ ast_dt_finalize_variant(
 	for (size_t i = 0; i < num_options; i++) {
 		opts[i].name = options[i].name;
 		opts[i].data_type = TYPE_UNSET;
+		opts[i].loc = options[i].loc;
 
 		if (options[i].data_type) {
 			int err;
@@ -3009,6 +3121,10 @@ ast_dt_finalize_variant(
 			if (type->size > max_data_size) {
 				max_data_size = type->size;
 			}
+
+			opts[i].size = type->size;
+			opts[i].copy = type->base->obj_copy;
+			opts[i].type_data = type->data;
 		}
 	}
 
@@ -3022,6 +3138,9 @@ ast_dt_finalize_variant(
 
 	info->num_options = num_options;
 	info->options = opts;
+	// TODO: Variant location
+	// info->loc = node->loc;
+	info->loc = STG_NO_LOC;
 
 	size_t tag_size;
 	ffi_type *tag_type;
@@ -3053,5 +3172,17 @@ ast_dt_finalize_variant(
 		new_type.ffi_type = tag_type;
 	}
 
-	return stg_register_type(mod, new_type);
+	type_id variant_type_id;
+	variant_type_id = stg_register_type(mod, new_type);
+
+	info->type = variant_type_id;
+
+	struct type *variant_type;
+	variant_type = vm_get_type(mod->vm, variant_type_id);
+
+	variant_type->static_object =
+		ast_dt_create_variant_type_scope(
+				ctx, mod, info);
+
+	return variant_type_id;
 }

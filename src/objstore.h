@@ -47,6 +47,10 @@ typedef void (*obj_copy)(struct stg_exec *, void *type_data, void *obj_data);
 typedef bool (*type_equals_func)(struct vm *vm, struct type *lhs, struct type *rhs);
 typedef void (*type_free)(struct vm *vm, struct type *type);
 
+struct object {
+	type_id type;
+	void *data;
+};
 
 struct type_base {
 	struct string name;
@@ -66,6 +70,7 @@ struct type {
 	struct type_base *base;
 	struct object_inst *obj_inst;
 	struct object_cons *type_def;
+	struct object static_object;
 	ffi_type *ffi_type;
 	void *data;
 
@@ -124,11 +129,6 @@ struct func {
 struct stg_func_object {
 	func_id func;
 	void *closure;
-};
-
-struct object {
-	type_id type;
-	void *data;
 };
 
 struct objstore {
