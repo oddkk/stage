@@ -9,6 +9,7 @@
 #include "dlist.h"
 #include "utils.h"
 #include "vm.h"
+#include "module.h"
 #include "base/mod.h"
 #include "ast.h"
 
@@ -1482,4 +1483,93 @@ object_cons_print(struct vm *vm, struct object_cons *cons)
 	object_cons_print_internal(
 			vm, cons, 0, num_desc_digits, 1);
 	printf("\n");
+}
+
+int
+stg_instantiate_static_object(
+		struct ast_context *ctx, struct stg_module *mod,
+		type_id tid, struct object *out)
+{
+	struct ast_node *init_func;
+	struct ast_node *inst;
+	struct ast_node *cons_obj_lit;
+	struct ast_node *ret;
+
+	struct type *type;
+	type = vm_get_type(ctx->vm, tid);
+
+	if (!type->obj_inst) {
+		printf("Attempted to instantiate a static object without an object"
+				"instantiator.\n");
+		return -1;
+	}
+
+	struct object cons_obj = {0};
+	cons_obj.type = ctx->types.type;
+	cons_obj.data = &tid;
+
+	struct object type_obj = {0};
+	type_obj.type = ctx->types.type;
+	type_obj.data = &tid;
+
+	ret = ast_init_node_lit(ctx,
+			AST_NODE_NEW, STG_NO_LOC, type_obj);
+
+	cons_obj_lit = ast_init_node_lit(ctx,
+			AST_NODE_NEW, STG_NO_LOC, cons_obj);
+
+	inst = ast_init_node_inst(ctx,
+			AST_NODE_NEW, STG_NO_LOC, cons_obj_lit, NULL, 0);
+
+	init_func = ast_init_node_func(ctx,
+			AST_NODE_NEW, STG_NO_LOC,
+			NULL, NULL, 0,
+			ret, inst);
+
+	int err;
+	err = ast_node_typecheck(ctx, mod,
+			init_func, NULL, 0, TYPE_UNSET);
+	if (err) {
+		printf("Failed typechecking initialize function for module '%.*s'.\n",
+				ALIT(mod->name));
+		return -1;
+	}
+
+	struct bc_env *bc_env;
+	bc_env = ast_func_gen_bytecode(ctx, mod,
+			NULL, NULL, 0, init_func);
+	if (!bc_env) {
+		printf("Failed codegen for module '%.*s'.\n",
+				ALIT(mod->name));
+		return -1;
+	}
+
+	struct func func = {0};
+
+	func.type = stg_register_func_type(
+			mod, tid, NULL, 0);
+
+	func.kind = FUNC_BYTECODE;
+	func.bytecode = bc_env;
+
+
+	func_id init_func_id;
+	init_func_id = stg_register_func(mod, func);
+
+	uint8_t obj_buffer[type->size];
+	struct object obj = {0};
+
+	obj.data = obj_buffer;
+	obj.type = tid;
+
+	struct stg_exec exec_ctx = {0};
+	mod_arena(mod, &exec_ctx.heap);
+	vm_call_func(ctx->vm, &exec_ctx, init_func_id, NULL, 0, &obj);
+
+	*out =
+		register_object(ctx->vm, &mod->store, obj);
+
+	arena_destroy(&exec_ctx.heap);
+
+	return 0;
 }

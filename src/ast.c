@@ -64,93 +64,10 @@ ast_module_finalize(struct ast_context *ctx, struct stg_module *mod,
 	type = ast_dt_finalize_composite(ctx, mod,
 			root, NULL, 0);
 
-	func_id init_func;
-
 	if (type == TYPE_UNSET) {
 		return -1;
 	}
 
-	{
-		struct ast_node *mod_init_func;
-		struct ast_node *mod_inst;
-		struct ast_node *mod_cons_obj;
-		struct ast_node *mod_ret;
-
-		struct type *mod_type;
-		mod_type = vm_get_type(ctx->vm, type);
-
-		assert(mod_type->obj_inst);
-
-		struct object cons_obj = {0};
-		cons_obj.type = ctx->types.type;
-		cons_obj.data = &type;
-
-		struct object type_obj = {0};
-		type_obj.type = ctx->types.type;
-		type_obj.data = &type;
-
-		mod_ret = ast_init_node_lit(ctx,
-				AST_NODE_NEW, STG_NO_LOC, type_obj);
-
-		mod_cons_obj = ast_init_node_lit(ctx,
-				AST_NODE_NEW, STG_NO_LOC, cons_obj);
-
-		mod_inst = ast_init_node_inst(ctx,
-				AST_NODE_NEW, STG_NO_LOC, mod_cons_obj, NULL, 0);
-
-		mod_init_func = ast_init_node_func(ctx,
-				AST_NODE_NEW, STG_NO_LOC,
-				NULL, NULL, 0,
-				mod_ret, mod_inst);
-
-		int err;
-		err = ast_node_typecheck(ctx, mod,
-				mod_init_func, NULL, 0, TYPE_UNSET);
-		if (err) {
-			printf("Failed typechecking initialize function for module '%.*s'.\n",
-					ALIT(mod->name));
-			return -1;
-		}
-
-		struct bc_env *bc_env;
-		bc_env = ast_func_gen_bytecode(ctx, mod,
-				NULL, NULL, 0, mod_init_func);
-		if (!bc_env) {
-			printf("Failed codegen for module '%.*s'.\n",
-					ALIT(mod->name));
-			return -1;
-		}
-
-		struct func func = {0};
-
-		func.type = stg_register_func_type(
-				mod, type, NULL, 0);
-
-		func.kind = FUNC_BYTECODE;
-		func.bytecode = bc_env;
-
-
-		init_func = stg_register_func(mod, func);
-	}
-
-	{
-		struct type *mod_obj_type;
-		mod_obj_type = vm_get_type(ctx->vm, type);
-		uint8_t mod_obj_buffer[mod_obj_type->size];
-		struct object mod_obj = {0};
-
-		mod_obj.data = mod_obj_buffer;
-		mod_obj.type = type;
-
-		struct stg_exec exec_ctx = {0};
-		mod_arena(mod, &exec_ctx.heap);
-		vm_call_func(ctx->vm, &exec_ctx, init_func, NULL, 0, &mod_obj);
-
-		mod->instance =
-			register_object(ctx->vm, &mod->store, mod_obj);
-
-		arena_destroy(&exec_ctx.heap);
-	}
-
-	return 0;
+	return stg_instantiate_static_object(
+			ctx, mod, type, &mod->instance);
 }

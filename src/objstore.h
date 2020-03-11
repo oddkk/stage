@@ -403,6 +403,11 @@ object_inst_order(
 		struct object_inst_bind       *extra_binds, size_t num_extra_binds,
 		struct object_inst_action **out_actions, size_t *out_num_actions);
 
+int
+stg_instantiate_static_object(
+		struct ast_context *ctx, struct stg_module *mod,
+		type_id type, struct object *out);
+
 struct stg_exec {
 	struct objstore *store;
 	struct arena heap;
