@@ -1831,23 +1831,22 @@ ast_slot_try_get_inst(
 	if ((slot->flags & AST_SLOT_HAS_INST) != 0) {
 		return ast_slot_try_get_value_inst(
 				ctx, slot->inst, out_inst);
-	} else if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
-		return ast_slot_try_get_value_inst(
-				ctx, slot->type, out_inst);
-	} else if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
-		struct object obj = {0};
-
-		if (!ast_get_slot_value(ctx, slot_id, &obj)) {
-			return AST_SLOT_GET_NOT_ENOUGH_INFO;
-		}
-
-		if (ast_try_get_inst_from_object(ctx, obj, out_inst)) {
-			return AST_SLOT_GET_OK;
-		} else {
-			return AST_SLOT_GET_TYPE_HAS_NO_INST;
-		}
 	} else {
-		return AST_SLOT_GET_NO_CONS_SLOT;
+		struct object obj = {0};
+		if (ast_get_slot_value(ctx, slot_id, &obj)) {
+			if (ast_try_get_inst_from_object(ctx, obj, out_inst)) {
+				return AST_SLOT_GET_OK;
+			} else {
+				return AST_SLOT_GET_TYPE_HAS_NO_INST;
+			}
+		}
+
+		if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
+			return ast_slot_try_get_value_inst(
+					ctx, slot->type, out_inst);
+		}
+
+		return AST_SLOT_GET_NOT_ENOUGH_INFO;
 	}
 }
 
@@ -2169,42 +2168,11 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 						struct ast_slot_resolve *mbr;
 						mbr = ast_get_slot(ctx, slot->params[mbr_i].slot);
 
-						ast_slot_push_slot_type(
+						made_change |= ast_slot_push_slot_type(
 								ctx, slot->params[mbr_i].authority,
 								slot->params[mbr_i].slot,
 								cons->params[param_i].type);
-
-						/*
-						if ((mbr->flags & AST_SLOT_HAS_TYPE) == 0) {
-							ast_slot_id new_type_slot;
-							new_type_slot = ast_slot_alloc(ctx->env);
-
-							struct ast_slot_constraint *mbr_constr;
-							mbr_constr = ast_get_constraint(
-									ctx, slot->params[mbr_i].authority);
-
-							// TODO: Proper source.
-							ast_slot_require_is_type(
-									ctx->env, mbr_constr->reason.loc,
-									AST_CONSTR_SRC_EXPECTED,
-									new_type_slot, cons->params[param_i].type
-									SLOT_DEBUG_ARG);
-
-							ast_slot_require_type(
-									ctx->env, mbr_constr->reason.loc,
-									AST_CONSTR_SRC_EXPECTED,
-									slot->params[mbr_i].slot, new_type_slot
-									SLOT_DEBUG_ARG);
-
-							made_change = true;
-						} else {
-							ast_solve_apply_value_type(
-									ctx, slot->params[mbr_i].authority,
-									mbr->type, cons->params[param_i].type);
-						}
-						*/
 					}
-
 				}
 			}
 		}
@@ -2274,7 +2242,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				} else {
 					// The slot does not have a value so we cannot unpack its
 					// value into the members. Bind the type instead.
-					ast_slot_push_slot_type(
+					made_change |= ast_slot_push_slot_type(
 							ctx, slot->members[mbr_i].authority,
 							slot->members[mbr_i].slot,
 							inst->cons->params[inst_member_i].type);
@@ -3467,6 +3435,7 @@ ast_slot_try_solve(
 	static size_t next_invoc_id = 0;
 	size_t invoc_id = next_invoc_id;
 	in_env->invoc_id = invoc_id;
+	_env.invoc_id = invoc_id;
 	next_invoc_id += 1;
 
 	ctx->vm = ast_ctx->vm;
