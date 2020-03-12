@@ -12,7 +12,7 @@ use mod base.init.*;
 # 	=> init.bind[](printInt(val),
 # 		(a: Unit) => printInt(val));
 
-main := printLn(match True {
-	True  => "true";
-	False => "false";
+main := printLn(match true {
+	true  => "true";
+	false => "false";
 });

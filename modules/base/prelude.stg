@@ -7,3 +7,7 @@ Unit   := @native("Unit");
 unit   := @native("unit");
 
 Init   := @native("Init");
+
+Bool   := @native("Bool");
+true   := @native("true");
+false  := @native("false");

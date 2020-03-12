@@ -78,6 +78,7 @@ stg_base_bootstrap_pre_compile(struct stg_module *mod) {
 	base_bootstrap_register_cons(mod);
 	base_bootstrap_register_integer(mod);
 	base_bootstrap_register_string(mod);
+	base_bootstrap_boolean_pre_compile(mod);
 
 	return 0;
 }
@@ -112,6 +113,8 @@ stg_base_register(struct stg_module *mod)
 	stg_mod_register_native_type(mod,
 			mod_atoms(mod, "String"),
 			mod->vm->default_types.string);
+
+	base_boolean_register(mod);
 
 	base_init_register_init(mod);
 	base_init_register_io(mod);

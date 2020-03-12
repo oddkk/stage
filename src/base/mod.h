@@ -19,7 +19,13 @@ void
 base_bootstrap_register_string(struct stg_module *mod);
 
 void
+base_bootstrap_boolean_pre_compile(struct stg_module *);
+
+void
 base_integer_register_native(struct stg_native_module *mod);
+
+void
+base_boolean_register(struct stg_module *);
 
 void
 base_init_register_init(struct stg_module *mod);

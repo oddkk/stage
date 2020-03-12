@@ -1,10 +1,6 @@
 use prelude.*;
 
-Bool := Variant { True, False };
 Maby := [T: Type] Variant { Some T, None };
-
-True  := Bool.True;
-False := Bool.False;
 
 op+ := (lhs: int, rhs: int) -> int @native("op_add_int_int");
 op- := (lhs: int, rhs: int) -> int @native("op_sub_int_int");
