@@ -683,6 +683,52 @@ ast_node_constraints(
 		}
 		break;
 
+		case AST_NODE_MATCH:
+		{
+			ast_slot_id value_slot, value_type_slot;
+
+			value_slot = ast_node_constraints(
+					ctx, mod, env, deps, num_deps,
+					node->match.value);
+
+			value_type_slot = ast_slot_alloc(env);
+			ast_slot_require_type(env, node->loc,
+					AST_CONSTR_SRC_MATCH_VALUE,
+					value_slot, value_type_slot);
+
+			ast_slot_id res_slot, res_type_slot;
+
+			res_slot = ast_slot_alloc(env);
+			res_type_slot = ast_slot_alloc(env);
+
+			ast_slot_require_type(env, node->loc,
+					AST_CONSTR_SRC_MATCH_RESULT,
+					res_slot, res_type_slot);
+
+			for (size_t i = 0; i < node->match.num_cases; i++) {
+				ast_slot_id pat_slot, expr_slot;
+
+				// TODO: Support pattern matching.
+				pat_slot = ast_node_constraints(
+						ctx, mod, env, deps, num_deps,
+						node->match.cases[i].pattern);
+				ast_slot_require_type(env, node->loc,
+						AST_CONSTR_SRC_MATCH_VALUE,
+						pat_slot, value_type_slot);
+
+				expr_slot = ast_node_constraints(
+						ctx, mod, env, deps, num_deps,
+						node->match.cases[i].expr);
+
+				ast_slot_require_type(env, node->loc,
+						AST_CONSTR_SRC_MATCH_RESULT,
+						expr_slot, res_type_slot);
+			}
+
+			node->typecheck_slot = res_slot;
+		}
+		break;
+
 		case AST_NODE_COMPOSITE:
 		{
 			ast_slot_id res_slot;

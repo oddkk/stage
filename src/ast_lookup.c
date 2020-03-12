@@ -377,6 +377,22 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 		case AST_NODE_MOD:
 			break;
 
+		case AST_NODE_MATCH:
+			{
+				err += ast_node_resolve_names_internal(ctx, info, scope,
+						flags, node->match.value);
+
+				for (size_t i = 0; i < node->match.num_cases; i++) {
+					// TODO: Should we allow non-const cases?
+					err += ast_node_resolve_names_internal(ctx, info, scope,
+							flag_req_const(flags), node->match.cases[i].pattern);
+
+					err += ast_node_resolve_names_internal(ctx, info, scope,
+							flags, node->match.cases[i].expr);
+				}
+			}
+			break;
+
 		case AST_NODE_LOOKUP:
 			{
 				struct atom *name = node->lookup.name;

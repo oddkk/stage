@@ -253,6 +253,26 @@ ast_print_internal(struct ast_context *ctx,
 			print_indent(depth);
 			printf("mod '%.*s'\n", ALIT(node->mod.name));
 			break;
+
+		case AST_NODE_MATCH:
+			print_indent(depth);
+			printf("match:\n");
+			print_indent(depth+1);
+			printf("value:\n");
+			ast_print_internal(ctx, node->match.value, depth+2);
+			print_indent(depth+1);
+			printf("cases:\n");
+			for (size_t i = 0; i < node->match.num_cases; i++) {
+				print_indent(depth+2);
+				printf("case %zu:\n", i);
+				print_indent(depth+3);
+				printf("pattern:\n");
+				ast_print_internal(ctx, node->match.cases[i].pattern, depth+4);
+				print_indent(depth+3);
+				printf("expr:\n");
+				ast_print_internal(ctx, node->match.cases[i].expr, depth+4);
+			}
+			break;
 	}
 }
 
@@ -361,6 +381,19 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 
 		case AST_NODE_MOD:
 			printf("mod %.*s", ALIT(node->mod.name));
+			break;
+
+		case AST_NODE_MATCH:
+			printf("match ");
+			ast_print_node(ctx, node->match.value, print_type_slot);
+			printf(" { ");
+			for (size_t i = 0; i < node->match.num_cases; i++) {
+				ast_print_node(ctx, node->match.cases[i].pattern, print_type_slot);
+				printf(" => ");
+				ast_print_node(ctx, node->match.cases[i].expr, print_type_slot);
+				printf(";");
+			}
+			printf(" }");
 			break;
 
 		case AST_NODE_COMPOSITE:

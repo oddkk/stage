@@ -156,6 +156,16 @@ ST_NODE(SPECIAL, struct {
 	struct st_node *args;
 })
 
+ST_NODE(MATCH_EXPR, struct {
+	struct st_node *value;
+	struct st_node *cases;
+})
+
+ST_NODE(MATCH_CASE, struct {
+	struct st_node *pattern;
+	struct st_node *expr;
+})
+
 ST_NODE(NUM_LIT, int64_t)
 
 ST_NODE(STR_LIT, struct string)

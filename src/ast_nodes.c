@@ -24,6 +24,7 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_LIT_NATIVE:	return "LIT_NATIVE";
 		case AST_NODE_LOOKUP:		return "LOOKUP";
 		case AST_NODE_MOD:			return "MOD";
+		case AST_NODE_MATCH:		return "MATCH";
 
 		case AST_NODE_COMPOSITE:	return "COMPOSITE";
 		case AST_NODE_VARIANT:		return "VARIANT";
@@ -327,6 +328,33 @@ ast_init_node_mod(
 	node->loc = loc;
 
 	node->mod.name = name;
+
+	return node;
+}
+
+struct ast_node *
+ast_init_node_match(
+		struct ast_context *ctx,
+		struct ast_node *node, struct stg_location loc,
+		struct ast_node *value,
+		struct ast_match_case *cases, size_t num_cases)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(node);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_MATCH;
+	node->loc = loc;
+	node->match.value = value;
+
+	node->match.num_cases = num_cases;
+	node->match.cases = calloc(
+			sizeof(struct ast_match_case), num_cases);
+	memcpy(node->match.cases, cases,
+			sizeof(struct ast_match_case) * num_cases);
 
 	return node;
 }
@@ -784,6 +812,15 @@ ast_node_deep_copy(struct ast_node *src)
 	case AST_NODE_LOOKUP:
 		DCP_LIT(lookup.name);
 		DCP_LIT(lookup.ref);
+		break;
+
+	case AST_NODE_MATCH:
+		DCP_NODE(match.value);
+		DCP_DLIST(match.cases, match.num_cases);
+		for (size_t i = 0; i < result->match.num_cases; i++) {
+			DCP_NODE(match.cases[i].pattern);
+			DCP_NODE(match.cases[i].expr);
+		}
 		break;
 
 	case AST_NODE_COMPOSITE:

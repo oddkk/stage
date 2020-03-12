@@ -907,6 +907,49 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		*/
 	} break;
 
+	case ST_NODE_MATCH_EXPR:
+		{
+			struct ast_node *value;
+
+			value = st_node_visit_expr(
+					ctx, mod, templ_node,
+					node->MATCH_EXPR.value);
+
+			size_t num_cases = 0;
+			struct st_node *case_iter;
+			case_iter = node->MATCH_EXPR.cases;
+			while (case_iter) {
+				assert(case_iter->type == ST_NODE_MATCH_CASE);
+				num_cases += 1;
+				case_iter = case_iter->next_sibling;
+			}
+
+			struct ast_match_case cases[num_cases];
+			size_t case_i = 0;
+
+			case_iter = node->MATCH_EXPR.cases;
+			while (case_iter) {
+				assert(case_i < num_cases);
+				assert(case_iter->type == ST_NODE_MATCH_CASE);
+				cases[case_i].pattern =
+					st_node_visit_expr(
+							ctx, mod, templ_node,
+							case_iter->MATCH_CASE.pattern);
+				cases[case_i].expr =
+					st_node_visit_expr(
+							ctx, mod, templ_node,
+							case_iter->MATCH_CASE.expr);
+
+				case_i += 1;
+				case_iter = case_iter->next_sibling;
+			}
+
+			return ast_init_node_match(
+					ctx, AST_NODE_NEW, node->loc,
+					value, cases, num_cases);
+		}
+		break;
+
 	case ST_NODE_TUPLE_LIT:
 		break;
 

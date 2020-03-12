@@ -169,11 +169,12 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 %token IDENTIFIER "identifier" NUMLIT "number" STRINGLIT "string"
 %token NAMESPACE "namespace" VARIANT "Variant" STRUCT "Struct" USE "use" MOD "mod"
 %token IMPL "impl" CLASS "class"
+%token MATCH "match"
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
 %token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>"
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_stmt impl_stmt
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_stmt impl_stmt match_expr match_cases match_case
 
 %type <struct atom *> IDENTIFIER
 %type <struct string> STRINGLIT
@@ -373,6 +374,22 @@ use_expr1:		use_expr1 '.' IDENTIFIER   { $$ = MKNODE(ACCESS, .target=$1, .name=$
 		|		mod_stmt                   { $$ = $1; }
 		;
 
+match_expr:		"match" expr1 '{' match_cases '}' { $$ = MKNODE(MATCH_EXPR, .value=$2, .cases=$4); }
+		;
+
+match_cases:	match_cases match_case {
+		if ($2 != NULL) {
+			$$ = MKNODE(INTERNAL_LIST, .head=$2, .tail=$1);
+		} else {
+			$$ = $1;
+		}
+	}
+		|		%empty { $$ = NULL; }
+		;
+
+match_case:		expr1 "=>" expr ';' { $$ = MKNODE(MATCH_CASE, .pattern=$1, .expr=$3); }
+		;
+
 /*
 namespace_stmt:	"namespace" namespace_ident '{' stmt_list '}'
 					{ $$ = MKNODE(NAMESPACE, .name=$2, .body=$4); }
@@ -388,6 +405,7 @@ namespace_ident:
 expr:			expr1                   { $$ = $1; }
 		|		func_decl				{ $$ = $1; }
 		|		object_decl				{ $$ = $1; }
+		|		match_expr				{ $$ = $1; }
 		;
 
 expr1:			ident					{ $$ = $1; }
@@ -538,6 +556,7 @@ re2c:define:YYFILL:naked = 1;
 "use"         { lloc_col(ctx, lloc, CURRENT_LEN); return USE; }
 "class"       { lloc_col(ctx, lloc, CURRENT_LEN); return CLASS; }
 "impl"        { lloc_col(ctx, lloc, CURRENT_LEN); return IMPL; }
+"match"       { lloc_col(ctx, lloc, CURRENT_LEN); return MATCH; }
 ".."          { lloc_col(ctx, lloc, CURRENT_LEN); return RANGE; }
 /* "..."         { lloc_col(ctx, lloc, CURRENT_LEN); return ELLIPSIS; } */
 "<-"          { lloc_col(ctx, lloc, CURRENT_LEN); return BIND_LEFT; }

@@ -219,6 +219,16 @@ extern struct string st_node_names[ST_NODES_LEN];
 		TREE_VISIT_NODE((node), SPECIAL, args);		 	\
 		break;											\
 														\
+	case ST_NODE_MATCH_EXPR:							\
+		TREE_VISIT_NODE((node), MATCH_EXPR, value); 	\
+		TREE_VISIT_NODE((node), MATCH_EXPR, cases);	 	\
+		break;											\
+														\
+	case ST_NODE_MATCH_CASE:							\
+		TREE_VISIT_NODE((node), MATCH_CASE, pattern); 	\
+		TREE_VISIT_NODE((node), MATCH_CASE, expr);	 	\
+		break;											\
+														\
 	case ST_NODE_NUM_LIT:								\
 		break;											\
 														\

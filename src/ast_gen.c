@@ -923,6 +923,12 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 			}
 			return result;
 
+		case AST_NODE_MATCH:
+			{
+				panic("TODO: Gen for match.");
+			}
+			return result;
+
 		case AST_NODE_COMPOSITE:
 			{
 				type_id type;

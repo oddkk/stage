@@ -1,13 +1,18 @@
 use mod base.*;
 use mod base.init.*;
 
-main := bind[](
-	bind[](
-		return[](10),
-		(a: int) => return[](a * 5)),
-	(a: int) -> Init[Unit]
-		=> printIntTwice(a));
+# main := bind[](
+# 	bind[](
+# 		return[](10),
+# 		(a: int) => return[](a * 5)),
+# 	(a: int) -> Init[Unit]
+# 		=> printIntTwice(a));
 
-printIntTwice := (val: int) -> Init[Unit]
-	=> init.bind[](printInt(val),
-		(a: Unit) => printInt(val));
+# printIntTwice := (val: int) -> Init[Unit]
+# 	=> init.bind[](printInt(val),
+# 		(a: Unit) => printInt(val));
+
+main := printLn(match True {
+	True  => "true";
+	False => "false";
+});

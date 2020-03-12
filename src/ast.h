@@ -108,6 +108,8 @@ enum ast_constraint_source {
 	AST_CONSTR_SRC_CLOSURE,
 	AST_CONSTR_SRC_CALL_ARG,
 	AST_CONSTR_SRC_CONS_ARG,
+	AST_CONSTR_SRC_MATCH_VALUE,
+	AST_CONSTR_SRC_MATCH_RESULT,
 	AST_CONSTR_SRC_ACCESS,
 	AST_CONSTR_SRC_MOD,
 	AST_CONSTR_SRC_LIT,
@@ -409,6 +411,7 @@ enum ast_node_kind {
 	AST_NODE_FUNC_TYPE,
 	AST_NODE_LOOKUP,
 	AST_NODE_MOD,
+	AST_NODE_MATCH,
 
 	// Datatype declarations
 	AST_NODE_COMPOSITE,
@@ -431,6 +434,11 @@ struct ast_template_param {
 	struct atom *name;
 	struct ast_node *type;
 	struct stg_location loc;
+};
+
+struct ast_match_case {
+	struct ast_node *pattern;
+	struct ast_node *expr;
 };
 
 struct ast_datatype_variant {
@@ -569,6 +577,13 @@ struct ast_node {
 		} mod;
 
 		struct {
+			struct ast_node *value;
+
+			struct ast_match_case *cases;
+			size_t num_cases;
+		} match;
+
+		struct {
 			struct ast_datatype_member *members;
 			size_t num_members;
 
@@ -656,6 +671,13 @@ ast_node_name(enum ast_node_kind);
 		case AST_NODE_LOOKUP:													\
 			break;																\
 		case AST_NODE_MOD:														\
+			break;																\
+		case AST_NODE_MATCH:													\
+			VISIT_NODE((node)->match.value);									\
+			for (size_t i = 0; i < (node)->match.num_cases; i++) {				\
+				VISIT_NODE((node)->match.cases[i].pattern);						\
+				VISIT_NODE((node)->match.cases[i].expr);						\
+			}																	\
 			break;																\
 		case AST_NODE_COMPOSITE:												\
 			if (visit_composite_body) {											\
@@ -761,6 +783,13 @@ ast_init_node_mod(
 		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct atom *name);
+
+struct ast_node *
+ast_init_node_match(
+		struct ast_context *ctx,
+		struct ast_node *target, struct stg_location,
+		struct ast_node *value,
+		struct ast_match_case *cases, size_t num_cases);
 
 void
 ast_node_templ_register_param(
