@@ -925,7 +925,61 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 
 		case AST_NODE_MATCH:
 			{
-				panic("TODO: Gen for match.");
+				struct ast_gen_bc_result value_instrs;
+				value_instrs = ast_node_gen_bytecode(
+						ctx, mod, info, bc_env,
+						node->match.value);
+				append_bc_instrs(&result, value_instrs);
+				bc_var value = value_instrs.out_var;
+
+				bc_var res = bc_alloc_var(bc_env, node->type);
+
+				struct ast_gen_bc_result match_instrs = {0};
+				struct ast_gen_bc_result expr_instrs = {0};
+
+				struct bc_instr *end_instr;
+				end_instr = bc_gen_nop(bc_env);
+
+				for (size_t i = 0; i < node->match.num_cases; i++) {
+					struct ast_gen_bc_result res_instrs;
+					res_instrs = ast_node_gen_bytecode(
+							ctx, mod, info, bc_env,
+							node->match.cases[i].expr);
+					append_bc_instrs(&expr_instrs, res_instrs);
+
+					append_bc_instr(&expr_instrs,
+							bc_gen_copy(bc_env, res,
+								res_instrs.out_var));
+
+					append_bc_instr(&expr_instrs,
+							bc_gen_jmp(bc_env, end_instr));
+
+
+					struct ast_gen_bc_result pattern_instrs;
+					pattern_instrs = ast_node_gen_bytecode(
+							ctx, mod, info, bc_env,
+							node->match.cases[i].pattern);
+					append_bc_instrs(&match_instrs, pattern_instrs);
+
+					struct bc_instr *match_test;
+					match_test = bc_gen_testeq(bc_env, BC_VAR_NEW,
+							value, pattern_instrs.out_var);
+					append_bc_instr(&match_instrs, match_test);
+
+					append_bc_instr(&match_instrs,
+							bc_gen_push_arg(bc_env,
+								match_test->testeq.target));
+
+					struct bc_instr *match_jmp;
+					match_jmp = bc_gen_jmpif(bc_env, res_instrs.first);
+					append_bc_instr(&match_instrs, match_jmp);
+				}
+
+				append_bc_instrs(&result, match_instrs);
+				append_bc_instrs(&result, expr_instrs);
+				append_bc_instr(&result, end_instr);
+
+				result.out_var = res;
 			}
 			return result;
 

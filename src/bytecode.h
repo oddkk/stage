@@ -35,6 +35,16 @@ enum bc_op {
 	// Call var function.
 	BC_VCALL,
 
+	// Writes True to target if the two arguments at the argument stack are
+	// equal, or False otherwise.
+	BC_TESTEQ,
+
+	// Moves the instruction pointer.
+	BC_JMP,
+
+	// Moves the instruction pointer if the argument on the stack is True.
+	BC_JMPIF,
+
 	// Call the pack func on the given arguments.
 	BC_PACK,
 
@@ -84,6 +94,11 @@ struct bc_instr {
 		} vcall;
 
 		struct {
+			bc_var target;
+			bc_var lhs, rhs;
+		} testeq;
+
+		struct {
 			// TODO: Reduce the size of this instruction.
 			object_pack_func func;
 			void *data;
@@ -102,6 +117,7 @@ struct bc_instr {
 		} ret;
 	};
 
+	ssize_t label;
 	struct bc_instr *next, *jmp;
 };
 
@@ -135,6 +151,9 @@ struct bc_env {
 
 	type_id *closure_types;
 	size_t num_closures;
+
+	bool labels_tagged;
+	size_t num_labels;
 
 	struct nbc_func *nbc;
 };
@@ -176,6 +195,15 @@ struct bc_instr *
 bc_gen_vcall(struct bc_env *, bc_var target, bc_var func);
 
 struct bc_instr *
+bc_gen_testeq(struct bc_env *, bc_var target, bc_var lhs, bc_var rhs);
+
+struct bc_instr *
+bc_gen_jmp(struct bc_env *, struct bc_instr *dest);
+
+struct bc_instr *
+bc_gen_jmpif(struct bc_env *, struct bc_instr *dest);
+
+struct bc_instr *
 bc_gen_pack(struct bc_env *, bc_var target,
 		object_pack_func, void *data, type_id ret_type);
 
@@ -185,6 +213,9 @@ bc_gen_unpack(struct bc_env *, bc_var target,
 
 struct bc_instr *
 bc_gen_ret(struct bc_env *, bc_var var);
+
+void
+bc_tag_labels(struct bc_env *env);
 
 void
 bc_print(struct bc_env *, struct bc_instr *);

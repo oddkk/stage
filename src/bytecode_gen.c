@@ -47,6 +47,7 @@ bc_instr_alloc(struct bc_instr_store *store, struct bc_instr instr)
 	store->last_page_num_used += 1;
 
 	*res = instr;
+	res->label = -1;
 
 	return res;
 }
@@ -256,6 +257,47 @@ bc_gen_vcall(struct bc_env *env, bc_var target, bc_var func)
 	instr.vcall.target = bc_use_or_alloc_var(
 			env, target, func_ret_type);
 	instr.vcall.func = func;
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
+bc_gen_testeq(struct bc_env *env, bc_var target, bc_var lhs, bc_var rhs)
+{
+	assert(bc_valid_var(env, lhs));
+	assert(bc_valid_var(env, rhs));
+
+	struct bc_instr instr = {0};
+	instr.op = BC_TESTEQ;
+	instr.testeq.target = bc_use_or_alloc_var(
+			env, target, env->vm->default_types.boolean);
+	instr.testeq.lhs = lhs;
+	instr.testeq.rhs = rhs;
+
+	type_id lhs_type = bc_get_var_type(env, lhs);
+	type_id rhs_type = bc_get_var_type(env, rhs);
+
+	assert_type_equals(env->vm, lhs_type, rhs_type);
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
+bc_gen_jmp(struct bc_env *env, struct bc_instr *dest)
+{
+	struct bc_instr instr = {0};
+	instr.op = BC_JMP;
+	instr.jmp = dest;
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
+bc_gen_jmpif(struct bc_env *env, struct bc_instr *dest)
+{
+	struct bc_instr instr = {0};
+	instr.op = BC_JMPIF;
+	instr.jmp = dest;
 
 	return bc_instr_alloc(env->store, instr);
 }

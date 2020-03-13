@@ -19,6 +19,9 @@ enum nbc_op {
 	NBC_CALL_NATIVE_CLOSURE,
 	NBC_CALL_NATIVE_HEAP,
 	NBC_CALL_NATIVE_HEAP_CLOSURE,
+	NBC_TESTEQ,
+	NBC_JMP,
+	NBC_JMPIF,
 	NBC_PACK,
 	NBC_UNPACK,
 	NBC_RET,
@@ -65,6 +68,19 @@ struct nbc_instr {
 				} native;
 			} func;
 		} call;
+
+		struct {
+			size_t target;
+			size_t size;
+		} testeq;
+
+		struct {
+			size_t dest;
+		} jmp;
+
+		struct {
+			size_t dest;
+		} jmpif;
 
 		struct {
 			size_t target;

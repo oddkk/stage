@@ -725,6 +725,9 @@ ast_node_constraints(
 						expr_slot, res_type_slot);
 			}
 
+			// TODO: We should make sure all cases in the value's domain are
+			// covered.
+
 			node->typecheck_slot = res_slot;
 		}
 		break;

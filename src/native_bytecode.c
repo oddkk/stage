@@ -3,18 +3,45 @@
 #include "vm.h"
 #include "base/mod.h"
 #include <string.h>
+#include <stdlib.h>
 #include <ffi.h>
 
-static void
+static size_t
 nbc_append_instr(struct nbc_func *func, struct nbc_instr instr)
 {
-	dlist_append(func->instrs, func->num_instr, &instr);
+	return dlist_append(func->instrs, func->num_instr, &instr);
 }
 
 struct nbc_stack_var_info {
 	size_t offset;
 	size_t size;
 };
+
+struct nbc_label {
+	struct bc_instr *instr;
+	ssize_t offset;
+};
+
+struct nbc_jmp {
+	size_t addr;
+	size_t label;
+};
+
+struct nbc_instr
+nbc_instr_push_arg(struct nbc_stack_var_info *vars, bc_var var)
+{
+	struct nbc_instr instr = {0};
+
+	if (var < 0) {
+		instr.op = NBC_PUSH_ARG_PARAM;
+		instr.push_arg.param = (-var) - 1;
+	} else {
+		instr.op = NBC_PUSH_ARG;
+		instr.push_arg.var = vars[var].offset;
+	}
+
+	return instr;
+}
 
 void
 nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
@@ -51,11 +78,27 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 		out_func->closure_size = offset;
 	}
 
+	bc_tag_labels(env);
+
+	struct nbc_label labels[env->num_labels];
+	memset(labels, 0, sizeof(struct nbc_label) * env->num_labels);
+	for (size_t i = 0; i < env->num_labels; i++) {
+		labels[i].offset = -1;
+	}
+
+	struct nbc_jmp *jmp_instrs = NULL;
+	size_t num_jmp_instrs = 0;
 
 	out_func->max_callee_args = 0;
 	size_t num_pushed_args = 0;
 
 	while (ip) {
+		if (ip->label >= 0) {
+			assert(ip->label < env->num_labels);
+			labels[ip->label].instr = ip;
+			labels[ip->label].offset = out_func->num_instr;
+		}
+
 		switch (ip->op) {
 			case BC_NOP:
 				// Ignore.
@@ -119,15 +162,8 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 			case BC_PUSH_ARG:
 				{
 					struct nbc_instr instr = {0};
-
-					if (ip->push_arg.var < 0) {
-						instr.op = NBC_PUSH_ARG_PARAM;
-						instr.push_arg.param = (-ip->push_arg.var) - 1;
-					} else {
-						instr.op = NBC_PUSH_ARG;
-						instr.push_arg.var = vars[ip->push_arg.var].offset;
-					}
-
+					instr = nbc_instr_push_arg(
+							vars, ip->push_arg.var);
 					nbc_append_instr(out_func, instr);
 
 					num_pushed_args += 1;
@@ -212,6 +248,7 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 					num_pushed_args = 0;
 				}
 				break;
+
 			case BC_VCALL:
 				{
 					struct nbc_instr instr = {0};
@@ -230,6 +267,74 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 
 					nbc_append_instr(out_func, instr);
 
+					num_pushed_args = 0;
+				}
+				break;
+
+			case BC_TESTEQ:
+				{
+					assert(num_pushed_args == 0);
+
+					struct nbc_instr lhs_instr = {0};
+					lhs_instr = nbc_instr_push_arg(
+							vars, ip->testeq.lhs);
+					nbc_append_instr(out_func, lhs_instr);
+
+					struct nbc_instr rhs_instr = {0};
+					rhs_instr = nbc_instr_push_arg(
+							vars, ip->testeq.rhs);
+					nbc_append_instr(out_func, rhs_instr);
+
+					struct nbc_instr instr = {0};
+					assert(ip->testeq.target >= 0);
+
+					instr.op = NBC_TESTEQ;
+					instr.testeq.target = vars[ip->testeq.target].offset;
+
+					assert(vars[ip->testeq.lhs].size == vars[ip->testeq.rhs].size);
+					instr.testeq.size = vars[ip->testeq.lhs].size;
+
+					nbc_append_instr(out_func, instr);
+
+					if (2 > out_func->max_callee_args) {
+						out_func->max_callee_args = 2;
+					}
+					num_pushed_args = 0;
+				}
+				break;
+
+			case BC_JMP:
+				{
+					struct nbc_instr instr = {0};
+					instr.op = NBC_JMP;
+
+					size_t instr_addr;
+					instr_addr = nbc_append_instr(out_func, instr);
+
+					struct nbc_jmp jmp = {0};
+					jmp.addr = instr_addr;
+					jmp.label = ip->jmp->label;
+					dlist_append(jmp_instrs, num_jmp_instrs, &jmp);
+
+					assert(num_pushed_args == 0);
+					num_pushed_args = 0;
+				}
+				break;
+
+			case BC_JMPIF:
+				{
+					struct nbc_instr instr = {0};
+					instr.op = NBC_JMPIF;
+
+					size_t instr_addr;
+					instr_addr = nbc_append_instr(out_func, instr);
+
+					struct nbc_jmp jmp = {0};
+					jmp.addr = instr_addr;
+					jmp.label = ip->jmp->label;
+					dlist_append(jmp_instrs, num_jmp_instrs, &jmp);
+
+					assert(num_pushed_args == 1);
 					num_pushed_args = 0;
 				}
 				break;
@@ -296,6 +401,32 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 
 		ip = ip->next;
 	}
+
+	for (size_t i = 0; i < num_jmp_instrs; i++) {
+		struct nbc_jmp *jmp = &jmp_instrs[i];
+		struct nbc_instr *instr;
+		instr = &out_func->instrs[jmp->addr];
+
+		assert(labels[jmp->label].offset >= 0);
+
+		size_t dest = (size_t)labels[jmp->label].offset;
+
+		switch (instr->op) {
+			case NBC_JMP:
+				instr->jmp.dest = dest;
+				break;
+
+			case NBC_JMPIF:
+				instr->jmpif.dest = dest;
+				break;
+
+			default:
+				panic("Non-jump instruction was tagged as a jump.");
+				break;
+		}
+	}
+
+	free(jmp_instrs);
 }
 
 static void
@@ -459,6 +590,39 @@ nbc_exec(struct vm *vm, struct stg_exec *ctx, struct nbc_func *func,
 				num_args = 0;
 				break;
 
+			case NBC_TESTEQ:
+				{
+					int res;
+					// TODO: Support user-specified equality comparison.
+					res = memcmp(
+							args[num_args-2],
+							args[num_args-1],
+							ip->testeq.size) == 0;
+					memcpy(&stack[ip->testeq.target], &res, sizeof(int));
+					num_args = 0;
+				}
+				break;
+
+			case NBC_JMP:
+				ip = func->instrs + ip->jmp.dest;
+				// TODO: Should keeping arguments past jumps be allowed?
+				num_args = 0;
+				// Skip incrementing the instruction pointer.
+				continue;
+
+			case NBC_JMPIF:
+				{
+					int val;
+					val = *(int *)args[num_args-1];
+					num_args = 0;
+
+					if (val != 0) {
+						ip = func->instrs + ip->jmp.dest;
+						// Skip incrementing the instruction pointer.
+						continue;
+					}
+				}
+				break;
 
 			case NBC_RET:
 				memcpy(ret, &stack[ip->ret.var], ip->ret.size);
@@ -479,6 +643,7 @@ nbc_print(struct nbc_func *func)
 	struct nbc_instr *ip = func->instrs;
 
 	while (ip < func->instrs + func->num_instr) {
+		printf("%03zx ", ip - func->instrs);
 		switch (ip->op) {
 			case NBC_NOP:
 				printf("NOP\n");
@@ -573,6 +738,22 @@ nbc_print(struct nbc_func *func)
 						ip->call.func.native.fp,
 						ip->call.func.native.cif,
 						ip->call.func.native.closure);
+				break;
+
+			case NBC_TESTEQ:
+				printf("sp+0x%zu = TESTEQ (%zu)\n",
+						ip->testeq.target,
+						ip->testeq.size);
+				break;
+
+			case NBC_JMP:
+				printf("JMP %03zx\n",
+						ip->jmp.dest);
+				break;
+
+			case NBC_JMPIF:
+				printf("JMPIF %03zx\n",
+						ip->jmpif.dest);
 				break;
 
 			case NBC_PACK:

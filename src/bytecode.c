@@ -88,6 +88,24 @@ bc_print(struct bc_env *env, struct bc_instr *instr)
 				printf("\n");
 				break;
 
+			case BC_TESTEQ:
+				printf("TESTEQ ");
+				bc_print_var(env, instr->testeq.target);
+				printf(" ");
+				bc_print_var(env, instr->testeq.lhs);
+				printf(" == ");
+				bc_print_var(env, instr->testeq.rhs);
+				printf("\n");
+				break;
+
+			case BC_JMP:
+				printf("JMP %p\n", (void *)instr->jmp);
+				break;
+
+			case BC_JMPIF:
+				printf("JMPIF %p\n", (void *)instr->jmp);
+				break;
+
 			case BC_PACK:
 				printf("PACK ");
 				bc_print_var(env, instr->pack.target);
@@ -114,4 +132,28 @@ bc_print(struct bc_env *env, struct bc_instr *instr)
 
 		instr = instr->next;
 	}
+}
+
+void
+bc_tag_labels(struct bc_env *env)
+{
+	struct bc_instr *ip = env->entry_point;
+
+	size_t next_label = 0;
+
+	assert(!env->labels_tagged);
+
+	while (ip) {
+		if (ip->jmp) {
+			if (ip->jmp->label < 0) {
+				ip->jmp->label = next_label;
+				next_label += 1;
+			}
+		}
+
+		ip = ip->next;
+	}
+
+	env->num_labels = next_label;
+	env->labels_tagged = true;
 }
