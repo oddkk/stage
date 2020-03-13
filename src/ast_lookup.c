@@ -337,25 +337,25 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 				ast_scope_push_templ(&templates_scope, scope);
 				templates_scope.closure_target = node;
 
-				templates_scope.num_names = node->templ.num_params;
+				templates_scope.num_names = node->templ.pattern.num_params;
 				struct ast_scope_name template_scope_names[templates_scope.num_names];
 				templates_scope.names = template_scope_names;
 
 				for (size_t i = 0; i < templates_scope.num_names; i++) {
 					templates_scope.names[i].name =
-						node->templ.params[i].name;
+						node->templ.pattern.params[i].name;
 					templates_scope.names[i].ref.kind = AST_NAME_REF_TEMPL;
 					templates_scope.names[i].ref.templ = i;
 
-					if (node->templ.params[i].type) {
+					if (node->templ.pattern.params[i].type) {
 						err += ast_node_resolve_names_internal(
 								ctx, info, scope, flag_req_const(flags),
-								node->templ.params[i].type);
+								node->templ.pattern.params[i].type);
 					}
 				}
 
 				err += ast_node_resolve_names_internal(ctx, info,
-						&templates_scope, flags, node->templ.body);
+						&templates_scope, flags, node->templ.pattern.node);
 
 				err += ast_closure_resolve_names(ctx, info,
 						scope, flags,

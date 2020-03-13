@@ -430,10 +430,17 @@ struct ast_func_param {
 	struct ast_node *type;
 };
 
-struct ast_template_param {
+struct ast_pattern_param {
 	struct atom *name;
 	struct ast_node *type;
 	struct stg_location loc;
+};
+
+struct ast_pattern {
+	struct ast_node *node;
+
+	struct ast_pattern_param *params;
+	size_t num_params;
 };
 
 struct ast_match_case {
@@ -548,10 +555,7 @@ struct ast_node {
 		} access;
 
 		struct {
-			struct ast_node *body;
-
-			struct ast_template_param *params;
-			size_t num_params;
+			struct ast_pattern pattern;
 
 			struct object_cons *cons;
 			bool failed;
@@ -655,13 +659,13 @@ ast_node_name(enum ast_node_kind);
 			VISIT_NODE((node)->access.target);									\
 			break;																\
 		case AST_NODE_TEMPL:													\
-			for (size_t i = 0; i < (node)->templ.num_params; i++) {				\
-				if ((node)->templ.params[i].type) {								\
-					VISIT_NODE((node)->templ.params[i].type);					\
+			for (size_t i = 0; i < (node)->templ.pattern.num_params; i++) {		\
+				if ((node)->templ.pattern.params[i].type) {						\
+					VISIT_NODE((node)->templ.pattern.params[i].type);			\
 				}																\
 			}																	\
 			if (visit_templ_body) {												\
-				VISIT_NODE((node)->templ.body);									\
+				VISIT_NODE((node)->templ.pattern.node);							\
 			}																	\
 			break;																\
 		case AST_NODE_LIT:														\
@@ -792,9 +796,9 @@ ast_init_node_match(
 		struct ast_match_case *cases, size_t num_cases);
 
 void
-ast_node_templ_register_param(
+ast_pattern_register_param(
 		struct ast_context *ctx,
-		struct ast_node *templ, struct atom *name,
+		struct ast_pattern *pat, struct atom *name,
 		struct ast_node *type, struct stg_location loc);
 
 struct ast_node *

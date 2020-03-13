@@ -248,6 +248,7 @@ void st_print(struct st_node *node);
 void st_clean(struct st_node **tree);
 
 struct ast_node;
+struct ast_pattern;
 struct ast_context;
 struct stg_module;
 
@@ -260,6 +261,6 @@ st_node_visit_stmt(struct ast_context *ctx, struct stg_module *mod,
 
 struct ast_node *
 st_node_visit_expr(struct ast_context *, struct stg_module *mod,
-		struct ast_node *templ_node, struct st_node *);
+		struct ast_pattern *pattern, struct st_node *);
 
 #endif

@@ -144,20 +144,20 @@ ast_print_internal(struct ast_context *ctx,
 			printf("templ:\n");
 			print_indent(depth + 1);
 			printf("params:\n");
-			for (size_t i = 0; i < node->templ.num_params; i++) {
+			for (size_t i = 0; i < node->templ.pattern.num_params; i++) {
 				print_indent(depth + 2);
-				printf("'%.*s'", ALIT(node->templ.params[i].name));
-				if (node->templ.params[i].type) {
+				printf("'%.*s'", ALIT(node->templ.pattern.params[i].name));
+				if (node->templ.pattern.params[i].type) {
 					printf(" type\n");
 					ast_print_internal(ctx,
-							node->templ.params[i].type, depth+3);
+							node->templ.pattern.params[i].type, depth+3);
 				} else {
 					printf("\n");
 				}
 			}
 			print_indent(depth + 1);
 			printf("body:\n");
-			ast_print_internal(ctx, node->templ.body, depth + 2);
+			ast_print_internal(ctx, node->templ.pattern.node, depth + 2);
 			break;
 
 		case AST_NODE_COMPOSITE:
@@ -355,11 +355,11 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 
 		case AST_NODE_TEMPL:
 			printf("(");
-			for (size_t i = 0; i < node->templ.num_params; i++) {
+			for (size_t i = 0; i < node->templ.pattern.num_params; i++) {
 				printf("%s%.*s: ", (i != 0) ? ", " : "",
-						ALIT(node->templ.params[i].name));
-				if (node->templ.params[i].type) {
-					ast_print_node(ctx, node->templ.params[i].type, print_type_slot);
+						ALIT(node->templ.pattern.params[i].name));
+				if (node->templ.pattern.params[i].type) {
+					ast_print_node(ctx, node->templ.pattern.params[i].type, print_type_slot);
 					printf(" ");
 				}
 			}

@@ -545,11 +545,11 @@ ast_node_constraints(
 				ast_slot_id res_slot;
 				res_slot = ast_slot_alloc(env);
 
-				for (size_t i = 0; i < node->templ.num_params; i++) {
-					if (node->templ.params[i].type) {
+				for (size_t i = 0; i < node->templ.pattern.num_params; i++) {
+					if (node->templ.pattern.params[i].type) {
 						ast_node_constraints(
 								ctx, mod, env, deps, num_deps,
-								node->templ.params[i].type);
+								node->templ.pattern.params[i].type);
 					}
 				}
 

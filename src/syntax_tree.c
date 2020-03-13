@@ -337,9 +337,9 @@ st_node_create_template(struct ast_context *ctx, struct stg_module *mod,
 				ctx, mod, NULL, params.types[i]);
 
 		// TODO: Better location.
-		ast_node_templ_register_param(
-				ctx, templ_node, params.names[i],
-				type_node, node->loc);
+		ast_pattern_register_param(
+				ctx, &templ_node->templ.pattern,
+				params.names[i], type_node, node->loc);
 	}
 
 	free(params.names);
@@ -350,7 +350,7 @@ st_node_create_template(struct ast_context *ctx, struct stg_module *mod,
 
 struct ast_node *
 st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
-		struct ast_node *templ_node, struct st_node *node)
+		struct ast_pattern *pattern, struct st_node *node)
 {
 	switch (node->type) {
 
@@ -358,7 +358,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			{
 				struct ast_node *target;
 				target = st_node_visit_expr(
-						ctx, mod, templ_node,
+						ctx, mod, pattern,
 						node->ACCESS.target);
 				struct ast_node *access;
 				access = ast_init_node_access(
@@ -372,10 +372,10 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 	case ST_NODE_BIN_OP: {
 		struct ast_func_arg func_args[] = {
 			{vm_atoms(ctx->vm, "lhs"),
-				st_node_visit_expr(ctx, mod, templ_node,
+				st_node_visit_expr(ctx, mod, pattern,
 						node->BIN_OP.lhs)},
 			{vm_atoms(ctx->vm, "rhs"),
-				st_node_visit_expr(ctx, mod, templ_node,
+				st_node_visit_expr(ctx, mod, pattern,
 						node->BIN_OP.rhs)},
 		};
 
@@ -400,10 +400,10 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 	case ST_NODE_BIND: {
 		struct ast_func_arg func_args[] = {
 			{vm_atoms(ctx->vm, "src"),
-				st_node_visit_expr(ctx, mod, templ_node,
+				st_node_visit_expr(ctx, mod, pattern,
 						node->BIN_OP.lhs)},
 			{vm_atoms(ctx->vm, "drain"),
-				st_node_visit_expr(ctx, mod, templ_node,
+				st_node_visit_expr(ctx, mod, pattern,
 						node->BIN_OP.rhs)},
 		};
 
@@ -450,17 +450,20 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			has_templ_params |= st_node_has_templ_params(params_decl.types[i]);
 		}
 
+		struct ast_pattern *templ_pattern = NULL;
+
 		if (has_templ_params) {
 			// func is assigned to body further down.
 			templ = ast_init_node_templ(ctx, AST_NODE_NEW,
 					proto_node->loc, NULL);
+			templ_pattern = &templ->templ.pattern;
 		}
 
 
 		for (size_t i = 0; i < params_decl.num_members; i++) {
 			if (params_decl.types[i]) {
 				params[i] = st_node_visit_expr(
-						ctx, mod, templ, params_decl.types[i]);
+						ctx, mod, templ_pattern, params_decl.types[i]);
 			} else {
 				params[i] = NULL;
 			}
@@ -468,7 +471,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 
 		if (ret_type_decl) {
 			ret_type = st_node_visit_expr(
-					ctx, mod, templ, ret_type_decl);
+					ctx, mod, templ_pattern, ret_type_decl);
 		}
 
 		struct ast_node *func;
@@ -538,7 +541,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		free(params_decl.types);
 
 		if (templ) {
-			templ->templ.body = func;
+			templ->templ.pattern.node = func;
 			return templ;
 		} else {
 			return func;
@@ -565,7 +568,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 
 		struct ast_node *func;
 		func = st_node_visit_expr(
-				ctx, mod, templ_node,
+				ctx, mod, pattern,
 				func_node);
 
 		size_t num_args = 0;
@@ -585,7 +588,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 				func_args[i].name = arg->TUPLE_LIT_ITEM.name;
 				func_args[i].value =
 					st_node_visit_expr(ctx, mod,
-							templ_node,
+							pattern,
 							arg->TUPLE_LIT_ITEM.value);
 				arg = arg->next_sibling;
 			}
@@ -616,13 +619,13 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 
 		for (size_t i = 0; i < params_decl.num_members; i++) {
 			param_types[i] = st_node_visit_expr(
-					ctx, mod, templ_node,
+					ctx, mod, pattern,
 					params_decl.types[i]);
 		}
 
 		struct ast_node *ret_type;
 		ret_type = st_node_visit_expr(
-				ctx, mod, templ_node,
+				ctx, mod, pattern,
 				ret_type_decl);
 
 		free(params_decl.names);
@@ -668,7 +671,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 	{
 		struct ast_node *func;
 
-		func = st_node_visit_expr(ctx, mod, templ_node, node->OBJECT_INST.name);
+		func = st_node_visit_expr(ctx, mod, pattern, node->OBJECT_INST.name);
 
 		size_t num_args = 0;
 
@@ -725,7 +728,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 						func_args[i].name  = stmt->ASSIGN_STMT.ident->IDENT;
 						func_args[i].value =
 							st_node_visit_expr(
-									ctx, mod, templ_node,
+									ctx, mod, pattern,
 									stmt->ASSIGN_STMT.body);
 						break;
 
@@ -789,7 +792,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			struct ast_node *data_type = NULL;
 			if (option->VARIANT_ITEM.data_type) {
 				data_type = st_node_visit_expr(
-						ctx, mod, templ_node,
+						ctx, mod, pattern,
 						option->VARIANT_ITEM.data_type);
 			}
 
@@ -912,7 +915,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			struct ast_node *value;
 
 			value = st_node_visit_expr(
-					ctx, mod, templ_node,
+					ctx, mod, pattern,
 					node->MATCH_EXPR.value);
 
 			size_t num_cases = 0;
@@ -933,11 +936,11 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 				assert(case_iter->type == ST_NODE_MATCH_CASE);
 				cases[case_i].pattern =
 					st_node_visit_expr(
-							ctx, mod, templ_node,
+							ctx, mod, pattern,
 							case_iter->MATCH_CASE.pattern);
 				cases[case_i].expr =
 					st_node_visit_expr(
-							ctx, mod, templ_node,
+							ctx, mod, pattern,
 							case_iter->MATCH_CASE.expr);
 
 				case_i += 1;
@@ -985,15 +988,15 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 				ctx, AST_NODE_NEW, node->loc, node->IDENT);
 
 	case ST_NODE_TEMPLATE_VAR:
-		if (!templ_node) {
+		if (!pattern) {
 			stg_error(ctx->err, node->loc,
 					"Template params can not be used here.");
+		} else {
+			ast_pattern_register_param(
+					ctx, pattern,
+					node->TEMPLATE_VAR.name,
+					NULL, node->loc);
 		}
-
-		ast_node_templ_register_param(
-				ctx, templ_node,
-				node->TEMPLATE_VAR.name,
-				NULL, node->loc);
 
 		return ast_init_node_lookup(
 				ctx, AST_NODE_NEW, node->loc,

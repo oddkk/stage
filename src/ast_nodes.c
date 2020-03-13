@@ -103,7 +103,7 @@ ast_init_node_templ(
 	node->kind = AST_NODE_TEMPL;
 	node->loc = loc;
 
-	node->templ.body = body;
+	node->templ.pattern.node = body;
 
 	return node;
 }
@@ -360,37 +360,37 @@ ast_init_node_match(
 }
 
 void
-ast_node_templ_register_param(
+ast_pattern_register_param(
 		struct ast_context *ctx,
-		struct ast_node *templ, struct atom *name,
+		struct ast_pattern *pat, struct atom *name,
 		struct ast_node *type, struct stg_location loc)
 {
-	if (!templ) {
+	if (!pat) {
 		stg_error(ctx->err, loc,
 				"Template parameters can only be declared inside functions.");
 		return;
 	}
-	assert(templ->kind == AST_NODE_TEMPL);
-	for (size_t i = 0; i < templ->templ.num_params; i++) {
-		if (templ->templ.params[i].name == name) {
+
+	for (size_t i = 0; i < pat->num_params; i++) {
+		if (pat->params[i].name == name) {
 			stg_error(ctx->err, loc,
 					"Template parameter '%.*s' has already been declared.",
 					ALIT(name));
-			stg_appendage(ctx->err, templ->templ.params[i].loc, "Here.");
+			stg_appendage(ctx->err, pat->params[i].loc, "Here.");
 			return;
 		}
 	}
 
-	struct ast_template_param tmpl_param = {0};
+	struct ast_pattern_param pat_param = {0};
 
-	tmpl_param.name = name;
-	tmpl_param.loc = loc;
-	tmpl_param.type = type;
+	pat_param.name = name;
+	pat_param.loc = loc;
+	pat_param.type = type;
 
 	dlist_append(
-			templ->templ.params,
-			templ->templ.num_params,
-			&tmpl_param);
+			pat->params,
+			pat->num_params,
+			&pat_param);
 }
 
 struct ast_node *
@@ -774,17 +774,17 @@ ast_node_deep_copy(struct ast_node *src)
 		break;
 
 	case AST_NODE_TEMPL:
-		DCP_NODE(templ.body);
+		DCP_NODE(templ.pattern.node);
 
-		DCP_DLIST(templ.params, templ.num_params);
-		for (size_t i = 0; i < result->templ.num_params; i++) {
-			DCP_LIT(templ.params[i].name);
-			if (src->templ.params[i].type) {
-				DCP_NODE(templ.params[i].type);
+		DCP_DLIST(templ.pattern.params, templ.pattern.num_params);
+		for (size_t i = 0; i < result->templ.pattern.num_params; i++) {
+			DCP_LIT(templ.pattern.params[i].name);
+			if (src->templ.pattern.params[i].type) {
+				DCP_NODE(templ.pattern.params[i].type);
 			} else {
-				result->templ.params[i].type = NULL;
+				result->templ.pattern.params[i].type = NULL;
 			}
-			DCP_LIT(templ.params[i].loc);
+			DCP_LIT(templ.pattern.params[i].loc);
 		}
 
 		DCP_LIT(templ.cons);
@@ -950,7 +950,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	}
 
 	struct ast_node *body;
-	body = templ_node->templ.body;
+	body = templ_node->templ.pattern.node;
 
 	size_t num_errors_pre = ctx->err->num_errors;
 	int err;
@@ -1164,7 +1164,7 @@ void ast_templ_impose_constraints(
 	ast_slot_id result_slot;
 	result_slot = ast_node_constraints(
 			ctx, info->mod, env, body_deps, num_body_deps,
-			info->templ_node->templ.body);
+			info->templ_node->templ.pattern.node);
 
 	ast_slot_require_type(
 			env, info->templ_node->loc,
@@ -1193,15 +1193,15 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_typecheck_dep *outer_deps, size_t num_outer_deps,
 		struct ast_typecheck_dep *inner_deps, size_t num_inner_deps)
 {
-	assert(templ_node->templ.body->kind == AST_NODE_FUNC ||
-			templ_node->templ.body->kind == AST_NODE_FUNC_NATIVE ||
-			templ_node->templ.body->kind == AST_NODE_COMPOSITE ||
-			templ_node->templ.body->kind == AST_NODE_VARIANT);
+	assert(templ_node->templ.pattern.node->kind == AST_NODE_FUNC ||
+			templ_node->templ.pattern.node->kind == AST_NODE_FUNC_NATIVE ||
+			templ_node->templ.pattern.node->kind == AST_NODE_COMPOSITE ||
+			templ_node->templ.pattern.node->kind == AST_NODE_VARIANT);
 
 	struct object_cons *def;
 	def = calloc(1, sizeof(struct object_cons));
 
-	def->num_params = templ_node->templ.num_params;
+	def->num_params = templ_node->templ.pattern.num_params;
 	def->params = calloc(def->num_params,
 			sizeof(struct object_cons_param));
 
@@ -1210,7 +1210,7 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 
 	info->mod = mod;
 
-	info->num_params = templ_node->templ.num_params;
+	info->num_params = templ_node->templ.pattern.num_params;
 	info->params = calloc(def->num_params,
 			sizeof(struct ast_templ_cons_param));
 
@@ -1258,7 +1258,7 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 		dep->value = ast_slot_alloc(&inner_env);
 
 		struct ast_node *param_type;
-		param_type = info->templ_node->templ.params[i].type;
+		param_type = info->templ_node->templ.pattern.params[i].type;
 
 		ast_slot_id type_slot;
 
@@ -1285,7 +1285,7 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 	ast_node_constraints(
 			ctx, mod, &inner_env,
 			body_deps, num_body_deps,
-			info->templ_node->templ.body);
+			info->templ_node->templ.pattern.node);
  
 	struct ast_slot_result result[inner_env.num_alloced_slots];
 
@@ -1293,16 +1293,16 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 	printf("Preliminary type solve for template\n");
 	for (size_t i = 0; i < info->num_params; i++) {
 		printf(" - param %.*s: %i:%i\n",
-				ALIT(info->templ_node->templ.params[i].name),
+				ALIT(info->templ_node->templ.pattern.params[i].name),
 				body_deps[info->num_deps+i].value, param_type_slots[i]);
-		if (info->templ_node->templ.params[i].type) {
+		if (info->templ_node->templ.pattern.params[i].type) {
 			printf("     ");
 			ast_print_node(ctx,
-					info->templ_node->templ.params[i].type, true);
+					info->templ_node->templ.pattern.params[i].type, true);
 		}
 	}
 	ast_print_node(ctx,
-			info->templ_node->templ.body, true);
+			info->templ_node->templ.pattern.node, true);
 	printf("\n");
 #endif
 
@@ -1313,7 +1313,7 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 	// We can accept not all values having being determined (err >= 0).
 	if (err >= 0) {
 		for (size_t i = 0; i < def->num_params; i++) {
-			def->params[i].name = info->templ_node->templ.params[i].name;
+			def->params[i].name = info->templ_node->templ.pattern.params[i].name;
 
 			struct ast_slot_result *res;
 			res = &result[param_type_slots[i]];
@@ -1342,7 +1342,7 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 #if AST_DEBUG_SLOT_SOLVE
 	for (size_t i = 0; i < info->num_params; i++) {
 		printf(" - param %.*s: ",
-				ALIT(info->templ_node->templ.params[i].name));
+				ALIT(info->templ_node->templ.pattern.params[i].name));
 		if (def->params[i].type != TYPE_UNSET) {
 			print_type_repr(ctx->vm, vm_get_type(ctx->vm, def->params[i].type));
 			printf("\n");
