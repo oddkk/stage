@@ -2984,6 +2984,23 @@ struct type_base variant_type_base = {
 	// .free = ...,
 };
 
+struct ast_dt_variant_cons_closure {
+	struct stg_type_variant_info *info;
+	uint64_t tag;
+};
+
+static void
+ast_dt_variant_constructor(void **args, size_t num_args, void *ret)
+{
+	struct ast_dt_variant_cons_closure *closure =
+		*(struct ast_dt_variant_cons_closure **)args[0];
+	void *data = args[1];
+
+	ast_dt_encode_variant(
+			closure->info, closure->tag,
+			data, ret);
+}
+
 static struct object
 ast_dt_create_variant_type_scope(
 		struct ast_context *ctx, struct stg_module *mod,
@@ -2999,9 +3016,27 @@ ast_dt_create_variant_type_scope(
 
 	for (size_t tag = 0; tag < info->num_options; tag++) {
 		struct object obj = {0};
-		if (info->options[tag].data_type != TYPE_UNSET) {
-			// TODO: Option constructor functions.
-			continue;
+		type_id option_type = info->options[tag].data_type;
+		if (option_type != TYPE_UNSET) {
+			struct func func = {0};
+			func.kind = FUNC_NATIVE;
+			func.native = (void *)ast_dt_variant_constructor;
+			func.flags = FUNC_REFS|FUNC_CLOSURE;
+			func.type = stg_register_func_type(
+					mod, info->type, &option_type, 1);
+
+			func_id fid;
+			fid = stg_register_func(mod, func);
+
+			struct ast_dt_variant_cons_closure *closure;
+			closure = calloc(1, sizeof(struct ast_dt_variant_cons_closure));
+			closure->tag = tag;
+			closure->info = info;
+
+			obj = stg_register_func_object(
+					mod->vm, &mod->store, fid, closure);
+
+			// TODO: Reverse function.
 		} else {
 			uint8_t buffer[variant_type->size];
 			assert(info->options[tag].size == 0);
