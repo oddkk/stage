@@ -2414,16 +2414,14 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 		printf("Failed to evalutate datatype because we found one or more cycles.\n");
 #if AST_DT_DEBUG_JOBS
 		printf("Problematic jobs: \n");
-		size_t jobs_per_page = ctx->page_size / sizeof(struct ast_dt_job);
-		size_t cap_jobs = ctx->num_job_pages * jobs_per_page;
-		for (ast_dt_job_id job_i = 0; job_i < cap_jobs; job_i++) {
+		for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
 			struct ast_dt_job *job;
 			job = get_job(ctx, job_i);
 			if (job->kind != AST_DT_JOB_FREE) {
 				printf(" - 0x%03x (%zu):", job_i, job->num_incoming_deps);
 
 				// Find all refs to this job.
-				for (ast_dt_job_id job_j = 0; job_j < cap_jobs; job_j++) {
+				for (ast_dt_job_id job_j = 0; job_j < ctx->jobs.length; job_j++) {
 					struct ast_dt_job *other;
 					other = get_job(ctx, job_j);
 					if (other->kind == AST_DT_JOB_FREE) {
