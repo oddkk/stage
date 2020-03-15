@@ -392,6 +392,22 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 				}
 				break;
 
+			case BC_TEST_UNPACK:
+				{
+					struct nbc_instr instr = {0};
+
+					assert(ip->unpack.target >= 0);
+
+					instr.op = NBC_TEST_UNPACK;
+					instr.test_unpack.func = ip->test_unpack.func;
+					instr.test_unpack.data = ip->test_unpack.data;
+					instr.test_unpack.target = vars[ip->test_unpack.target].offset;
+
+					nbc_append_instr(out_func, instr);
+					assert(num_pushed_args == 1);
+					num_pushed_args = 0;
+				}
+				break;
 
 			case BC_RET:
 				{
@@ -613,6 +629,14 @@ nbc_exec(struct vm *vm, struct stg_exec *ctx, struct nbc_func *func,
 				num_args = 0;
 				break;
 
+			case NBC_TEST_UNPACK:
+				{
+					int val;
+					val = ip->test_unpack.func(vm, ip->test_unpack.data, args[0]);
+					memcpy(&stack[ip->test_unpack.target], &val, !!val);
+					num_args = 0;
+				}
+				break;
 			case NBC_TESTEQ:
 				{
 					int res;
@@ -794,6 +818,12 @@ nbc_print(struct nbc_func *func)
 						ip->unpack.param_id);
 				break;
 
+			case NBC_TEST_UNPACK:
+				printf("sp+0x%zx = TEST_UNPACK %p (%p)\n",
+						ip->unpack.target,
+						(void *)ip->unpack.func,
+						ip->unpack.data);
+				break;
 
 			case NBC_RET:
 				printf("RET sp+0x%zx\n",

@@ -51,6 +51,10 @@ enum bc_op {
 	// Unpack a member from the given member.
 	BC_UNPACK,
 
+	// Writes true to target if the given constructor can unpack the argument
+	// at the top of the stack, and false otherwise.
+	BC_TEST_UNPACK,
+
 	// Passes a var and returns execution to the caller.
 	BC_RET,
 };
@@ -111,6 +115,12 @@ struct bc_instr {
 			int param_id;
 			bc_var target;
 		} unpack;
+
+		struct {
+			object_can_unpack_func func;
+			void *data;
+			bc_var target;
+		} test_unpack;
 
 		struct {
 			bc_var var;
@@ -210,6 +220,10 @@ bc_gen_pack(struct bc_env *, bc_var target,
 struct bc_instr *
 bc_gen_unpack(struct bc_env *, bc_var target,
 		object_unpack_func, void *data, int param_id, type_id ret_type);
+
+struct bc_instr *
+bc_gen_test_unpack(struct bc_env *, bc_var target,
+		object_can_unpack_func, void *data);
 
 struct bc_instr *
 bc_gen_ret(struct bc_env *, bc_var var);

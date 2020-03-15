@@ -123,6 +123,13 @@ bc_print(struct bc_env *env, struct bc_instr *instr)
 						instr->unpack.param_id);
 				break;
 
+			case BC_TEST_UNPACK:
+				printf("TEST_UNPACK ");
+				bc_print_var(env, instr->test_unpack.target);
+				printf(" = %p(%p)\n",
+						(void *)instr->test_unpack.func,
+						instr->test_unpack.data);
+				break;
 			case BC_RET:
 				printf("RET ");
 				bc_print_var(env, instr->ret.var);

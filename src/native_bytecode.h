@@ -24,6 +24,7 @@ enum nbc_op {
 	NBC_JMPIF,
 	NBC_PACK,
 	NBC_UNPACK,
+	NBC_TEST_UNPACK,
 	NBC_RET,
 	NBC_RET_PARAM,
 };
@@ -94,6 +95,12 @@ struct nbc_instr {
 			void *data;
 			int param_id;
 		} unpack;
+
+		struct {
+			size_t target;
+			object_can_unpack_func func;
+			void *data;
+		} test_unpack;
 
 		struct {
 			size_t size;

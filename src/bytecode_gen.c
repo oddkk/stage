@@ -335,6 +335,22 @@ bc_gen_unpack(struct bc_env *env, bc_var target,
 }
 
 struct bc_instr *
+bc_gen_testunpack(struct bc_env *env, bc_var target,
+		object_can_unpack_func func, void *data)
+{
+	struct bc_instr instr = {0};
+	instr.op = BC_TEST_UNPACK;
+	instr.test_unpack.target = bc_use_or_alloc_var(
+			env, target, env->vm->default_types.boolean);
+	instr.test_unpack.func = func;
+	instr.test_unpack.data = data;
+
+	assert(instr.unpack.func);
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
 bc_gen_ret(struct bc_env *env, bc_var var)
 {
 	struct bc_instr instr = {0};
