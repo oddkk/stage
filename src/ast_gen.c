@@ -76,13 +76,24 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 
 		case AST_NAME_REF_TEMPL:
 			{
-				assert(ref.templ < info->num_templ_values);
+				if (info->num_pattern_params > 0) {
+					assert(ref.templ < info->num_pattern_params);
 
-				struct ast_typecheck_closure res = {0};
-				res.req = AST_NAME_DEP_REQUIRE_VALUE;
-				res.lookup_failed = false;
-				res.value = info->templ_values[ref.templ];
-				return res;
+					struct ast_typecheck_closure res = {0};
+					res.req = AST_NAME_DEP_REQUIRE_TYPE;
+					res.lookup_failed = false;
+					res.type = bc_get_var_type(bc_env,
+							info->pattern_params[ref.templ]);
+					return res;
+				} else {
+					assert(ref.templ < info->num_templ_values);
+
+					struct ast_typecheck_closure res = {0};
+					res.req = AST_NAME_DEP_REQUIRE_VALUE;
+					res.lookup_failed = false;
+					res.value = info->templ_values[ref.templ];
+					return res;
+				}
 			}
 			break;
 
@@ -203,10 +214,10 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 			break;
 
 		case AST_NAME_REF_TEMPL:
-			panic("TODO: Pass template information to gen.");
+			assert(ref.templ < info->num_pattern_params);
 			result.first = result.last = NULL;
-			result.out_var = bc_alloc_param(
-					bc_env, ref.param, type);
+			assert(info->pattern_params[ref.templ] != BC_VAR_NEW);
+			result.out_var = info->pattern_params[ref.templ];
 			return result;
 
 		case AST_NAME_REF_USE:
@@ -1096,15 +1107,20 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 				struct bc_instr *end_instr;
 				end_instr = bc_gen_nop(bc_env);
 
+				// TODO: A match inside a match will currently not receive the
+				// pattern parameters.
+				bc_var *prev_pattern_params    = info->pattern_params;
+				size_t prev_num_pattern_params = info->num_pattern_params;
+
+				info->pattern_params = NULL;
+				info->num_pattern_params = 0;
+
 				for (size_t i = 0; i < node->match.num_cases; i++) {
 					struct ast_match_case *match_case = &node->match.cases[i];
 					bc_var params_vars[match_case->pattern.num_params];
 					for (size_t i = 0; i < match_case->pattern.num_params; i++) {
 						params_vars[i] = BC_VAR_NEW;
 					}
-
-					bc_var *prev_pattern_params    = info->pattern_params;
-					size_t prev_num_pattern_params = info->num_pattern_params;
 
 					struct bc_instr *next_case;
 					next_case = bc_gen_nop(bc_env);
@@ -1117,12 +1133,19 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					AST_GEN_EXPECT_OK(pattern_instrs);
 					append_bc_instrs(&result, pattern_instrs);
 
+					info->pattern_params = params_vars;
+					info->num_pattern_params = match_case->pattern.num_params;
+
 					struct ast_gen_bc_result res_instrs;
 					res_instrs = ast_node_gen_bytecode(
 							ctx, mod, info, bc_env,
 							match_case->expr);
 					AST_GEN_EXPECT_OK(res_instrs);
 					append_bc_instrs(&result, res_instrs);
+
+					info->pattern_params = NULL;
+					info->num_pattern_params = 0;
+
 
 					append_bc_instr(&result,
 							bc_gen_copy(bc_env, res,
@@ -1135,6 +1158,9 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					append_bc_instr(&result, next_case);
 
 				}
+
+				info->pattern_params     = prev_pattern_params;
+				info->num_pattern_params = prev_num_pattern_params;
 
 				append_bc_instr(&result, end_instr);
 
