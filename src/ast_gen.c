@@ -457,9 +457,9 @@ ast_pattern_gen_match_unpack(
 			}
 			break;
 
-		// TODO: Wildcards.
-		// case AST_NODE_WILDCARD:
-		// 	break;
+		case AST_NODE_WILDCARD:
+			// Wildcards accept all values.
+			break;
 
 		default:
 			return ast_pattern_gen_match_expr(
@@ -1167,6 +1167,10 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 				result.out_var = res;
 			}
 			return result;
+
+		case AST_NODE_WILDCARD:
+			// Wildcards can not appear as part of normal expressions.
+			break;
 
 		case AST_NODE_COMPOSITE:
 			{

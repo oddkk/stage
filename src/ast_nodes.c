@@ -25,6 +25,7 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_LOOKUP:		return "LOOKUP";
 		case AST_NODE_MOD:			return "MOD";
 		case AST_NODE_MATCH:		return "MATCH";
+		case AST_NODE_WILDCARD:		return "WILDCARD";
 
 		case AST_NODE_COMPOSITE:	return "COMPOSITE";
 		case AST_NODE_VARIANT:		return "VARIANT";
@@ -355,6 +356,24 @@ ast_init_node_match(
 			sizeof(struct ast_match_case), num_cases);
 	memcpy(node->match.cases, cases,
 			sizeof(struct ast_match_case) * num_cases);
+
+	return node;
+}
+
+struct ast_node *
+ast_init_node_wildcard(
+		struct ast_context *ctx,
+		struct ast_node *node, struct stg_location loc)
+{
+	if (node == AST_NODE_NEW) {
+		node = calloc(sizeof(struct ast_node), 1);
+	}
+
+	assert(node);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_WILDCARD;
+	node->loc = loc;
 
 	return node;
 }
@@ -834,6 +853,9 @@ ast_node_deep_copy(struct ast_node *src)
 				DCP_LIT(match.cases[i].pattern.params[i].loc);
 			}
 		}
+		break;
+
+	case AST_NODE_WILDCARD:
 		break;
 
 	case AST_NODE_COMPOSITE:

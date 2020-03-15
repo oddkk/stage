@@ -758,6 +758,14 @@ ast_node_constraints(
 		}
 		break;
 
+		case AST_NODE_WILDCARD:
+		{
+			ast_slot_id slot;
+			slot = ast_slot_alloc(env);
+			node->typecheck_slot = slot;
+		}
+		break;
+
 		case AST_NODE_COMPOSITE:
 		{
 			ast_slot_id res_slot;

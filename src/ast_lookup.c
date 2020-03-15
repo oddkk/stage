@@ -426,6 +426,9 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 			}
 			break;
 
+		case AST_NODE_WILDCARD:
+			break;
+
 		case AST_NODE_LOOKUP:
 			{
 				struct atom *name = node->lookup.name;

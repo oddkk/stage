@@ -273,6 +273,10 @@ ast_print_internal(struct ast_context *ctx,
 				ast_print_internal(ctx, node->match.cases[i].expr, depth+4);
 			}
 			break;
+
+		case AST_NODE_WILDCARD:
+			print_indent(depth);
+			printf("wildcard\n");
 	}
 }
 
@@ -394,6 +398,10 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 				printf(";");
 			}
 			printf(" }");
+			break;
+
+		case AST_NODE_WILDCARD:
+			printf("_");
 			break;
 
 		case AST_NODE_COMPOSITE:

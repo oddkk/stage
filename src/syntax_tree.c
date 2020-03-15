@@ -958,6 +958,16 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		}
 		break;
 
+	case ST_NODE_WILDCARD:
+		if (!pattern) {
+			stg_error(ctx->err, node->loc,
+					"Wildcards, '_', can only appear inside of patterns.");
+			return NULL;
+		}
+
+		return ast_init_node_wildcard(
+				ctx, AST_NODE_NEW, node->loc);
+
 	case ST_NODE_TUPLE_LIT:
 		break;
 

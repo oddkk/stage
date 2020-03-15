@@ -409,6 +409,7 @@ expr:			expr1                   { $$ = $1; }
 		;
 
 expr1:			ident					{ $$ = $1; }
+		|		'_'                     { $$ = MKNODE(WILDCARD, ._dc=0); }
 		|		numlit                  { $$ = $1; }
 		/*|		numlit ident            { $$ = $1; } TODO: suffix "operators" */
 		|		strlit                  { $$ = $1; }

@@ -235,7 +235,10 @@ extern struct string st_node_names[ST_NODES_LEN];
 	case ST_NODE_STR_LIT:								\
 		break;											\
 														\
-	case ST_NODE_IDENT:								\
+	case ST_NODE_IDENT:									\
+		break;											\
+														\
+	case ST_NODE_WILDCARD:								\
 		break;											\
 														\
 	case ST_NODES_LEN:									\

@@ -171,3 +171,4 @@ ST_NODE(NUM_LIT, int64_t)
 ST_NODE(STR_LIT, struct string)
 
 ST_NODE(IDENT, struct atom *)
+ST_NODE(WILDCARD, struct { int _dc; })

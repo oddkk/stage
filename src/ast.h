@@ -412,6 +412,7 @@ enum ast_node_kind {
 	AST_NODE_LOOKUP,
 	AST_NODE_MOD,
 	AST_NODE_MATCH,
+	AST_NODE_WILDCARD,
 
 	// Datatype declarations
 	AST_NODE_COMPOSITE,
@@ -685,6 +686,8 @@ ast_node_name(enum ast_node_kind);
 				VISIT_NODE((node)->match.cases[i].expr);						\
 			}																	\
 			break;																\
+		case AST_NODE_WILDCARD:													\
+			break;																\
 		case AST_NODE_COMPOSITE:												\
 			if (visit_composite_body) {											\
 				for (size_t i = 0; i < (node)->composite.num_members; i++) {	\
@@ -796,6 +799,11 @@ ast_init_node_match(
 		struct ast_node *target, struct stg_location,
 		struct ast_node *value,
 		struct ast_match_case *cases, size_t num_cases);
+
+struct ast_node *
+ast_init_node_wildcard(
+		struct ast_context *ctx,
+		struct ast_node *target, struct stg_location);
 
 void
 ast_pattern_register_param(
