@@ -224,8 +224,8 @@ typedef type_id (*object_pack_type_func)(
 typedef void (*object_unpack_func)(
 		struct vm *, void *data, void *out, void *obj, int param_id);
 
-typedef void (*object_can_unpack_func)(
-		struct vm *, void *data, void *out, void *obj);
+typedef bool (*object_can_unpack_func)(
+		struct vm *, void *data, void *obj);
 
 typedef int32_t ast_slot_id;
 struct ast_env;
@@ -248,6 +248,7 @@ struct object_cons {
 	object_pack_func pack;
 	object_pack_type_func pack_type;
 	object_unpack_func unpack;
+	object_can_unpack_func can_unpack;
 
 	// Compile time
 	object_ct_pack_func ct_pack;

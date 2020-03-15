@@ -327,6 +327,11 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 					instr.op = NBC_LNOT;
 					assert(ip->lnot.target >= 0);
 					instr.lnot.target = vars[ip->lnot.target].offset;
+
+					nbc_append_instr(out_func, instr);
+
+					assert(num_pushed_args == 1);
+					num_pushed_args = 0;
 				}
 				break;
 
@@ -664,6 +669,7 @@ nbc_exec(struct vm *vm, struct stg_exec *ctx, struct nbc_func *func,
 					int val;
 					val = !(*(int *)args[0]);
 					memcpy(&stack[ip->lnot.target], &val, sizeof(int));
+					num_args = 0;
 				}
 				break;
 
@@ -811,7 +817,7 @@ nbc_print(struct nbc_func *func)
 				break;
 
 			case NBC_LNOT:
-				printf("sp+0x%zu = LNOT",
+				printf("sp+0x%zu = LNOT\n",
 						ip->lnot.target);
 				break;
 

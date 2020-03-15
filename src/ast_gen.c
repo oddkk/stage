@@ -300,6 +300,165 @@ ast_unpack_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 	return result;
 }
 
+static struct ast_gen_bc_result
+ast_pattern_true_or_fail(
+		struct bc_env *bc_env, bc_var in,
+		struct bc_instr *pattern_match_fail)
+{
+	struct ast_gen_bc_result result = {0};
+
+	append_bc_instr(&result,
+			bc_gen_push_arg(bc_env, in));
+	append_bc_instr(&result,
+			bc_gen_lnot(bc_env, BC_VAR_NEW));
+
+	append_bc_instr(&result,
+			bc_gen_push_arg(bc_env,
+				result.last->lnot.target));
+	append_bc_instr(&result,
+			bc_gen_jmpif(bc_env,
+				pattern_match_fail));
+
+	return result;
+}
+
+static struct ast_gen_bc_result
+ast_pattern_gen_match_expr(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct ast_gen_info *info, struct bc_env *bc_env,
+		struct ast_node *node, bc_var in,
+		struct bc_instr *pattern_match_fail)
+{
+	struct ast_gen_bc_result expr;
+	expr = ast_node_gen_bytecode(
+			ctx, mod, info, bc_env, node);
+	AST_GEN_EXPECT_OK(expr);
+
+	struct bc_instr *match_instr;
+	match_instr = bc_gen_testeq(bc_env, BC_VAR_NEW, in, expr.out_var);
+	append_bc_instr(&expr, match_instr);
+
+	append_bc_instrs(&expr,
+		ast_pattern_true_or_fail(
+			bc_env, match_instr->testeq.target,
+			pattern_match_fail));
+
+	return expr;
+}
+
+static struct ast_gen_bc_result
+ast_pattern_gen_match_unpack(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct ast_gen_info *info, struct bc_env *bc_env,
+		struct ast_node *node, bc_var in,
+		bc_var *params_out, size_t num_params,
+		struct bc_instr *pattern_match_fail)
+{
+	struct ast_gen_bc_result result = {0};
+	type_id in_type = bc_get_var_type(bc_env, in);
+
+	assert_type_equals(ctx->vm, in_type, node->type);
+
+	switch (node->kind) {
+		case AST_NODE_CALL:
+			if (node->call.func_val.func == FUNC_UNSET) {
+				return ast_pattern_gen_match_expr(
+						ctx, mod, info, bc_env, node, in,
+						pattern_match_fail);
+			}
+
+			{
+				struct func *func;
+				func = vm_get_func(ctx->vm, node->call.func_val.func);
+				// We can only match on cons functions
+				if (func->kind != FUNC_CONS) {
+					return ast_pattern_gen_match_expr(
+							ctx, mod, info, bc_env, node, in,
+							pattern_match_fail);
+				}
+
+				if (func->cons->can_unpack) {
+					append_bc_instr(&result,
+						bc_gen_push_arg(bc_env, in));
+					append_bc_instr(&result,
+						bc_gen_test_unpack(bc_env, BC_VAR_NEW,
+								func->cons->can_unpack,
+								func->cons->data));
+
+					append_bc_instrs(&result,
+							ast_pattern_true_or_fail(
+								bc_env, result.last->test_unpack.target,
+								pattern_match_fail));
+				}
+
+				assert(node->call.num_args == func->cons->num_params);
+
+				for (size_t i = 0; i < func->cons->num_params; i++) {
+					append_bc_instr(&result,
+						bc_gen_push_arg(bc_env, in));
+					append_bc_instr(&result,
+						bc_gen_unpack(bc_env, BC_VAR_NEW,
+								func->cons->unpack,
+								func->cons->data, i,
+								func->cons->params[i].type));
+
+					bc_var param_var;
+					param_var = result.last->unpack.target;
+
+					struct ast_gen_bc_result sub_match;
+					sub_match = ast_pattern_gen_match_unpack(
+							ctx, mod, info, bc_env,
+							node->call.args[i].value, param_var,
+							params_out, num_params,
+							pattern_match_fail);
+					AST_GEN_EXPECT_OK(sub_match);
+
+					append_bc_instrs(&result,
+							sub_match);
+				}
+			}
+			break;
+
+		case AST_NODE_CONS:
+			panic("TODO: Pattern match cons.");
+			return ast_pattern_gen_match_expr(
+					ctx, mod, info, bc_env, node, in,
+					pattern_match_fail);
+
+		case AST_NODE_INST:
+			panic("TODO: Pattern match inst.");
+			return ast_pattern_gen_match_expr(
+					ctx, mod, info, bc_env, node, in,
+					pattern_match_fail);
+
+		case AST_NODE_LOOKUP:
+			if (node->lookup.ref.kind != AST_NAME_REF_TEMPL) {
+				return ast_pattern_gen_match_expr(
+						ctx, mod, info, bc_env, node, in,
+						pattern_match_fail);
+			}
+
+			assert(node->lookup.ref.templ < num_params);
+			if (params_out[node->lookup.ref.templ] == BC_VAR_NEW) {
+				append_bc_instr(&result,
+						bc_gen_copy(bc_env, params_out[node->lookup.ref.templ], in));
+				params_out[node->lookup.ref.templ] = result.last->copy.target;
+			}
+			break;
+
+		// TODO: Wildcards.
+		// case AST_NODE_WILDCARD:
+		// 	break;
+
+		default:
+			return ast_pattern_gen_match_expr(
+					ctx, mod, info, bc_env, node, in,
+					pattern_match_fail);
+	}
+
+	return result;
+}
+
 struct ast_gen_bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node)
@@ -934,49 +1093,49 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 
 				bc_var res = bc_alloc_var(bc_env, node->type);
 
-				struct ast_gen_bc_result match_instrs = {0};
-				struct ast_gen_bc_result expr_instrs = {0};
-
 				struct bc_instr *end_instr;
 				end_instr = bc_gen_nop(bc_env);
 
 				for (size_t i = 0; i < node->match.num_cases; i++) {
+					struct ast_match_case *match_case = &node->match.cases[i];
+					bc_var params_vars[match_case->pattern.num_params];
+					for (size_t i = 0; i < match_case->pattern.num_params; i++) {
+						params_vars[i] = BC_VAR_NEW;
+					}
+
+					bc_var *prev_pattern_params    = info->pattern_params;
+					size_t prev_num_pattern_params = info->num_pattern_params;
+
+					struct bc_instr *next_case;
+					next_case = bc_gen_nop(bc_env);
+
+					struct ast_gen_bc_result pattern_instrs;
+					pattern_instrs = ast_pattern_gen_match_unpack(
+							ctx, mod, info, bc_env, match_case->pattern.node, value,
+							params_vars, match_case->pattern.num_params,
+							next_case);
+					AST_GEN_EXPECT_OK(pattern_instrs);
+					append_bc_instrs(&result, pattern_instrs);
+
 					struct ast_gen_bc_result res_instrs;
 					res_instrs = ast_node_gen_bytecode(
 							ctx, mod, info, bc_env,
-							node->match.cases[i].expr);
-					append_bc_instrs(&expr_instrs, res_instrs);
+							match_case->expr);
+					AST_GEN_EXPECT_OK(res_instrs);
+					append_bc_instrs(&result, res_instrs);
 
-					append_bc_instr(&expr_instrs,
+					append_bc_instr(&result,
 							bc_gen_copy(bc_env, res,
 								res_instrs.out_var));
 
-					append_bc_instr(&expr_instrs,
+					append_bc_instr(&result,
 							bc_gen_jmp(bc_env, end_instr));
 
+					// If the match fails we will jump here to try the next case.
+					append_bc_instr(&result, next_case);
 
-					struct ast_gen_bc_result pattern_instrs;
-					pattern_instrs = ast_node_gen_bytecode(
-							ctx, mod, info, bc_env,
-							node->match.cases[i].pattern.node);
-					append_bc_instrs(&match_instrs, pattern_instrs);
-
-					struct bc_instr *match_test;
-					match_test = bc_gen_testeq(bc_env, BC_VAR_NEW,
-							value, pattern_instrs.out_var);
-					append_bc_instr(&match_instrs, match_test);
-
-					append_bc_instr(&match_instrs,
-							bc_gen_push_arg(bc_env,
-								match_test->testeq.target));
-
-					struct bc_instr *match_jmp;
-					match_jmp = bc_gen_jmpif(bc_env, res_instrs.first);
-					append_bc_instr(&match_instrs, match_jmp);
 				}
 
-				append_bc_instrs(&result, match_instrs);
-				append_bc_instrs(&result, expr_instrs);
 				append_bc_instr(&result, end_instr);
 
 				result.out_var = res;

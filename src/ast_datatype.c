@@ -3060,7 +3060,7 @@ ast_dt_create_variant_type_scope(
 			func.cons->num_params = 1;
 			func.cons->params = calloc(1, sizeof(struct object_cons_param));
 			func.cons->params[0].name = NULL;
-			func.cons->params[0].type = info->type;
+			func.cons->params[0].type = option_type;
 			func.cons->data = closure;
 			func.cons->pack = ast_dt_variant_pack;
 			func.cons->unpack = ast_dt_variant_unpack;

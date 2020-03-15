@@ -12,7 +12,8 @@ use mod base.init.*;
 # 	=> init.bind[](printInt(val),
 # 		(a: Unit) => printInt(val));
 
-main := printLn(match true {
-	true  => "true";
-	false => "false";
+main := printLn(match Maby[int].Some(3) {
+	Maby[int].Some(2)  => "two";
+	Maby[int].Some($a) => "something else";
+	Maby[int].None     => "nothing";
 });

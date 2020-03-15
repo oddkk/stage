@@ -945,6 +945,31 @@ ast_node_resolve_types(
 	if (res->result != AST_SLOT_RES_ERROR) {
 		switch (node->kind) {
 
+			case AST_NODE_CALL:
+				{
+					ast_slot_id func_slot_id;
+					struct ast_slot_result *func_res;
+
+					// We have to check the result of the func slot here
+					// because the slot id is removed by the recursive call to
+					// ast_node_resolve_types.
+					func_slot_id = node->call.func->typecheck_slot;
+					func_res = &slots[func_slot_id];
+
+					switch (ast_slot_value_result(func_res->result)) {
+						case AST_SLOT_RES_VALUE_FOUND_OBJ:
+							if (stg_type_is_func(ctx->vm, func_res->value.obj.type)) {
+								node->call.func_val =
+									*(struct stg_func_object *)func_res->value.obj.data;
+							}
+							break;
+
+						default:
+							break;
+					}
+				}
+				break;
+
 			case AST_NODE_ACCESS:
 				{
 					ast_slot_id target_slot_id;

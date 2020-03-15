@@ -529,6 +529,8 @@ struct ast_node {
 			size_t num_args;
 
 			union {
+				// Used only for call.
+				struct stg_func_object func_val;
 				// Used only for cons.
 				struct object_cons *cons;
 
@@ -983,6 +985,9 @@ struct ast_gen_info {
 
 	struct object *templ_values;
 	size_t num_templ_values;
+
+	bc_var *pattern_params;
+	size_t num_pattern_params;
 };
 
 struct ast_gen_bc_result
