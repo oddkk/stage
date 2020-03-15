@@ -928,16 +928,19 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			}
 
 			struct ast_match_case cases[num_cases];
+			memset(cases, 0, sizeof(struct ast_match_case) * num_cases);
 			size_t case_i = 0;
 
 			case_iter = node->MATCH_EXPR.cases;
 			while (case_iter) {
 				assert(case_i < num_cases);
 				assert(case_iter->type == ST_NODE_MATCH_CASE);
-				cases[case_i].pattern =
+
+				cases[case_i].pattern.node =
 					st_node_visit_expr(
-							ctx, mod, pattern,
+							ctx, mod, &cases[case_i].pattern,
 							case_iter->MATCH_CASE.pattern);
+
 				cases[case_i].expr =
 					st_node_visit_expr(
 							ctx, mod, pattern,
@@ -946,6 +949,8 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 				case_i += 1;
 				case_iter = case_iter->next_sibling;
 			}
+
+			assert(case_i == num_cases);
 
 			return ast_init_node_match(
 					ctx, AST_NODE_NEW, node->loc,

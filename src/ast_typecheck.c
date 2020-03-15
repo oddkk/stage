@@ -705,20 +705,46 @@ ast_node_constraints(
 					AST_CONSTR_SRC_MATCH_RESULT,
 					res_slot, res_type_slot);
 
-			for (size_t i = 0; i < node->match.num_cases; i++) {
+			for (size_t case_i = 0; case_i < node->match.num_cases; case_i++) {
+				struct ast_match_case *match_case;
+				match_case = &node->match.cases[case_i];
 				ast_slot_id pat_slot, expr_slot;
+
+				size_t num_pat_deps = num_deps + match_case->pattern.num_params;
+				struct ast_typecheck_dep pat_deps[num_pat_deps];
+				memset(pat_deps, 0, sizeof(struct ast_typecheck_dep) * num_pat_deps);
+
+				for (size_t i = 0; i < match_case->pattern.num_params; i++) {
+					pat_deps[i].req = AST_NAME_DEP_REQUIRE_TYPE;
+					pat_deps[i].ref.kind = AST_NAME_REF_TEMPL;
+					pat_deps[i].ref.templ = i;
+					pat_deps[i].value = ast_slot_alloc(env);
+
+					if (match_case->pattern.params[i].type) {
+						ast_slot_id type_slot;
+						type_slot = ast_node_constraints(
+								ctx, mod, env, deps, num_deps,
+								match_case->pattern.params[i].type);
+						ast_slot_require_type(env, node->loc,
+								AST_CONSTR_SRC_MATCH_VALUE,
+								pat_deps[i].value, type_slot);
+					}
+				}
+
+				memcpy(&pat_deps[match_case->pattern.num_params],
+						deps, sizeof(struct ast_typecheck_dep) * num_deps);
 
 				// TODO: Support pattern matching.
 				pat_slot = ast_node_constraints(
-						ctx, mod, env, deps, num_deps,
-						node->match.cases[i].pattern);
+						ctx, mod, env, pat_deps, num_pat_deps,
+						match_case->pattern.node);
 				ast_slot_require_type(env, node->loc,
 						AST_CONSTR_SRC_MATCH_VALUE,
 						pat_slot, value_type_slot);
 
 				expr_slot = ast_node_constraints(
-						ctx, mod, env, deps, num_deps,
-						node->match.cases[i].expr);
+						ctx, mod, env, pat_deps, num_pat_deps,
+						match_case->expr);
 
 				ast_slot_require_type(env, node->loc,
 						AST_CONSTR_SRC_MATCH_RESULT,

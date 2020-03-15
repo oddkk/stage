@@ -958,7 +958,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					struct ast_gen_bc_result pattern_instrs;
 					pattern_instrs = ast_node_gen_bytecode(
 							ctx, mod, info, bc_env,
-							node->match.cases[i].pattern);
+							node->match.cases[i].pattern.node);
 					append_bc_instrs(&match_instrs, pattern_instrs);
 
 					struct bc_instr *match_test;

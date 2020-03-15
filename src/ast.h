@@ -444,7 +444,7 @@ struct ast_pattern {
 };
 
 struct ast_match_case {
-	struct ast_node *pattern;
+	struct ast_pattern pattern;
 	struct ast_node *expr;
 };
 
@@ -679,7 +679,7 @@ ast_node_name(enum ast_node_kind);
 		case AST_NODE_MATCH:													\
 			VISIT_NODE((node)->match.value);									\
 			for (size_t i = 0; i < (node)->match.num_cases; i++) {				\
-				VISIT_NODE((node)->match.cases[i].pattern);						\
+				VISIT_NODE((node)->match.cases[i].pattern.node);				\
 				VISIT_NODE((node)->match.cases[i].expr);						\
 			}																	\
 			break;																\

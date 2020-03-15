@@ -558,8 +558,11 @@ ast_node_find_named_dependencies_add(
 {
 	// We do not want the template parameter dependencies to be passed
 	// to the underlying datastructure, so we prune them here.
-	if (ref.kind != AST_NAME_REF_NOT_FOUND &&
-			ref.kind != AST_NAME_REF_TEMPL) {
+	if (ref.kind == AST_NAME_REF_TEMPL) {
+		return 0;
+	}
+
+	if (ref.kind != AST_NAME_REF_NOT_FOUND) {
 		struct ast_name_dep dep = {0};
 
 		dep.ref = ref;
@@ -748,8 +751,6 @@ ast_node_deep_copy(struct ast_node *src)
 		DCP_LIT(func.closure);
 		break;
 
-		break;
-
 	case AST_NODE_CONS:
 	case AST_NODE_INST:
 		DCP_LIT(call.cons);
@@ -818,8 +819,20 @@ ast_node_deep_copy(struct ast_node *src)
 		DCP_NODE(match.value);
 		DCP_DLIST(match.cases, match.num_cases);
 		for (size_t i = 0; i < result->match.num_cases; i++) {
-			DCP_NODE(match.cases[i].pattern);
+			DCP_NODE(match.cases[i].pattern.node);
+			DCP_DLIST(match.cases[i].pattern.params,
+					match.cases[i].pattern.num_params);
 			DCP_NODE(match.cases[i].expr);
+
+			for (size_t i = 0; i < result->match.cases[i].pattern.num_params; i++) {
+				DCP_LIT(match.cases[i].pattern.params[i].name);
+				if (src->match.cases[i].pattern.params[i].type) {
+					DCP_NODE(match.cases[i].pattern.params[i].type);
+				} else {
+					result->match.cases[i].pattern.params[i].type = NULL;
+				}
+				DCP_LIT(match.cases[i].pattern.params[i].loc);
+			}
 		}
 		break;
 

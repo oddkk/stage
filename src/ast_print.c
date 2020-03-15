@@ -267,7 +267,7 @@ ast_print_internal(struct ast_context *ctx,
 				printf("case %zu:\n", i);
 				print_indent(depth+3);
 				printf("pattern:\n");
-				ast_print_internal(ctx, node->match.cases[i].pattern, depth+4);
+				ast_print_internal(ctx, node->match.cases[i].pattern.node, depth+4);
 				print_indent(depth+3);
 				printf("expr:\n");
 				ast_print_internal(ctx, node->match.cases[i].expr, depth+4);
@@ -388,7 +388,7 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 			ast_print_node(ctx, node->match.value, print_type_slot);
 			printf(" { ");
 			for (size_t i = 0; i < node->match.num_cases; i++) {
-				ast_print_node(ctx, node->match.cases[i].pattern, print_type_slot);
+				ast_print_node(ctx, node->match.cases[i].pattern.node, print_type_slot);
 				printf(" => ");
 				ast_print_node(ctx, node->match.cases[i].expr, print_type_slot);
 				printf(";");

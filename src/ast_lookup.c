@@ -30,6 +30,15 @@ ast_scope_push_templ(struct ast_scope *target, struct ast_scope *parent)
 }
 
 void
+ast_scope_push_pattern(struct ast_scope *target, struct ast_scope *parent)
+{
+	memset(target, 0, sizeof(struct ast_scope));
+
+	target->parent = parent;
+	target->parent_kind = AST_SCOPE_PARENT_LOCAL;
+}
+
+void
 ast_scope_push_expr(struct ast_scope *target, struct ast_scope *parent)
 {
 	memset(target, 0, sizeof(struct ast_scope));
@@ -382,13 +391,37 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 				err += ast_node_resolve_names_internal(ctx, info, scope,
 						flags, node->match.value);
 
-				for (size_t i = 0; i < node->match.num_cases; i++) {
-					// TODO: Should we allow non-const cases?
-					err += ast_node_resolve_names_internal(ctx, info, scope,
-							flag_req_const(flags), node->match.cases[i].pattern);
+				for (size_t case_i = 0; case_i < node->match.num_cases; case_i++) {
+					struct ast_match_case *match_case;
+					match_case = &node->match.cases[case_i];
 
-					err += ast_node_resolve_names_internal(ctx, info, scope,
-							flags, node->match.cases[i].expr);
+					struct ast_scope pattern_scope = {0};
+					ast_scope_push_pattern(&pattern_scope, scope);
+					pattern_scope.num_names = match_case->pattern.num_params;
+					struct ast_scope_name pattern_scope_names[pattern_scope.num_names];
+					pattern_scope.names = pattern_scope_names;
+
+					for (size_t param_i = 0; param_i < pattern_scope.num_names; param_i++) {
+						struct ast_scope_name *name;
+						name = &pattern_scope.names[param_i];
+
+						name->name = match_case->pattern.params[param_i].name;
+						name->ref.kind = AST_NAME_REF_TEMPL;
+						name->ref.templ = param_i;
+
+						if (match_case->pattern.params[param_i].type) {
+							err += ast_node_resolve_names_internal(
+									ctx, info, scope, flag_req_const(flags),
+									match_case->pattern.params[param_i].type);
+						}
+					}
+
+					// TODO: Should we allow non-const cases?
+					err += ast_node_resolve_names_internal(ctx, info, &pattern_scope,
+							flag_req_const(flags), match_case->pattern.node);
+
+					err += ast_node_resolve_names_internal(ctx, info, &pattern_scope,
+							flags, match_case->expr);
 				}
 			}
 			break;
