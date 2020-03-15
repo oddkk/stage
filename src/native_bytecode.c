@@ -309,8 +309,18 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 					instr.op = NBC_TESTEQ;
 					instr.testeq.target = vars[ip->testeq.target].offset;
 
-					assert(vars[ip->testeq.lhs].size == vars[ip->testeq.rhs].size);
-					instr.testeq.size = vars[ip->testeq.lhs].size;
+					type_id lhs_type_id, rhs_type_id;
+					lhs_type_id = bc_get_var_type(env, ip->testeq.lhs);
+					rhs_type_id = bc_get_var_type(env, ip->testeq.rhs);
+					assert_type_equals(env->vm, lhs_type_id, rhs_type_id);
+
+					struct type *lhs_type;
+					lhs_type = vm_get_type(env->vm, lhs_type_id);
+
+					assert(ip->testeq.lhs < 0 || vars[ip->testeq.lhs].size == lhs_type->size);
+					assert(ip->testeq.rhs < 0 || vars[ip->testeq.rhs].size == lhs_type->size);
+
+					instr.testeq.size = lhs_type->size;
 
 					nbc_append_instr(out_func, instr);
 
