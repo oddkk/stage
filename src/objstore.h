@@ -100,6 +100,7 @@ obj_equals(struct vm *, struct object lhs, struct object rhs);
 
 enum func_kind {
 	FUNC_NATIVE,
+	FUNC_CONS,
 	FUNC_BYTECODE,
 };
 
@@ -122,6 +123,7 @@ struct func {
 
 	union {
 		void *native;
+		struct object_cons *cons;
 		struct bc_env *bytecode;
 	};
 };

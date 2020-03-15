@@ -2990,15 +2990,43 @@ struct ast_dt_variant_cons_closure {
 };
 
 static void
-ast_dt_variant_constructor(void **args, size_t num_args, void *ret)
+ast_dt_variant_pack(struct vm *vm, void *data, void *out,
+		void **args, size_t num_args)
 {
-	struct ast_dt_variant_cons_closure *closure =
-		*(struct ast_dt_variant_cons_closure **)args[0];
-	void *data = args[1];
+	struct ast_dt_variant_cons_closure *closure = data;
+	void *arg = args[0];
 
 	ast_dt_encode_variant(
 			closure->info, closure->tag,
-			data, ret);
+			arg, out);
+}
+
+static void
+ast_dt_variant_unpack(struct vm *vm, void *data, void *out,
+		void *obj, int param_id)
+{
+	assert(param_id == 0);
+
+	struct ast_dt_variant_cons_closure *closure = data;
+
+	struct ast_dt_variant val;
+	val = ast_dt_decode_variant(
+			closure->info, obj);
+	assert(val.tag == closure->tag);
+
+	memcpy(out, val.data.data,
+			closure->info->options[val.tag].size);
+}
+
+static bool
+ast_dt_variant_can_unpack(struct vm *vm, void *data, void *obj)
+{
+	struct ast_dt_variant_cons_closure *closure = data;
+
+	struct ast_dt_variant val;
+	val = ast_dt_decode_variant(
+			closure->info, obj);
+	return val.tag == closure->tag;
 }
 
 static struct object
@@ -3019,24 +3047,30 @@ ast_dt_create_variant_type_scope(
 		type_id option_type = info->options[tag].data_type;
 		if (option_type != TYPE_UNSET) {
 			struct func func = {0};
-			func.kind = FUNC_NATIVE;
-			func.native = (void *)ast_dt_variant_constructor;
-			func.flags = FUNC_REFS|FUNC_CLOSURE;
 			func.type = stg_register_func_type(
 					mod, info->type, &option_type, 1);
-
-			func_id fid;
-			fid = stg_register_func(mod, func);
 
 			struct ast_dt_variant_cons_closure *closure;
 			closure = calloc(1, sizeof(struct ast_dt_variant_cons_closure));
 			closure->tag = tag;
 			closure->info = info;
 
-			obj = stg_register_func_object(
-					mod->vm, &mod->store, fid, closure);
+			func.kind = FUNC_CONS;
+			func.cons = calloc(1, sizeof(struct object_cons));
+			func.cons->num_params = 1;
+			func.cons->params = calloc(1, sizeof(struct object_cons_param));
+			func.cons->params[0].name = NULL;
+			func.cons->params[0].type = info->type;
+			func.cons->data = closure;
+			func.cons->pack = ast_dt_variant_pack;
+			func.cons->unpack = ast_dt_variant_unpack;
+			func.cons->can_unpack = ast_dt_variant_can_unpack;
 
-			// TODO: Reverse function.
+			func_id fid;
+			fid = stg_register_func(mod, func);
+
+			obj = stg_register_func_object(
+					mod->vm, &mod->store, fid, NULL);
 		} else {
 			uint8_t buffer[variant_type->size];
 			assert(info->options[tag].size == 0);

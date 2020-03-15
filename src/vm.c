@@ -371,6 +371,17 @@ vm_call_func_obj(
 			}
 			break;
 
+		case FUNC_CONS:
+			{
+				void *args_data[num_args];
+				for (size_t i = 0; i < num_args; i++) {
+					args_data[i] = args[i].data;
+				}
+				assert(func->cons->pack);
+				func->cons->pack(vm, func->cons->data, ret->data, args_data, num_args);
+			}
+			break;
+
 		case FUNC_BYTECODE:
 			{
 				void *call_args[num_args];

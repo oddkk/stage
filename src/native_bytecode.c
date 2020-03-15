@@ -184,7 +184,6 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 
 					// We can not write to param slots.
 					assert(ip->lcall.target >= 0);
-					instr.call.target = vars[ip->lcall.target].offset;
 
 					switch (func->kind) {
 						case FUNC_NATIVE:
@@ -192,6 +191,7 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 								instr.op = ((func->flags & FUNC_HEAP) != 0)
 									? NBC_CALL_NATIVE_HEAP
 									: NBC_CALL_NATIVE;
+								instr.call.target = vars[ip->lcall.target].offset;
 								instr.call.func.native.cif =
 									stg_func_ffi_cif(env->vm, func->type,
 											func->flags);
@@ -199,8 +199,17 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 							}
 							break;
 
+						case FUNC_CONS:
+							instr.op = NBC_PACK;
+							instr.pack.target = vars[ip->lcall.target].offset;
+							assert(func->cons->pack);
+							instr.pack.func = func->cons->pack;
+							instr.pack.data = func->cons->data;
+							break;
+
 						case FUNC_BYTECODE:
 							instr.op = NBC_CALL_NBC;
+							instr.call.target = vars[ip->lcall.target].offset;
 							instr.call.func.nbc.fp = func->bytecode->nbc;
 							break;
 					}
@@ -221,7 +230,6 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 
 					// We can not write to param slots.
 					assert(ip->clcall.target >= 0);
-					instr.call.target = vars[ip->clcall.target].offset;
 
 					switch (func->kind) {
 						case FUNC_NATIVE:
@@ -229,6 +237,7 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 								instr.op = ((func->flags & FUNC_HEAP) != 0)
 									? NBC_CALL_NATIVE_HEAP_CLOSURE
 									: NBC_CALL_NATIVE_CLOSURE;
+								instr.call.target = vars[ip->clcall.target].offset;
 								instr.call.func.native.cif =
 									stg_func_ffi_cif(env->vm, func->type,
 											func->flags);
@@ -237,8 +246,17 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 							}
 							break;
 
+						case FUNC_CONS:
+							instr.op = NBC_PACK;
+							instr.pack.target = vars[ip->clcall.target].offset;
+							assert(func->cons->pack);
+							instr.pack.func = func->cons->pack;
+							instr.pack.data = func->cons->data;
+							break;
+
 						case FUNC_BYTECODE:
 							instr.op = NBC_CALL_NBC_CLOSURE;
+							instr.call.target = vars[ip->clcall.target].offset;
 							instr.call.func.nbc.fp = func->bytecode->nbc;
 							instr.call.func.nbc.closure = ip->clcall.closure;
 							break;
@@ -464,6 +482,11 @@ nbc_call_func(struct vm *vm, struct stg_exec *ctx, struct stg_func_object func_o
 					ffi_call(cif, FFI_FN(func->native), ret, closure_args);
 				}
 			}
+			break;
+
+		case FUNC_CONS:
+			assert(func->cons->pack);
+			func->cons->pack(vm, func->cons->data, ret, args, num_args);
 			break;
 
 		case FUNC_BYTECODE:
