@@ -39,6 +39,9 @@ enum bc_op {
 	// equal, or False otherwise.
 	BC_TESTEQ,
 
+	// Writes the negated value of the boolean at the top of the stack to target.
+	BC_LNOT,
+
 	// Moves the instruction pointer.
 	BC_JMP,
 
@@ -101,6 +104,10 @@ struct bc_instr {
 			bc_var target;
 			bc_var lhs, rhs;
 		} testeq;
+
+		struct {
+			bc_var target;
+		} lnot;
 
 		struct {
 			// TODO: Reduce the size of this instruction.
@@ -206,6 +213,9 @@ bc_gen_vcall(struct bc_env *, bc_var target, bc_var func);
 
 struct bc_instr *
 bc_gen_testeq(struct bc_env *, bc_var target, bc_var lhs, bc_var rhs);
+
+struct bc_instr *
+bc_gen_lnot(struct bc_env *, bc_var target);
 
 struct bc_instr *
 bc_gen_jmp(struct bc_env *, struct bc_instr *dest);

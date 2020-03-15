@@ -321,6 +321,15 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 				}
 				break;
 
+			case BC_LNOT:
+				{
+					struct nbc_instr instr = {0};
+					instr.op = NBC_LNOT;
+					assert(ip->lnot.target >= 0);
+					instr.lnot.target = vars[ip->lnot.target].offset;
+				}
+				break;
+
 			case BC_JMP:
 				{
 					struct nbc_instr instr = {0};
@@ -650,6 +659,14 @@ nbc_exec(struct vm *vm, struct stg_exec *ctx, struct nbc_func *func,
 				}
 				break;
 
+			case NBC_LNOT:
+				{
+					int val;
+					val = !(*(int *)args[0]);
+					memcpy(&stack[ip->lnot.target], &val, sizeof(int));
+				}
+				break;
+
 			case NBC_JMP:
 				ip = func->instrs + ip->jmp.dest;
 				// TODO: Should keeping arguments past jumps be allowed?
@@ -791,6 +808,11 @@ nbc_print(struct nbc_func *func)
 				printf("sp+0x%zu = TESTEQ (%zu)\n",
 						ip->testeq.target,
 						ip->testeq.size);
+				break;
+
+			case NBC_LNOT:
+				printf("sp+0x%zu = LNOT",
+						ip->lnot.target);
 				break;
 
 			case NBC_JMP:

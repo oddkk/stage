@@ -283,6 +283,17 @@ bc_gen_testeq(struct bc_env *env, bc_var target, bc_var lhs, bc_var rhs)
 }
 
 struct bc_instr *
+bc_gen_lnot(struct bc_env *env, bc_var target)
+{
+	struct bc_instr instr = {0};
+	instr.op = BC_LNOT;
+	instr.lnot.target = bc_use_or_alloc_var(
+			env, target, env->vm->default_types.boolean);
+
+	return bc_instr_alloc(env->store, instr);
+}
+
+struct bc_instr *
 bc_gen_jmp(struct bc_env *env, struct bc_instr *dest)
 {
 	struct bc_instr instr = {0};

@@ -20,6 +20,7 @@ enum nbc_op {
 	NBC_CALL_NATIVE_HEAP,
 	NBC_CALL_NATIVE_HEAP_CLOSURE,
 	NBC_TESTEQ,
+	NBC_LNOT,
 	NBC_JMP,
 	NBC_JMPIF,
 	NBC_PACK,
@@ -74,6 +75,10 @@ struct nbc_instr {
 			size_t target;
 			size_t size;
 		} testeq;
+
+		struct {
+			size_t target;
+		} lnot;
 
 		struct {
 			size_t dest;

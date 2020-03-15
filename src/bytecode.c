@@ -98,6 +98,12 @@ bc_print(struct bc_env *env, struct bc_instr *instr)
 				printf("\n");
 				break;
 
+			case BC_LNOT:
+				printf("LNOT ");
+				bc_print_var(env, instr->lnot.target);
+				printf("\n");
+				break;
+
 			case BC_JMP:
 				printf("JMP %p\n", (void *)instr->jmp);
 				break;
