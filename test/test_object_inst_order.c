@@ -284,7 +284,8 @@ test_object_inst_order(
 	err = object_inst_order(
 			vm, NULL, &inst,
 			NULL, 0, NULL, 0,
-			&actions, &num_actions);
+			&actions, &num_actions,
+			STG_NO_LOC);
 
 	TEST_ASSERT(!err);
 

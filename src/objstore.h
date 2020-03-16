@@ -334,6 +334,14 @@ object_cons_local_descendent_ids(
 		struct vm *, struct object_cons *cons,
 		int *out_local_descendent_ids);
 
+// Out descs is expected to be an array capable of holding all the type's
+// inst's descendents. The top object itself will be at out_descs[0], but will
+// onl have its type filled.
+ssize_t
+object_cons_all_descendens(
+		struct vm *, type_id top_type,
+		struct object_cons_param *out_descs, size_t out_descs_size);
+
 // out->type is expected to point to the final type of the requested object,
 // and out->data should point to a buffer with sufficient space to store such
 // an object.
@@ -410,7 +418,8 @@ object_inst_order(
 		struct vm *vm, struct stg_error_context *, struct object_inst *inst,
 		struct object_inst_extra_expr *extra_exprs, size_t num_extra_exprs,
 		struct object_inst_bind       *extra_binds, size_t num_extra_binds,
-		struct object_inst_action **out_actions, size_t *out_num_actions);
+		struct object_inst_action **out_actions, size_t *out_num_actions,
+		struct stg_location inst_loc);
 
 int
 stg_instantiate_static_object(

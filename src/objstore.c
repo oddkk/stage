@@ -471,6 +471,40 @@ object_cons_local_descendent_ids(
 	}
 }
 
+ssize_t
+object_cons_all_descendences(struct vm *vm, type_id tid,
+		struct object_cons_param *out_descs, size_t out_descs_size)
+{
+	assert(out_descs_size > 0);
+	out_descs[0].type = tid;
+
+	struct type *type = vm_get_type(vm, tid);
+
+	if (!type->obj_inst) {
+		return 1;
+	}
+
+	struct object_inst *inst;
+	inst = type->obj_inst;
+
+	size_t offset = 1;
+	for (size_t i = 0; i < inst->cons->num_params; i++) {
+		assert(offset < out_descs_size);
+		out_descs[offset] = inst->cons->params[i];
+		ssize_t err;
+		err = object_cons_all_descendences(
+				vm, out_descs[offset].type,
+				&out_descs[offset], out_descs_size - offset);
+		if (err < 0) {
+			return -1;
+		}
+
+		offset += err;
+	}
+
+	return offset;
+}
+
 int
 object_unpack(
 		struct vm *vm, struct object obj,
@@ -701,6 +735,7 @@ typedef int obj_unpack_id;
 
 struct obj_inst_member {
 	type_id type;
+	struct atom *name;
 	size_t num_descendants;
 
 	obj_bind_id bind;
@@ -1054,7 +1089,8 @@ object_inst_order(
 		struct vm *vm, struct stg_error_context *err, struct object_inst *inst,
 		struct object_inst_extra_expr *extra_exprs, size_t num_extra_exprs,
 		struct object_inst_bind       *extra_binds, size_t num_extra_binds,
-		struct object_inst_action **out_actions, size_t *out_num_actions)
+		struct object_inst_action **out_actions, size_t *out_num_actions,
+		struct stg_location inst_loc)
 {
 #if OBJ_DEBUG_ACTIONS
 	printf("\n\nbegin object_inst_order\n");
@@ -1132,28 +1168,32 @@ object_inst_order(
 		}
 	}
 
-	// Determine what bind is assigned to each member.
-	for (size_t i = 0; i < ctx->num_desc_members+1; i++) {
-		ctx->members[i].bind = -1;
-		ctx->members[i].overridden_bind = -1;
+	{
+		size_t num_descs = ctx->num_desc_members+1;
+		struct object_cons_param descs[num_descs];
+		memset(descs, 0, sizeof(struct object_cons_param) * num_descs);
+		object_cons_all_descendences(
+				vm, inst->type, descs, num_descs);
 
-		int err;
-		// TODO: This is really inefficient. We can determine all types and
-		// number of descendants in a single pass.
-		err = object_cons_descendant_type(
-				vm, inst->type, i, &ctx->members[i].type);
-		assert(!err);
+		// Determine what bind is assigned to each member.
+		for (size_t i = 0; i < ctx->num_desc_members+1; i++) {
+			ctx->members[i].bind = -1;
+			ctx->members[i].overridden_bind = -1;
 
-		struct type *type;
-		type = vm_get_type(vm, ctx->members[i].type);
+			ctx->members[i].name = descs[i].name;
+			ctx->members[i].type = descs[i].type;
 
-		if (type->obj_inst) {
-			ctx->members[i].num_descendants =
-				object_cons_num_descendants(
-						vm, type->obj_inst->cons);
-			ctx->members[i].has_inst = true;
-		} else {
-			ctx->members[i].num_descendants = 0;
+			struct type *type;
+			type = vm_get_type(vm, ctx->members[i].type);
+
+			if (type->obj_inst) {
+				ctx->members[i].num_descendants =
+					object_cons_num_descendants(
+							vm, type->obj_inst->cons);
+				ctx->members[i].has_inst = true;
+			} else {
+				ctx->members[i].num_descendants = 0;
+			}
 		}
 	}
 
@@ -1193,8 +1233,9 @@ object_inst_order(
 
 		if (mbr->bind < 0 && !mbr->has_inst) {
 			// TODO: Location and context about instantiation.
-			stg_error(ctx->err, STG_NO_LOC,
-					"Member not bound.");
+			stg_error(ctx->err, inst_loc,
+					"The member '%.*s' was not bound.",
+					ALIT(mbr->name));
 			ctx->num_errors += 1;
 		}
 	}

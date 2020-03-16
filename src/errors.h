@@ -19,6 +19,12 @@ struct stg_location {
 
 #define STG_NO_LOC ((struct stg_location){.file_id=STG_FILE_UNKNOWN})
 
+static inline bool
+stg_loc_defined(struct stg_location loc)
+{
+	return loc.file_id != STG_FILE_UNKNOWN;
+}
+
 enum stg_error_level {
 	STG_ERROR,
 	STG_WARNING,
