@@ -28,10 +28,14 @@ static const char
 doc[] = "Stage -- a simple functional programming language.";
 
 struct stg_arguments {
+	bool print_module;
 	struct string project_path;
 };
 
+#define OPT_PRINT_MODULE 1
+
 static struct argp_option options[] = {
+	{"print-module", OPT_PRINT_MODULE, 0, 0, "Print the instance object for the module."},
 	{0}
 };
 
@@ -44,6 +48,10 @@ parse_opt(int key, char *arg, struct argp_state *state)
 		case ARGP_KEY_ARG:
 			args->project_path =
 				string_duplicate_cstr(arg);
+			break;
+
+		case OPT_PRINT_MODULE:
+			args->print_module = true;
 			break;
 
 		// Temporarly allows a default project for development.
@@ -104,6 +112,13 @@ int main(int argc, char *argv[])
 	}
 
 	ast_destroy_context(&ctx);
+
+	if (args.print_module) {
+		struct stg_module *main_mod;
+		main_mod = vm_get_module(&vm, vm_atoms(&vm, "main"));
+		print_obj_repr(&vm, main_mod->instance);
+		printf("\n");
+	}
 
 	vm_start(&vm);
 	vm_destroy(&vm);
