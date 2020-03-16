@@ -262,8 +262,13 @@ void
 st_node_visit_stmt(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *struct_node, struct st_node *stmt);
 
+struct st_expr_context {
+	struct ast_pattern *pattern;
+	struct ast_node *init_target;
+};
+
 struct ast_node *
 st_node_visit_expr(struct ast_context *, struct stg_module *mod,
-		struct ast_pattern *pattern, struct st_node *);
+		struct st_expr_context *, struct st_node *);
 
 #endif
