@@ -2628,6 +2628,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 
 		params[i].name = comp->composite.members[i].name;
 		params[i].type = mbr->type;
+		params[i].def_loc = mbr->decl_loc;
 
 		mbr->persistant_id = cumulative_persistant_id;
 		cumulative_persistant_id += 1 +

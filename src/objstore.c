@@ -736,6 +736,7 @@ typedef int obj_unpack_id;
 struct obj_inst_member {
 	type_id type;
 	struct atom *name;
+	struct stg_location def_loc;
 	size_t num_descendants;
 
 	obj_bind_id bind;
@@ -875,9 +876,9 @@ object_inst_bind_single(struct object_inst_context *ctx,
 		}
 
 		if (!prev_bind->overridable && !new_bind->overridable) {
-			// TODO: Name
 			stg_error(ctx->err, new_bind->loc,
-					"Member bound multiple times.");
+					"The member '%.*s' was bound multiple times.",
+					ALIT(target->name));
 			stg_appendage(ctx->err, prev_bind->loc,
 					"Also bound here.");
 			ctx->num_errors += 1;
@@ -885,9 +886,9 @@ object_inst_bind_single(struct object_inst_context *ctx,
 		}
 
 		if (prev_bind->overridable && new_bind->overridable) {
-			// TODO: Name
 			stg_error(ctx->err, new_bind->loc,
-					"Member bound multiple times as overridable.");
+					"The member '%.*s' was bound multiple times as overridable.",
+					ALIT(target->name));
 			stg_appendage(ctx->err, prev_bind->loc,
 					"Also bound here.");
 			ctx->num_errors += 1;
@@ -1182,6 +1183,7 @@ object_inst_order(
 
 			ctx->members[i].name = descs[i].name;
 			ctx->members[i].type = descs[i].type;
+			ctx->members[i].def_loc = descs[i].def_loc;
 
 			struct type *type;
 			type = vm_get_type(vm, ctx->members[i].type);
@@ -1232,10 +1234,14 @@ object_inst_order(
 		mbr = get_member(ctx, mbr_i);
 
 		if (mbr->bind < 0 && !mbr->has_inst) {
-			// TODO: Location and context about instantiation.
+			// TODO: Use the location of the parent object instantiation.
 			stg_error(ctx->err, inst_loc,
 					"The member '%.*s' was not bound.",
 					ALIT(mbr->name));
+			if (stg_loc_defined(mbr->def_loc)) {
+				stg_appendage(ctx->err, mbr->def_loc,
+						"Defined here");
+			}
 			ctx->num_errors += 1;
 		}
 	}

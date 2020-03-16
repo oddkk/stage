@@ -238,6 +238,7 @@ typedef void (*object_impose_constraints)(
 struct object_cons_param {
 	struct atom *name;
 	type_id type;
+	struct stg_location def_loc;
 };
 
 struct object_cons {
