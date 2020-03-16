@@ -708,6 +708,7 @@ struct obj_inst_member {
 	obj_bind_id overridden_bind;
 	obj_member_id next_expr_target;
 	bool action_emitted;
+	bool has_inst;
 };
 
 struct obj_inst_expr {
@@ -920,7 +921,7 @@ obj_inst_try_emit_pack(
 	struct obj_inst_member *mbr;
 	mbr = get_member(ctx, mbr_id);
 
-	assert(mbr->num_descendants > 0);
+	assert(mbr->has_inst);
 
 	if (mbr->action_emitted) {
 		return 0;
@@ -1150,6 +1151,7 @@ object_inst_order(
 			ctx->members[i].num_descendants =
 				object_cons_num_descendants(
 						vm, type->obj_inst->cons);
+			ctx->members[i].has_inst = true;
 		} else {
 			ctx->members[i].num_descendants = 0;
 		}
@@ -1189,7 +1191,7 @@ object_inst_order(
 		struct obj_inst_member *mbr;
 		mbr = get_member(ctx, mbr_i);
 
-		if (mbr->bind < 0 && mbr->num_descendants == 0) {
+		if (mbr->bind < 0 && !mbr->has_inst) {
 			// TODO: Location and context about instantiation.
 			stg_error(ctx->err, STG_NO_LOC,
 					"Member not bound.");
@@ -1438,7 +1440,7 @@ object_inst_order(
 	for (ssize_t mbr_id = ctx->num_desc_members; mbr_id >= 0; mbr_id--) {
 		struct obj_inst_member *mbr;
 		mbr = get_member(ctx, mbr_id);
-		if (mbr->num_descendants > 0 && !mbr->action_emitted) {
+		if (mbr->has_inst && !mbr->action_emitted) {
 			obj_inst_try_emit_pack(ctx, mbr_id);
 		}
 		assert(mbr->action_emitted);
