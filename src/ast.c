@@ -10,18 +10,7 @@ struct ast_context
 ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, struct vm *vm)
 {
 	struct ast_context ctx;
-
 	ctx.err = err;
-
-	ctx.atoms.type                 = atom_create(atom_table, STR("Type"));
-
-	ctx.types.unit = vm->default_types.unit;
-	ctx.types.type = vm->default_types.type;
-	ctx.types.cons = vm->default_types.cons;
-	ctx.types.inst = vm->default_types.inst;
-	ctx.types.string = vm->default_types.string;
-	ctx.types.integer = vm->default_types.integer;
-
 	ctx.vm = vm;
 
 	return ctx;

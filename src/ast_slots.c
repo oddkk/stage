@@ -3441,9 +3441,9 @@ ast_slot_try_solve(
 	ctx->vm = ast_ctx->vm;
 	ctx->err = ast_ctx->err;
 	ctx->mod = mod;
-	ctx->type = ast_ctx->types.type;
-	ctx->cons = ast_ctx->types.cons;
-	ctx->inst = ast_ctx->types.inst;
+	ctx->type = ctx->vm->default_types.type;
+	ctx->cons = ctx->vm->default_types.cons;
+	ctx->inst = ctx->vm->default_types.inst;
 	ctx->env = &_env;
 	ctx->ast_ctx = ast_ctx;
 	ctx->num_slots = ctx->env->num_alloced_slots;

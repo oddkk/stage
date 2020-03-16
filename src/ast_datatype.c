@@ -1874,7 +1874,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				err = ast_dt_expr_typecheck(
 						ctx, mbr->type_node,
 						AST_NAME_DEP_REQUIRE_VALUE,
-						ctx->ast_ctx->types.type);
+						ctx->ast_ctx->vm->default_types.type);
 				if (err) {
 					return -1;
 				}
@@ -1911,7 +1911,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				assert(mbr->type_node);
 
 				assert_type_equals(ctx->ast_ctx->vm,
-						ctx->ast_ctx->types.type, mbr->type_node->type);
+						ctx->ast_ctx->vm->default_types.type, mbr->type_node->type);
 
 				func_id fid;
 				fid = ast_dt_expr_codegen(
@@ -1937,7 +1937,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				type_id out_type = TYPE_UNSET;
 				struct object out = {0};
-				out.type = ctx->ast_ctx->types.type;
+				out.type = ctx->ast_ctx->vm->default_types.type;
 				out.data = &out_type;
 
 				int err;
@@ -3469,14 +3469,14 @@ ast_dt_finalize_variant(
 					ctx, mod,
 					options[i].data_type,
 					body_deps, num_closures,
-					ctx->types.type);
+					ctx->vm->default_types.type);
 			if (err) {
 				ok = false;
 				continue;
 			}
 
 			assert_type_equals(ctx->vm,
-					options[i].data_type->type, ctx->types.type);
+					options[i].data_type->type, ctx->vm->default_types.type);
 
 			struct bc_env *type_expr_bc;
 			type_expr_bc = ast_type_expr_gen_bytecode(

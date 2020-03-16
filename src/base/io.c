@@ -105,7 +105,7 @@ io_type_pack_type(
 		struct ast_context *ctx, struct stg_module *mod,
 		void *data, void **params, size_t num_params)
 {
-	return ctx->types.type;
+	return ctx->vm->default_types.type;
 }
 
 int
@@ -114,7 +114,7 @@ io_type_unpack(
 		void *data, void *out, struct object obj, int param_id)
 {
 	assert_type_equals(ctx->vm,
-			obj.type, ctx->types.type);
+			obj.type, ctx->vm->default_types.type);
 
 	type_id tid = *(type_id *)obj.data;
 

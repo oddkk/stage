@@ -913,7 +913,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 			{
 				assert(node->func_type.func_type != TYPE_UNSET);
 				struct object obj = {0};
-				obj.type = ctx->types.type;
+				obj.type = ctx->vm->default_types.type;
 				obj.data = &node->func_type.func_type;
 
 				obj = register_object(ctx->vm, &mod->store, obj);
@@ -927,7 +927,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		case AST_NODE_TEMPL:
 			{
 				struct object obj = {0};
-				obj.type = ctx->types.cons;
+				obj.type = ctx->vm->default_types.cons;
 				obj.data = &node->templ.cons;
 
 				obj = register_object(ctx->vm, &mod->store, obj);
@@ -1007,7 +1007,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 
 					type_id target_type_id = bc_get_var_type(bc_env, target.out_var);
 
-					if (type_equals(ctx->vm, target_type_id, ctx->types.type)) {
+					if (type_equals(ctx->vm, target_type_id, ctx->vm->default_types.type)) {
 						stg_error(ctx->err, node->loc,
 								"Access to a type's static scope requires the "
 								"type to be constant. Got a non-constant type.");
@@ -1184,7 +1184,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 				}
 
 				struct object obj;
-				obj.type = ctx->types.type;
+				obj.type = ctx->vm->default_types.type;
 				obj.data = &type;
 
 				struct bc_instr *lit_instr;
@@ -1208,7 +1208,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 				}
 
 				struct object obj;
-				obj.type = ctx->types.type;
+				obj.type = ctx->vm->default_types.type;
 				obj.data = &type;
 
 				struct bc_instr *lit_instr;
@@ -1413,7 +1413,7 @@ ast_type_expr_gen_bytecode(
 
 	assert_type_equals(ctx->vm,
 			bc_get_var_type(bc_env, func_instr.out_var),
-			ctx->types.type);
+			ctx->vm->default_types.type);
 
 	append_bc_instr(&func_instr,
 			bc_gen_ret(bc_env, func_instr.out_var));

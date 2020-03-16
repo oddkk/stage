@@ -978,7 +978,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		struct object obj;
 
 		obj.data = &node->NUM_LIT;
-		obj.type = ctx->types.integer;
+		obj.type = ctx->vm->default_types.integer;
 
 		return ast_init_node_lit(
 				ctx, AST_NODE_NEW, node->loc,
@@ -990,7 +990,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		struct object obj;
 
 		obj.data = &node->STR_LIT;
-		obj.type = ctx->types.string;
+		obj.type = ctx->vm->default_types.string;
 
 		return ast_init_node_lit(
 				ctx, AST_NODE_NEW, node->loc,

@@ -197,7 +197,7 @@ ast_func_proto_constraints(
 
 	ast_slot_require_is_func_type(
 			env, decl_loc, AST_CONSTR_SRC_FUNC_DECL,
-			ctx->types.type, func_type, ret_type_slot,
+			ctx->vm->default_types.type, func_type, ret_type_slot,
 			param_type_slots, num_params);
 
 	return func_type;
@@ -443,7 +443,7 @@ ast_node_constraints(
 
 				ast_slot_require_is_func_type(
 						env, node->loc, AST_CONSTR_SRC_CALL_ARG,
-						ctx->types.type, func_type_slot, ret_type_slot, arg_types,
+						ctx->vm->default_types.type, func_type_slot, ret_type_slot, arg_types,
 						node->call.num_args);
 
 				// printf("func call (%i -> %i : %i)(...) -> %i:%i\n",
@@ -555,7 +555,7 @@ ast_node_constraints(
 
 				if (node->templ.cons) {
 					struct object cons_obj = {0};
-					cons_obj.type = ctx->types.cons;
+					cons_obj.type = ctx->vm->default_types.cons;
 					cons_obj.data = &node->templ.cons;
 					cons_obj = register_object(
 							ctx->vm, env->store, cons_obj);
@@ -1068,7 +1068,7 @@ ast_node_resolve_types(
 					case AST_SLOT_RES_VALUE_FOUND_TYPE:
 						{
 							struct object obj = {0};
-							obj.type = ctx->types.type;
+							obj.type = ctx->vm->default_types.type;
 							obj.data = &res->value.type;
 							obj = register_object(ctx->vm, env->store, obj);
 							node->call.cons_value = obj;
@@ -1207,7 +1207,7 @@ ast_node_typecheck(struct ast_context *ctx,
 
 		ast_slot_require_is_type(
 				&env, node->loc, AST_CONSTR_SRC_EXPECTED,
-				expr_type_slot, ctx->types.type);
+				expr_type_slot, ctx->vm->default_types.type);
 		ast_slot_require_type(
 				&env, node->loc, AST_CONSTR_SRC_EXPECTED,
 				expr_slot, expr_type_slot);

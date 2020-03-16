@@ -1577,11 +1577,11 @@ stg_instantiate_static_object(
 	}
 
 	struct object cons_obj = {0};
-	cons_obj.type = ctx->types.type;
+	cons_obj.type = ctx->vm->default_types.type;
 	cons_obj.data = &tid;
 
 	struct object type_obj = {0};
-	type_obj.type = ctx->types.type;
+	type_obj.type = ctx->vm->default_types.type;
 	type_obj.data = &tid;
 
 	ret = ast_init_node_lit(ctx,

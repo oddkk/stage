@@ -196,21 +196,6 @@ struct vm;
 
 struct ast_context {
 	struct stg_error_context *err;
-
-	struct {
-		struct atom *type;
-	} atoms;
-
-	struct {
-		type_id unit;
-		type_id type;
-		type_id cons;
-		type_id inst;
-		type_id string;
-		type_id integer;
-	} types;
-
-	// TODO: Get rid of dependency on vm?
 	struct vm *vm;
 };
 
