@@ -102,7 +102,8 @@ struct compile_ctx {
 
 	struct ast_context *ast_ctx;
 
-	size_t next_job_id;
+	struct paged_list jobs;
+
 	// A measure of how many times jobs have yielded.
 	size_t time;
 	size_t last_completed_job_time;
@@ -144,12 +145,12 @@ append_job(struct compile_ctx *ctx, enum compile_phase_name ph, struct complie_j
 static struct complie_job *
 dispatch_job(struct compile_ctx *ctx, enum compile_phase_name phase, struct complie_job job)
 {
-	struct complie_job *new_job = calloc(1, sizeof(struct complie_job));
+	size_t job_id = paged_list_push(&ctx->jobs);
+	struct complie_job *new_job = paged_list_get(&ctx->jobs, job_id);
 	*new_job = job;
 	new_job->status = JOB_STATUS_IDLE;
 	new_job->next_job = NULL;
-	new_job->id = ctx->next_job_id;
-	ctx->next_job_id += 1;
+	new_job->id = job_id;
 
 	append_job(ctx, phase, new_job);
 
@@ -699,6 +700,9 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx)
 	ctx.err.transient_arena = &vm->transient;
 	ctx.ast_ctx = ast_ctx;
 
+	paged_list_init(&ctx.jobs, &vm->mem,
+			sizeof(struct complie_job));
+
 	assert(!ctx.ast_ctx->err);
 	ctx.ast_ctx->err = &ctx.err;
 
@@ -721,6 +725,8 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx)
 			stg_dispatch_load_modules(&ctx);
 		}
 	}
+
+	paged_list_destroy(&ctx.jobs);
 
 	if (ctx.num_jobs_failed > 0 || ctx.err.num_errors > 0) {
 #if COMPILE_DEBUG_JOBS
