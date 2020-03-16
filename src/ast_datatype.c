@@ -297,6 +297,9 @@ ast_dt_free_job(struct ast_dt_context *ctx, ast_dt_job_id id)
 	struct ast_dt_job *job;
 	job = get_job(ctx, id);
 	assert(job->kind != AST_DT_JOB_FREE);
+
+	free(job->outgoing_deps);
+
 	memset(job, 0, sizeof(struct ast_dt_job));
 	job->kind = AST_DT_JOB_FREE;
 
@@ -2906,18 +2909,20 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 {
 	struct ast_node *comp = ctx->root_node;
 
+	struct arena *mem = &mod->mem;
+
 	struct object_cons *def;
-	def = calloc(1, sizeof(struct object_cons));
+	def = arena_alloc(&mod->mem, sizeof(struct object_cons));
 	def->pack      = ast_dt_pack_func;
 	def->pack_type = ast_dt_pack_type_func;
 	def->unpack    = ast_dt_unpack_func;
 
 	struct ast_dt_local_member *local_members;
-	local_members = calloc(comp->composite.num_members,
+	local_members = arena_allocn(mem, comp->composite.num_members,
 			sizeof(struct ast_dt_local_member));
 
 	struct object_cons_param *params;
-	params = calloc(comp->composite.num_members,
+	params = arena_allocn(mem, comp->composite.num_members,
 			sizeof(struct object_cons_param));
 
 	size_t offset = 0;
@@ -2963,15 +2968,15 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 		}
 	}
 	struct object_inst_bind *binds;
-	binds = calloc(num_bound_members,
+	binds = arena_allocn(mem, num_bound_members,
 			sizeof(struct object_inst_bind));
 
 	struct object_inst_expr *exprs;
-	exprs = calloc(ctx->exprs.length,
+	exprs = arena_allocn(mem, ctx->exprs.length,
 			sizeof(struct object_inst_expr));
 
 	struct object_inst *inst;
-	inst = calloc(1, sizeof(struct object_inst));
+	inst = arena_alloc(mem, sizeof(struct object_inst));
 
 	for (ast_dt_expr_id expr_i = 0;
 			expr_i < ctx->exprs.length; expr_i++) {
@@ -2988,8 +2993,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 		}
 
 		exprs[expr_i].num_deps = expr->num_member_deps;
-		exprs[expr_i].deps = calloc(exprs[expr_i].num_deps,
-				sizeof(size_t));
+		exprs[expr_i].deps = arena_allocn(mem,
+				exprs[expr_i].num_deps, sizeof(size_t));
 
 		for (size_t i = 0; i < expr->num_member_deps; i++) {
 			exprs[expr_i].deps[i] =
@@ -3032,7 +3037,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 	inst->cons = def;
 
 	struct ast_dt_composite_info *info;
-	info = calloc(1, sizeof(struct ast_dt_composite_info));
+	info = arena_alloc(mem, sizeof(struct ast_dt_composite_info));
 
 	info->num_members = comp->composite.num_members;
 	info->members = local_members;
@@ -3347,6 +3352,8 @@ ast_dt_create_variant_type_scope(
 		struct ast_context *ctx, struct stg_module *mod,
 		struct stg_type_variant_info *info)
 {
+	struct arena *mem = &mod->mem;
+
 	struct ast_node *scope;
 
 	scope = ast_init_node_composite(
@@ -3364,14 +3371,14 @@ ast_dt_create_variant_type_scope(
 					mod, info->type, &option_type, 1);
 
 			struct ast_dt_variant_cons_closure *closure;
-			closure = calloc(1, sizeof(struct ast_dt_variant_cons_closure));
+			closure = arena_alloc(mem, sizeof(struct ast_dt_variant_cons_closure));
 			closure->tag = tag;
 			closure->info = info;
 
 			func.kind = FUNC_CONS;
-			func.cons = calloc(1, sizeof(struct object_cons));
+			func.cons = arena_alloc(mem, sizeof(struct object_cons));
 			func.cons->num_params = 1;
-			func.cons->params = calloc(1, sizeof(struct object_cons_param));
+			func.cons->params = arena_alloc(mem, sizeof(struct object_cons_param));
 			func.cons->params[0].name = NULL;
 			func.cons->params[0].type = option_type;
 			func.cons->data = closure;
@@ -3443,7 +3450,8 @@ ast_dt_finalize_variant(
 	size_t max_data_size = 0;
 
 	struct stg_type_variant_option *opts;
-	opts = calloc(num_options, sizeof(struct stg_type_variant_option));
+	opts = arena_allocn(&mod->mem,
+			num_options, sizeof(struct stg_type_variant_option));
 
 	struct ast_typecheck_dep body_deps[num_closures];
 
@@ -3518,7 +3526,8 @@ ast_dt_finalize_variant(
 	}
 
 	struct stg_type_variant_info *info;
-	info = calloc(1, sizeof(struct stg_type_variant_info));
+	info = arena_alloc(&mod->mem,
+			sizeof(struct stg_type_variant_info));
 
 	info->num_options = num_options;
 	info->options = opts;

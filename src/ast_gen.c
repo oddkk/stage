@@ -1313,8 +1313,8 @@ ast_func_gen_bytecode(
 	bc_print(bc_env, bc_env->entry_point);
 #endif
 
-	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
-	nbc_compile_from_bc(bc_env->nbc, bc_env);
+	bc_env->nbc = arena_alloc(&mod->mem, sizeof(struct nbc_func));
+	nbc_compile_from_bc(&mod->vm->transient, &mod->mem, bc_env->nbc, bc_env);
 
 #if AST_GEN_SHOW_BC
 	printf("\nnbc:\n");
@@ -1332,7 +1332,7 @@ ast_composite_bind_gen_bytecode(
 		struct object *const_use_values, size_t num_use,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr)
 {
-	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
+	struct bc_env *bc_env = arena_alloc(&mod->mem, sizeof(struct bc_env));
 	bc_env->vm = ctx->vm;
 	bc_env->store = ctx->vm->instr_store;
 
@@ -1377,8 +1377,8 @@ ast_composite_bind_gen_bytecode(
 	bc_print(bc_env, bc_env->entry_point);
 #endif
 
-	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
-	nbc_compile_from_bc(bc_env->nbc, bc_env);
+	bc_env->nbc = arena_alloc(&mod->mem, sizeof(struct nbc_func));
+	nbc_compile_from_bc(&mod->vm->transient, &mod->mem, bc_env->nbc, bc_env);
 
 #if AST_GEN_SHOW_BC
 	printf("\nnbc:\n");
@@ -1394,7 +1394,7 @@ ast_type_expr_gen_bytecode(
 		struct ast_node *expr,
 		struct ast_typecheck_closure *closures, size_t num_closures)
 {
-	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
+	struct bc_env *bc_env = arena_alloc(&mod->mem, sizeof(struct bc_env));
 	bc_env->vm = ctx->vm;
 	bc_env->store = ctx->vm->instr_store;
 
@@ -1425,8 +1425,8 @@ ast_type_expr_gen_bytecode(
 	bc_print(bc_env, bc_env->entry_point);
 #endif
 
-	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
-	nbc_compile_from_bc(bc_env->nbc, bc_env);
+	bc_env->nbc = arena_alloc(&mod->mem, sizeof(struct nbc_func));
+	nbc_compile_from_bc(&mod->vm->transient, &mod->mem, bc_env->nbc, bc_env);
 
 #if AST_GEN_SHOW_BC
 	printf("\nnbc:\n");
@@ -1441,7 +1441,7 @@ ast_gen_value_unpack_func(
 		struct ast_context *ctx, struct stg_module *mod,
 		type_id value_type, size_t descendent)
 {
-	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
+	struct bc_env *bc_env = arena_alloc(&mod->mem, sizeof(struct bc_env));
 	bc_env->vm = ctx->vm;
 	bc_env->store = ctx->vm->instr_store;
 
@@ -1461,8 +1461,8 @@ ast_gen_value_unpack_func(
 	bc_print(bc_env, bc_env->entry_point);
 #endif
 
-	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
-	nbc_compile_from_bc(bc_env->nbc, bc_env);
+	bc_env->nbc = arena_alloc(&mod->mem, sizeof(struct nbc_func));
+	nbc_compile_from_bc(&mod->vm->transient, &mod->mem, bc_env->nbc, bc_env);
 
 #if AST_GEN_SHOW_BC
 	printf("\nunpack nbc:\n");

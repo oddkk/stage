@@ -6,14 +6,24 @@
 #include "module.h"
 #include "base/mod.h"
 
-struct ast_context
-ast_init_context(struct stg_error_context *err, struct atom_table *atom_table, struct vm *vm)
+void
+ast_init_context(
+		struct ast_context *ctx,
+		struct stg_error_context *err,
+		struct vm *vm)
 {
-	struct ast_context ctx;
-	ctx.err = err;
-	ctx.vm = vm;
+	memset(ctx, 0, sizeof(struct ast_context));
+	ctx->err = err;
+	ctx->vm = vm;
+	ctx->mem = &ctx->_mem;
+	arena_init(ctx->mem, &vm->mem);
+}
 
-	return ctx;
+void
+ast_destroy_context(struct ast_context *ctx)
+{
+	arena_destroy(ctx->mem);
+	memset(ctx, 0, sizeof(struct ast_context));
 }
 
 struct ast_node *

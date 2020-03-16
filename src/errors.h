@@ -76,4 +76,7 @@ stg_appendage(struct stg_error_context *, struct stg_location, const char *fmt, 
 void
 print_errors(struct stg_error_context *);
 
+void
+stg_error_destroy(struct stg_error_context *ctx);
+
 #endif

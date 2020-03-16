@@ -138,7 +138,7 @@ type_id
 stg_register_io_type(struct stg_module *mod, type_id res_type)
 {
 	struct stg_io_type_info *info;
-	info = calloc(1, sizeof(struct stg_io_type_info));
+	info = arena_alloc(&mod->mem, sizeof(struct stg_io_type_info));
 
 	struct stg_module *base_mod;
 	base_mod = vm_get_module(mod->vm, mod_atoms(mod, "base"));
@@ -167,12 +167,12 @@ base_init_register_io(struct stg_module *mod)
 
 	{
 		struct object_cons *cons;
-		cons = calloc(1,
+		cons = arena_alloc(&mod->mem,
 				sizeof(struct object_cons));
 
 		cons->num_params = 1;
-		cons->params = calloc(cons->num_params,
-				sizeof(struct object_cons_param));
+		cons->params = arena_allocn(&mod->mem,
+				cons->num_params, sizeof(struct object_cons_param));
 
 		cons->params[0].name = mod_atoms(mod, "T");
 		cons->params[0].type = mod->vm->default_types.type;

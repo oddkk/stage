@@ -126,7 +126,8 @@ struct nbc_func {
 };
 
 void
-nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *);
+nbc_compile_from_bc(struct arena *trans, struct arena *mem,
+		struct nbc_func *out_func, struct bc_env *env);
 
 void
 nbc_exec(struct vm *vm, struct stg_exec *, struct nbc_func *func,

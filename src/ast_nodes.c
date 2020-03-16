@@ -41,14 +41,14 @@ ast_init_node_func(struct ast_context *ctx,
 		struct ast_node *return_type, struct ast_node *body)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	memset(node, 0, sizeof(struct ast_node));
 	node->kind = AST_NODE_FUNC;
 	node->loc = loc;
 
-	node->func.params = calloc(sizeof(struct ast_func_param), num_params);
+	node->func.params = arena_allocn(ctx->mem, sizeof(struct ast_func_param), num_params);
 	node->func.num_params = num_params;
 	node->func.body = body;
 	node->func.return_type = return_type;
@@ -68,14 +68,14 @@ ast_init_node_func_native(struct ast_context *ctx,
 		struct ast_node *return_type, struct string native_func_name)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	memset(node, 0, sizeof(struct ast_node));
 	node->kind = AST_NODE_FUNC_NATIVE;
 	node->loc = loc;
 
-	node->func.params = calloc(sizeof(struct ast_func_param), num_params);
+	node->func.params = arena_allocn(ctx->mem, sizeof(struct ast_func_param), num_params);
 	node->func.num_params = num_params;
 	node->func.native.name = native_func_name;
 	node->func.return_type = return_type;
@@ -95,7 +95,7 @@ ast_init_node_templ(
 		struct ast_node *body)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(node);
@@ -117,7 +117,7 @@ ast_init_node_call(
 		struct ast_func_arg *args, size_t num_args)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(
@@ -130,7 +130,7 @@ ast_init_node_call(
 	node->loc = loc;
 
 	node->call.func = func;
-	node->call.args = calloc(sizeof(struct ast_func_arg), num_args);
+	node->call.args = arena_allocn(ctx->mem, sizeof(struct ast_func_arg), num_args);
 	memcpy(node->call.args, args, sizeof(struct ast_func_arg) * num_args);
 	node->call.num_args = num_args;
 	node->call.cons = NULL;
@@ -146,7 +146,7 @@ ast_init_node_cons(
 		struct ast_func_arg *args, size_t num_args)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(
@@ -159,7 +159,7 @@ ast_init_node_cons(
 	node->loc = loc;
 
 	node->call.func = func;
-	node->call.args = calloc(sizeof(struct ast_func_arg), num_args);
+	node->call.args = arena_allocn(ctx->mem, sizeof(struct ast_func_arg), num_args);
 	memcpy(node->call.args, args, sizeof(struct ast_func_arg) * num_args);
 	node->call.num_args = num_args;
 	node->call.cons = NULL;
@@ -175,7 +175,7 @@ ast_init_node_inst(
 		struct ast_func_arg *args, size_t num_args)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(
@@ -188,7 +188,7 @@ ast_init_node_inst(
 	node->loc = loc;
 
 	node->call.func = func;
-	node->call.args = calloc(sizeof(struct ast_func_arg), num_args);
+	node->call.args = arena_allocn(ctx->mem, sizeof(struct ast_func_arg), num_args);
 	memcpy(node->call.args, args, sizeof(struct ast_func_arg) * num_args);
 	node->call.num_args = num_args;
 	node->call.cons = NULL;
@@ -204,7 +204,7 @@ ast_init_node_func_type(
 		struct ast_node *ret_type)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(
@@ -216,7 +216,7 @@ ast_init_node_func_type(
 	node->kind = AST_NODE_FUNC_TYPE;
 	node->loc = loc;
 
-	node->func_type.param_types = calloc(sizeof(struct ast_node *), num_params);
+	node->func_type.param_types = arena_allocn(ctx->mem, sizeof(struct ast_node *), num_params);
 	memcpy(node->func_type.param_types, param_types, sizeof(struct ast_node *) * num_params);
 	node->func_type.num_params = num_params;
 
@@ -232,7 +232,7 @@ ast_init_node_access(
 		struct ast_node *target, struct atom *name)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(node);
@@ -255,7 +255,7 @@ ast_init_node_lit(
 		struct object lit)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(node);
@@ -276,7 +276,7 @@ ast_init_node_lit_native(
 		struct atom *name)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(node);
@@ -297,7 +297,7 @@ ast_init_node_lookup(
 		struct atom *name)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(node);
@@ -319,7 +319,7 @@ ast_init_node_mod(
 		struct atom *name)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(node);
@@ -341,7 +341,7 @@ ast_init_node_match(
 		struct ast_match_case *cases, size_t num_cases)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(node);
@@ -352,7 +352,7 @@ ast_init_node_match(
 	node->match.value = value;
 
 	node->match.num_cases = num_cases;
-	node->match.cases = calloc(
+	node->match.cases = arena_allocn(ctx->mem,
 			sizeof(struct ast_match_case), num_cases);
 	memcpy(node->match.cases, cases,
 			sizeof(struct ast_match_case) * num_cases);
@@ -366,7 +366,7 @@ ast_init_node_wildcard(
 		struct ast_node *node, struct stg_location loc)
 {
 	if (node == AST_NODE_NEW) {
-		node = calloc(sizeof(struct ast_node), 1);
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	assert(node);
@@ -418,7 +418,7 @@ ast_init_node_composite(
 		struct ast_node *target, struct stg_location loc)
 {
 	if (target == AST_NODE_NEW) {
-		target = calloc(sizeof(struct ast_node), 1);
+		target = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	memset(target, 0, sizeof(struct ast_node));
@@ -536,7 +536,7 @@ ast_init_node_variant(
 		struct ast_node *target, struct stg_location loc)
 {
 	if (target == AST_NODE_NEW) {
-		target = calloc(sizeof(struct ast_node), 1);
+		target = arena_alloc(ctx->mem, sizeof(struct ast_node));
 	}
 
 	memset(target, 0, sizeof(struct ast_node));
@@ -720,15 +720,15 @@ ast_node_find_named_dependencies(
 }
 
 struct ast_node *
-ast_node_deep_copy(struct ast_node *src)
+ast_node_deep_copy(struct arena *mem, struct ast_node *src)
 {
 	struct ast_node *result;
-	result = calloc(1, sizeof(struct ast_node));
+	result = arena_alloc(mem, sizeof(struct ast_node));
 
 #define DCP_NODE(name)                               \
 	do {                                             \
 	result->name =                                   \
-		ast_node_deep_copy(src->name);               \
+		ast_node_deep_copy(mem, src->name);               \
 	} while (0);
 
 #define DCP_LIT(name)                                \
@@ -738,7 +738,7 @@ ast_node_deep_copy(struct ast_node *src)
 	do {                                             \
 		DCP_LIT(count_name);                         \
 		if ((result->count_name) > 0) {              \
-			result->array_name = calloc(             \
+			result->array_name = arena_allocn(mem,   \
 					result->count_name,              \
 					sizeof(*result->array_name));    \
 		} else {                                     \
@@ -957,12 +957,14 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 			return 0;
 		}
 	}
+	struct arena *trans = &mod->vm->transient;
+	arena_mark cp = arena_checkpoint(trans);
 
 	// TODO: Do we have to copy the node? We would have to reset the type of
 	// the nodes if not.
 	struct ast_node *templ_node;
 	templ_node =
-		ast_node_deep_copy(info->templ_node);
+		ast_node_deep_copy(trans, info->templ_node);
 
 	size_t num_body_deps = info->num_deps + info->num_params;
 	struct ast_typecheck_dep body_deps[num_body_deps];
@@ -1054,8 +1056,9 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	bc.last = bc.last->next;
 
 	bc_env.entry_point = bc.first;
+
 	struct nbc_func nbc_func = {0};
-	nbc_compile_from_bc(&nbc_func, &bc_env);
+	nbc_compile_from_bc(trans, trans, &nbc_func, &bc_env);
 
 	struct type *res_type;
 	res_type = vm_get_type(ctx->vm, body->type);
@@ -1078,9 +1081,10 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 
 	struct ast_templ_cons_inst inst = {0};
 
-	inst.params = calloc(
-			info->num_params,
-			sizeof(struct object));
+	// We alloc the parameters to the module's memory context because the
+	// instance is stored/cached on the template info.
+	inst.params = arena_allocn(&info->mod->mem,
+			info->num_params, sizeof(struct object));
 
 	for (size_t i = 0; i < info->num_params; i++) {
 		inst.params[i] =
@@ -1094,6 +1098,8 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 			info->insts,
 			info->num_insts,
 			&inst);
+
+	arena_reset(trans, cp);
 
 	*out_obj = res;
 
@@ -1233,28 +1239,30 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 			templ_node->templ.pattern.node->kind == AST_NODE_COMPOSITE ||
 			templ_node->templ.pattern.node->kind == AST_NODE_VARIANT);
 
+	struct arena *mem = &mod->mem;
+
 	struct object_cons *def;
-	def = calloc(1, sizeof(struct object_cons));
+	def = arena_alloc(mem, sizeof(struct object_cons));
 
 	def->num_params = templ_node->templ.pattern.num_params;
-	def->params = calloc(def->num_params,
-			sizeof(struct object_cons_param));
+	def->params = arena_allocn(mem,
+			def->num_params, sizeof(struct object_cons_param));
 
 	struct ast_templ_cons_info *info;
-	info = calloc(1, sizeof(struct ast_templ_cons_info));
+	info = arena_alloc(mem, sizeof(struct ast_templ_cons_info));
 
 	info->mod = mod;
 
 	info->num_params = templ_node->templ.pattern.num_params;
-	info->params = calloc(def->num_params,
+	info->params = arena_allocn(mem, def->num_params,
 			sizeof(struct ast_templ_cons_param));
 
 	info->num_deps = num_inner_deps;
-	info->deps = calloc(info->num_deps, sizeof(struct ast_typecheck_dep));
+	info->deps = arena_allocn(mem, info->num_deps, sizeof(struct ast_typecheck_dep));
 	memcpy(info->deps, inner_deps, sizeof(struct ast_typecheck_dep) * info->num_deps);
 
 	info->templ_node =
-		ast_node_deep_copy(templ_node);
+		ast_node_deep_copy(mem, templ_node);
 
 	// Partially typecheck to determine the type of the template's parameters.
 	struct ast_env inner_env = {0};

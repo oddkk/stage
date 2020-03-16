@@ -3676,6 +3676,19 @@ ast_slot_try_solve(
 	}
 #endif
 
+	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots+ctx->num_extra_slots; slot_id++) {
+		struct ast_slot_resolve *slot;
+		slot = ast_get_real_slot(ctx, slot_id);
+
+		if (slot->members) {
+			free(slot->members);
+		}
+
+		if (slot->params) {
+			free(slot->params);
+		}
+	}
+
 	ast_env_free(ctx->env);
 	free(ctx->extra_slots);
 

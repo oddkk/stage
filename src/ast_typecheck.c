@@ -1237,6 +1237,7 @@ ast_node_typecheck(struct ast_context *ctx,
 #if AST_DEBUG_SLOT_SOLVE_GRAPH
 		printf(" " TC(TC_RED, "failed") " (solve)\n");
 #endif
+		ast_env_free(&env);
 		return -1;
 	}
 
@@ -1249,6 +1250,7 @@ ast_node_typecheck(struct ast_context *ctx,
 #if AST_DEBUG_SLOT_SOLVE_GRAPH
 		printf(TC(TC_RED, " failed") " (resolve)\n");
 #endif
+		ast_env_free(&env);
 		return -1;
 	}
 

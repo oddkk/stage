@@ -46,6 +46,7 @@ struct stg_module {
 
 	struct objstore store;
 	struct vm *vm;
+	struct arena mem;
 
 	struct object instance;
 

@@ -73,6 +73,7 @@ struct arena {
 int arena_init(struct arena *arena, struct stg_memory *mem);
 void arena_destroy(struct arena *arena);
 void *arena_alloc(struct arena *arena, size_t length);
+void *arena_allocn(struct arena *arena, size_t nmemb, size_t size);
 void *arena_alloc_no_zero(struct arena *arena, size_t length);
 
 struct _arena_mark {

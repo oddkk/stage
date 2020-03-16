@@ -226,6 +226,7 @@ vm_request_module(struct vm *vm,
 	mod = calloc(1, sizeof(struct stg_module));
 
 	mod->vm = vm;
+	mod_arena(mod, &mod->mem);
 
 	mod->name = target;
 	mod->src_dir = src_dir;

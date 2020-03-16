@@ -373,7 +373,10 @@ msg_system_compile_entrypoint(
 #endif
 
 	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
-	nbc_compile_from_bc(bc_env->nbc, bc_env);
+	// TODO: Figure out what arena should contain the byte code.
+	nbc_compile_from_bc(
+			&sys->vm->transient,
+			&sys->mod->mem, bc_env->nbc, bc_env);
 
 #if MSG_GEN_SHOW_BC
 	printf("\nunpack nbc:\n");

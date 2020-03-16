@@ -248,3 +248,9 @@ print_errors(struct stg_error_context *err)
 	}
 }
 
+void
+stg_error_destroy(struct stg_error_context *ctx)
+{
+	free(ctx->msgs);
+	free(ctx->file_names);
+}

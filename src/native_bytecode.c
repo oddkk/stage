@@ -44,7 +44,8 @@ nbc_instr_push_arg(struct nbc_stack_var_info *vars, bc_var var)
 }
 
 void
-nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
+nbc_compile_from_bc(struct arena *trans, struct arena *mem,
+		struct nbc_func *out_func, struct bc_env *env)
 {
 	struct bc_instr *ip = env->entry_point;
 
@@ -483,6 +484,14 @@ nbc_compile_from_bc(struct nbc_func *out_func, struct bc_env *env)
 				break;
 		}
 	}
+
+	struct nbc_instr *instr_dest;
+	instr_dest = arena_allocn(mem,
+			out_func->num_instr, sizeof(struct nbc_instr));
+	memcpy(instr_dest, out_func->instrs,
+			out_func->num_instr * sizeof(struct nbc_instr));
+	free(out_func->instrs);
+	out_func->instrs = instr_dest;
 
 	free(jmp_instrs);
 }

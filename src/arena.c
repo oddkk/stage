@@ -289,6 +289,18 @@ void *arena_alloc(struct arena *arena, size_t length)
 	return result;
 }
 
+void *arena_allocn(struct arena *arena, size_t nmemb, size_t size)
+{
+	size_t res;
+	// TODO: Make this cross platform and cross compiler compliant.
+	if (__builtin_mul_overflow(nmemb, size, &res)) {
+		panic("Attempted to allocate memory with a size that exeedes 64-bit integers.");
+		return NULL;
+	}
+
+	return arena_alloc(arena, res);
+}
+
 void *arena_alloc_no_zero(struct arena *arena, size_t length)
 {
 	assert((arena->flags & ARENA_RESERVED) == 0);

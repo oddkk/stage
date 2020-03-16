@@ -197,10 +197,15 @@ struct vm;
 struct ast_context {
 	struct stg_error_context *err;
 	struct vm *vm;
+	struct arena *mem;
+
+	struct arena _mem;
 };
 
-struct ast_context
-ast_init_context(struct stg_error_context *, struct atom_table *, struct vm *);
+void
+ast_init_context(struct ast_context *ctx, struct stg_error_context *, struct vm *);
+void
+ast_destroy_context(struct ast_context *ctx);
 
 ast_slot_id
 ast_slot_alloc(struct ast_env *env);
@@ -941,7 +946,7 @@ ast_find_dep(struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_name_ref ref);
 
 struct ast_node *
-ast_node_deep_copy(struct ast_node *src);
+ast_node_deep_copy(struct arena *, struct ast_node *src);
 
 struct object_cons *
 ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,

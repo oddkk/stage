@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
 			vm_atoms(&vm, "main"), args.project_path);
 
 	struct ast_context ctx;
-	ctx = ast_init_context(NULL, &vm.atom_table, &vm);
+	ast_init_context(&ctx, NULL, &vm);
 
 	struct string module_locations[] = {
 		STR("./modules/"),
@@ -102,6 +102,8 @@ int main(int argc, char *argv[])
 	if (err) {
 		return -1;
 	}
+
+	ast_destroy_context(&ctx);
 
 	vm_start(&vm);
 	vm_destroy(&vm);
