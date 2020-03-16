@@ -226,7 +226,6 @@ vm_request_module(struct vm *vm,
 	mod = calloc(1, sizeof(struct stg_module));
 
 	mod->vm = vm;
-	mod->atom_table = &vm->atom_table;
 
 	mod->name = target;
 	mod->src_dir = src_dir;

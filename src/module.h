@@ -45,7 +45,6 @@ struct stg_module {
 	size_t num_dependencies;
 
 	struct objstore store;
-	struct atom_table *atom_table;
 	struct vm *vm;
 
 	struct object instance;

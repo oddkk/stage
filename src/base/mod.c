@@ -27,7 +27,7 @@ stg_base_bootstrap_pre_compile(struct stg_module *mod) {
 		base->name = STR("unset");
 
 		struct type unset = {0};
-		unset.name = atom_create(mod->atom_table, STR("unset"));
+		unset.name = mod_atoms(mod, "unset");
 		unset.base = base;
 		unset.size = 0;
 
@@ -41,7 +41,7 @@ stg_base_bootstrap_pre_compile(struct stg_module *mod) {
 		base->name = STR("none");
 
 		struct type none = {0};
-		none.name = atom_create(mod->atom_table, STR("none"));
+		none.name = mod_atoms(mod, "none");
 		none.base = base;
 		none.size = 0;
 
@@ -54,7 +54,7 @@ stg_base_bootstrap_pre_compile(struct stg_module *mod) {
 		base->name = STR("Unit");
 
 		struct type unit = {0};
-		unit.name = atom_create(mod->atom_table, STR("unit"));
+		unit.name = mod_atoms(mod, "unit");
 		unit.base = base;
 		unit.size = 0;
 		unit.ffi_type = &ffi_type_void;
