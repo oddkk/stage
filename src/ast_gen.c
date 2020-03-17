@@ -818,11 +818,21 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 										append_bc_instr(&result, instr);
 									} else {
 										for (size_t i = 0; i < act->expr.num_deps; i++) {
-											assert(act->expr.deps[i] < num_desc_members);
-											assert(member_vars[act->expr.deps[i]] != BC_VAR_NEW);
-											append_bc_instr(&result,
-													bc_gen_push_arg(
-														bc_env, member_vars[act->expr.deps[i]]));
+											switch (act->expr.deps[i].kind) {
+												case OBJECT_INST_DEP_MEMBER:
+													{
+														assert(act->expr.deps[i].member < num_desc_members);
+														assert(member_vars[act->expr.deps[i].member] != BC_VAR_NEW);
+														append_bc_instr(&result,
+																bc_gen_push_arg(
+																	bc_env, member_vars[act->expr.deps[i].member]));
+													}
+													break;
+
+												case OBJECT_INST_DEP_INIT_EXPR:
+													panic("TODO: Init exprs");
+													break;
+											}
 										}
 
 										struct bc_instr *call_instr;

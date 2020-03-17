@@ -750,8 +750,8 @@ struct obj_inst_member {
 struct obj_inst_expr {
 	type_id type;
 
-	size_t *mbr_deps;
-	size_t num_mbr_deps;
+	struct object_inst_dep *deps;
+	size_t num_deps;
 
 	obj_member_id first_target;
 
@@ -1015,26 +1015,36 @@ obj_inst_expr_emit_actions(
 	// expression, and ensure all binds for all dependencies have been emitted.
 	// The packs are issued here and not together with the binds because the
 	// pack might depend on expressions that have not yet been emitted.
-	for (size_t i = 0; i < expr->num_mbr_deps; i++) {
-		obj_member_id dep_id = expr->mbr_deps[i];
-		struct obj_inst_member *dep;
-		dep = get_member(ctx, dep_id);
+	for (size_t i = 0; i < expr->num_deps; i++) {
+		struct object_inst_dep dep = expr->deps[i];
+		switch (dep.kind) {
+			case OBJECT_INST_DEP_MEMBER:
+				{
+					struct obj_inst_member *mbr;
+					mbr = get_member(ctx, dep.member);
 
-		if (dep->num_descendants > 0 && !dep->action_emitted) {
-			int err;
-			err = obj_inst_try_emit_pack(ctx, dep_id);
-			assert(!err);
+					if (mbr->num_descendants > 0 && !mbr->action_emitted) {
+						int err;
+						err = obj_inst_try_emit_pack(ctx, dep.member);
+						assert(!err);
+					}
+
+					assert(mbr->action_emitted);
+				}
+				break;
+
+			case OBJECT_INST_DEP_INIT_EXPR:
+				panic("TODO: init expressions");
+				break;
 		}
-
-		assert(dep->action_emitted);
 	}
 
 	{
 		struct object_inst_action expr_act = {0};
 		expr_act.op = OBJ_INST_EXPR;
 		expr_act.expr.id = expr_id;
-		expr_act.expr.deps = expr->mbr_deps;
-		expr_act.expr.num_deps = expr->num_mbr_deps;
+		expr_act.expr.deps = expr->deps;
+		expr_act.expr.num_deps = expr->num_deps;
 		obj_inst_emit_action(ctx, expr_act);
 #if OBJ_DEBUG_ACTIONS
 		printf("Emit expr %i\n", expr_id);
@@ -1142,16 +1152,16 @@ object_inst_order(
 
 			assert(ctx->exprs[offset+i].type != TYPE_UNSET);
 
-			ctx->exprs[offset+i].mbr_deps = expr->deps;
-			ctx->exprs[offset+i].num_mbr_deps = expr->num_deps;
+			ctx->exprs[offset+i].deps = expr->deps;
+			ctx->exprs[offset+i].num_deps = expr->num_deps;
 		}
 
 		offset += inst->num_exprs;
 
 		for (size_t i = 0; i < num_extra_exprs; i++) {
 			ctx->exprs[offset+i].type = extra_exprs[i].type;
-			ctx->exprs[offset+i].mbr_deps = extra_exprs[i].deps;
-			ctx->exprs[offset+i].num_mbr_deps = extra_exprs[i].num_deps;
+			ctx->exprs[offset+i].deps = extra_exprs[i].deps;
+			ctx->exprs[offset+i].num_deps = extra_exprs[i].num_deps;
 			ctx->exprs[offset+i].loc = extra_exprs[i].loc;
 		}
 	}
@@ -1255,12 +1265,24 @@ object_inst_order(
 		struct obj_inst_expr *expr;
 		expr = get_expr(ctx, expr_i);
 
-		for (size_t dep_i = 0; dep_i < expr->num_mbr_deps; dep_i++) {
-			ast_member_id dep_id = expr->mbr_deps[dep_i];
-			struct obj_inst_member *dep;
-			dep = get_member(ctx, dep_id);
+		for (size_t dep_i = 0; dep_i < expr->num_deps; dep_i++) {
+			struct object_inst_dep dep = expr->deps[dep_i];
+			switch (dep.kind) {
+				case OBJECT_INST_DEP_MEMBER:
+					{
+						struct obj_inst_member *mbr;
+						mbr = get_member(ctx, dep.member);
 
-			num_total_dependencies += dep->num_descendants+1;
+						num_total_dependencies += mbr->num_descendants+1;
+					}
+					break;
+
+				case OBJECT_INST_DEP_INIT_EXPR:
+					{
+						panic("TODO: Init expression");
+					}
+					break;
+			}
 		}
 	}
 
@@ -1294,45 +1316,55 @@ object_inst_order(
 			deps = &_expr_deps[offset];
 			size_t num_deps = 0;
 
-			for (size_t dep_i = 0; dep_i < expr->num_mbr_deps; dep_i++) {
-				ast_member_id dep_id = expr->mbr_deps[dep_i];
-				struct obj_inst_member *dep;
-				dep = get_member(ctx, dep_id);
+			for (size_t dep_i = 0; dep_i < expr->num_deps; dep_i++) {
+				struct object_inst_dep dep = expr->deps[dep_i];
+				switch (dep.kind) {
 
-				for (size_t desc_i = 0; desc_i < dep->num_descendants+1; desc_i++) {
-					ast_member_id desc_id = dep_id + desc_i;
-					struct obj_inst_member *desc;
-					desc = get_member(ctx, desc_id);
+					case OBJECT_INST_DEP_MEMBER:
+						{
+							struct obj_inst_member *mbr;
+							mbr = get_member(ctx, dep.member);
 
-					if (desc->num_descendants > 0) {
-						continue;
-					}
+							for (size_t desc_i = 0; desc_i < mbr->num_descendants+1; desc_i++) {
+								ast_member_id desc_id = dep.member + desc_i;
+								struct obj_inst_member *desc;
+								desc = get_member(ctx, desc_id);
 
-					struct object_inst_bind *bind;
-					bind = get_bind(ctx, desc->bind);
+								if (desc->num_descendants > 0) {
+									continue;
+								}
 
-					obj_expr_id dep_expr_id;
-					dep_expr_id = bind->expr_id;
+								struct object_inst_bind *bind;
+								bind = get_bind(ctx, desc->bind);
 
-					bool found = false;
-					for (size_t i = 0; i < num_deps; i++) {
-						if (deps[i] == dep_expr_id) {
-							found = true;
-							break;
+								obj_expr_id dep_expr_id;
+								dep_expr_id = bind->expr_id;
+
+								bool found = false;
+								for (size_t i = 0; i < num_deps; i++) {
+									if (deps[i] == dep_expr_id) {
+										found = true;
+										break;
+									}
+								}
+
+								if (!found) {
+									assert(offset + num_deps + 1 <= num_total_dependencies);
+									deps[num_deps] = dep_expr_id;
+									num_deps += 1;
+
+									struct obj_inst_expr *dep_expr;
+									dep_expr = get_expr(ctx, dep_expr_id);
+
+									dep_expr->exp_outgoing_expr_deps += 1;
+									total_outgoing_dependencies += 1;
+								}
+							}
 						}
-					}
+						break;
 
-					if (!found) {
-						assert(offset + num_deps + 1 <= num_total_dependencies);
-						deps[num_deps] = dep_expr_id;
-						num_deps += 1;
-
-						struct obj_inst_expr *dep_expr;
-						dep_expr = get_expr(ctx, dep_expr_id);
-
-						dep_expr->exp_outgoing_expr_deps += 1;
-						total_outgoing_dependencies += 1;
-					}
+					case OBJECT_INST_DEP_INIT_EXPR:
+						break;
 				}
 			}
 

@@ -276,6 +276,19 @@ struct object_inst_bind {
 	struct stg_location loc;
 };
 
+enum object_inst_dep_kind {
+	OBJECT_INST_DEP_MEMBER,
+	OBJECT_INST_DEP_INIT_EXPR,
+};
+
+struct object_inst_dep {
+	enum object_inst_dep_kind kind;
+	union {
+		size_t member;
+		size_t init_expr;
+	};
+};
+
 struct object_inst_expr {
 	bool constant;
 	union {
@@ -284,7 +297,7 @@ struct object_inst_expr {
 	};
 
 	// A list of members that must be evaluated before this expression.
-	size_t *deps;
+	struct object_inst_dep *deps;
 	size_t num_deps;
 
 	struct stg_location loc;
@@ -293,6 +306,8 @@ struct object_inst_expr {
 struct object_inst {
 	struct object_cons *cons;
 	type_id type;
+
+	bool init_monad;
 
 	struct object_inst_bind *binds;
 	size_t num_binds;
@@ -386,7 +401,7 @@ struct object_inst_action {
 		struct {
 			int id;
 
-			size_t *deps;
+			struct object_inst_dep *deps;
 			size_t num_deps;
 		} expr;
 
@@ -405,7 +420,7 @@ struct object_inst_action {
 struct object_inst_extra_expr {
 	type_id type;
 
-	size_t *deps;
+	struct object_inst_dep *deps;
 	size_t num_deps;
 
 	struct stg_location loc;

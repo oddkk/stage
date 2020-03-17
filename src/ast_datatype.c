@@ -1444,8 +1444,12 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 
 			ast_member_id *deps;
 			deps = calloc(expr->num_deps, sizeof(ast_member_id));
+			size_t num_deps = 0;
 			for (size_t j = 0; j < expr->num_deps; j++) {
-				deps[j] = parent->first_child + expr->deps[j];
+				if (expr->deps[j].kind == OBJECT_INST_DEP_MEMBER) {
+					deps[num_deps] = parent->first_child + expr->deps[j].member;
+					num_deps += 1;
+				}
 			}
 
 			ast_member_id targets[num_binds];
