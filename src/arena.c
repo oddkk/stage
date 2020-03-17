@@ -421,6 +421,8 @@ void *arena_reset_and_keep(struct arena *arena, arena_mark mark,
 		arena->head_page = new_page;
 	}
 
+	arena->head_page_head = new_page_head;
+
 	return result;
 }
 
