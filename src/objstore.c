@@ -390,13 +390,21 @@ object_cons_find_param_unpack_id(
 ssize_t
 object_cons_simple_lookup(
 		struct vm *vm,
-		struct object_cons *cons,
+		type_id tid,
 		struct string lookup)
 {
-	struct object_cons *current = cons;
 	size_t offset = 1;
 	struct string expr = lookup;
 	struct string part = {0};
+
+	struct type *type = vm_get_type(vm, tid);
+
+	if (!type->obj_inst) {
+		return -1;
+	}
+
+	struct object_cons *current;
+	current = type->obj_inst->cons;
 
 	while (string_split(expr, &part, &expr, '.')) {
 		struct atom *part_name;
@@ -409,7 +417,7 @@ object_cons_simple_lookup(
 			} else {
 				struct type *mbr_type;
 				mbr_type = vm_get_type(
-						vm, cons->params[i].type);
+						vm, current->params[i].type);
 				if (mbr_type->obj_inst) {
 					offset +=
 						object_cons_num_descendants(

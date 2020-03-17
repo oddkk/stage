@@ -335,7 +335,7 @@ object_cons_find_param_unpack_id(
 ssize_t
 object_cons_simple_lookup(
 		struct vm *,
-		struct object_cons *cons,
+		type_id type,
 		struct string lookup);
 
 size_t
