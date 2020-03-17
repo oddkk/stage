@@ -29,6 +29,8 @@ ast_name_ref_equals(struct ast_name_ref lhs, struct ast_name_ref rhs)
 		case AST_NAME_REF_USE:
 			return lhs.use.id == rhs.use.id &&
 				lhs.use.param == rhs.use.param;
+		case AST_NAME_REF_INIT_EXPR:
+			return lhs.init_expr == rhs.init_expr;
 	}
 
 	return false;
@@ -762,6 +764,33 @@ ast_node_constraints(
 		{
 			ast_slot_id slot;
 			slot = ast_slot_alloc(env);
+			node->typecheck_slot = slot;
+		}
+		break;
+
+		case AST_NODE_INIT_EXPR:
+		{
+			struct ast_name_ref ref = {0};
+			ref.kind = AST_NAME_REF_INIT_EXPR;
+			ref.init_expr = node->init_expr.id;
+
+			struct ast_typecheck_dep *res;
+			res = ast_find_dep(deps, num_deps, ref);
+			assert(res && !res->lookup_failed);
+
+			ast_slot_id slot, type_slot;
+			slot = ast_slot_alloc(env);
+
+			type_slot = ast_slot_alloc(env);
+
+			ast_slot_require_type(
+					env, node->loc, AST_CONSTR_SRC_LOOKUP,
+					 slot, type_slot);
+
+			ast_slot_require_type(
+					env, node->loc, AST_CONSTR_SRC_LOOKUP,
+					 res->value, type_slot);
+
 			node->typecheck_slot = slot;
 		}
 		break;

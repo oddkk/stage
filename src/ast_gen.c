@@ -33,6 +33,20 @@ append_bc_instrs(struct ast_gen_bc_result *res, struct ast_gen_bc_result instrs)
 	res->last = instrs.last;
 }
 
+static type_id
+ast_gen_info_get_init_expr_type(struct ast_gen_info *info, ast_init_expr_id id)
+{
+	for (size_t i = 0; i < info->num_init_exprs; i++) {
+		if (info->init_exprs[i].id == id) {
+			return info->init_exprs[i].type;
+		}
+	}
+
+	panic("Missing init expression id.");
+	return TYPE_UNSET;
+			
+}
+
 static struct ast_typecheck_closure
 ast_gen_resolve_closure(struct bc_env *bc_env,
 		struct stg_module *mod, struct ast_gen_info *info, struct ast_name_ref ref)
@@ -61,6 +75,18 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 
 			panic("Member not found when resolving closure.");
 			return (struct ast_typecheck_closure){0};
+
+		case AST_NAME_REF_INIT_EXPR:
+			{
+				assert(ref.init_expr < info->num_init_exprs);
+
+				struct ast_typecheck_closure res = {0};
+				res.req = AST_NAME_DEP_REQUIRE_TYPE;
+				res.type = ast_gen_info_get_init_expr_type(info, ref.init_expr);
+
+				return res;
+			}
+			break;
 
 		case AST_NAME_REF_PARAM:
 			{
@@ -172,6 +198,14 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 				}
 			}
 			break;
+
+		case AST_NAME_REF_INIT_EXPR:
+			assert(ref.init_expr < info->num_init_exprs);
+			result.first = result.last = NULL;
+			result.out_var = bc_alloc_param(bc_env,
+					info->num_members+ref.init_expr,
+					ast_gen_info_get_init_expr_type(info, ref.init_expr));
+			return result;
 
 		case AST_NAME_REF_PARAM:
 			result.first = result.last = NULL;
@@ -1048,6 +1082,17 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					node->lookup.ref, node->loc, node->type);
 			break;
 
+		case AST_NODE_INIT_EXPR:
+			{
+				struct ast_name_ref ref = {0};
+				ref.kind = AST_NAME_REF_INIT_EXPR;
+				ref.init_expr = node->init_expr.id;
+
+				return ast_name_ref_gen_bytecode(
+						ctx, mod, info, bc_env,
+						ref, node->loc, node->type);
+			}
+
 		case AST_NODE_LIT:
 			{
 				struct bc_instr *lit_instr;
@@ -1330,6 +1375,7 @@ ast_composite_bind_gen_bytecode(
 		ast_member_id *members, type_id *member_types,
 		struct object *const_member_values, size_t num_members,
 		struct object *const_use_values, size_t num_use,
+		struct ast_gen_init_expr *init_exprs, size_t num_init_exprs,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr)
 {
 	struct bc_env *bc_env = arena_alloc(&mod->mem, sizeof(struct bc_env));
@@ -1348,6 +1394,8 @@ ast_composite_bind_gen_bytecode(
 	info.num_members = num_members;
 	info.const_use_values = const_use_values;
 	info.num_use = num_use;
+	info.init_exprs = init_exprs;
+	info.num_init_exprs = num_init_exprs;
 
 	info.closures = closures;
 	info.num_closures = num_closures;

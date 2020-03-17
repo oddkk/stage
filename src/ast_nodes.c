@@ -26,6 +26,7 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_MOD:			return "MOD";
 		case AST_NODE_MATCH:		return "MATCH";
 		case AST_NODE_WILDCARD:		return "WILDCARD";
+		case AST_NODE_INIT_EXPR:	return "INIT_EXPR";
 
 		case AST_NODE_COMPOSITE:	return "COMPOSITE";
 		case AST_NODE_VARIANT:		return "VARIANT";
@@ -378,6 +379,26 @@ ast_init_node_wildcard(
 	return node;
 }
 
+struct ast_node *
+ast_init_node_init_expr(
+		struct ast_context *ctx,
+		struct ast_node *node, struct stg_location loc,
+		ast_init_expr_id id)
+{
+	if (node == AST_NODE_NEW) {
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
+	}
+
+	assert(node);
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_INIT_EXPR;
+	node->loc = loc;
+	node->init_expr.id = id;
+
+	return node;
+}
+
 void
 ast_pattern_register_param(
 		struct ast_context *ctx,
@@ -508,6 +529,19 @@ ast_node_composite_add_free_expr(
 	dlist_append(
 			target->composite.free_exprs,
 			target->composite.num_free_exprs,
+			&expr);
+}
+
+ast_init_expr_id
+ast_node_composite_add_init_expr(
+		struct ast_context *ctx,
+		struct ast_node *target, struct ast_node *expr)
+{
+	assert(target && expr);
+
+	return dlist_append(
+			target->composite.init_exprs,
+			target->composite.num_init_exprs,
 			&expr);
 }
 
@@ -648,6 +682,23 @@ ast_node_find_named_dependencies(
 		case AST_NODE_LOOKUP:
 			err += ast_node_find_named_dependencies_add(
 					node->lookup.ref, req, out_refs, out_num_refs);
+			break;
+
+		case AST_NODE_INIT_EXPR:
+			{
+				struct ast_name_ref ref = {0};
+				ref.kind = AST_NAME_REF_INIT_EXPR;
+				ref.init_expr = node->init_expr.id;
+
+				// TODO: Should this cause an error?
+				if (req == AST_NAME_DEP_REQUIRE_VALUE) {
+					printf("Can not require value for init_expr");
+					err += 1;
+				}
+
+				err += ast_node_find_named_dependencies_add(
+						ref, req, out_refs, out_num_refs);
+			}
 			break;
 
 		case AST_NODE_FUNC:
@@ -856,6 +907,10 @@ ast_node_deep_copy(struct arena *mem, struct ast_node *src)
 		break;
 
 	case AST_NODE_WILDCARD:
+		break;
+
+	case AST_NODE_INIT_EXPR:
+		DCP_LIT(init_expr.id);
 		break;
 
 	case AST_NODE_COMPOSITE:

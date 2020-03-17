@@ -40,6 +40,10 @@ ast_print_name_ref(struct ast_name_ref ref)
 		case AST_NAME_REF_USE:
 			printf("use %i[%i]", ref.use.id, ref.use.param);
 			break;
+
+		case AST_NAME_REF_INIT_EXPR:
+			printf("init expr %i", ref.init_expr);
+			break;
 	}
 }
 
@@ -277,6 +281,12 @@ ast_print_internal(struct ast_context *ctx,
 		case AST_NODE_WILDCARD:
 			print_indent(depth);
 			printf("wildcard\n");
+			break;
+
+		case AST_NODE_INIT_EXPR:
+			print_indent(depth);
+			printf("init expr %i\n", node->init_expr.id);
+			break;
 	}
 }
 
@@ -402,6 +412,10 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 
 		case AST_NODE_WILDCARD:
 			printf("_");
+			break;
+
+		case AST_NODE_INIT_EXPR:
+			printf("!%i", node->init_expr.id);
 			break;
 
 		case AST_NODE_COMPOSITE:

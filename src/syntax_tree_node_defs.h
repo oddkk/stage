@@ -166,6 +166,10 @@ ST_NODE(MATCH_CASE, struct {
 	struct st_node *expr;
 })
 
+ST_NODE(INIT_EXPR, struct {
+	struct st_node *expr;
+})
+
 ST_NODE(NUM_LIT, int64_t)
 
 ST_NODE(STR_LIT, struct string)

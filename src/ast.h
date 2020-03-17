@@ -14,6 +14,7 @@ typedef int ast_member_id;
 typedef int ast_param_id;
 typedef int ast_closure_id;
 typedef int ast_use_id;
+typedef int ast_init_expr_id;
 
 enum ast_name_ref_kind {
 	AST_NAME_REF_NOT_FOUND = 0,
@@ -22,6 +23,7 @@ enum ast_name_ref_kind {
 	AST_NAME_REF_CLOSURE,
 	AST_NAME_REF_TEMPL,
 	AST_NAME_REF_USE,
+	AST_NAME_REF_INIT_EXPR,
 };
 
 struct ast_name_ref {
@@ -35,6 +37,7 @@ struct ast_name_ref {
 			ast_use_id   id;
 			ast_param_id param;
 		} use;
+		ast_init_expr_id init_expr;
 	};
 };
 
@@ -403,6 +406,7 @@ enum ast_node_kind {
 	AST_NODE_MOD,
 	AST_NODE_MATCH,
 	AST_NODE_WILDCARD,
+	AST_NODE_INIT_EXPR,
 
 	// Datatype declarations
 	AST_NODE_COMPOSITE,
@@ -570,6 +574,10 @@ struct ast_node {
 		} lookup;
 
 		struct {
+			ast_init_expr_id id;
+		} init_expr;
+
+		struct {
 			struct atom *name;
 		} mod;
 
@@ -589,6 +597,9 @@ struct ast_node {
 
 			struct ast_node **free_exprs;
 			size_t num_free_exprs;
+
+			struct ast_node **init_exprs;
+			size_t num_init_exprs;
 
 			struct ast_datatype_use *uses;
 			size_t num_uses;
@@ -678,6 +689,8 @@ ast_node_name(enum ast_node_kind);
 			break;																\
 		case AST_NODE_WILDCARD:													\
 			break;																\
+		case AST_NODE_INIT_EXPR:												\
+			break;																\
 		case AST_NODE_COMPOSITE:												\
 			if (visit_composite_body) {											\
 				for (size_t i = 0; i < (node)->composite.num_members; i++) {	\
@@ -689,8 +702,11 @@ ast_node_name(enum ast_node_kind);
 					VISIT_NODE((node)->composite.binds[i].target);				\
 					VISIT_NODE((node)->composite.binds[i].value);				\
 				}																\
-				for (size_t i = 0; i < (node)->composite.num_binds; i++) {		\
+				for (size_t i = 0; i < (node)->composite.num_free_exprs; i++) { \
 					VISIT_NODE((node)->composite.free_exprs[i]);				\
+				}																\
+				for (size_t i = 0; i < (node)->composite.num_init_exprs; i++) { \
+					VISIT_NODE((node)->composite.init_exprs[i]);				\
 				}																\
 			}																	\
 			break;																\
@@ -795,6 +811,12 @@ ast_init_node_wildcard(
 		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location);
 
+struct ast_node *
+ast_init_node_init_expr(
+		struct ast_context *ctx,
+		struct ast_node *target, struct stg_location,
+		ast_init_expr_id);
+
 void
 ast_pattern_register_param(
 		struct ast_context *ctx,
@@ -828,6 +850,11 @@ ast_node_composite_tag_bind_erroneous(
 
 void
 ast_node_composite_add_free_expr(
+		struct ast_context *ctx,
+		struct ast_node *target, struct ast_node *expr);
+
+ast_init_expr_id
+ast_node_composite_add_init_expr(
 		struct ast_context *ctx,
 		struct ast_node *target, struct ast_node *expr);
 
@@ -968,11 +995,20 @@ struct ast_gen_bc_result {
 	int err;
 };
 
+struct ast_gen_init_expr {
+	ast_init_expr_id id;
+	type_id type;
+};
+
 struct ast_gen_info {
 	ast_member_id *members;
 	type_id *member_types;
 	struct object *const_member_values;
 	size_t num_members;
+
+	// Init exprs will be passed as parameters after members, starting at num_members.
+	struct ast_gen_init_expr *init_exprs;
+	size_t num_init_exprs;
 
 	struct ast_typecheck_closure *closures;
 	bc_closure *closure_refs;
@@ -1004,6 +1040,7 @@ ast_composite_bind_gen_bytecode(
 		ast_member_id *members, type_id *member_types,
 		struct object *const_member_values, size_t num_members,
 		struct object *const_use_values, size_t num_use,
+		struct ast_gen_init_expr *init_exprs, size_t num_init_exprs,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr);
 
 struct bc_env *

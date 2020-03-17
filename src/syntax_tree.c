@@ -989,6 +989,26 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		return ast_init_node_wildcard(
 				ctx, AST_NODE_NEW, node->loc);
 
+	case ST_NODE_INIT_EXPR:
+		{
+			if (!expr_ctx->init_target) {
+				stg_error(ctx->err, node->loc,
+						"Init expressions can not appear here.");
+				return NULL;
+			}
+
+			struct ast_node *expr;
+			expr = st_node_visit_expr(
+					ctx, mod, expr_ctx, node->INIT_EXPR.expr);
+
+			ast_init_expr_id expr_id;
+			expr_id = ast_node_composite_add_init_expr(
+					ctx, expr_ctx->init_target, expr);
+			return ast_init_node_init_expr(
+					ctx, AST_NODE_NEW, node->loc, expr_id);
+		}
+		break;
+
 	case ST_NODE_TUPLE_LIT:
 		break;
 

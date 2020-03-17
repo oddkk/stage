@@ -229,6 +229,10 @@ extern struct string st_node_names[ST_NODES_LEN];
 		TREE_VISIT_NODE((node), MATCH_CASE, expr);	 	\
 		break;											\
 														\
+	case ST_NODE_INIT_EXPR:								\
+		TREE_VISIT_NODE((node), INIT_EXPR, expr);	 	\
+		break;											\
+														\
 	case ST_NODE_NUM_LIT:								\
 		break;											\
 														\

@@ -192,6 +192,7 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 %left "<<" ">>"
 %left '+' '-'
 %left '*' '/'
+%nonassoc '!'
 %left '.' '[' '{' '('
 
 %start module
@@ -409,6 +410,7 @@ expr:			expr1                   { $$ = $1; }
 		;
 
 expr1:			ident					{ $$ = $1; }
+		|		'!' expr1               { $$ = MKNODE(INIT_EXPR, .expr=$2); }
 		|		'_'                     { $$ = MKNODE(WILDCARD, ._dc=0); }
 		|		numlit                  { $$ = $1; }
 		/*|		numlit ident            { $$ = $1; } TODO: suffix "operators" */
@@ -610,7 +612,7 @@ re2c:define:YYFILL:naked = 1;
 	return NUMLIT;
  }
 
-[-+*/:;={}()\[\].,_$@\\~&^] {
+[-+*/:;={}()\[\].,_$@\\~&^!] {
 	lloc_col(ctx, lloc, CURRENT_LEN);
 	return *ctx->tok;
  }

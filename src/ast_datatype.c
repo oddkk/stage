@@ -116,6 +116,11 @@ struct ast_dt_use {
 	ast_dt_job_id const_resolved;
 };
 
+struct ast_dt_init_expr {
+	ast_init_expr_id id;
+	ast_dt_expr_id expr;
+};
+
 struct ast_dt_dependency {
 	ast_member_id from, to;
 	bool visited;
@@ -196,6 +201,9 @@ struct ast_dt_context {
 	struct ast_dt_use *uses;
 	size_t num_uses;
 
+	struct ast_dt_init_expr *init_exprs;
+	size_t num_init_exprs;
+
 	ast_dt_job_id target_names_resolved;
 	ast_dt_job_id use_resolved;
 
@@ -245,6 +253,18 @@ get_use(struct ast_dt_context *ctx, ast_use_id id)
 	return &ctx->uses[id];
 }
 
+static inline struct ast_dt_init_expr *
+get_init_expr(struct ast_dt_context *ctx, ast_init_expr_id id)
+{
+	for (size_t i = 0; i < ctx->num_init_exprs; i++) {
+		if (ctx->init_exprs[i].id == id) {
+			return &ctx->init_exprs[i];
+		}
+	}
+	panic("Invalid init expr id.\n");
+	return NULL;
+}
+
 static inline ast_member_id
 ast_dt_member_get_descendant(struct ast_dt_context *ctx,
 		ast_member_id mbr_id, size_t descendant_id)
@@ -289,6 +309,17 @@ ast_dt_alloc_use(struct ast_dt_context *ctx)
 			ctx->uses,
 			ctx->num_uses,
 			&use);
+}
+
+static int
+ast_dt_alloc_init_expr(struct ast_dt_context *ctx)
+{
+	struct ast_dt_init_expr init_expr = {0};
+
+	return dlist_append(
+			ctx->init_exprs,
+			ctx->num_init_exprs,
+			&init_expr);
 }
 
 static inline void
@@ -1033,6 +1064,18 @@ ast_dt_register_use(struct ast_dt_context *ctx,
 	return use_id;
 }
 
+static void
+ast_dt_register_init_expr(struct ast_dt_context *ctx,
+		ast_init_expr_id id, ast_dt_expr_id expr_id)
+{
+	int index = ast_dt_alloc_init_expr(ctx);
+	struct ast_dt_init_expr *init_expr;
+	init_expr = &ctx->init_exprs[index];
+
+	init_expr->id = id;
+	init_expr->expr = expr_id;
+}
+
 static int
 ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
 		struct object *out)
@@ -1317,6 +1360,13 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		ast_dt_register_use(ctx, expr_id,
 				node->composite.uses[i].as_name);
 	}
+
+	for (size_t i = 0; i < node->composite.num_init_exprs; i++) {
+		ast_dt_expr_id expr_id;
+		expr_id = ast_dt_register_expr(ctx,
+				node->composite.init_exprs[i]);
+		ast_dt_register_init_expr(ctx, i, expr_id);
+	}
 }
 
 static void
@@ -1472,9 +1522,29 @@ ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
 			node, req, &deps, &num_deps);
 
 	for (size_t i = 0; i < num_deps; i++) {
-		if (deps[i].ref.kind == AST_NAME_REF_MEMBER) {
-			ast_dt_add_dependency_on_member(
-					ctx, target_job, deps[i].req, deps[i].ref.member);
+		switch (deps[i].ref.kind) {
+			case AST_NAME_REF_MEMBER:
+				ast_dt_add_dependency_on_member(
+						ctx, target_job, deps[i].req, deps[i].ref.member);
+				break;
+				
+			case AST_NAME_REF_INIT_EXPR:
+				{
+					struct ast_dt_init_expr *init_expr;
+					init_expr = get_init_expr(
+							ctx, deps[i].ref.init_expr);
+
+					struct ast_dt_expr *expr;
+					expr = get_expr(ctx, init_expr->expr);
+
+					ast_dt_job_dependency(ctx,
+							expr->value_jobs.resolve_types,
+							target_job);
+				}
+				break;
+
+			default:
+				break;
 		}
 	}
 
@@ -1582,32 +1652,73 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 			node, dep_req, &names, &num_names);
 
 	size_t num_dep_members = 0;
+	size_t num_dep_init_exprs = 0;
 	for (size_t i = 0; i < num_names; i++) {
-		if (names[i].ref.kind == AST_NAME_REF_MEMBER) {
-			num_dep_members += 1;
+		switch (names[i].ref.kind) { 
+			case AST_NAME_REF_MEMBER:
+				num_dep_members += 1;
+				break;
+
+			case AST_NAME_REF_INIT_EXPR:
+				num_dep_init_exprs += 1;
+				break;
+
+			default:
+				break;
 		}
 	}
 
 	ast_member_id *dep_members = calloc(num_dep_members, sizeof(ast_member_id));
 	type_id dep_member_types[num_dep_members];
 	struct object dep_member_const[num_dep_members];
+	struct ast_gen_init_expr dep_init_exprs[num_dep_init_exprs];
 
 	size_t dep_mbr_i = 0;
+	size_t dep_init_expr_i = 0;
 	for (size_t name_i = 0; name_i < num_names; name_i++) {
-		if (names[name_i].ref.kind == AST_NAME_REF_MEMBER) {
-			dep_members[dep_mbr_i] = names[name_i].ref.member;
-			struct ast_dt_member *mbr = get_member(ctx, dep_members[dep_mbr_i]);
-			assert(mbr->type != TYPE_UNSET);
-			dep_member_types[dep_mbr_i] = mbr->type;
+		switch (names[name_i].ref.kind) {
+			case AST_NAME_REF_MEMBER:
+				{
+					dep_members[dep_mbr_i] = names[name_i].ref.member;
+					struct ast_dt_member *mbr = get_member(ctx, dep_members[dep_mbr_i]);
+					assert(mbr->type != TYPE_UNSET);
+					dep_member_types[dep_mbr_i] = mbr->type;
 
-			if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
-				dep_member_const[dep_mbr_i] = mbr->const_value;
-			} else {
-				dep_member_const[dep_mbr_i].type = TYPE_UNSET;
-				dep_member_const[dep_mbr_i].data = NULL;
-			}
+					if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
+						dep_member_const[dep_mbr_i] = mbr->const_value;
+					} else {
+						dep_member_const[dep_mbr_i].type = TYPE_UNSET;
+						dep_member_const[dep_mbr_i].data = NULL;
+					}
 
-			dep_mbr_i += 1;
+					dep_mbr_i += 1;
+				}
+				break;
+
+			case AST_NAME_REF_INIT_EXPR:
+				{
+					ast_init_expr_id init_expr_id;
+					init_expr_id = names[name_i].ref.init_expr;
+
+					struct ast_dt_init_expr *init_expr;
+					init_expr = get_init_expr(ctx, init_expr_id);
+
+					struct ast_dt_expr *expr;
+					expr = get_expr(ctx, init_expr->expr);
+
+					type_id type;
+					type = stg_init_get_return_type(
+							ctx->ast_ctx->vm, expr->type);
+
+					dep_init_exprs[dep_init_expr_i].id = init_expr_id;
+					dep_init_exprs[dep_init_expr_i].type = type;
+
+					dep_init_expr_i += 1;
+				}
+				break;
+
+			default:
+				break;
 		}
 	}
 
@@ -1634,6 +1745,7 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 				dep_members, dep_member_types,
 				dep_member_const, num_dep_members,
 				const_use_values, ctx->num_uses,
+				dep_init_exprs, num_dep_init_exprs,
 				ctx->closures, ctx->num_closures, node);
 	if (!bc_env) {
 		return FUNC_UNSET;
@@ -1781,6 +1893,29 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 					body_deps[i].value = -1;
 					body_deps[i].lookup_failed = false;
 					body_deps[i].determined = true;
+				}
+				break;
+
+			case AST_NAME_REF_INIT_EXPR:
+				{
+					struct ast_dt_init_expr *init_expr;
+					init_expr = get_init_expr(ctx, deps[i].ref.init_expr);
+
+					struct ast_dt_expr *expr;
+					expr = get_expr(ctx, init_expr->expr);
+
+					assert(deps[i].req == AST_NAME_DEP_REQUIRE_TYPE);
+
+					body_deps[i].ref = deps[i].ref;
+					body_deps[i].req = deps[i].req;
+					body_deps[i].lookup_failed = false;
+					body_deps[i].determined = true;
+
+					type_id type;
+					type = stg_init_get_return_type(
+							ctx->ast_ctx->vm, expr->type);
+
+					body_deps[i].type = type;
 				}
 				break;
 
@@ -2994,10 +3129,11 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 
 		exprs[expr_i].num_deps = expr->num_member_deps;
 		exprs[expr_i].deps = arena_allocn(mem,
-				exprs[expr_i].num_deps, sizeof(size_t));
+				exprs[expr_i].num_deps, sizeof(struct object_inst_dep));
 
 		for (size_t i = 0; i < expr->num_member_deps; i++) {
-			exprs[expr_i].deps[i] =
+			exprs[expr_i].deps[i].kind = OBJECT_INST_DEP_MEMBER;
+			exprs[expr_i].deps[i].member =
 				ast_dt_calculate_persistant_id(
 						ctx, expr->member_deps[i]);
 		}
