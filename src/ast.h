@@ -1000,15 +1000,31 @@ struct ast_gen_init_expr {
 	type_id type;
 };
 
-struct ast_gen_info {
-	ast_member_id *members;
-	type_id *member_types;
-	struct object *const_member_values;
-	size_t num_members;
+enum ast_gen_dt_param_kind {
+	AST_GEN_DT_PARAM_MEMBER,
+	AST_GEN_DT_PARAM_INIT_EXPR,
+};
 
-	// Init exprs will be passed as parameters after members, starting at num_members.
-	struct ast_gen_init_expr *init_exprs;
-	size_t num_init_exprs;
+struct ast_gen_dt_ref {
+	enum ast_gen_dt_param_kind kind;
+
+	union {
+		ast_member_id member;
+		ast_init_expr_id init_expr;
+	};
+};
+
+struct ast_gen_dt_param {
+	struct ast_gen_dt_ref ref;
+
+	type_id type;
+	bool is_const;
+	struct object const_val;
+};
+
+struct ast_gen_info {
+	struct ast_gen_dt_param *dt_params;
+	size_t num_dt_params;
 
 	struct ast_typecheck_closure *closures;
 	bc_closure *closure_refs;
@@ -1037,10 +1053,8 @@ ast_func_gen_bytecode(
 struct bc_env *
 ast_composite_bind_gen_bytecode(
 		struct ast_context *ctx, struct stg_module *mod,
-		ast_member_id *members, type_id *member_types,
-		struct object *const_member_values, size_t num_members,
+		struct ast_gen_dt_param *dt_params, size_t num_dt_params,
 		struct object *const_use_values, size_t num_use,
-		struct ast_gen_init_expr *init_exprs, size_t num_init_exprs,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr);
 
 struct bc_env *

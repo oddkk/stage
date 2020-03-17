@@ -10,6 +10,9 @@
 
 #define AST_GEN_SHOW_BC 0
 
+#define AST_GEN_ERROR ((struct ast_gen_bc_result){.err=-1})
+#define AST_GEN_EXPECT_OK(res) do { if ((res).err) { return res; } } while (0);
+
 static inline void
 append_bc_instr(struct ast_gen_bc_result *res, struct bc_instr *instr)
 {
@@ -33,18 +36,80 @@ append_bc_instrs(struct ast_gen_bc_result *res, struct ast_gen_bc_result instrs)
 	res->last = instrs.last;
 }
 
-static type_id
-ast_gen_info_get_init_expr_type(struct ast_gen_info *info, ast_init_expr_id id)
+static bool
+ast_gen_dt_param_ref_equals(struct ast_gen_dt_ref lhs, struct ast_gen_dt_ref rhs)
 {
-	for (size_t i = 0; i < info->num_init_exprs; i++) {
-		if (info->init_exprs[i].id == id) {
-			return info->init_exprs[i].type;
+	if (lhs.kind != rhs.kind) {
+		return false;
+	}
+
+	switch (lhs.kind) {
+		case AST_GEN_DT_PARAM_MEMBER:
+			return lhs.member == rhs.member;
+
+		case AST_GEN_DT_PARAM_INIT_EXPR:
+			return lhs.init_expr == rhs.init_expr;
+	}
+
+	panic("Invalid gen_dt_param_req");
+	return false;
+}
+
+static struct ast_gen_bc_result
+ast_gen_get_dt_param(struct bc_env *bc_env,
+		struct ast_gen_info *info, struct ast_gen_dt_ref ref)
+{
+	for (size_t i = 0; i < info->num_dt_params; i++) {
+		struct ast_gen_dt_param *param;
+		param = &info->dt_params[i];
+
+		if (ast_gen_dt_param_ref_equals(param->ref, ref)) {
+			struct ast_gen_bc_result result = {0};
+			if (param->is_const) {
+				append_bc_instr(&result,
+						bc_gen_load(bc_env, BC_VAR_NEW,
+							param->const_val));
+				result.out_var = result.last->load.target;
+			} else {
+				result.first = result.last = NULL;
+				result.out_var = bc_alloc_param(
+						bc_env, i, param->type);
+			}
+
+			return result;
 		}
 	}
 
-	panic("Missing init expression id.");
-	return TYPE_UNSET;
-			
+	panic("DT parameter was not found.");
+	return AST_GEN_ERROR;
+}
+
+static struct ast_typecheck_closure
+ast_gen_dt_resolve_closure(
+		struct bc_env *bc_env,
+		struct ast_gen_info *info,
+		struct ast_gen_dt_ref ref)
+{
+	for (size_t i = 0; i < info->num_dt_params; i++) {
+		struct ast_gen_dt_param *param;
+		param = &info->dt_params[i];
+
+		if (ast_gen_dt_param_ref_equals(param->ref, ref)) {
+			struct ast_typecheck_closure res = {0};
+			if (param->is_const) {
+				res.req = AST_NAME_DEP_REQUIRE_VALUE;
+				res.value = param->const_val;
+			} else {
+				res.req = AST_NAME_DEP_REQUIRE_TYPE;
+				res.type = param->type;
+			}
+
+			return res;
+		}
+	}
+
+	panic("DT parameter was not found.");
+	return (struct ast_typecheck_closure){0};
 }
 
 static struct ast_typecheck_closure
@@ -57,36 +122,24 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 			break;
 
 		case AST_NAME_REF_MEMBER:
-			for (size_t i = 0; i < info->num_members; i++) {
-				if (info->members[i] == ref.member) {
-					struct ast_typecheck_closure res = {0};
+			{
+				struct ast_gen_dt_ref dt_ref = {0};
+				dt_ref.kind = AST_GEN_DT_PARAM_MEMBER;
+				dt_ref.member = ref.member;
 
-					if (info->const_member_values[i].type != TYPE_UNSET) {
-						res.req = AST_NAME_DEP_REQUIRE_VALUE;
-						res.value = info->const_member_values[i];
-					} else {
-						res.req = AST_NAME_DEP_REQUIRE_TYPE;
-						res.type = info->member_types[i];
-					}
-
-					return res;
-				}
+				return ast_gen_dt_resolve_closure(
+						bc_env, info, dt_ref);
 			}
-
-			panic("Member not found when resolving closure.");
-			return (struct ast_typecheck_closure){0};
 
 		case AST_NAME_REF_INIT_EXPR:
 			{
-				assert(ref.init_expr < info->num_init_exprs);
+				struct ast_gen_dt_ref dt_ref = {0};
+				dt_ref.kind = AST_GEN_DT_PARAM_INIT_EXPR;
+				dt_ref.init_expr = ref.init_expr;
 
-				struct ast_typecheck_closure res = {0};
-				res.req = AST_NAME_DEP_REQUIRE_TYPE;
-				res.type = ast_gen_info_get_init_expr_type(info, ref.init_expr);
-
-				return res;
+				return ast_gen_dt_resolve_closure(
+						bc_env, info, dt_ref);
 			}
-			break;
 
 		case AST_NAME_REF_PARAM:
 			{
@@ -172,9 +225,6 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 	return (struct ast_typecheck_closure){0};
 }
 
-#define AST_GEN_ERROR ((struct ast_gen_bc_result){.err=-1})
-#define AST_GEN_EXPECT_OK(res) do { if ((res).err) { return res; } } while (0);
-
 static struct ast_gen_bc_result
 ast_unpack_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct bc_env *bc_env, bc_var value, size_t descendent);
@@ -189,23 +239,24 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 
 	switch (ref.kind) {
 		case AST_NAME_REF_MEMBER:
-			for (size_t i = 0; i < info->num_members; i++) {
-				if (info->members[i] == ref.member) {
-					result.first = result.last = NULL;
-					result.out_var = bc_alloc_param(
-							bc_env, i, type);
-					return result;
-				}
+			{
+				struct ast_gen_dt_ref dt_ref = {0};
+				dt_ref.kind = AST_GEN_DT_PARAM_MEMBER;
+				dt_ref.member = ref.member;
+
+				return ast_gen_get_dt_param(
+						bc_env, info, dt_ref);
 			}
-			break;
 
 		case AST_NAME_REF_INIT_EXPR:
-			assert(ref.init_expr < info->num_init_exprs);
-			result.first = result.last = NULL;
-			result.out_var = bc_alloc_param(bc_env,
-					info->num_members+ref.init_expr,
-					ast_gen_info_get_init_expr_type(info, ref.init_expr));
-			return result;
+			{
+				struct ast_gen_dt_ref dt_ref = {0};
+				dt_ref.kind = AST_GEN_DT_PARAM_INIT_EXPR;
+				dt_ref.init_expr = ref.init_expr;
+
+				return ast_gen_get_dt_param(
+						bc_env, info, dt_ref);
+			}
 
 		case AST_NAME_REF_PARAM:
 			result.first = result.last = NULL;
@@ -1382,10 +1433,8 @@ ast_func_gen_bytecode(
 struct bc_env *
 ast_composite_bind_gen_bytecode(
 		struct ast_context *ctx, struct stg_module *mod,
-		ast_member_id *members, type_id *member_types,
-		struct object *const_member_values, size_t num_members,
+		struct ast_gen_dt_param *dt_params, size_t num_dt_params,
 		struct object *const_use_values, size_t num_use,
-		struct ast_gen_init_expr *init_exprs, size_t num_init_exprs,
 		struct ast_typecheck_closure *closures, size_t num_closures, struct ast_node *expr)
 {
 	struct bc_env *bc_env = arena_alloc(&mod->mem, sizeof(struct bc_env));
@@ -1398,20 +1447,18 @@ ast_composite_bind_gen_bytecode(
 	*/
 
 	struct ast_gen_info info = {0};
-	info.members = members;
-	info.member_types = member_types;
-	info.const_member_values = const_member_values;
-	info.num_members = num_members;
+
+	info.dt_params = dt_params;
+	info.num_dt_params = num_dt_params;
+
 	info.const_use_values = const_use_values;
 	info.num_use = num_use;
-	info.init_exprs = init_exprs;
-	info.num_init_exprs = num_init_exprs;
 
 	info.closures = closures;
 	info.num_closures = num_closures;
 
-	for (size_t i = 0; i < num_members; i++) {
-		bc_alloc_param(bc_env, i, member_types[i]);
+	for (size_t i = 0; i < num_dt_params; i++) {
+		bc_alloc_param(bc_env, i, dt_params[i].type);
 	}
 
 	struct ast_gen_bc_result func_instr;

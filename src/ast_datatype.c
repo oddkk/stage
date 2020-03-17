@@ -45,8 +45,8 @@ struct ast_dt_expr {
 
 	struct stg_location loc;
 
-	ast_member_id *member_deps;
-	size_t num_member_deps;
+	struct ast_gen_dt_param *deps;
+	size_t num_deps;
 
 	struct ast_dt_expr_jobs value_jobs;
 };
@@ -1088,20 +1088,33 @@ ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
 		return 0;
 	}
 
-	struct object dep_member_obj[expr->num_member_deps];
+	struct object dep_member_obj[expr->num_deps];
 	bool is_const = true;
 
-	for (size_t i = 0; i < expr->num_member_deps; i++) {
-		assert(expr->member_deps[i] >= 0);
+	for (size_t i = 0; i < expr->num_deps; i++) {
+		struct ast_gen_dt_param *dep;
+		dep = &expr->deps[i];
 
-		struct ast_dt_member *dep_mbr;
-		dep_mbr = get_member(ctx, expr->member_deps[i]);
+		switch (dep->ref.kind) {
+			case AST_GEN_DT_PARAM_MEMBER:
+				{
+					assert(dep->ref.member >= 0);
 
-		if ((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
-			is_const = false;
+					struct ast_dt_member *dep_mbr;
+					dep_mbr = get_member(ctx, dep->ref.member);
+
+					if ((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) == 0) {
+						is_const = false;
+					}
+
+					dep_member_obj[i] = dep_mbr->const_value;
+				}
+				break;
+
+			default:
+				is_const = false;
+				break;
 		}
-
-		dep_member_obj[i] = dep_mbr->const_value;
 	}
 
 	if (!is_const) {
@@ -1131,7 +1144,7 @@ ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
 	int err;
 	err = vm_call_func(
 			ctx->ast_ctx->vm, &exec_ctx, fid, dep_member_obj,
-			expr->num_member_deps, &obj);
+			expr->num_deps, &obj);
 	if (err) {
 		printf("Failed to evaluate constant member.\n");
 		return -3;
@@ -1646,8 +1659,8 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 
 static func_id
 ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
-		enum ast_name_dep_requirement dep_req, ast_member_id **out_dep_members,
-		size_t *out_num_dep_members)
+		enum ast_name_dep_requirement dep_req, struct ast_gen_dt_param **out_deps,
+		size_t *out_num_deps)
 {
 	struct ast_name_dep *names = NULL;
 	size_t num_names = 0;
@@ -1672,30 +1685,32 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 		}
 	}
 
-	ast_member_id *dep_members = calloc(num_dep_members, sizeof(ast_member_id));
-	type_id dep_member_types[num_dep_members];
-	struct object dep_member_const[num_dep_members];
-	struct ast_gen_init_expr dep_init_exprs[num_dep_init_exprs];
+	size_t num_dt_params = num_dep_members + num_dep_init_exprs;
+	struct ast_gen_dt_param *dt_params;
+	dt_params = calloc(num_dt_params, sizeof(struct ast_gen_dt_param));
 
-	size_t dep_mbr_i = 0;
-	size_t dep_init_expr_i = 0;
+	size_t dt_param_i = 0;
 	for (size_t name_i = 0; name_i < num_names; name_i++) {
 		switch (names[name_i].ref.kind) {
 			case AST_NAME_REF_MEMBER:
 				{
-					dep_members[dep_mbr_i] = names[name_i].ref.member;
-					struct ast_dt_member *mbr = get_member(ctx, dep_members[dep_mbr_i]);
+					ast_member_id member_id;
+					member_id = names[name_i].ref.member;
+
+					struct ast_dt_member *mbr;
+					mbr = get_member(ctx, member_id);
 					assert(mbr->type != TYPE_UNSET);
-					dep_member_types[dep_mbr_i] = mbr->type;
+
+					dt_params[dt_param_i].ref.kind = AST_GEN_DT_PARAM_MEMBER;
+					dt_params[dt_param_i].ref.member = member_id;
+					dt_params[dt_param_i].type = mbr->type;
 
 					if ((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) {
-						dep_member_const[dep_mbr_i] = mbr->const_value;
-					} else {
-						dep_member_const[dep_mbr_i].type = TYPE_UNSET;
-						dep_member_const[dep_mbr_i].data = NULL;
+						dt_params[dt_param_i].is_const = true;
+						dt_params[dt_param_i].const_val = mbr->const_value;
 					}
 
-					dep_mbr_i += 1;
+					dt_param_i += 1;
 				}
 				break;
 
@@ -1714,10 +1729,11 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 					type = stg_init_get_return_type(
 							ctx->ast_ctx->vm, expr->type);
 
-					dep_init_exprs[dep_init_expr_i].id = init_expr_id;
-					dep_init_exprs[dep_init_expr_i].type = type;
+					dt_params[dt_param_i].ref.kind = AST_GEN_DT_PARAM_INIT_EXPR;
+					dt_params[dt_param_i].ref.init_expr = init_expr_id;
+					dt_params[dt_param_i].type = type;
 
-					dep_init_expr_i += 1;
+					dt_param_i += 1;
 				}
 				break;
 
@@ -1746,18 +1762,21 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 	struct bc_env *bc_env;
 	bc_env = ast_composite_bind_gen_bytecode(
 				ctx->ast_ctx, ctx->mod,
-				dep_members, dep_member_types,
-				dep_member_const, num_dep_members,
+				dt_params, num_dt_params,
 				const_use_values, ctx->num_uses,
-				dep_init_exprs, num_dep_init_exprs,
 				ctx->closures, ctx->num_closures, node);
 	if (!bc_env) {
 		return FUNC_UNSET;
 	}
 
+	type_id dt_param_types[num_dt_params];
+	for (size_t i = 0; i < num_dt_params; i++) {
+		dt_param_types[i] = dt_params[i].type;
+	}
+
 	struct func func = {0};
 	func.type = stg_register_func_type(ctx->mod,
-			node->type, dep_member_types, num_dep_members);
+			node->type, dt_param_types, num_dt_params);
 
 	func.kind = FUNC_BYTECODE;
 	func.bytecode = bc_env;
@@ -1765,8 +1784,8 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 	func_id fid;
 	fid = stg_register_func(ctx->mod, func);
 
-	*out_num_dep_members = num_dep_members;
-	*out_dep_members = dep_members;
+	*out_num_deps = num_dt_params;
+	*out_deps = dt_params;
 
 	return fid;
 }
@@ -2047,8 +2066,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				struct ast_dt_member *mbr;
 				mbr = get_member(ctx, job->member);
 
-				ast_member_id *dep_members = NULL;
-				size_t num_dep_members = 0;
+				struct ast_gen_dt_param *deps = NULL;
+				size_t num_deps = 0;
 
 				assert(mbr->type_node);
 
@@ -2059,23 +2078,33 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				fid = ast_dt_expr_codegen(
 						ctx, mbr->type_node,
 						AST_NAME_DEP_REQUIRE_VALUE,
-						&dep_members, &num_dep_members);
+						&deps, &num_deps);
 				if (fid == FUNC_UNSET) {
-					free(dep_members);
+					free(deps);
 					return -1;
 				}
 
-				struct object const_member_values[num_dep_members];
-				for (size_t i = 0; i < num_dep_members; i++) {
-					struct ast_dt_member *dep_mbr;
-					dep_mbr = get_member(ctx, dep_members[i]);
+				struct object const_member_values[num_deps];
+				for (size_t i = 0; i < num_deps; i++) {
+					switch (deps[i].ref.kind) {
+						case AST_GEN_DT_PARAM_MEMBER:
+							{
+								struct ast_dt_member *dep_mbr;
+								dep_mbr = get_member(ctx, deps[i].ref.member);
 
-					assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
+								assert((dep_mbr->flags & AST_DT_MEMBER_IS_CONST) != 0);
 
-					const_member_values[i] = dep_mbr->const_value;
+								const_member_values[i] = dep_mbr->const_value;
+							}
+							break;
+
+						default:
+							panic("Invalid member ref in type expression.");
+							break;
+					}
 				}
 
-				free(dep_members);
+				free(deps);
 
 				type_id out_type = TYPE_UNSET;
 				struct object out = {0};
@@ -2085,7 +2114,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				int err;
 				err = vm_call_func(
 						ctx->ast_ctx->vm, NULL, fid,
-						const_member_values, num_dep_members,
+						const_member_values, num_deps,
 						&out);
 				if (err) {
 					printf("Failed to evaluate member type.\n");
@@ -2227,20 +2256,20 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				struct ast_dt_expr *expr;
 				expr = get_expr(ctx, job->expr);
 
-				ast_member_id *dep_members = NULL;
-				size_t num_dep_members = 0;
+				struct ast_gen_dt_param *deps = NULL;
+				size_t num_deps = 0;
 
 				func_id fid;
 				fid = ast_dt_expr_codegen(
 						ctx, expr->value.node,
 						AST_NAME_DEP_REQUIRE_TYPE,
-						&dep_members, &num_dep_members);
+						&deps, &num_deps);
 				if (fid == FUNC_UNSET) {
 					return -1;
 				}
 
-				expr->num_member_deps = num_dep_members;
-				expr->member_deps = dep_members;
+				expr->num_deps = num_deps;
+				expr->deps = deps;
 
 				expr->value.func = fid;
 			}
@@ -3131,15 +3160,26 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 			exprs[expr_i].func = expr->value.func;
 		}
 
-		exprs[expr_i].num_deps = expr->num_member_deps;
+		exprs[expr_i].num_deps = expr->num_deps;
 		exprs[expr_i].deps = arena_allocn(mem,
 				exprs[expr_i].num_deps, sizeof(struct object_inst_dep));
 
-		for (size_t i = 0; i < expr->num_member_deps; i++) {
-			exprs[expr_i].deps[i].kind = OBJECT_INST_DEP_MEMBER;
-			exprs[expr_i].deps[i].member =
-				ast_dt_calculate_persistant_id(
-						ctx, expr->member_deps[i]);
+		for (size_t i = 0; i < expr->num_deps; i++) {
+			struct ast_gen_dt_param *dep;
+			dep = &expr->deps[i];
+			switch (dep->ref.kind) {
+				case AST_GEN_DT_PARAM_MEMBER:
+					exprs[expr_i].deps[i].kind = OBJECT_INST_DEP_MEMBER;
+					exprs[expr_i].deps[i].member =
+						ast_dt_calculate_persistant_id(
+								ctx, dep->ref.member);
+					break;
+
+				case AST_GEN_DT_PARAM_INIT_EXPR:
+					exprs[expr_i].deps[i].kind = OBJECT_INST_DEP_INIT_EXPR;
+					exprs[expr_i].deps[i].init_expr = dep->ref.init_expr;
+					break;
+			}
 		}
 
 		exprs[expr_i].loc = expr->loc;
@@ -3270,7 +3310,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct stg_module *mod,
 	for (size_t expr_i = 0; expr_i < dt_ctx.exprs.length; expr_i++) {
 		struct ast_dt_expr *expr;
 		expr = get_expr(&dt_ctx, expr_i);
-		free(expr->member_deps);
+		free(expr->deps);
 	}
 
 	for (size_t job_i = 0; job_i < dt_ctx.jobs.length; job_i++) {
