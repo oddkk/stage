@@ -3354,6 +3354,7 @@ struct stg_type_variant_info {
 	struct stg_type_variant_option *options;
 	size_t num_options;
 	uint8_t tag_size;
+	size_t total_size;
 	struct stg_location loc;
 	type_id type;
 };
@@ -3395,6 +3396,7 @@ static void
 ast_dt_encode_variant(struct stg_type_variant_info *info,
 		uint64_t tag, void *in_data, void *out_data)
 {
+	memset(out_data, 0, info->total_size);
 	switch (info->tag_size) {
 		case 1: *((uint8_t  *)out_data) = (uint8_t )tag; break;
 		case 2: *((uint16_t *)out_data) = (uint16_t)tag; break;
@@ -3741,12 +3743,13 @@ ast_dt_finalize_variant(
 	}
 
 	info->tag_size = tag_size;
+	info->total_size = tag_size + max_data_size;
 
 	struct type new_type = {0};
 
 	new_type.name = mod_atoms(mod, "Variant");
 	new_type.base = &variant_type_base;
-	new_type.size = tag_size + max_data_size;
+	new_type.size = info->total_size;
 	new_type.data = info;
 
 	if (max_data_size == 0) {
