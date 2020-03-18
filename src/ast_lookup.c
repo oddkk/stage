@@ -493,6 +493,12 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 								node->composite.free_exprs[i]);
 					}
 
+					for (size_t i = 0; i < node->composite.num_init_exprs; i++) {
+						err += ast_node_discover_potential_closures(ctx,
+								&member_scope, flag_no_req_const(flags),
+								node->composite.init_exprs[i]);
+					}
+
 					// TODO: Visit use targets.
 				}
 
