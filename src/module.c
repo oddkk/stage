@@ -114,6 +114,49 @@ stg_mod_lookup_native_object(
 }
 
 int
+stg_mod_lookup_member(
+		struct stg_module *mod, struct string lookup, struct object *out)
+{
+	if (mod->instance.type == TYPE_UNSET) {
+		return -1;
+	}
+
+	ssize_t unpack_id;
+	unpack_id = object_cons_simple_lookup(
+			mod->vm, mod->instance.type, lookup);
+	if (unpack_id < 0) {
+		return -2;
+	}
+
+	struct object obj = {0};
+
+	int err;
+	err = object_cons_descendant_type(
+			mod->vm, mod->instance.type,
+			unpack_id, &obj.type);
+	if (err) {
+		return -3;
+	}
+
+	struct type *out_type;
+	out_type = vm_get_type(mod->vm, obj.type);
+	uint8_t buffer[out_type->size];
+	memset(buffer, 0, out_type->size);
+	obj.data = buffer;
+
+	err = object_unpack(
+			mod->vm, mod->instance,
+			unpack_id, &obj);
+	if (err) {
+		return -3;
+	}
+
+	*out = register_object(mod->vm, &mod->store, obj);
+
+	return 0;
+}
+
+int
 stg_mod_invoke_register(struct stg_module *mod)
 {
 	if (mod->native_mod && mod->native_mod->hook_register) {

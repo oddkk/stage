@@ -67,6 +67,11 @@ ast_module_finalize(struct ast_context *ctx, struct stg_module *mod,
 		return -1;
 	}
 
-	return stg_instantiate_static_object(
-			ctx, mod, type, &mod->instance);
+	err = stg_instantiate_static_object(
+			ctx, mod, type, &mod->init_monad);
+	if (err) {
+		return -1;
+	}
+
+	return vm_mod_init(mod);
 }

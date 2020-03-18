@@ -555,6 +555,694 @@ ast_pattern_gen_match_unpack(
 	return result;
 }
 
+struct ast_inst_bytecode_part_ctx {
+	bc_var *all_vars;
+
+	bc_var *expr_vars;
+	size_t num_exprs;
+	size_t num_filled_exprs;
+	bc_var *member_vars;
+	size_t num_members;
+	size_t num_filled_members;
+
+	size_t *init_expr_ids;
+	size_t num_init_exprs;
+};
+
+struct ast_gen_bc_result
+ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
+		struct ast_gen_info *info, struct bc_env *bc_env,
+		struct object_inst *inst, struct ast_node *node,
+		struct ast_inst_bytecode_part_ctx *inst_ctx,
+		struct object_inst_action *actions, size_t num_actions)
+{
+	struct ast_gen_bc_result result = {0};
+
+	for (size_t act_i = 0; act_i < num_actions; act_i++) {
+		struct object_inst_action *act;
+		act = &actions[act_i];
+
+		switch (act->op) {
+			case OBJ_INST_EXPR:
+				{
+					assert(act->expr.id < inst->num_exprs);
+					assert(inst_ctx->expr_vars[act->expr.id] == BC_VAR_NEW);
+
+					int expr_id = act->expr.id;
+
+					if (expr_id < inst->num_exprs) {
+						struct object_inst_expr *expr;
+						expr = &inst->exprs[expr_id];
+
+						if (expr->constant) {
+							struct bc_instr *instr;
+							instr = bc_gen_load(
+									bc_env, BC_VAR_NEW,
+									expr->const_value);
+							assert(inst_ctx->expr_vars[expr_id] == BC_VAR_NEW);
+							inst_ctx->expr_vars[expr_id] = instr->load.target;
+							inst_ctx->num_filled_exprs += 1;
+							append_bc_instr(&result, instr);
+						} else {
+							for (size_t i = 0; i < act->expr.num_deps; i++) {
+								switch (act->expr.deps[i].kind) {
+									case OBJECT_INST_DEP_MEMBER:
+										{
+											assert(act->expr.deps[i].member < inst_ctx->num_members);
+											assert(inst_ctx->member_vars[act->expr.deps[i].member] != BC_VAR_NEW);
+											append_bc_instr(&result,
+													bc_gen_push_arg(
+														bc_env, inst_ctx->member_vars[act->expr.deps[i].member]));
+										}
+										break;
+
+									case OBJECT_INST_DEP_INIT_EXPR:
+										{
+											size_t expr_id;
+											assert(act->expr.deps[i].init_expr < inst_ctx->num_init_exprs);
+											expr_id = inst_ctx->init_expr_ids[act->expr.deps[i].init_expr];
+
+											assert(expr_id < inst_ctx->num_exprs);
+											assert(inst_ctx->expr_vars[expr_id] != BC_VAR_NEW);
+											append_bc_instr(&result,
+													bc_gen_push_arg(
+														bc_env, inst_ctx->expr_vars[expr_id]));
+										}
+										break;
+								}
+							}
+
+							struct bc_instr *call_instr;
+							call_instr = bc_gen_lcall(
+									bc_env, BC_VAR_NEW, expr->func);
+							append_bc_instr(&result, call_instr);
+							inst_ctx->expr_vars[expr_id] = call_instr->lcall.target;
+							inst_ctx->num_filled_exprs += 1;
+						}
+					} else {
+						int extra_expr_id = inst->num_exprs;
+						assert(extra_expr_id < node->call.num_args);
+
+						// TODO: Allow referencing other members.
+						/*
+						   for (size_t i = 0; i < act->expr.num_deps; i++) {
+						   assert(act->expr.deps[i] < inst_ctx->num_members);
+						   assert(inst_ctx->member_vars[act->expr.deps[i]] != BC_VAR_NEW);
+						   }
+						   */
+
+						struct ast_gen_bc_result expr;
+						expr = ast_node_gen_bytecode(
+								ctx, mod, info, bc_env,
+								node->call.args[extra_expr_id].value);
+						AST_GEN_EXPECT_OK(expr);
+
+						append_bc_instrs(&result, expr);
+						assert(inst_ctx->expr_vars[expr_id] == BC_VAR_NEW);
+						inst_ctx->expr_vars[expr_id] = expr.out_var;
+						inst_ctx->num_filled_exprs += 1;
+					}
+				}
+				break;
+
+			case OBJ_INST_INIT_EXPR:
+				{
+					assert(inst->init_monad);
+
+					int expr_id = act->init_expr.id;
+
+					struct ast_gen_bc_result init_expr = {0};
+
+					if (expr_id < inst->num_exprs) {
+						struct object_inst_expr *expr;
+						expr = &inst->exprs[expr_id];
+
+						if (expr->constant) {
+							struct bc_instr *instr;
+							instr = bc_gen_load(
+									bc_env, BC_VAR_NEW,
+									expr->const_value);
+							assert(inst_ctx->expr_vars[expr_id] == BC_VAR_NEW);
+							inst_ctx->expr_vars[expr_id] = instr->load.target;
+							inst_ctx->num_filled_exprs += 1;
+							append_bc_instr(&init_expr, instr);
+						} else {
+							for (size_t i = 0; i < act->init_expr.num_deps; i++) {
+								switch (act->init_expr.deps[i].kind) {
+									case OBJECT_INST_DEP_MEMBER:
+										{
+											assert(act->init_expr.deps[i].member < inst_ctx->num_members);
+											assert(inst_ctx->member_vars[act->init_expr.deps[i].member] != BC_VAR_NEW);
+											append_bc_instr(&init_expr,
+													bc_gen_push_arg(
+														bc_env, inst_ctx->member_vars[act->init_expr.deps[i].member]));
+										}
+										break;
+
+									case OBJECT_INST_DEP_INIT_EXPR:
+										{
+											size_t expr_id;
+											assert(act->init_expr.deps[i].init_expr < inst_ctx->num_init_exprs);
+											expr_id = inst_ctx->init_expr_ids[act->init_expr.deps[i].init_expr];
+
+											assert(expr_id < inst_ctx->num_exprs);
+											assert(inst_ctx->expr_vars[expr_id] != BC_VAR_NEW);
+											append_bc_instr(&result,
+													bc_gen_push_arg(
+														bc_env, inst_ctx->expr_vars[expr_id]));
+										}
+										break;
+								}
+							}
+
+							struct bc_instr *call_instr;
+							call_instr = bc_gen_lcall(
+									bc_env, BC_VAR_NEW, expr->func);
+							append_bc_instr(&init_expr, call_instr);
+							init_expr.out_var = call_instr->lcall.target;
+						}
+					} else {
+						int extra_expr_id = inst->num_exprs;
+						assert(extra_expr_id < node->call.num_args);
+
+						// TODO: Allow referencing other members.
+						/*
+						   for (size_t i = 0; i < act->expr.num_deps; i++) {
+						   assert(act->expr.deps[i] < inst_ctx->num_members);
+						   assert(inst_ctx->member_vars[act->expr.deps[i]] != BC_VAR_NEW);
+						   }
+						   */
+
+						struct ast_gen_bc_result expr;
+						expr = ast_node_gen_bytecode(
+								ctx, mod, info, bc_env,
+								node->call.args[extra_expr_id].value);
+						AST_GEN_EXPECT_OK(expr);
+
+						append_bc_instrs(&init_expr, expr);
+						init_expr.out_var = expr.out_var;
+					}
+
+					// Init[$T]
+					type_id init_expr_out_monad_type;
+					init_expr_out_monad_type = bc_get_var_type(
+							bc_env, init_expr.out_var);
+
+					assert(stg_type_is_init(ctx->vm, init_expr_out_monad_type));
+
+					// $T
+					type_id init_expr_out_type;
+					init_expr_out_type = stg_init_get_return_type(
+							ctx->vm, init_expr_out_monad_type);
+
+					func_id inner_func_id;
+
+					// ($T) -> Init[$U]
+					type_id inner_func_type = TYPE_UNSET;
+
+					// Init[$U]
+					type_id inner_ret_type = TYPE_UNSET;
+
+					// $U
+					type_id final_ret_type = TYPE_UNSET;
+
+					struct ast_gen_bc_result func_instrs = {0};
+
+					{
+						struct bc_env *inner_bc_env;
+						inner_bc_env = arena_alloc(&mod->mem, sizeof(struct bc_env));
+						inner_bc_env->vm = ctx->vm;
+						inner_bc_env->store = ctx->vm->instr_store;
+
+						struct ast_gen_bc_result inner_instrs = {0};
+
+						size_t num_closure_members =
+							inst_ctx->num_filled_members + inst_ctx->num_filled_exprs;
+
+						type_id *closure_types =
+							arena_allocn(&mod->mem, num_closure_members,
+									sizeof(type_id));
+
+						size_t closure_member_i = 0; 
+
+						const size_t total_num_vals =
+							inst_ctx->num_exprs + inst_ctx->num_members;
+
+						// Fill the closure types of the inner bc env first
+						// because bc_gen_copy_closure is dependent on that list.
+						for (size_t i = 0; i < total_num_vals; i++) {
+							if (inst_ctx->all_vars[i] != BC_VAR_NEW) {
+								closure_types[closure_member_i] =
+									bc_get_var_type(bc_env,
+											inst_ctx->all_vars[i]);
+
+								closure_member_i += 1;
+							}
+						}
+						assert(closure_member_i == num_closure_members);
+
+						inner_bc_env->closure_types = closure_types;
+						inner_bc_env->num_closures = num_closure_members;
+
+						closure_member_i = 0;
+
+						struct stg_func_closure_member *closure_members =
+							arena_allocn(&mod->mem, num_closure_members,
+									sizeof(struct stg_func_closure_member));
+
+						struct ast_gen_bc_result func_closure_args = {0};
+						size_t closure_offset = 0;
+						for (size_t i = 0; i < total_num_vals; i++) {
+							if (inst_ctx->all_vars[i] != BC_VAR_NEW) {
+								append_bc_instr(&func_closure_args,
+										bc_gen_push_arg(bc_env,
+											inst_ctx->all_vars[i]));
+
+								struct bc_instr *copy_closure_instr;
+								copy_closure_instr =
+									bc_gen_copy_closure(inner_bc_env,
+											BC_VAR_NEW, closure_member_i);
+								append_bc_instr(&inner_instrs,
+										copy_closure_instr);
+
+								inst_ctx->all_vars[i] =
+									copy_closure_instr->copy_closure.target;
+
+								struct stg_func_closure_member *closure;
+								closure = &closure_members[closure_member_i];
+
+								struct type *type = vm_get_type(
+										ctx->vm, closure_types[closure_member_i]);
+
+								closure->type = closure_types[closure_member_i];
+								closure->offset = closure_offset;
+								closure->size = type->size;
+								closure_offset += type->size;
+
+								closure_member_i += 1;
+							}
+						}
+
+						assert(closure_member_i == num_closure_members);
+
+						assert(expr_id < inst_ctx->num_exprs);
+						assert(inst_ctx->expr_vars[expr_id] == BC_VAR_NEW);
+						inst_ctx->expr_vars[expr_id] =
+							bc_alloc_param(inner_bc_env, 0, init_expr_out_type);
+						inst_ctx->num_filled_exprs += 1;
+
+						struct ast_gen_bc_result sub_expr = {0};
+						sub_expr = ast_inst_gen_bytecode_part(
+								ctx, mod, info, inner_bc_env, inst, node, inst_ctx,
+								&actions[act_i+1], num_actions - (act_i+1));
+						append_bc_instrs(&inner_instrs, sub_expr);
+
+						append_bc_instr(&inner_instrs,
+								bc_gen_ret(inner_bc_env,
+									sub_expr.out_var));
+
+						inner_ret_type = bc_get_var_type(
+								inner_bc_env, sub_expr.out_var);
+
+						assert(stg_type_is_init(ctx->vm, inner_ret_type));
+						final_ret_type = stg_init_get_return_type(
+								ctx->vm, inner_ret_type);
+
+						assert_type_equals(ctx->vm, final_ret_type, inst->type);
+
+						inner_bc_env->entry_point = inner_instrs.first;
+
+#if AST_GEN_SHOW_BC
+						printf("\ninner inst bc:\n");
+						bc_print(inner_bc_env, inner_bc_env->entry_point);
+#endif
+
+						inner_bc_env->nbc = arena_alloc(&mod->mem, sizeof(struct nbc_func));
+						nbc_compile_from_bc(
+								&mod->vm->transient,
+								&mod->mem,
+								inner_bc_env->nbc,
+								inner_bc_env);
+
+#if AST_GEN_SHOW_BC
+						printf("\ninner inst nbc:\n");
+						nbc_print(inner_bc_env->nbc);
+#endif
+
+						struct func inner_func = {0};
+						inner_func.kind = FUNC_BYTECODE;
+						inner_func.bytecode = inner_bc_env;
+						inner_func.type = stg_register_func_type(
+								mod, inner_ret_type, &init_expr_out_type, 1);
+
+						inner_func_id = stg_register_func(mod, inner_func);
+						inner_func_type = inner_func.type;
+
+
+						struct stg_func_closure_data *data;
+						data = arena_alloc(&mod->mem, sizeof(struct stg_func_closure_data));
+						data->num_members = num_closure_members;
+						data->members = closure_members;
+						data->func = inner_func_id;
+						data->size = closure_offset;
+
+						struct bc_instr *func_instr;
+						func_instr = bc_gen_pack(bc_env, BC_VAR_NEW,
+								stg_func_closure_pack, data, inner_func_type);
+
+						append_bc_instrs(&func_instrs, func_closure_args);
+						append_bc_instr(&func_instrs, func_instr);
+						func_instrs.out_var = func_instr->pack.target;
+					}
+
+					struct ast_gen_bc_result bind_func_instrs = {0};
+
+					{
+						struct stg_module *mod_base;
+						mod_base = vm_get_module(
+								mod->vm, mod_atoms(mod, "base"));
+
+						// TODO: Allow init exprs in base module.
+						int err;
+						struct object bind_cons_obj;
+						err = stg_mod_lookup_member(
+								mod_base, STR("init.bind"), &bind_cons_obj);
+						assert(!err);
+
+						assert_type_equals(ctx->vm, bind_cons_obj.type,
+								mod->vm->default_types.cons);
+
+						struct object_cons *bind_cons;
+						bind_cons = *(struct object_cons **)bind_cons_obj.data;
+
+						// TODO: This seems ugly...
+						// We expect bind to be (Init[$T], (T) -> Init[$U]) -> Init[$U].
+						assert(bind_cons->params[0].name == mod_atoms(mod, "T"));
+						assert(bind_cons->params[1].name == mod_atoms(mod, "U"));
+
+						type_id *bind_type_params[2];
+						bind_type_params[0] = &init_expr_out_type;
+						bind_type_params[1] = &final_ret_type;
+
+						type_id bind_func_type;
+						err = object_ct_pack_type(
+								ctx, mod, bind_cons,
+								bind_type_params,
+								ARRAY_LENGTH(bind_type_params),
+								&bind_func_type);
+						assert(!err);
+						assert(stg_type_is_func(ctx->vm, bind_func_type));
+
+						struct stg_func_object bind_func_obj = {0};
+						struct object bind_func = {0};
+						bind_func.type = bind_func_type;
+						bind_func.data = &bind_func_obj;
+
+						err = object_ct_pack(
+								ctx, mod, bind_cons,
+								bind_type_params,
+								ARRAY_LENGTH(bind_type_params),
+								&bind_func);
+						assert(!err);
+
+						bind_func = register_object(
+								mod->vm, &mod->store, bind_func);
+
+						struct bc_instr *bind_func_instr;
+						bind_func_instr = bc_gen_load(
+								bc_env, BC_VAR_NEW, bind_func);
+
+						append_bc_instr(&bind_func_instrs,
+								bind_func_instr);
+						bind_func_instrs.out_var = bind_func_instr->load.target;
+					}
+
+					append_bc_instrs(&result, init_expr);
+					append_bc_instrs(&result, func_instrs);
+					append_bc_instrs(&result, bind_func_instrs);
+					append_bc_instr(&result,
+							bc_gen_push_arg(bc_env, init_expr.out_var));
+					append_bc_instr(&result,
+							bc_gen_push_arg(bc_env, func_instrs.out_var));
+					append_bc_instr(&result,
+							bc_gen_vcall(bc_env, BC_VAR_NEW,
+								bind_func_instrs.out_var));
+					result.out_var = result.last->vcall.target;
+
+					return result;
+				}
+
+			case OBJ_INST_BIND:
+				{
+					bc_var expr_var = inst_ctx->expr_vars[act->bind.expr_id];
+					assert(expr_var != BC_VAR_NEW);
+					assert(inst_ctx->member_vars[act->bind.member_id] == BC_VAR_NEW);
+
+					struct ast_gen_bc_result instrs;
+					instrs = ast_unpack_gen_bytecode(
+							ctx, mod, bc_env, expr_var,
+							act->bind.unpack_id);
+
+					append_bc_instrs(&result, instrs);
+					inst_ctx->member_vars[act->bind.member_id] = instrs.out_var;
+					inst_ctx->num_filled_members += 1;
+				}
+				break;
+
+			case OBJ_INST_PACK:
+				{
+					assert(inst_ctx->member_vars[act->pack.member_id] == BC_VAR_NEW);
+
+					type_id mbr_type_id;
+					int err;
+					err = object_cons_descendant_type(
+							ctx->vm, inst->type,
+							act->pack.member_id, &mbr_type_id);
+					struct type *mbr_type;
+					mbr_type = vm_get_type(ctx->vm, mbr_type_id);
+
+					struct object_cons *mbr_cons;
+					mbr_cons = mbr_type->obj_inst->cons;
+
+
+					assert(mbr_cons);
+
+					int local_mbrs[mbr_cons->num_params];
+					object_cons_local_descendent_ids(
+							ctx->vm, mbr_cons, local_mbrs);
+
+					for (size_t i = 0; i < mbr_cons->num_params; i++) {
+						int param_id = act->pack.member_id + local_mbrs[i];
+						assert(param_id < inst_ctx->num_members);
+						assert(inst_ctx->member_vars[param_id] != BC_VAR_NEW);
+
+						append_bc_instr(&result,
+								bc_gen_push_arg(
+									bc_env, inst_ctx->member_vars[param_id]));
+					}
+
+					assert(mbr_cons->pack);
+
+					struct bc_instr *pack_instr;
+					pack_instr =
+						bc_gen_pack(
+								bc_env, BC_VAR_NEW,
+								mbr_cons->pack, mbr_cons->data,
+								mbr_type_id);
+					append_bc_instr(&result, pack_instr);
+
+					inst_ctx->member_vars[act->pack.member_id] = pack_instr->pack.target;
+					inst_ctx->num_filled_members += 1;
+				}
+				break;
+		}
+	}
+
+	if (inst->init_monad) {
+		struct stg_module *mod_base;
+		mod_base = vm_get_module(
+				mod->vm, mod_atoms(mod, "base"));
+
+		// TODO: Allow init exprs in base module.
+		int err;
+		struct object return_cons_obj;
+		err = stg_mod_lookup_member(
+				mod_base, STR("init.return"), &return_cons_obj);
+		assert(!err);
+
+		assert_type_equals(ctx->vm, return_cons_obj.type,
+				mod->vm->default_types.cons);
+
+		struct object_cons *return_cons;
+		return_cons = *(struct object_cons **)return_cons_obj.data;
+
+		assert(inst_ctx->member_vars[0] != BC_VAR_NEW);
+		assert_type_equals(ctx->vm, inst->type,
+				bc_get_var_type(bc_env, inst_ctx->member_vars[0]));
+
+		type_id out_type;
+		out_type = bc_get_var_type(
+				bc_env, inst_ctx->member_vars[0]);
+		assert(out_type != TYPE_UNSET);
+
+		type_id return_func_type;
+
+		type_id *out_type_ptr = &out_type;
+		err = object_ct_pack_type(
+				ctx, mod, return_cons,
+				&out_type_ptr, 1, &return_func_type);
+		assert(!err);
+
+		assert(stg_type_is_func(ctx->vm, return_func_type));
+
+		struct stg_func_object ret_func_obj = {0};
+		struct object return_func = {0};
+		return_func.type = return_func_type;
+		return_func.data = &ret_func_obj;
+
+		err = object_ct_pack(
+				ctx, mod, return_cons,
+				&out_type_ptr, 1, &return_func);
+		assert(!err);
+
+		return_func = register_object(
+				mod->vm, &mod->store, return_func);
+
+		struct bc_instr *ret_func;
+		ret_func = bc_gen_load(bc_env, BC_VAR_NEW, return_func);
+
+		struct bc_instr *push_instr;
+		assert(inst_ctx->member_vars[0] != BC_VAR_NEW);
+		push_instr = bc_gen_push_arg(bc_env, inst_ctx->member_vars[0]);
+
+		struct bc_instr *ret;
+		ret = bc_gen_vcall(bc_env, BC_VAR_NEW, ret_func->load.target);
+		
+		append_bc_instr(&result, ret_func);
+		append_bc_instr(&result, push_instr);
+		append_bc_instr(&result, ret);
+		result.out_var = ret->vcall.target;
+		return result;
+		// TODO: Return monad.
+	} else {
+		result.out_var = inst_ctx->member_vars[0];
+		return result;
+	}
+}
+
+struct ast_gen_bc_result
+ast_inst_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
+		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node)
+{
+	assert(node->kind == AST_NODE_INST);
+
+	struct object_inst *inst;
+	inst = node->call.inst;
+	assert(inst);
+
+	struct object_inst_bind       extra_binds[node->call.num_args];
+	struct object_inst_extra_expr extra_exprs[node->call.num_args];
+
+	memset(extra_binds, 0,
+			sizeof(struct object_inst_bind) * node->call.num_args);
+	memset(extra_exprs, 0,
+			sizeof(struct object_inst_extra_expr) * node->call.num_args);
+
+	int local_descs[inst->cons->num_params];
+	object_cons_local_descendent_ids(
+			ctx->vm, inst->cons, local_descs);
+
+	for (size_t i = 0; i < node->call.num_args; i++) {
+		extra_binds[i].unpack_id = 0;
+		extra_binds[i].expr_id = inst->num_exprs + i;
+		extra_binds[i].loc = node->call.args[i].value->loc;
+		extra_binds[i].overridable = false;
+
+		extra_binds[i].target_id = -1;
+		for (size_t mbr_i = 0; mbr_i < inst->cons->num_params; mbr_i++) {
+			if (inst->cons->params[mbr_i].name == node->call.args[i].name) {
+				extra_binds[i].target_id = local_descs[mbr_i];
+				break;
+			}
+		}
+		assert(extra_binds[i].target_id >= 0);
+
+		extra_exprs[i].deps = NULL;
+		extra_exprs[i].num_deps = 0;
+		extra_exprs[i].loc = node->call.args[i].value->loc;
+
+		extra_exprs[i].type = node->call.args[i].value->type;
+		assert(extra_exprs[i].type != TYPE_UNSET);
+	}
+
+	struct object_inst_action *actions = NULL;
+	size_t num_actions = 0;
+	int err;
+	err = object_inst_order(
+			ctx->vm, ctx->err, inst,
+			extra_exprs, node->call.num_args,
+			extra_binds, node->call.num_args,
+			&actions, &num_actions,
+			node->loc);
+	if (err) {
+		printf("Failed to instantiate object.\n");
+		return AST_GEN_ERROR;
+	}
+
+	size_t num_init_exprs = 0;
+	for (size_t i = 0; i < inst->num_exprs; i++) {
+		if (inst->exprs[i].is_init_expr) {
+			if (inst->exprs[i].init_id >= num_init_exprs) {
+				num_init_exprs = inst->exprs[i].init_id + 1;
+			}
+		}
+	}
+
+	size_t init_expr_ids[num_init_exprs];
+	{
+		size_t init_expr_i = 0;
+		for (size_t i = 0; i < inst->num_exprs; i++) {
+			if (inst->exprs[i].is_init_expr) {
+				init_expr_ids[inst->exprs[i].init_id] = i;
+
+				init_expr_i += 1;
+			}
+		}
+		assert(init_expr_i == num_init_exprs);
+	}
+
+	struct ast_inst_bytecode_part_ctx inst_ctx = {0};
+
+	inst_ctx.num_init_exprs = num_init_exprs;
+	inst_ctx.init_expr_ids = init_expr_ids;
+
+	inst_ctx.num_exprs = inst->num_exprs + node->call.num_args;
+	inst_ctx.num_members =
+		1 + object_cons_num_descendants(
+				ctx->vm, inst->cons);
+
+	size_t total_num_vars =
+		inst_ctx.num_exprs + inst_ctx.num_members;
+
+	bc_var all_vars[total_num_vars];
+	inst_ctx.all_vars = all_vars;
+	inst_ctx.expr_vars = &all_vars[0];
+	inst_ctx.member_vars = &all_vars[inst_ctx.num_exprs];
+
+	for (size_t i = 0; i < total_num_vars; i++) {
+		inst_ctx.all_vars[i] = BC_VAR_NEW;
+	}
+
+	struct ast_gen_bc_result result = {0};
+	result = ast_inst_gen_bytecode_part(
+			ctx, mod, info, bc_env, inst, node,
+			&inst_ctx, actions, num_actions);
+
+	free(actions);
+
+	return result;
+}
+
 struct ast_gen_bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node)
@@ -771,223 +1459,8 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 			return result;
 
 		case AST_NODE_INST:
-			{
-				struct object_inst *inst;
-				inst = node->call.inst;
-				assert(inst);
-
-				struct object_inst_bind       extra_binds[node->call.num_args];
-				struct object_inst_extra_expr extra_exprs[node->call.num_args];
-
-				memset(extra_binds, 0,
-						sizeof(struct object_inst_bind) * node->call.num_args);
-				memset(extra_exprs, 0,
-						sizeof(struct object_inst_extra_expr) * node->call.num_args);
-
-				int local_descs[inst->cons->num_params];
-				object_cons_local_descendent_ids(
-						ctx->vm, inst->cons, local_descs);
-
-				for (size_t i = 0; i < node->call.num_args; i++) {
-					extra_binds[i].unpack_id = 0;
-					extra_binds[i].expr_id = inst->num_exprs + i;
-					extra_binds[i].loc = node->call.args[i].value->loc;
-					extra_binds[i].overridable = false;
-
-					extra_binds[i].target_id = -1;
-					for (size_t mbr_i = 0; mbr_i < inst->cons->num_params; mbr_i++) {
-						if (inst->cons->params[mbr_i].name == node->call.args[i].name) {
-							extra_binds[i].target_id = local_descs[mbr_i];
-							break;
-						}
-					}
-					assert(extra_binds[i].target_id >= 0);
-
-					extra_exprs[i].deps = NULL;
-					extra_exprs[i].num_deps = 0;
-					extra_exprs[i].loc = node->call.args[i].value->loc;
-
-					extra_exprs[i].type = node->call.args[i].value->type;
-					assert(extra_exprs[i].type != TYPE_UNSET);
-				}
-
-				struct object_inst_action *actions = NULL;
-				size_t num_actions = 0;
-				int err;
-				err = object_inst_order(
-						ctx->vm, ctx->err, inst,
-						extra_exprs, node->call.num_args,
-						extra_binds, node->call.num_args,
-						&actions, &num_actions,
-						node->loc);
-				if (err) {
-					printf("Failed to instantiate object.\n");
-					return AST_GEN_ERROR;
-				}
-
-				const size_t num_exprs =
-					inst->num_exprs + node->call.num_args;
-				bc_var expr_vars[num_exprs];
-
-				for (size_t i = 0; i < num_exprs; i++) {
-					expr_vars[i] = BC_VAR_NEW;
-				}
-
-				// The resulting object itself gets member id 0.
-				const size_t num_desc_members =
-					1 + object_cons_num_descendants(
-							ctx->vm, inst->cons);
-				bc_var member_vars[num_desc_members];
-
-				for (size_t i = 0; i < num_desc_members; i++) {
-					member_vars[i] = BC_VAR_NEW;
-				}
-
-				for (size_t act_i = 0; act_i < num_actions; act_i++) {
-					struct object_inst_action *act;
-					act = &actions[act_i];
-
-					switch (act->op) {
-						case OBJ_INST_EXPR:
-							{
-								assert(act->expr.id < num_exprs);
-								assert(expr_vars[act->expr.id] == BC_VAR_NEW);
-
-								int expr_id = act->expr.id;
-
-								if (expr_id < inst->num_exprs) {
-									struct object_inst_expr *expr;
-									expr = &inst->exprs[expr_id];
-
-									if (expr->constant) {
-										struct bc_instr *instr;
-										instr = bc_gen_load(
-												bc_env, BC_VAR_NEW,
-												expr->const_value);
-										assert(expr_vars[expr_id] == BC_VAR_NEW);
-										expr_vars[expr_id] = instr->load.target;
-										append_bc_instr(&result, instr);
-									} else {
-										for (size_t i = 0; i < act->expr.num_deps; i++) {
-											switch (act->expr.deps[i].kind) {
-												case OBJECT_INST_DEP_MEMBER:
-													{
-														assert(act->expr.deps[i].member < num_desc_members);
-														assert(member_vars[act->expr.deps[i].member] != BC_VAR_NEW);
-														append_bc_instr(&result,
-																bc_gen_push_arg(
-																	bc_env, member_vars[act->expr.deps[i].member]));
-													}
-													break;
-
-												case OBJECT_INST_DEP_INIT_EXPR:
-													panic("TODO: Init exprs");
-													break;
-											}
-										}
-
-										struct bc_instr *call_instr;
-										call_instr = bc_gen_lcall(
-													bc_env, BC_VAR_NEW, expr->func);
-										append_bc_instr(&result, call_instr);
-										expr_vars[expr_id] = call_instr->lcall.target;
-									}
-								} else {
-									expr_id -= inst->num_exprs;
-									assert(expr_id < node->call.num_args);
-
-									// TODO: Allow referencing other members.
-									/*
-									for (size_t i = 0; i < act->expr.num_deps; i++) {
-										assert(act->expr.deps[i] < num_desc_members);
-										assert(member_vars[act->expr.deps[i]] != BC_VAR_NEW);
-									}
-									*/
-
-									struct ast_gen_bc_result expr;
-									expr = ast_node_gen_bytecode(
-											ctx, mod, info, bc_env,
-											node->call.args[expr_id].value);
-									AST_GEN_EXPECT_OK(expr);
-
-									append_bc_instrs(&result, expr);
-									assert(expr_vars[expr_id] == BC_VAR_NEW);
-									expr_vars[expr_id] = expr.out_var;
-								}
-							}
-							break;
-
-						case OBJ_INST_BIND:
-							{
-								bc_var expr_var = expr_vars[act->bind.expr_id];
-								assert(expr_var != BC_VAR_NEW);
-								assert(member_vars[act->bind.member_id] == BC_VAR_NEW);
-
-								struct ast_gen_bc_result instrs;
-								instrs = ast_unpack_gen_bytecode(
-										ctx, mod, bc_env, expr_var,
-										act->bind.unpack_id);
-
-								append_bc_instrs(&result, instrs);
-								member_vars[act->bind.member_id] = instrs.out_var;
-							}
-							break;
-
-						case OBJ_INST_PACK:
-							{
-								assert(member_vars[act->pack.member_id] == BC_VAR_NEW);
-
-								type_id mbr_type_id;
-								int err;
-								err = object_cons_descendant_type(
-										ctx->vm, node->type,
-										act->pack.member_id, &mbr_type_id);
-								struct type *mbr_type;
-								mbr_type = vm_get_type(ctx->vm, mbr_type_id);
-
-								struct object_cons *mbr_cons;
-								mbr_cons = mbr_type->obj_inst->cons;
-
-
-								assert(mbr_cons);
-
-								int local_mbrs[mbr_cons->num_params];
-								object_cons_local_descendent_ids(
-										ctx->vm, mbr_cons, local_mbrs);
-
-								for (size_t i = 0; i < mbr_cons->num_params; i++) {
-									int param_id = act->pack.member_id + local_mbrs[i];
-									assert(param_id < num_desc_members);
-									assert(member_vars[param_id] != BC_VAR_NEW);
-
-									append_bc_instr(&result,
-											bc_gen_push_arg(
-												bc_env, member_vars[param_id]));
-								}
-
-								assert(mbr_cons->pack);
-
-								struct bc_instr *pack_instr;
-								pack_instr =
-									bc_gen_pack(
-											bc_env, BC_VAR_NEW,
-											mbr_cons->pack, mbr_cons->data,
-											mbr_type_id);
-								append_bc_instr(&result, pack_instr);
-
-								member_vars[act->pack.member_id] = pack_instr->pack.target;
-							}
-							break;
-					}
-				}
-
-				free(actions);
-
-				// The top level object has ID 0.
-				assert(member_vars[0] != BC_VAR_NEW);
-				result.out_var = member_vars[0];
-			}
-			return result;
+			return ast_inst_gen_bytecode(
+					ctx, mod, info, bc_env, node);
 
 		case AST_NODE_CONS:
 			{

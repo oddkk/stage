@@ -3185,8 +3185,16 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 		exprs[expr_i].loc = expr->loc;
 	}
 
+	for (size_t i = 0; i < ctx->num_init_exprs; i++) {
+		struct object_inst_expr *expr;
+		expr = &exprs[ctx->init_exprs[i].expr];
+		expr->is_init_expr = true;
+		expr->init_id = ctx->init_exprs[i].id;
+	}
+
 	inst->exprs = exprs;
 	inst->num_exprs = ctx->exprs.length;
+	inst->init_monad = ctx->root_node->composite.is_init_monad;
 
 	size_t bind_i = 0;
 	for (size_t mbr_i = 0; mbr_i < ctx->members.length; mbr_i++) {

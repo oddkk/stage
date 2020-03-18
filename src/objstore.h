@@ -44,6 +44,8 @@ typedef struct string (*obj_repr)(struct vm *vm, struct arena *mem, struct objec
 // modify obj_data such that the old object and all related heap memory can be
 // freed without corrupting this object.
 typedef void (*obj_copy)(struct stg_exec *, void *type_data, void *obj_data);
+typedef bool (*obj_equals_func)(struct vm *, void *type_data,
+		void *lhs_obj_data, void *rhs_obj_data);
 typedef bool (*type_equals_func)(struct vm *vm, struct type *lhs, struct type *rhs);
 typedef void (*type_free)(struct vm *vm, struct type *type);
 
@@ -59,6 +61,7 @@ struct type_base {
 	obj_copy obj_copy;
 	type_free free;
 	type_equals_func equals;
+	obj_equals_func obj_equals;
 
 	struct ast_array_def *array_def;
 };
@@ -300,6 +303,9 @@ struct object_inst_expr {
 	struct object_inst_dep *deps;
 	size_t num_deps;
 
+	bool is_init_expr;
+	size_t init_id;
+
 	struct stg_location loc;
 };
 
@@ -391,6 +397,7 @@ object_cons_descendant_type(
 
 enum object_inst_action_op {
 	OBJ_INST_EXPR,
+	OBJ_INST_INIT_EXPR,
 	OBJ_INST_BIND,
 	OBJ_INST_PACK,
 };
@@ -404,6 +411,13 @@ struct object_inst_action {
 			struct object_inst_dep *deps;
 			size_t num_deps;
 		} expr;
+
+		struct {
+			int id;
+
+			struct object_inst_dep *deps;
+			size_t num_deps;
+		} init_expr;
 
 		struct {
 			int expr_id;

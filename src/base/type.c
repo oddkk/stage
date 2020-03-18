@@ -16,9 +16,20 @@ obj_type_repr(struct vm *vm, struct arena *mem, struct object *obj)
 	return res;
 }
 
+static bool
+obj_type_equals(struct vm *vm, void *type_data, void *lhs_data, void *rhs_data)
+{
+	type_id lhs, rhs;
+	lhs = *(type_id *)lhs_data;
+	rhs = *(type_id *)rhs_data;
+
+	return type_equals(vm, lhs, rhs);
+}
+
 static struct type_base base_type_base = {
 	.name = STR("Type"),
 	.obj_repr = obj_type_repr,
+	.obj_equals = obj_type_equals,
 };
 
 void

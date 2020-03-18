@@ -478,6 +478,8 @@ ast_constraint_source_name(enum ast_constraint_source source)
 		SRC_NAME(CLOSURE);
 		SRC_NAME(CALL_ARG);
 		SRC_NAME(CONS_ARG);
+		SRC_NAME(MATCH_VALUE);
+		SRC_NAME(MATCH_RESULT);
 		SRC_NAME(ACCESS);
 		SRC_NAME(MOD);
 		SRC_NAME(LIT);
@@ -1899,10 +1901,6 @@ ast_slot_solve_impose_constraint(
 			ast_solve_apply_inst(
 					ctx, constr_id,
 					constr->target, constr->inst);
-			// TODO: Is this correct?
-			ast_solve_apply_type(
-					ctx, constr_id,
-					constr->target, constr->inst);
 			break;
 
 		case AST_SLOT_REQ_TYPE:
@@ -1976,6 +1974,8 @@ ast_slot_push_slot_type(struct solve_context *ctx,
 {
 	struct ast_slot_resolve *slot;
 	slot = ast_get_slot(ctx, slot_id);
+
+	assert(type != TYPE_UNSET);
 
 	if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
 		return ast_solve_apply_value_type(
@@ -2184,6 +2184,35 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			ctx, slot_id, &inst);
 	if (err) {
 		inst = NULL;
+	}
+
+	if (inst) {
+		ast_constraint_id inst_constr_id = -1;
+		// TODO: We should have a better way of determining the authority for
+		// the inst.
+		if ((slot->flags & AST_SLOT_HAS_INST) != 0) {
+			inst_constr_id = slot->authority.inst;
+		} else if ((slot->flags & AST_SLOT_HAS_TYPE) != 0) {
+			inst_constr_id = slot->authority.type;
+		} else if ((slot->flags & AST_SLOT_HAS_VALUE) != 0) {
+			inst_constr_id = slot->authority.value;
+		} else {
+			panic("Could not find inst constraint.");
+		}
+
+		// Only apply the monad type if we are instantiating an object.
+		if (inst->init_monad && (slot->flags & AST_SLOT_HAS_INST) != 0) {
+			type_id inst_monad_id;
+			inst_monad_id = stg_register_init_type(
+						ctx->mod, inst->type);
+			ast_slot_push_slot_type(
+					ctx, inst_constr_id,
+					slot_id, inst_monad_id);
+		} else {
+			ast_slot_push_slot_type(
+					ctx, inst_constr_id,
+					slot_id, inst->type);
+		}
 	}
 
 	if (inst && slot->num_members > 0) {

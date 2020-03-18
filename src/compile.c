@@ -450,6 +450,8 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 				struct atom *base_mod_name = vm_atoms(ctx->vm, "base");
 
 				if (mod->name != base_mod_name) {
+					data->mod_root->composite.is_init_monad = true;
+
 					vm_request_module(ctx->vm, mod->id,
 							base_mod_name, VM_REQUEST_MOD_NO_LOC);
 

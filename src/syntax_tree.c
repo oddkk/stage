@@ -1004,6 +1004,10 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			ast_init_expr_id expr_id;
 			expr_id = ast_node_composite_add_init_expr(
 					ctx, expr_ctx->init_target, expr);
+			if (expr_id < 0) {
+				return NULL;
+			}
+
 			return ast_init_node_init_expr(
 					ctx, AST_NODE_NEW, node->loc, expr_id);
 		}

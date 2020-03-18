@@ -7,6 +7,7 @@
 void print_info(const char *fmt, ...);
 void print_error(const char *tag, const char *fmt, ...);
 void panic(const char *fmt, ...);
+void trap();
 
 #define assert(expr) \
 	do if(!(expr)){ \

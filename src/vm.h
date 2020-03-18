@@ -105,6 +105,8 @@ vm_atom(struct vm *, struct string name);
 struct stg_native_module *
 vm_add_precompiled_native_module(struct vm *, struct string name);
 
+int vm_mod_init(struct stg_module *);
+
 int vm_init(struct vm *);
 void vm_destroy(struct vm *);
 

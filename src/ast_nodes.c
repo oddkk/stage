@@ -7,6 +7,7 @@
 #include "native_bytecode.h"
 #include "base/mod.h"
 #include "dlist.h"
+#include "term_color.h"
 
 char *
 ast_node_name(enum ast_node_kind kind)
@@ -538,6 +539,12 @@ ast_node_composite_add_init_expr(
 		struct ast_node *target, struct ast_node *expr)
 {
 	assert(target && expr);
+
+	if (!target->composite.is_init_monad) {
+		stg_error(ctx->err, expr->loc,
+				"Init expressions can only appear inside init-monad datatypes.");
+		return -1;
+	}
 
 	return dlist_append(
 			target->composite.init_exprs,
@@ -1451,16 +1458,29 @@ ast_node_create_templ(struct ast_context *ctx, struct stg_module *mod,
 	printf("\n");
 #endif
 
+#if AST_DEBUG_SLOT_SOLVE_GRAPH
+	printf("#%3zu (templ): ", inner_env.invoc_id);
+	ast_print_node(ctx, info->templ_node->templ.pattern.node, true);
+#endif
+
 	if (err < 0) {
-		free(def->params);
-		free(def);
-		free(info);
-		free(info->deps);
+#if AST_DEBUG_SLOT_SOLVE_GRAPH
+		printf(" " TC(TC_RED, "failed") "\n");
+#endif
+		// TODO: Free/reset the arena?
+		// free(def->params);
+		// free(def);
+		// free(info);
+		// free(info->deps);
 
 		// TODO: Free info->templ_nodes
 
 		return NULL;
 	}
+
+#if AST_DEBUG_SLOT_SOLVE
+		printf("OK.\n\n");
+#endif
 
 	def->data         = info;
 	def->ct_pack      = ast_templ_pack;

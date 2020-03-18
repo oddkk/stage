@@ -396,6 +396,102 @@ init_monad_return(void **args, size_t num_args, void *ret)
 	memcpy(ret, &data, sizeof(struct stg_init_data));
 }
 
+struct init_bind_data {
+	struct stg_func_object func;
+	struct stg_init_data monad;
+
+	size_t in_type_size;
+	type_id in_type;
+
+	size_t out_type_size;
+	type_id out_type;
+	type_id out_monad_type;
+};
+
+static void
+init_bind_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
+{
+	struct init_bind_data *closure = data;
+
+	uint8_t in_buffer[closure->in_type_size];
+
+	closure->monad.call(vm, ctx,
+			closure->monad.data, in_buffer);
+
+	struct object arg;
+	arg.type = closure->in_type;
+	arg.data = in_buffer;
+
+
+	struct stg_init_data out_monad = {0};
+	struct object out_monad_obj;
+	out_monad_obj.type = closure->out_monad_type;
+	out_monad_obj.data = &out_monad;
+
+	vm_call_func_obj(
+			vm, ctx, closure->func,
+			&arg, 1, &out_monad_obj);
+
+	out_monad.call(vm, ctx, out_monad.data, out);
+}
+
+static void
+init_bind_copy(struct stg_exec *ctx, void *data)
+{
+	struct init_bind_data *closure = data;
+
+	stg_monad_init_copy(ctx, &closure->monad);
+}
+
+static struct stg_init_data
+init_monad_bind(struct stg_exec *heap,
+		struct stg_module *mod,
+		struct stg_init_data monad,
+		struct stg_func_object func,
+		type_id type_in_id, type_id type_out_id)
+{
+	struct stg_init_data data = {0};
+	data.call = init_bind_unsafe;
+	data.copy = init_bind_copy;
+	data.data_size = sizeof(struct init_bind_data);
+	data.data = stg_alloc(heap, 1, data.data_size);
+
+	struct init_bind_data *closure;
+	closure = data.data;
+	closure->func  = func;
+	closure->monad = monad;
+
+	struct type *func_type;
+	func_type = vm_get_type(mod->vm,
+			vm_get_func(mod->vm, func.func)->type);
+	struct stg_func_type *func_info;
+	func_info = func_type->data;
+
+	assert(func_info->num_params == 1);
+
+	closure->out_monad_type =
+		stg_register_init_type(mod, type_out_id);
+
+	assert_type_equals(mod->vm,
+			type_in_id, func_info->params[0]);
+	assert_type_equals(mod->vm,
+			closure->out_monad_type, func_info->return_type);
+
+	struct type *type_out;
+	type_out = vm_get_type(mod->vm, type_out_id);
+
+	closure->out_type_size = type_out->size;
+	closure->out_type = type_out_id;
+
+	struct type *type_in;
+	type_in = vm_get_type(mod->vm, type_in_id);
+
+	closure->in_type_size = type_in->size;
+	closure->in_type = type_in_id;
+
+	return data;
+}
+
 struct init_join_data {
 	struct stg_init_data monad;
 
@@ -487,6 +583,8 @@ base_init_register_native(struct stg_native_module *mod)
 {
 	stg_native_register_funcs(mod, init_monad_return,
 			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE|STG_NATIVE_FUNC_REFS);
+	stg_native_register_funcs(mod, init_monad_bind,
+			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
 	stg_native_register_funcs(mod, init_monad_join,
 			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
 	stg_native_register_funcs(mod, init_monad_fmap,

@@ -77,9 +77,15 @@ obj_equals(struct vm *vm, struct object lhs, struct object rhs)
 
 	struct type *lhs_type = vm_get_type(vm, lhs.type);
 	struct type *rhs_type = vm_get_type(vm, rhs.type);
-	assert(lhs_type->size == rhs_type->size);
-	// TODO: Use user defined comparator.
-	return memcmp(lhs.data, rhs.data, lhs_type->size) == 0;
+
+	if (lhs_type->base->obj_equals) {
+		return lhs_type->base->obj_equals(
+				vm, lhs_type->data, lhs.data, rhs.data);
+	} else {
+		assert(lhs_type->size == rhs_type->size);
+		// TODO: Use user defined comparator.
+		return memcmp(lhs.data, rhs.data, lhs_type->size) == 0;
+	}
 }
 
 void
@@ -393,31 +399,35 @@ object_cons_simple_lookup(
 		type_id tid,
 		struct string lookup)
 {
-	size_t offset = 1;
+	size_t offset = 0;
 	struct string expr = lookup;
 	struct string part = {0};
 
 	struct type *type = vm_get_type(vm, tid);
+	struct object_inst *current;
 
-	if (!type->obj_inst) {
-		return -1;
-	}
-
-	struct object_cons *current;
-	current = type->obj_inst->cons;
+	current = type->obj_inst;
 
 	while (string_split(expr, &part, &expr, '.')) {
+		if (!current) {
+			return -1;
+		}
+
 		struct atom *part_name;
 		part_name = vm_atom(vm, part);
 		bool found = false;
-		for (size_t i = 0; i < current->num_params; i++) {
-			if (current->params[i].name == part_name) {
+		offset += 1;
+
+		for (size_t i = 0; i < current->cons->num_params; i++) {
+			struct type *mbr_type;
+			mbr_type = vm_get_type(
+					vm, current->cons->params[i].type);
+
+			if (current->cons->params[i].name == part_name) {
 				found = true;
+				current = mbr_type->obj_inst;
 				break;
 			} else {
-				struct type *mbr_type;
-				mbr_type = vm_get_type(
-						vm, current->params[i].type);
 				if (mbr_type->obj_inst) {
 					offset +=
 						object_cons_num_descendants(
@@ -763,6 +773,9 @@ struct obj_inst_expr {
 
 	obj_member_id first_target;
 
+	bool is_init_expr;
+	size_t init_id;
+
 	obj_expr_id next_terminal;
 	obj_expr_id *expr_deps;
 	size_t num_expr_deps;
@@ -820,6 +833,24 @@ get_expr(struct object_inst_context *ctx, obj_expr_id id)
 {
 	assert(id < ctx->num_exprs);
 	return &ctx->exprs[id];
+}
+
+static obj_expr_id
+find_init_expr(struct object_inst_context *ctx, size_t init_id)
+{
+	obj_expr_id dep_expr_id = -1;
+	for (obj_expr_id expr_i = 0; expr_i < ctx->num_exprs; expr_i++) {
+		struct obj_inst_expr *expr;
+		expr = get_expr(ctx, expr_i);
+		if (expr->is_init_expr &&
+				expr->init_id == init_id) {
+			dep_expr_id = expr_i;
+		}
+	}
+
+	assert(dep_expr_id >= 0);
+
+	return dep_expr_id;
 }
 
 static void
@@ -1042,12 +1073,13 @@ obj_inst_expr_emit_actions(
 				break;
 
 			case OBJECT_INST_DEP_INIT_EXPR:
-				panic("TODO: init expressions");
+				// All expressions we depend on should already have been
+				// emitted.
 				break;
 		}
 	}
 
-	{
+	if (!expr->is_init_expr) {
 		struct object_inst_action expr_act = {0};
 		expr_act.op = OBJ_INST_EXPR;
 		expr_act.expr.id = expr_id;
@@ -1056,6 +1088,16 @@ obj_inst_expr_emit_actions(
 		obj_inst_emit_action(ctx, expr_act);
 #if OBJ_DEBUG_ACTIONS
 		printf("Emit expr %i\n", expr_id);
+#endif
+	} else {
+		struct object_inst_action init_expr_act = {0};
+		init_expr_act.op = OBJ_INST_INIT_EXPR;
+		init_expr_act.init_expr.id = expr_id;
+		init_expr_act.init_expr.deps = expr->deps;
+		init_expr_act.init_expr.num_deps = expr->num_deps;
+		obj_inst_emit_action(ctx, init_expr_act);
+#if OBJ_DEBUG_ACTIONS
+		printf("Emit init expr %i\n", expr_id);
 #endif
 	}
 
@@ -1156,6 +1198,9 @@ object_inst_order(
 				func_info = func_type->data;
 
 				ctx->exprs[offset+i].type = func_info->return_type;
+
+				ctx->exprs[offset+i].is_init_expr = expr->is_init_expr;
+				ctx->exprs[offset+i].init_id = expr->init_id;
 			}
 
 			assert(ctx->exprs[offset+i].type != TYPE_UNSET);
@@ -1191,8 +1236,10 @@ object_inst_order(
 		size_t num_descs = ctx->num_desc_members+1;
 		struct object_cons_param descs[num_descs];
 		memset(descs, 0, sizeof(struct object_cons_param) * num_descs);
+		type_id inst_type = inst->type;
+
 		object_cons_all_descendences(
-				vm, inst->type, descs, num_descs);
+				vm, inst_type, descs, num_descs);
 
 		// Determine what bind is assigned to each member.
 		for (size_t i = 0; i < ctx->num_desc_members+1; i++) {
@@ -1287,7 +1334,7 @@ object_inst_order(
 
 				case OBJECT_INST_DEP_INIT_EXPR:
 					{
-						panic("TODO: Init expression");
+						num_total_dependencies += 1;
 					}
 					break;
 			}
@@ -1372,6 +1419,30 @@ object_inst_order(
 						break;
 
 					case OBJECT_INST_DEP_INIT_EXPR:
+						{
+							obj_expr_id dep_expr_id;
+							dep_expr_id = find_init_expr(ctx, dep.init_expr);
+
+							bool found = false;
+							for (size_t i = 0; i < num_deps; i++) {
+								if (deps[i] == dep_expr_id) {
+									found = true;
+									break;
+								}
+							}
+
+							if (!found) {
+								assert(offset + num_deps + 1 <= num_total_dependencies);
+								deps[num_deps] = dep_expr_id;
+								num_deps += 1;
+
+								struct obj_inst_expr *dep_expr;
+								dep_expr = get_expr(ctx, dep_expr_id);
+
+								dep_expr->exp_outgoing_expr_deps += 1;
+								total_outgoing_dependencies += 1;
+							}
+						}
 						break;
 				}
 			}
@@ -1616,13 +1687,20 @@ stg_instantiate_static_object(
 		return -1;
 	}
 
+	type_id final_tid = tid;
+	struct type *final_type = type;
+	if (type->obj_inst->init_monad) {
+		final_tid = stg_register_init_type(mod, tid);
+		final_type = vm_get_type(mod->vm, final_tid);
+	}
+
 	struct object cons_obj = {0};
 	cons_obj.type = ctx->vm->default_types.type;
 	cons_obj.data = &tid;
 
 	struct object type_obj = {0};
 	type_obj.type = ctx->vm->default_types.type;
-	type_obj.data = &tid;
+	type_obj.data = &final_tid;
 
 	ret = ast_init_node_lit(ctx,
 			AST_NODE_NEW, STG_NO_LOC, type_obj);
@@ -1659,7 +1737,7 @@ stg_instantiate_static_object(
 	struct func func = {0};
 
 	func.type = stg_register_func_type(
-			mod, tid, NULL, 0);
+			mod, final_tid, NULL, 0);
 
 	func.kind = FUNC_BYTECODE;
 	func.bytecode = bc_env;
@@ -1668,11 +1746,11 @@ stg_instantiate_static_object(
 	func_id init_func_id;
 	init_func_id = stg_register_func(mod, func);
 
-	uint8_t obj_buffer[type->size];
+	uint8_t obj_buffer[final_type->size];
 	struct object obj = {0};
 
 	obj.data = obj_buffer;
-	obj.type = tid;
+	obj.type = final_tid;
 
 	struct stg_exec exec_ctx = {0};
 	mod_arena(mod, &exec_ctx.heap);

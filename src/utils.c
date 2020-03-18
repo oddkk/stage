@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
 
 void print_info(const char *fmt, ...)
 {
@@ -37,6 +38,11 @@ void panic(const char *fmt, ...)
 	va_end(ap);
 	fflush(stdout);
 	abort();
+}
+
+void trap()
+{
+	raise(SIGTRAP);
 }
 
 void zero_memory(void *data, size_t length)

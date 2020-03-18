@@ -606,6 +606,8 @@ struct ast_node {
 
 			struct ast_closure_target closure;
 
+			bool is_init_monad;
+
 			type_id type;
 			bool failed;
 		} composite;

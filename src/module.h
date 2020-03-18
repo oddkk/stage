@@ -48,6 +48,7 @@ struct stg_module {
 	struct vm *vm;
 	struct arena mem;
 
+	struct object init_monad;
 	struct object instance;
 
 	struct stg_native_module *native_mod;
@@ -107,6 +108,10 @@ stg_mod_register_native_type(struct stg_module *,
 void
 stg_mod_register_native_cons(struct stg_module *,
 		struct atom *name, struct object_cons *);
+
+int
+stg_mod_lookup_member(
+		struct stg_module *, struct string lookup, struct object *out);
 
 struct stg_module *
 stg_mod_find_module(struct stg_module *, struct atom *name);
