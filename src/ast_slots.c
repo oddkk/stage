@@ -1796,8 +1796,12 @@ ast_get_slot_value(struct solve_context *ctx,
 static bool
 ast_try_get_inst_from_object(
 		struct solve_context *ctx, struct object obj,
-		struct object_inst **out_inst)
+		struct object_inst **out_inst, bool *is_static)
 {
+	if (is_static) {
+		*is_static = false;
+	}
+
 	if (obj.type == ctx->type) {
 		type_id tid = *(type_id *)obj.data;
 		struct type *type = vm_get_type(ctx->vm, tid);
@@ -1809,6 +1813,9 @@ ast_try_get_inst_from_object(
 			assert(static_obj_type->obj_inst);
 
 			*out_inst = static_obj_type->obj_inst;
+			if (is_static) {
+				*is_static = true;
+			}
 			return true;
 		}
 
@@ -1825,10 +1832,14 @@ ast_try_get_inst_from_object(
 static enum ast_slot_get_error
 ast_slot_try_get_inst(
 		struct solve_context *ctx, ast_slot_id slot_id,
-		struct object_inst **out_inst)
+		struct object_inst **out_inst, bool *is_static)
 {
 	struct ast_slot_resolve *slot;
 	slot = ast_get_slot(ctx, slot_id);
+
+	if (is_static) {
+		*is_static = false;
+	}
 
 	if ((slot->flags & AST_SLOT_HAS_INST) != 0) {
 		return ast_slot_try_get_value_inst(
@@ -1836,7 +1847,7 @@ ast_slot_try_get_inst(
 	} else {
 		struct object obj = {0};
 		if (ast_get_slot_value(ctx, slot_id, &obj)) {
-			if (ast_try_get_inst_from_object(ctx, obj, out_inst)) {
+			if (ast_try_get_inst_from_object(ctx, obj, out_inst, is_static)) {
 				return AST_SLOT_GET_OK;
 			} else {
 				return AST_SLOT_GET_TYPE_HAS_NO_INST;
@@ -2179,9 +2190,10 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 	}
 
 	struct object_inst *inst = NULL;
+	bool inst_is_static = false;
 	int err;
 	err = ast_slot_try_get_inst(
-			ctx, slot_id, &inst);
+			ctx, slot_id, &inst, &inst_is_static);
 	if (err) {
 		inst = NULL;
 	}
@@ -2200,18 +2212,20 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 			panic("Could not find inst constraint.");
 		}
 
-		// Only apply the monad type if we are instantiating an object.
-		if (inst->init_monad && (slot->flags & AST_SLOT_HAS_INST) != 0) {
-			type_id inst_monad_id;
-			inst_monad_id = stg_register_init_type(
-						ctx->mod, inst->type);
-			ast_slot_push_slot_type(
-					ctx, inst_constr_id,
-					slot_id, inst_monad_id);
-		} else {
-			ast_slot_push_slot_type(
-					ctx, inst_constr_id,
-					slot_id, inst->type);
+		if (!inst_is_static) {
+			// Only apply the monad type if we are instantiating an object.
+			if (inst->init_monad && (slot->flags & AST_SLOT_HAS_INST) != 0) {
+				type_id inst_monad_id;
+				inst_monad_id = stg_register_init_type(
+							ctx->mod, inst->type);
+				ast_slot_push_slot_type(
+						ctx, inst_constr_id,
+						slot_id, inst_monad_id);
+			} else {
+				ast_slot_push_slot_type(
+						ctx, inst_constr_id,
+						slot_id, inst->type);
+			}
 		}
 	}
 
@@ -2246,13 +2260,13 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 						struct type *val_type;
 						val_type = vm_get_type(ctx->vm, slot->value.type);
 						obj = val_type->static_object;
-
-						struct type *obj_type;
-						obj_type = vm_get_type(ctx->vm, obj.type);
-						assert(obj_type->obj_inst == inst);
 					} else {
 						obj = slot->value.obj;
 					}
+
+					struct type *obj_type;
+					obj_type = vm_get_type(ctx->vm, obj.type);
+					assert(obj_type->obj_inst == inst);
 
 					int err;
 					err = object_ct_unpack_param(
@@ -2657,7 +2671,7 @@ ast_slot_verify_member(
 
 	struct object_inst *inst;
 	err = ast_slot_try_get_inst(
-			ctx, target_id, &inst);
+			ctx, target_id, &inst, NULL);
 	if (err < 0) {
 		stg_error(ctx->err, loc,
 				"Object has no members.");
@@ -3226,7 +3240,7 @@ ast_slot_verify_constraint(
 
 				struct object_inst *inst;
 				err = ast_slot_try_get_inst(
-						ctx, constr->target, &inst);
+						ctx, constr->target, &inst, NULL);
 				if (err < 0) {
 					type_id inst_obj_type;
 					err = ast_slot_try_get_type(
@@ -3615,7 +3629,7 @@ ast_slot_try_solve(
 		if ((slot->flags & AST_SLOT_HAS_INST) != 0) {
 			int err;
 			err = ast_slot_try_get_inst(
-					ctx, slot_id, &res->inst);
+					ctx, slot_id, &res->inst, NULL);
 			if (err > 0) {
 				res->result |= AST_SLOT_RES_INST_UNKNOWN;
 			} else if (err < 0) {
