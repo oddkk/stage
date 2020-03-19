@@ -1339,7 +1339,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		struct ast_datatype_bind *bind;
 		bind = &node->composite.binds[i];
 		if (bind->erroneous) {
-			// TODO: Maby we should register the bind, but tag it as erroneous,
+			// TODO: Maybe we should register the bind, but tag it as erroneous,
 			// to allow typechecking and reporting of potential errors.
 			continue;
 		}

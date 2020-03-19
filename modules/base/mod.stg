@@ -1,6 +1,6 @@
 use prelude.*;
 
-Maby := [T: Type] Variant { Some T, None };
+Maybe := [T: Type] Variant { Some T, None };
 
 op+ := (lhs: int, rhs: int) -> int @native("op_add_int_int");
 op- := (lhs: int, rhs: int) -> int @native("op_sub_int_int");

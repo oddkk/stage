@@ -12,8 +12,8 @@ printIntTwice := (val: int) -> Init[Unit]
 	=> init.bind[](printInt(val),
 		(a: Unit) => printInt(val));
 
-!printLn(match Maby[int].Some(3) {
-	Maby[int].Some(2)  => "two";
-	Maby[int].Some($a) => "something else";
-	Maby[int].None     => "nothing";
+!printLn(match Maybe[int].Some(3) {
+	Maybe[int].Some(2)  => "two";
+	Maybe[int].Some($a) => "something else";
+	Maybe[int].None     => "nothing";
 });
