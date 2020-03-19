@@ -24,6 +24,7 @@ enum ast_name_ref_kind {
 	AST_NAME_REF_TEMPL,
 	AST_NAME_REF_USE,
 	AST_NAME_REF_INIT_EXPR,
+	AST_NAME_REF_SELF,
 };
 
 struct ast_name_ref {
@@ -38,6 +39,7 @@ struct ast_name_ref {
 			ast_param_id param;
 		} use;
 		ast_init_expr_id init_expr;
+		int self_offset;
 	};
 };
 
@@ -118,6 +120,7 @@ enum ast_constraint_source {
 	AST_CONSTR_SRC_LIT,
 	AST_CONSTR_SRC_LOOKUP,
 	AST_CONSTR_SRC_DECAY,
+	AST_CONSTR_SRC_SELF,
 };
 
 #if AST_DEBUG_SLOT_SOLVE
@@ -904,13 +907,13 @@ int
 ast_composite_node_resolve_names(struct ast_context *ctx,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *comp, struct ast_node *node,
-		ast_member_id *local_members);
+		ast_member_id *local_members, struct atom *self_name);
 
 int
 ast_composite_node_has_ambiguous_refs(
 		struct ast_context *ctx, struct ast_scope *scope,
 		struct ast_node *comp, struct ast_node *node,
-		ast_member_id *local_members);
+		ast_member_id *local_members, struct atom *self_name);
 
 int
 ast_node_discover_potential_closures(struct ast_context *ctx,
@@ -1048,7 +1051,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 
 struct bc_env *
 ast_func_gen_bytecode(
-		struct ast_context *ctx, struct stg_module *mod,
+		struct ast_context *ctx, struct bc_env *, struct stg_module *mod,
 		struct ast_typecheck_closure *closures, bc_closure *closure_refs,
 		size_t num_closures, struct ast_node *node);
 

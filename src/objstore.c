@@ -1726,7 +1726,7 @@ stg_instantiate_static_object(
 	}
 
 	struct bc_env *bc_env;
-	bc_env = ast_func_gen_bytecode(ctx, mod,
+	bc_env = ast_func_gen_bytecode(ctx, NULL, mod,
 			NULL, NULL, 0, init_func);
 	if (!bc_env) {
 		printf("Failed codegen for module '%.*s'.\n",

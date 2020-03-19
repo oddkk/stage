@@ -69,6 +69,10 @@ struct stg_func_closure_data {
 	func_id func;
 	struct stg_func_closure_member *members;
 	size_t num_members;
+
+	// The self closure always has offset 0.
+	bool has_self;
+
 	size_t size;
 };
 

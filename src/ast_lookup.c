@@ -212,6 +212,12 @@ flag_no_req_const(enum ast_node_resolve_names_flags in)
 }
 
 static int
+ast_composite_resolve_internal(struct ast_context *ctx,
+		struct ast_resolve_info *info, struct ast_scope *scope,
+		enum ast_node_resolve_names_flags flags,
+		struct ast_node *comp, struct ast_node *node);
+
+static int
 ast_node_resolve_names_internal(struct ast_context *ctx,
 		struct ast_resolve_info *info, struct ast_scope *scope,
 		enum ast_node_resolve_names_flags flags, struct ast_node *node)
@@ -470,36 +476,8 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 					member_scope.names = names;
 					member_scope.num_names = node->composite.num_members;
 
-					for (size_t i = 0; i < node->composite.num_members; i++) {
-						if (node->composite.members[i].type) {
-							err += ast_node_resolve_names_internal(
-									ctx, info, &member_scope, flag_req_const(flags),
-									node->composite.members[i].type);
-						}
-					}
-
-					for (size_t i = 0; i < node->composite.num_binds; i++) {
-						err += ast_node_resolve_names_internal(
-								ctx, info, &member_scope, flag_no_req_const(flags),
-								node->composite.binds[i].target);
-						err += ast_node_resolve_names_internal(
-								ctx, info, &member_scope, flag_no_req_const(flags),
-								node->composite.binds[i].value);
-					}
-
-					for (size_t i = 0; i < node->composite.num_free_exprs; i++) {
-						err += ast_node_discover_potential_closures(ctx,
-								&member_scope, flag_no_req_const(flags),
-								node->composite.free_exprs[i]);
-					}
-
-					for (size_t i = 0; i < node->composite.num_init_exprs; i++) {
-						err += ast_node_discover_potential_closures(ctx,
-								&member_scope, flag_no_req_const(flags),
-								node->composite.init_exprs[i]);
-					}
-
-					// TODO: Visit use targets.
+					err += ast_composite_resolve_internal(
+							ctx, info, &member_scope, flags, node, node);
 				}
 
 				err += ast_closure_resolve_names(ctx, info,
@@ -586,7 +564,8 @@ ast_composite_scope_num_names(struct ast_context *ctx, struct ast_node *comp)
 static inline void
 ast_composite_setup_scope(struct ast_context *ctx, struct ast_scope *target_scope,
 		struct ast_scope *scope, struct ast_node *comp,
-		ast_member_id *local_members, struct ast_scope_name *names_buffer)
+		ast_member_id *local_members, struct ast_scope_name *names_buffer,
+		struct atom *self_name)
 {
 	assert(comp->kind == AST_NODE_COMPOSITE);
 
@@ -598,8 +577,13 @@ ast_composite_setup_scope(struct ast_context *ctx, struct ast_scope *target_scop
 
 	for (size_t i = 0; i < comp->composite.num_members; i++) {
 		names_buffer[names_offset+i].name = comp->composite.members[i].name;
-		names_buffer[names_offset+i].ref.kind = AST_NAME_REF_MEMBER;
-		names_buffer[names_offset+i].ref.member = local_members[i];
+		if (names_buffer[names_offset+i].name == self_name) {
+			names_buffer[names_offset+i].ref.kind = AST_NAME_REF_SELF;
+			names_buffer[names_offset+i].ref.self_offset = 0;
+		} else {
+			names_buffer[names_offset+i].ref.kind = AST_NAME_REF_MEMBER;
+			names_buffer[names_offset+i].ref.member = local_members[i];
+		}
 	}
 
 	names_offset += comp->composite.num_members;
@@ -670,11 +654,36 @@ ast_composite_resolve_internal(struct ast_context *ctx,
 		}
 
 		for (size_t i = 0; i < node->composite.num_binds; i++) {
+			struct ast_node *target;
+			target = node->composite.binds[i].target;
+
 			err += ast_node_resolve_names_internal(
-					ctx, info, scope, flags,
-					node->composite.binds[i].target);
+					ctx, info, scope, flags, target);
+
+			struct ast_scope value_scope = {0};
+			struct ast_scope *effective_value_scope = scope;
+
+			struct atom *trivial_name = NULL;
+
+			// TODO: Support nameing of more complex targets.
+			if (target->kind == AST_NODE_LOOKUP) {
+				trivial_name = target->lookup.name;
+			}
+
+			if (trivial_name) {
+				ast_scope_push_expr(&value_scope, scope);
+
+				struct ast_scope_name self_name = {0};
+				self_name.name = trivial_name;
+				self_name.ref.kind = AST_NAME_REF_SELF;
+				self_name.ref.self_offset = 0;
+
+				value_scope.names = &self_name;
+				value_scope.num_names = 1;
+			}
+
 			err += ast_node_resolve_names_internal(
-					ctx, info, scope, flags,
+					ctx, info, effective_value_scope, flags,
 					node->composite.binds[i].value);
 		}
 
@@ -683,6 +692,14 @@ ast_composite_resolve_internal(struct ast_context *ctx,
 					ctx, info, scope, flags,
 					node->composite.free_exprs[i]);
 		}
+
+		for (size_t i = 0; i < node->composite.num_init_exprs; i++) {
+			err += ast_node_discover_potential_closures(ctx,
+					scope, flag_no_req_const(flags),
+					node->composite.init_exprs[i]);
+		}
+
+		// TODO: Visit use targets.
 
 		return err;
 	} else {
@@ -696,14 +713,15 @@ int
 ast_composite_node_resolve_names(struct ast_context *ctx,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *comp, struct ast_node *node,
-		ast_member_id *local_members)
+		ast_member_id *local_members, struct atom *self_name)
 {
 	struct ast_scope member_scope = {0};
 	size_t num_scope_names = ast_composite_scope_num_names(ctx, comp);
 	struct ast_scope_name member_scope_names[num_scope_names];
 
 	ast_composite_setup_scope(ctx, &member_scope,
-			scope, comp, local_members, member_scope_names);
+			scope, comp, local_members, member_scope_names,
+			self_name);
 
 	struct ast_resolve_info info = {0};
 	info.native_mod = native_mod;
@@ -762,14 +780,15 @@ int
 ast_composite_node_has_ambiguous_refs(
 		struct ast_context *ctx, struct ast_scope *scope,
 		struct ast_node *comp, struct ast_node *node,
-		ast_member_id *local_members)
+		ast_member_id *local_members, struct atom *self_name)
 {
 	struct ast_scope member_scope = {0};
 	size_t num_scope_names = ast_composite_scope_num_names(ctx, comp);
 	struct ast_scope_name member_scope_names[num_scope_names];
 
 	ast_composite_setup_scope(ctx, &member_scope,
-			scope, comp, local_members, member_scope_names);
+			scope, comp, local_members, member_scope_names,
+			self_name);
 
 	enum ast_node_resolve_names_flags flags = 0;
 	struct ast_resolve_info info = {0};

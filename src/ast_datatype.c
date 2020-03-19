@@ -43,6 +43,8 @@ struct ast_dt_expr {
 
 	type_id type;
 
+	struct atom *trivial_name;
+
 	struct stg_location loc;
 
 	struct ast_gen_dt_param *deps;
@@ -636,11 +638,14 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 // to a field exposed by a 'use' statement or to a closure. Expressions
 // containing such lookups are considered ambigous.
 static inline bool
-ast_dt_expr_has_ambiguous_refs(struct ast_dt_context *ctx, struct ast_node *node)
+ast_dt_expr_has_ambiguous_refs(
+		struct ast_dt_context *ctx, struct ast_node *node,
+		struct atom *self_name)
 {
 	int res;
 	res = ast_composite_node_has_ambiguous_refs(
-			ctx->ast_ctx, NULL, ctx->root_node, node, ctx->local_member_ids);
+			ctx->ast_ctx, NULL, ctx->root_node,
+			node, ctx->local_member_ids, self_name);
 
 	return res != 0;
 }
@@ -707,7 +712,7 @@ ast_dt_bind_to_member(struct ast_dt_context *ctx,
 
 static ast_dt_expr_id
 ast_dt_register_expr(struct ast_dt_context *ctx,
-		struct ast_node *value)
+		struct ast_node *value, struct atom *trivial_name)
 {
 	ast_dt_expr_id expr_i;
 	expr_i = ast_dt_alloc_expr(ctx);
@@ -720,6 +725,7 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 	new_expr->value.func = FUNC_UNSET;
 	new_expr->type = TYPE_UNSET;
 	new_expr->loc = value->loc;
+	new_expr->trivial_name = trivial_name;
 
 	new_expr->value_jobs.resolve_names =
 		ast_dt_job_expr(ctx, expr_i,
@@ -741,7 +747,9 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 			new_expr->value_jobs.resolve_types,
 			new_expr->value_jobs.codegen);
 
-	if (ast_dt_expr_has_ambiguous_refs(ctx, new_expr->value.node)) {
+	if (ast_dt_expr_has_ambiguous_refs(
+				ctx, new_expr->value.node,
+				new_expr->trivial_name)) {
 		ast_dt_job_dependency(ctx,
 				ctx->use_resolved,
 				new_expr->value_jobs.resolve_names);
@@ -858,7 +866,7 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 				mbr->type_jobs.resolve_types,
 				mbr->type_jobs.codegen);
 
-		if (ast_dt_expr_has_ambiguous_refs(ctx, mbr->type_node)) {
+		if (ast_dt_expr_has_ambiguous_refs(ctx, mbr->type_node, NULL)) {
 			ast_dt_job_dependency(ctx,
 					ctx->use_resolved,
 					mbr->type_jobs.resolve_names);
@@ -965,7 +973,7 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 			bind->target_jobs.resolve_names,
 			ctx->target_names_resolved);
 
-	// if (ast_dt_expr_has_ambiguous_refs(ctx, bind->target_node)) {
+	// if (ast_dt_expr_has_ambiguous_refs(ctx, bind->target_node, NULL)) {
 	// 	ast_dt_job_dependency(ctx,
 	// 			ctx->use_resolved,
 	// 			bind->target_jobs.resolve_names);
@@ -1344,9 +1352,15 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 			continue;
 		}
 
+		struct atom *trivial_name = NULL;
+
+		if (bind->target->kind == AST_NODE_LOOKUP) {
+			trivial_name = bind->target->lookup.name;
+		}
+
 		ast_dt_expr_id expr_id;
 		expr_id = ast_dt_register_expr(ctx,
-					bind->value);
+					bind->value, trivial_name);
 
 		if (type_giving_for[i] >= 0) {
 			ast_dt_register_explicit_bind(
@@ -1368,7 +1382,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 	for (size_t i = 0; i < node->composite.num_uses; i++) {
 		ast_dt_expr_id expr_id;
 		expr_id = ast_dt_register_expr(ctx,
-					node->composite.uses[i].target);
+					node->composite.uses[i].target, NULL);
 
 		ast_dt_register_use(ctx, expr_id,
 				node->composite.uses[i].as_name);
@@ -1377,7 +1391,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 	for (size_t i = 0; i < node->composite.num_init_exprs; i++) {
 		ast_dt_expr_id expr_id;
 		expr_id = ast_dt_register_expr(ctx,
-				node->composite.init_exprs[i]);
+				node->composite.init_exprs[i], NULL);
 		ast_dt_register_init_expr(ctx, i, expr_id);
 	}
 }
@@ -1942,6 +1956,13 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 				}
 				break;
 
+			case AST_NAME_REF_SELF:
+				body_deps[i].ref = deps[i].ref;
+				body_deps[i].req = deps[i].req;
+				body_deps[i].lookup_failed = false;
+				body_deps[i].determined = false;
+				break;
+
 			case AST_NAME_REF_TEMPL:
 				panic("TODO: Pass template information to datatype.");
 				break;
@@ -1992,7 +2013,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				err = ast_composite_node_resolve_names(
 						ctx->ast_ctx, ctx->mod->native_mod,
 						NULL, true, ctx->root_node, mbr->type_node,
-						ctx->local_member_ids);
+						ctx->local_member_ids, NULL);
 				if (err) {
 					printf("Failed to resolve names.\n");
 					break;
@@ -2014,7 +2035,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						ctx->ast_ctx, ctx->mod->native_mod,
 						NULL, false, ctx->root_node,
 						expr->value.node,
-						ctx->local_member_ids);
+						ctx->local_member_ids,
+						expr->trivial_name);
 				if (err) {
 					printf("Failed to resolve names.\n");
 					break;
@@ -2284,7 +2306,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				err = ast_composite_node_resolve_names(
 						ctx->ast_ctx, NULL, NULL,
 						false, ctx->root_node, bind->target_node,
-						ctx->local_member_ids);
+						ctx->local_member_ids, NULL);
 				if (err) {
 					return -1;
 				}

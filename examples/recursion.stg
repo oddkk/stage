@@ -1,0 +1,16 @@
+fac := (a: int) -> int
+=> match a {
+	0 => 1;
+	_ => a * fac(a-1);
+};
+
+!printInt(fac(10));
+
+fib := (a: int) -> int
+=> match a {
+	0  => 0;
+	1  => 1;
+	$n => fib(n-1) + fib(n-2);
+};
+
+!printInt(fib(10));

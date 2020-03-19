@@ -114,7 +114,8 @@ ast_gen_dt_resolve_closure(
 
 static struct ast_typecheck_closure
 ast_gen_resolve_closure(struct bc_env *bc_env,
-		struct stg_module *mod, struct ast_gen_info *info, struct ast_name_ref ref)
+		struct stg_module *mod, struct ast_gen_info *info,
+		type_id self_type, struct ast_name_ref ref)
 {
 	switch (ref.kind) {
 		case AST_NAME_REF_NOT_FOUND:
@@ -218,6 +219,15 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 				res.req = AST_NAME_DEP_REQUIRE_VALUE;
 				res.lookup_failed = false;
 				res.value = obj;
+				return res;
+			}
+
+		case AST_NAME_REF_SELF:
+			{
+				struct ast_typecheck_closure res = {0};
+				res.req = AST_NAME_DEP_REQUIRE_TYPE;
+				res.lookup_failed = false;
+				res.type = self_type;
 				return res;
 			}
 	}
@@ -329,6 +339,9 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 				result.out_var = unpack_instrs.out_var;
 			}
 			return result;
+
+		case AST_NAME_REF_SELF:
+			break;
 
 		case AST_NAME_REF_NOT_FOUND:
 			panic("Got failed lookup in code gen.");
@@ -1251,90 +1264,131 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 	switch (node->kind) {
 		case AST_NODE_FUNC:
 			{
+				func_id fid = FUNC_UNSET;
+
 				size_t num_closures = node->func.closure.num_members;
 				struct ast_typecheck_closure closure[num_closures];
 				bc_closure closure_refs[num_closures];
 				bc_var closure_vars[num_closures];
 				struct stg_func_closure_member closure_members[num_closures];
 
+				bool has_self = false;
+				for (size_t i = 0; i < num_closures; i++) {
+					struct ast_closure_member *cls;
+					cls = &node->func.closure.members[i];
+					if (cls->ref.kind == AST_NAME_REF_SELF) {
+						has_self = true;
+						break;
+					}
+				}
+
 				bc_closure num_found_closures = 0;
 				size_t closure_offset = 0;
+
+				if (has_self) {
+					num_found_closures += 1;
+					closure_offset += sizeof(struct stg_func_object);
+				}
+
 				for (size_t i = 0; i < num_closures; i++) {
 					struct ast_closure_member *cls;
 					cls = &node->func.closure.members[i];
 					closure[i] = ast_gen_resolve_closure(
-							bc_env, mod, info, cls->ref);
+							bc_env, mod, info, node->type, cls->ref);
 
-					// Ensure we got a value if we require const.
-					assert(!cls->require_const ||
-							closure[i].req == AST_NAME_DEP_REQUIRE_VALUE);
-
-					if (closure[i].req == AST_NAME_DEP_REQUIRE_TYPE) {
-						bc_closure closure_ref;
-						closure_ref = num_found_closures;
-						num_found_closures += 1;
+					if (cls->ref.kind == AST_NAME_REF_SELF) {
+						bc_closure closure_ref = 0;
 
 						closure_refs[i] = closure_ref;
 
-						struct type *mbr_type;
-						mbr_type = vm_get_type(ctx->vm,
-								closure[i].type);
+						// The self-reference always appear first in the
+						// closure object if present.
+						closure_members[closure_ref].type   = node->type;
+						closure_members[closure_ref].size   = sizeof(struct stg_func_object);
+						closure_members[closure_ref].offset = 0;
 
-						closure_members[closure_ref].type   = closure[i].type;
-						closure_members[closure_ref].size   = mbr_type->size;
-						closure_members[closure_ref].offset = closure_offset;
-						closure_offset += closure_members[closure_ref].size;
-
-						struct ast_gen_bc_result value_instrs;
-						value_instrs = ast_name_ref_gen_bytecode(
-								ctx, mod, info, bc_env,
-								cls->ref, node->loc, closure[i].type);
-						append_bc_instrs(&result, value_instrs);
-						closure_vars[closure_ref] = value_instrs.out_var;
-
-						// TODO: Get bc reference to the value
+						// The self-reference does not need any instruction to
+						// load. 
+						closure_vars[closure_ref] = BC_VAR_NEW;
 					} else {
-						// The value of this closure is constant, so we can
-						// prune it.
-						closure_refs[i] = AST_BC_CLOSURE_PRUNED;
+
+						// Ensure we got a value if we require const.
+						assert(!cls->require_const ||
+								closure[i].req == AST_NAME_DEP_REQUIRE_VALUE);
+
+						if (closure[i].req == AST_NAME_DEP_REQUIRE_TYPE) {
+							bc_closure closure_ref;
+							closure_ref = num_found_closures;
+							num_found_closures += 1;
+
+							closure_refs[i] = closure_ref;
+
+							struct type *mbr_type;
+							mbr_type = vm_get_type(ctx->vm,
+									closure[i].type);
+
+							closure_members[closure_ref].type   = closure[i].type;
+							closure_members[closure_ref].size   = mbr_type->size;
+							closure_members[closure_ref].offset = closure_offset;
+							closure_offset += closure_members[closure_ref].size;
+
+							struct ast_gen_bc_result value_instrs;
+							value_instrs = ast_name_ref_gen_bytecode(
+									ctx, mod, info, bc_env,
+									cls->ref, node->loc, closure[i].type);
+							append_bc_instrs(&result, value_instrs);
+							closure_vars[closure_ref] = value_instrs.out_var;
+
+							// TODO: Get bc reference to the value
+						} else {
+							// The value of this closure is constant, so we can
+							// prune it.
+							closure_refs[i] = AST_BC_CLOSURE_PRUNED;
+						}
 					}
 				}
+
 				size_t post_prune_num_closures = num_found_closures;
 
 				struct bc_env *func_bc;
+
+				func_bc = arena_alloc(&mod->mem, sizeof(struct bc_env));
+
+				{
+					struct func new_func = {0};
+					new_func.kind = FUNC_BYTECODE;
+					assert(node->type != TYPE_UNSET);
+					new_func.type = node->type;
+					new_func.bytecode = func_bc;
+
+					fid = stg_register_func(mod, new_func);
+				}
+
 				func_bc = ast_func_gen_bytecode(
-						ctx, mod, closure,
+						ctx, func_bc, mod, closure,
 						closure_refs, num_closures, node);
 				if (!func_bc) {
 					return AST_GEN_ERROR;
 				}
 
-				struct func new_func = {0};
-				new_func.kind = FUNC_BYTECODE;
-				assert(node->type != TYPE_UNSET);
-				new_func.type = node->type;
-				new_func.bytecode = func_bc;
-
-				func_id fid;
-				fid = stg_register_func(mod, new_func);
-
-				struct object func_obj = {0};
-				func_obj = stg_register_func_object(
-						ctx->vm, &mod->store, fid, NULL);
-
 				struct stg_func_closure_data *data;
 				data = calloc(1, sizeof(struct stg_func_closure_data));
-				data->num_members = post_prune_num_closures;
+
+				data->num_members = post_prune_num_closures - (has_self ? 1 : 0);
 				data->members = calloc(data->num_members,
 						sizeof(struct stg_func_closure_member));
-				memcpy(data->members, closure_members,
+				memcpy(data->members, &closure_members[(has_self ? 1 : 0)],
 						data->num_members * sizeof(struct stg_func_closure_member));
+
 				data->func = fid;
+				data->has_self = has_self;
 				data->size = closure_offset;
 
 				for (size_t i = 0; i < post_prune_num_closures; i++) {
-					append_bc_instr(&result,
-							bc_gen_push_arg(bc_env, closure_vars[i]));
+					if (closure_vars[i] != BC_VAR_NEW) {
+						append_bc_instr(&result,
+								bc_gen_push_arg(bc_env, closure_vars[i]));
+					}
 				}
 
 				// TODO: Pack closure with function id.
@@ -1807,13 +1861,16 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 
 struct bc_env *
 ast_func_gen_bytecode(
-		struct ast_context *ctx, struct stg_module *mod,
+		struct ast_context *ctx, struct bc_env *bc_env, struct stg_module *mod,
 		struct ast_typecheck_closure *closures, bc_closure *closure_refs,
 		size_t num_closures, struct ast_node *node)
 {
 	assert(node->kind == AST_NODE_FUNC);
 
-	struct bc_env *bc_env = calloc(1, sizeof(struct bc_env));
+	if (!bc_env) {
+		bc_env = arena_alloc(&mod->mem, sizeof(struct bc_env));
+	}
+
 	bc_env->vm = ctx->vm;
 	bc_env->store = ctx->vm->instr_store;
 

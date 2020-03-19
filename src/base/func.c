@@ -251,7 +251,7 @@ stg_func_closure_pack(struct vm *vm, void *in_data, void *out,
 
 	// TODO: Make a proper allocation and garbage collection system for run
 	// time memory.
-	if (num_params > 0) {
+	if (data->size > 0) {
 		closure_data = calloc(data->size, 1);
 
 		for (size_t i = 0; i < num_params; i++) {
@@ -262,4 +262,8 @@ stg_func_closure_pack(struct vm *vm, void *in_data, void *out,
 
 	func_obj->func = data->func;
 	func_obj->closure = closure_data;
+
+	if (data->has_self) {
+		memcpy(&closure_data[0], func_obj, sizeof(struct stg_func_object));
+	}
 }

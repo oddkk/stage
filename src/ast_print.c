@@ -44,6 +44,10 @@ ast_print_name_ref(struct ast_name_ref ref)
 		case AST_NAME_REF_INIT_EXPR:
 			printf("init expr %i", ref.init_expr);
 			break;
+
+		case AST_NAME_REF_SELF:
+			printf("self %i", ref.self_offset);
+			break;
 	}
 }
 

@@ -31,6 +31,8 @@ ast_name_ref_equals(struct ast_name_ref lhs, struct ast_name_ref rhs)
 				lhs.use.param == rhs.use.param;
 		case AST_NAME_REF_INIT_EXPR:
 			return lhs.init_expr == rhs.init_expr;
+		case AST_NAME_REF_SELF:
+			return lhs.self_offset == rhs.self_offset;
 	}
 
 	return false;
@@ -1229,6 +1231,15 @@ ast_node_typecheck(struct ast_context *ctx,
 	ast_slot_id expr_slot;
 	expr_slot = ast_node_constraints(
 			ctx, mod, &env, body_deps, num_deps, node);
+
+	for (size_t i = 0; i < num_deps; i++) {
+		if (body_deps[i].ref.kind == AST_NAME_REF_SELF &&
+				body_deps[i].ref.self_offset == 0) {
+			ast_slot_require_equals(
+					&env, node->loc, AST_CONSTR_SRC_SELF,
+					expr_slot, body_deps[i].value);
+		}
+	}
 
 	if (expected_type != TYPE_UNSET) {
 		ast_slot_id expr_type_slot;
