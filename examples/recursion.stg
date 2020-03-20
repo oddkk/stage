@@ -1,10 +1,13 @@
+use mod base.*;
+use mod base.init.*;
+
 fac := (a: int) -> int
 => match a {
 	0 => 1;
 	_ => a * fac(a-1);
 };
 
-!printInt(fac(10));
+!printInt(fac(9));
 
 fib := (a: int) -> int
 => match a {

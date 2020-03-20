@@ -457,6 +457,8 @@ struct ast_datatype_member {
 	struct ast_node *type;
 	struct stg_location loc;
 
+	bool is_namespace;
+
 	// If this member is not explicitly typed a bind must be specified to
 	// determine the members type.
 	int type_giving_bind;

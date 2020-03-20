@@ -9,17 +9,25 @@
 #include <string.h>
 #include <ffi.h>
 
-// For sysconf
-#include <unistd.h>
-
-// For mmap
-#include <sys/mman.h>
-
 #define AST_DT_DEBUG_JOBS 0
 
 typedef int ast_dt_job_id;
 typedef int ast_dt_bind_id;
 typedef int ast_dt_expr_id;
+typedef int ast_dt_composite_id;
+typedef struct {
+	ast_dt_composite_id parent;
+	ast_use_id id;
+} ast_dt_use_id;
+
+static inline ast_dt_use_id
+dt_use_id(ast_dt_composite_id parent, ast_use_id id)
+{
+	ast_dt_use_id res;
+	res.parent = parent;
+	res.id = id;
+	return res;
+}
 
 struct ast_dt_mbr_id {
 	ast_member_id local_member;
@@ -34,6 +42,7 @@ struct ast_dt_expr_jobs {
 
 struct ast_dt_expr {
 	bool constant;
+	ast_dt_composite_id parent;
 	struct object const_value;
 
 	struct {
@@ -79,6 +88,8 @@ struct ast_dt_member {
 	struct atom *name;
 	type_id type;
 	struct ast_node *type_node;
+	ast_dt_composite_id parent;
+	ast_dt_composite_id sub_composite;
 
 	struct stg_location decl_loc;
 
@@ -106,8 +117,29 @@ struct ast_dt_member {
 	ast_member_id persistant_id;
 };
 
+struct ast_dt_composite {
+	struct ast_node *root_node;
+	// An array of the ids of all local members, in the same order as
+	// root_node->composite.members. The lenght is root_node->composite.num_members.
+	ast_member_id *local_member_ids;
+
+	struct ast_dt_use *uses;
+	size_t num_uses;
+
+	struct ast_typecheck_closure *closures;
+	size_t num_closures;
+
+	ast_dt_job_id finalize_job;
+
+	ast_dt_job_id target_names_resolved;
+	ast_dt_job_id use_resolved;
+
+	type_id type;
+};
+
 struct ast_dt_use {
 	ast_dt_expr_id expr;
+	ast_dt_composite_id parent;
 	struct atom *as_name;
 
 	type_id type;
@@ -120,6 +152,7 @@ struct ast_dt_use {
 
 struct ast_dt_init_expr {
 	ast_init_expr_id id;
+	ast_dt_composite_id parent;
 	ast_dt_expr_id expr;
 };
 
@@ -131,6 +164,8 @@ struct ast_dt_dependency {
 enum ast_dt_job_kind {
 	AST_DT_JOB_FREE = 0,
 	AST_DT_JOB_NOP,
+
+	AST_DT_JOB_COMPOSITE_PACK,
 
 	AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES,
 	AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES,
@@ -177,7 +212,9 @@ struct ast_dt_job {
 
 		ast_dt_bind_id bind;
 
-		ast_use_id use;
+		ast_dt_use_id use;
+
+		ast_dt_composite_id composite;
 
 		// Used when the job is not allocated.
 		ast_dt_job_id free_list;
@@ -185,10 +222,8 @@ struct ast_dt_job {
 };
 
 struct ast_dt_context {
-	struct ast_node *root_node;
-	// An array of the ids of all local members, in the same order as
-	// root_node->composite.members. The lenght is root_node->composite.num_members.
-	ast_member_id *local_member_ids;
+	struct ast_dt_composite *composites;
+	size_t num_composites;
 
 	struct paged_list jobs;
 	ast_dt_job_id free_list;
@@ -200,20 +235,11 @@ struct ast_dt_context {
 	struct paged_list binds;
 	struct paged_list members;
 
-	struct ast_dt_use *uses;
-	size_t num_uses;
-
 	struct ast_dt_init_expr *init_exprs;
 	size_t num_init_exprs;
 
-	ast_dt_job_id target_names_resolved;
-	ast_dt_job_id use_resolved;
-
 	struct ast_context *ast_ctx;
 	struct stg_module  *mod;
-
-	struct ast_typecheck_closure *closures;
-	size_t num_closures;
 
 	size_t num_errors;
 
@@ -248,11 +274,20 @@ get_member(struct ast_dt_context *ctx, ast_member_id id)
 	return paged_list_get(&ctx->members, id);
 }
 
-static inline struct ast_dt_use *
-get_use(struct ast_dt_context *ctx, ast_use_id id)
+static inline struct ast_dt_composite *
+get_composite(struct ast_dt_context *ctx, ast_dt_composite_id id)
 {
-	assert(id < ctx->num_uses);
-	return &ctx->uses[id];
+	assert(id < ctx->num_composites);
+	return &ctx->composites[id];
+}
+
+static inline struct ast_dt_use *
+get_use(struct ast_dt_context *ctx, ast_dt_use_id id)
+{
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, id.parent);
+	assert(id.id < parent->num_uses);
+	return &parent->uses[id.id];
 }
 
 static inline struct ast_dt_init_expr *
@@ -302,15 +337,33 @@ ast_dt_alloc_member(struct ast_dt_context *ctx)
 	return paged_list_push(&ctx->members);
 }
 
-static ast_use_id
-ast_dt_alloc_use(struct ast_dt_context *ctx)
+static ast_dt_composite_id
+ast_dt_alloc_composite(struct ast_dt_context *ctx)
+{
+	struct ast_dt_composite use = {0};
+
+	return dlist_append(
+			ctx->composites,
+			ctx->num_composites,
+			&use);
+}
+
+
+static ast_dt_use_id
+ast_dt_alloc_use(struct ast_dt_context *ctx, ast_dt_composite_id parent_id)
 {
 	struct ast_dt_use use = {0};
 
-	return dlist_append(
-			ctx->uses,
-			ctx->num_uses,
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+
+	ast_use_id id;
+	id = dlist_append(
+			parent->uses,
+			parent->num_uses,
 			&use);
+
+	return dt_use_id(parent_id, id);
 }
 
 static int
@@ -383,6 +436,22 @@ ast_dt_job_nop(struct ast_dt_context *ctx,
 }
 
 static ast_dt_job_id
+ast_dt_job_composite(struct ast_dt_context *ctx,
+		ast_dt_composite_id comp, enum ast_dt_job_kind kind)
+{
+	ast_dt_job_id job_id;
+	job_id = ast_dt_alloc_job(ctx);
+
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+	job->kind = kind;
+
+	job->composite = comp;
+
+	return job_id;
+}
+
+static ast_dt_job_id
 ast_dt_job_type(struct ast_dt_context *ctx,
 		ast_member_id mbr_id, enum ast_dt_job_kind kind)
 {
@@ -430,7 +499,8 @@ ast_dt_job_bind(struct ast_dt_context *ctx,
 
 static ast_dt_job_id
 ast_dt_job_use(struct ast_dt_context *ctx,
-		ast_use_id use, enum ast_dt_job_kind kind)
+		ast_dt_use_id use,
+		enum ast_dt_job_kind kind)
 {
 	ast_dt_job_id job_id;
 	job_id = ast_dt_alloc_job(ctx);
@@ -467,6 +537,8 @@ ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
 	switch (kind) {
 		case AST_DT_JOB_NOP:
 			return "NOP";
+		case AST_DT_JOB_COMPOSITE_PACK:
+			return "COMP PACK";
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
 			return "MBR TPE NAMES";
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
@@ -516,6 +588,14 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 			break;
 
 		case AST_DT_JOB_NOP:
+			break;
+
+		case AST_DT_JOB_COMPOSITE_PACK:
+			{
+				// struct ast_dt_composite *comp;
+				// comp = get_composite(ctx, job->comp);
+				printf("comp %i", job->composite);
+			}
 			break;
 
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
@@ -639,13 +719,16 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 // containing such lookups are considered ambigous.
 static inline bool
 ast_dt_expr_has_ambiguous_refs(
-		struct ast_dt_context *ctx, struct ast_node *node,
-		struct atom *self_name)
+		struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
+		struct ast_node *node, struct atom *self_name)
 {
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
 	int res;
 	res = ast_composite_node_has_ambiguous_refs(
-			ctx->ast_ctx, NULL, ctx->root_node,
-			node, ctx->local_member_ids, self_name);
+			ctx->ast_ctx, NULL, parent->root_node,
+			node, parent->local_member_ids, self_name);
+	assert(res >= 0);
 
 	return res != 0;
 }
@@ -710,8 +793,43 @@ ast_dt_bind_to_member(struct ast_dt_context *ctx,
 	}
 }
 
+static void
+ast_dt_composite_populate(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id, struct ast_node *node);
+
+static ast_dt_composite_id
+ast_dt_register_composite(
+		struct ast_dt_context *ctx, struct ast_node *root_node,
+		struct ast_typecheck_closure *closures, size_t num_closures)
+{
+	ast_dt_composite_id comp_id;
+	comp_id = ast_dt_alloc_composite(ctx);
+
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	comp->root_node = root_node;
+	comp->closures = closures;
+	comp->num_closures = num_closures;
+
+	comp->finalize_job =
+		ast_dt_job_composite(ctx, comp_id,
+				AST_DT_JOB_COMPOSITE_PACK);
+
+	comp->target_names_resolved =
+		ast_dt_job_nop(ctx, &comp->target_names_resolved);
+	comp->use_resolved =
+		ast_dt_job_nop(ctx, &comp->use_resolved);
+
+	ast_dt_composite_populate(
+			ctx, comp_id, root_node);
+
+	return comp_id;
+}
+
 static ast_dt_expr_id
 ast_dt_register_expr(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id,
 		struct ast_node *value, struct atom *trivial_name)
 {
 	ast_dt_expr_id expr_i;
@@ -720,7 +838,11 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 	struct ast_dt_expr *new_expr;
 	new_expr = get_expr(ctx, expr_i);
 
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+
 	new_expr->constant = false;
+	new_expr->parent = parent_id;
 	new_expr->value.node = value;
 	new_expr->value.func = FUNC_UNSET;
 	new_expr->type = TYPE_UNSET;
@@ -747,11 +869,16 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 			new_expr->value_jobs.resolve_types,
 			new_expr->value_jobs.codegen);
 
+	ast_dt_job_dependency(ctx,
+			new_expr->value_jobs.codegen,
+			parent->finalize_job);
+
 	if (ast_dt_expr_has_ambiguous_refs(
-				ctx, new_expr->value.node,
+				ctx, parent_id, new_expr->value.node,
 				new_expr->trivial_name)) {
+
 		ast_dt_job_dependency(ctx,
-				ctx->use_resolved,
+				parent->use_resolved,
 				new_expr->value_jobs.resolve_names);
 	}
 
@@ -761,6 +888,7 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 
 static ast_dt_expr_id
 ast_dt_register_expr_func(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id,
 		struct stg_location loc, func_id value_func)
 {
 	ast_dt_expr_id expr_i;
@@ -770,6 +898,7 @@ ast_dt_register_expr_func(struct ast_dt_context *ctx,
 	new_expr = get_expr(ctx, expr_i);
 
 	new_expr->constant = false;
+	new_expr->parent = parent_id;
 	new_expr->value.node = NULL;
 	new_expr->value.func = value_func;
 	new_expr->loc = loc;
@@ -794,6 +923,7 @@ ast_dt_register_expr_func(struct ast_dt_context *ctx,
 
 static ast_dt_expr_id
 ast_dt_register_expr_const(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id,
 		struct stg_location loc, struct object obj)
 {
 	ast_dt_expr_id expr_i;
@@ -803,6 +933,7 @@ ast_dt_register_expr_const(struct ast_dt_context *ctx,
 	new_expr = get_expr(ctx, expr_i);
 
 	new_expr->constant = true;
+	new_expr->parent = parent_id;
 	new_expr->const_value = obj;
 	new_expr->value.node = NULL;
 	new_expr->value.func = FUNC_UNSET;
@@ -818,7 +949,7 @@ ast_dt_register_expr_const(struct ast_dt_context *ctx,
 
 static ast_member_id
 ast_dt_register_local_member(struct ast_dt_context *ctx,
-		struct atom *name, struct stg_location decl_loc,
+		ast_dt_composite_id parent_id, struct atom *name, struct stg_location decl_loc,
 		struct ast_node *type_expr)
 {
 	ast_member_id mbr_id;
@@ -833,6 +964,8 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 	mbr->first_child = -1;
 	mbr->persistant_id = -1;
 	mbr->type_node = type_expr;
+	mbr->parent = parent_id;
+	mbr->sub_composite = -1;
 
 	mbr->bound = -1;
 	mbr->typegiving_bind = -1;
@@ -866,33 +999,94 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 				mbr->type_jobs.resolve_types,
 				mbr->type_jobs.codegen);
 
-		if (ast_dt_expr_has_ambiguous_refs(ctx, mbr->type_node, NULL)) {
+		if (ast_dt_expr_has_ambiguous_refs(
+					ctx, parent_id,
+					mbr->type_node, NULL)) {
+			struct ast_dt_composite *parent;
+			parent = get_composite(ctx, parent_id);
 			ast_dt_job_dependency(ctx,
-					ctx->use_resolved,
+					parent->use_resolved,
 					mbr->type_jobs.resolve_names);
 		}
 
 		mbr->type_resolved = mbr->type_jobs.codegen;
 	}
 
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+
 	mbr->const_resolved =
 		ast_dt_job_type(ctx, mbr_id,
 				AST_DT_JOB_MBR_CONST_EVAL);
 
 	ast_dt_job_dependency(ctx,
-			ctx->target_names_resolved,
+			parent->target_names_resolved,
 			mbr->const_resolved);
 
 	ast_dt_job_dependency(ctx,
 			mbr->type_jobs.codegen,
 			mbr->const_resolved);
 
+	ast_dt_job_dependency(ctx,
+			mbr->const_resolved,
+			parent->finalize_job);
+
 	return mbr_id;
 }
 
+/*
+static ast_member_id
+ast_dt_register_local_sub_composite_member(
+		struct ast_dt_context *ctx, ast_dt_composite_id parent_id, struct atom *name,
+		struct stg_location decl_loc, ast_dt_composite_id sub_composite_id)
+{
+	ast_member_id mbr_id;
+	mbr_id = ast_dt_alloc_member(ctx);
+
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	mbr->name = name;
+	mbr->decl_loc = decl_loc;
+	mbr->flags |= AST_DT_MEMBER_IS_LOCAL;
+	mbr->first_child = -1;
+	mbr->persistant_id = -1;
+	mbr->type_node = NULL;
+	mbr->parent = parent_id;
+	mbr->sub_composite = sub_composite_id;
+
+	mbr->bound = -1;
+	mbr->typegiving_bind = -1;
+	mbr->overridden_bind = -1;
+
+	mbr->type_resolved = -1;
+	mbr->const_resolved = -1;
+
+	mbr->type_jobs.resolve_names = -1;
+	mbr->type_jobs.resolve_types = -1;
+	mbr->type_jobs.codegen = -1;
+
+	struct ast_dt_composite *sub_composite;
+	sub_composite = get_composite(ctx, sub_composite_id);
+
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+
+	mbr->type_resolved = sub_composite->finalize_job;
+
+	mbr->const_resolved = mbr->type_resolved;
+
+	ast_dt_job_dependency(ctx,
+			parent->target_names_resolved,
+			mbr->const_resolved);
+
+	return mbr_id;
+}
+*/
+
 static ast_member_id
 ast_dt_register_descendant_member(struct ast_dt_context *ctx,
-		struct atom *name, struct stg_location decl_loc,
+		ast_dt_composite_id parent_id, struct atom *name, struct stg_location decl_loc,
 		type_id type, ast_member_id anscestor_id)
 {
 	ast_member_id mbr_id;
@@ -910,6 +1104,9 @@ ast_dt_register_descendant_member(struct ast_dt_context *ctx,
 	mbr->anscestor_local_member = anscestor_id;
 	mbr->persistant_id = -1;
 
+	mbr->parent = parent_id;
+	mbr->sub_composite = -1;
+
 	mbr->bound = -1;
 	mbr->type_jobs.resolve_names = -1;
 	mbr->type_jobs.resolve_types = -1;
@@ -921,8 +1118,12 @@ ast_dt_register_descendant_member(struct ast_dt_context *ctx,
 		ast_dt_job_type(ctx, mbr_id,
 				AST_DT_JOB_MBR_CONST_EVAL);
 
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+
+
 	ast_dt_job_dependency(ctx,
-			ctx->target_names_resolved,
+			parent->target_names_resolved,
 			mbr->const_resolved);
 
 	struct ast_dt_member *anscestor;
@@ -938,6 +1139,7 @@ ast_dt_register_descendant_member(struct ast_dt_context *ctx,
 
 static ast_dt_bind_id
 ast_dt_register_bind(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id,
 		struct ast_node *target_node, ast_dt_expr_id expr_id)
 {
 	ast_dt_bind_id bind_id;
@@ -948,6 +1150,8 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 
 	struct ast_dt_expr *expr;
 	expr = get_expr(ctx, expr_id);
+
+	assert(expr->parent == parent_id);
 
 	bind->target_node = target_node;
 	bind->target = -1;
@@ -969,9 +1173,12 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 			bind->target_jobs.resolve,
 			expr->value_jobs.resolve_types);
 
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, expr->parent);
+
 	ast_dt_job_dependency(ctx,
 			bind->target_jobs.resolve_names,
-			ctx->target_names_resolved);
+			parent->target_names_resolved);
 
 	// if (ast_dt_expr_has_ambiguous_refs(ctx, bind->target_node, NULL)) {
 	// 	ast_dt_job_dependency(ctx,
@@ -984,6 +1191,7 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 
 static ast_dt_bind_id
 ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id,
 		ast_member_id mbr_id, ast_dt_expr_id expr_id,
 		int unpack_id, bool typegiving)
 {
@@ -993,12 +1201,23 @@ ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
 	struct ast_dt_bind *bind;
 	bind = get_bind(ctx, bind_id);
 
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	assert(parent_id == mbr->parent);
+	assert(parent_id == expr->parent);
+
 	bind->target_node = NULL;
 	bind->expr = expr_id;
 	bind->target = mbr_id;
 
 	bind->target_jobs.resolve_names = -1;
 	bind->target_jobs.resolve = -1;
+
+	assert(expr->parent == parent_id);
 
 	if (typegiving) {
 		struct ast_dt_expr *expr;
@@ -1012,9 +1231,6 @@ ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
 				expr->value_jobs.resolve_types,
 				bind->target_jobs.resolve);
 
-		struct ast_dt_member *mbr;
-		mbr = get_member(ctx, mbr_id);
-
 		ast_dt_job_dependency(ctx,
 				bind->target_jobs.resolve,
 				mbr->const_resolved);
@@ -1023,12 +1239,8 @@ ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
 				expr->value_jobs.codegen,
 				mbr->const_resolved);
 
-
-		struct ast_dt_member *member;
-		member = get_member(ctx, mbr_id);
-
-		assert(member->type_resolved < 0);
-		member->type_resolved = bind->target_jobs.resolve;
+		assert(mbr->type_resolved < 0);
+		mbr->type_resolved = bind->target_jobs.resolve;
 	}
 
 	ast_dt_bind_to_member(
@@ -1037,12 +1249,13 @@ ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
 	return bind_id;
 }
 
-static ast_use_id
+static ast_dt_use_id
 ast_dt_register_use(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id,
 		ast_dt_expr_id expr_id, struct atom *as_name)
 {
-	ast_use_id use_id;
-	use_id = ast_dt_alloc_use(ctx);
+	ast_dt_use_id use_id;
+	use_id = ast_dt_alloc_use(ctx, parent_id);
 
 	struct ast_dt_use *use;
 	use = get_use(ctx, use_id);
@@ -1050,8 +1263,11 @@ ast_dt_register_use(struct ast_dt_context *ctx,
 	struct ast_dt_expr *expr;
 	expr = get_expr(ctx, expr_id);
 
+	use->parent = parent_id;
 	use->expr = expr_id;
 	use->as_name = as_name;
+
+	assert(expr->parent == use->parent);
 
 	use->const_resolved = ast_dt_job_use(ctx, use_id,
 			AST_DT_JOB_USE_CONST_EVAL);
@@ -1065,21 +1281,26 @@ ast_dt_register_use(struct ast_dt_context *ctx,
 	// 		expr->value_jobs.resolve_types,
 	// 		ctx->use_resolved);
 
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, use->parent);
+
 	ast_dt_job_dependency(ctx,
 			use->const_resolved,
-			ctx->use_resolved);
+			parent->use_resolved);
 
 	return use_id;
 }
 
 static void
 ast_dt_register_init_expr(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id,
 		ast_init_expr_id id, ast_dt_expr_id expr_id)
 {
 	int index = ast_dt_alloc_init_expr(ctx);
 	struct ast_dt_init_expr *init_expr;
 	init_expr = &ctx->init_exprs[index];
 
+	init_expr->parent = parent_id;
 	init_expr->id = id;
 	init_expr->expr = expr_id;
 }
@@ -1315,13 +1536,18 @@ ast_dt_l_expr_member(struct ast_dt_context *ctx, struct ast_node *node,
 }
 
 static void
-ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
+ast_dt_composite_populate(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id, struct ast_node *node)
 {
 	assert(node->kind == AST_NODE_COMPOSITE);
 
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+
 	ast_member_id *members;
 	members = calloc(node->composite.num_members, sizeof(ast_member_id));
-	ctx->local_member_ids = members;
+	assert(!parent->local_member_ids);
+	parent->local_member_ids = members;
 
 	ast_member_id type_giving_for[node->composite.num_binds];
 	for (size_t i = 0; i < node->composite.num_binds; i++) {
@@ -1332,14 +1558,17 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 		struct ast_datatype_member *mbr;
 		mbr = &node->composite.members[i];
 
-		// TODO: Better location.
-		members[i] = ast_dt_register_local_member(
-				ctx, mbr->name, mbr->loc, mbr->type);
-
-		if (mbr->type_giving_bind >= 0) {
-			type_giving_for[mbr->type_giving_bind] = members[i];
+		if (mbr->is_namespace) {
 		} else {
-			assert(mbr->type);
+			// TODO: Better location.
+			members[i] = ast_dt_register_local_member(
+					ctx, parent_id, mbr->name, mbr->loc, mbr->type);
+
+			if (mbr->type_giving_bind >= 0) {
+				type_giving_for[mbr->type_giving_bind] = members[i];
+			} else {
+				assert(mbr->type);
+			}
 		}
 	}
 
@@ -1360,14 +1589,14 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 
 		ast_dt_expr_id expr_id;
 		expr_id = ast_dt_register_expr(ctx,
-					bind->value, trivial_name);
+					parent_id, bind->value, trivial_name);
 
 		if (type_giving_for[i] >= 0) {
 			ast_dt_register_explicit_bind(
-					ctx, type_giving_for[i], expr_id, 0, true);
+					ctx, parent_id, type_giving_for[i], expr_id, 0, true);
 		} else {
 			ast_dt_register_bind(
-					ctx, bind->target, expr_id);
+					ctx, parent_id, bind->target, expr_id);
 		}
 	}
 
@@ -1381,24 +1610,24 @@ ast_dt_composite_populate(struct ast_dt_context *ctx, struct ast_node *node)
 
 	for (size_t i = 0; i < node->composite.num_uses; i++) {
 		ast_dt_expr_id expr_id;
-		expr_id = ast_dt_register_expr(ctx,
-					node->composite.uses[i].target, NULL);
+		expr_id = ast_dt_register_expr(ctx, parent_id,
+				node->composite.uses[i].target, NULL);
 
-		ast_dt_register_use(ctx, expr_id,
+		ast_dt_register_use(ctx, parent_id, expr_id,
 				node->composite.uses[i].as_name);
 	}
 
 	for (size_t i = 0; i < node->composite.num_init_exprs; i++) {
 		ast_dt_expr_id expr_id;
-		expr_id = ast_dt_register_expr(ctx,
+		expr_id = ast_dt_register_expr(ctx, parent_id,
 				node->composite.init_exprs[i], NULL);
-		ast_dt_register_init_expr(ctx, i, expr_id);
+		ast_dt_register_init_expr(ctx, parent_id, i, expr_id);
 	}
 }
 
 static void
 ast_dt_populate_descendants(
-		struct ast_dt_context *ctx, ast_member_id local_anscestor,
+		struct ast_dt_context *ctx, ast_dt_composite_id comp_id, ast_member_id local_anscestor,
 		ast_member_id parent_id)
 {
 	struct ast_dt_member *parent;
@@ -1422,7 +1651,7 @@ ast_dt_populate_descendants(
 
 			assert(TYPE_VALID(def->params[i].type));
 			param_mbr_id = ast_dt_register_descendant_member(
-					ctx, def->params[i].name, STG_NO_LOC,
+					ctx, comp_id, def->params[i].name, STG_NO_LOC,
 					def->params[i].type, local_anscestor);
 
 			struct ast_dt_member *param_mbr;
@@ -1432,13 +1661,13 @@ ast_dt_populate_descendants(
 					param_mbr->const_resolved,
 					parent->const_resolved);
 
-			ast_dt_populate_descendants(ctx, local_anscestor, param_mbr_id);
+			ast_dt_populate_descendants(ctx, comp_id, local_anscestor, param_mbr_id);
 		}
 	}
 }
 
 static void
-ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id parent_id)
+ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_dt_composite_id comp_id, ast_member_id parent_id)
 {
 	struct ast_dt_member *parent;
 	parent = get_member(ctx, parent_id);
@@ -1502,14 +1731,14 @@ ast_dt_populate_descendant_binds(struct ast_dt_context *ctx, ast_member_id paren
 
 			if (expr->constant) {
 				expr_id = ast_dt_register_expr_const(ctx,
-						expr->loc, expr->const_value);
+						comp_id, expr->loc, expr->const_value);
 			} else {
 				expr_id = ast_dt_register_expr_func(ctx,
-						expr->loc, expr->func);
+						comp_id, expr->loc, expr->func);
 			}
 
 			for (size_t target_i = 0; target_i < num_binds; target_i++) {
-				ast_dt_register_explicit_bind(ctx,
+				ast_dt_register_explicit_bind(ctx, comp_id,
 						targets[target_i], expr_id,
 						unpack_ids[target_i], false);
 			}
@@ -1665,17 +1894,20 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 	mbr->type = type;
 	assert(mbr->type != TYPE_UNSET);
 
-	ast_dt_populate_descendants(ctx, mbr_id, mbr_id);
-	ast_dt_populate_descendant_binds(ctx, mbr_id);
+	ast_dt_populate_descendants(ctx, mbr->parent, mbr_id, mbr_id);
+	ast_dt_populate_descendant_binds(ctx, mbr->parent, mbr_id);
 
 	return 0;
 }
 
 static func_id
-ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
-		enum ast_name_dep_requirement dep_req, struct ast_gen_dt_param **out_deps,
-		size_t *out_num_deps)
+ast_dt_expr_codegen(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
+		struct ast_node *node, enum ast_name_dep_requirement dep_req,
+		struct ast_gen_dt_param **out_deps, size_t *out_num_deps)
 {
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+
 	struct ast_name_dep *names = NULL;
 	size_t num_names = 0;
 
@@ -1760,11 +1992,11 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 	free(names);
 	names = NULL;
 
-	struct object const_use_values[ctx->num_uses];
+	struct object const_use_values[parent->num_uses];
 
-	for (ast_use_id use_i = 0; use_i < ctx->num_uses; use_i++) {
+	for (ast_use_id use_i = 0; use_i < parent->num_uses; use_i++) {
 		struct ast_dt_use *use;
-		use = get_use(ctx, use_i);
+		use = get_use(ctx, dt_use_id(parent_id, use_i));
 
 		if (use->is_const) {
 			const_use_values[use_i] = use->const_value;
@@ -1777,8 +2009,8 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 	bc_env = ast_composite_bind_gen_bytecode(
 				ctx->ast_ctx, ctx->mod,
 				dt_params, num_dt_params,
-				const_use_values, ctx->num_uses,
-				ctx->closures, ctx->num_closures, node);
+				const_use_values, parent->num_uses,
+				parent->closures, parent->num_closures, node);
 	if (!bc_env) {
 		return FUNC_UNSET;
 	}
@@ -1805,11 +2037,14 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, struct ast_node *node,
 }
 
 static int
-ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
-		enum ast_name_dep_requirement dep_req, type_id expected_type)
+ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
+		struct ast_node *node, enum ast_name_dep_requirement dep_req, type_id expected_type)
 {
 	struct ast_name_dep *deps = NULL;
 	size_t num_deps = 0;
+
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
 
 	int err;
 	err = ast_node_find_named_dependencies(
@@ -1850,11 +2085,11 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 				break;
 
 			case AST_NAME_REF_CLOSURE:
-				if (ctx->closures) {
+				if (parent->closures) {
 					assert(deps[i].ref.closure >= 0 &&
-							deps[i].ref.closure < ctx->num_closures);
+							deps[i].ref.closure < parent->num_closures);
 					struct ast_typecheck_closure *cls;
-					cls = &ctx->closures[deps[i].ref.closure];
+					cls = &parent->closures[deps[i].ref.closure];
 					body_deps[i].ref = deps[i].ref;
 					body_deps[i].req = cls->req;
 
@@ -1888,7 +2123,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 			case AST_NAME_REF_USE:
 				{
 					struct ast_dt_use *use;
-					use = get_use(ctx, deps[i].ref.use.id);
+					use = get_use(ctx, dt_use_id(parent_id, deps[i].ref.use.id));
 
 					// TODO: Support use of non-constant values.
 					assert(use->is_const);
@@ -1988,6 +2223,10 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, struct ast_node *node,
 	return 0;
 }
 
+static type_id
+ast_dt_composite_make_type(struct ast_dt_context *ctx,
+		ast_dt_composite_id comp_id);
+
 static inline int
 ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 {
@@ -2004,16 +2243,30 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 		case AST_DT_JOB_NOP:
 			return 0;
 
+		case AST_DT_JOB_COMPOSITE_PACK:
+			{
+				type_id result;
+				result = ast_dt_composite_make_type(
+						ctx, job->composite);
+				if (result == TYPE_UNSET) {
+					return -1;
+				}
+			}
+			return 0;
+
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
 			{
 				struct ast_dt_member *mbr;
 				mbr = get_member(ctx, job->member);
 
+				struct ast_dt_composite *parent;
+				parent = get_composite(ctx, mbr->parent);
+
 				int err;
 				err = ast_composite_node_resolve_names(
 						ctx->ast_ctx, ctx->mod->native_mod,
-						NULL, true, ctx->root_node, mbr->type_node,
-						ctx->local_member_ids, NULL);
+						NULL, true, parent->root_node, mbr->type_node,
+						parent->local_member_ids, NULL);
 				if (err) {
 					printf("Failed to resolve names.\n");
 					break;
@@ -2030,12 +2283,15 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				struct ast_dt_expr *expr;
 				expr = get_expr(ctx, job->expr);
 
+				struct ast_dt_composite *parent;
+				parent = get_composite(ctx, expr->parent);
+
 				int err;
 				err = ast_composite_node_resolve_names(
 						ctx->ast_ctx, ctx->mod->native_mod,
-						NULL, false, ctx->root_node,
+						NULL, false, parent->root_node,
 						expr->value.node,
-						ctx->local_member_ids,
+						parent->local_member_ids,
 						expr->trivial_name);
 				if (err) {
 					printf("Failed to resolve names.\n");
@@ -2055,7 +2311,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				int err;
 				err = ast_dt_expr_typecheck(
-						ctx, mbr->type_node,
+						ctx, mbr->parent, mbr->type_node,
 						AST_NAME_DEP_REQUIRE_VALUE,
 						ctx->ast_ctx->vm->default_types.type);
 				if (err) {
@@ -2071,7 +2327,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				int err;
 				err = ast_dt_expr_typecheck(
-						ctx, expr->value.node,
+						ctx, expr->parent, expr->value.node,
 						AST_NAME_DEP_REQUIRE_TYPE,
 						expr->type);
 				if (err) {
@@ -2098,7 +2354,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				func_id fid;
 				fid = ast_dt_expr_codegen(
-						ctx, mbr->type_node,
+						ctx, mbr->parent, mbr->type_node,
 						AST_NAME_DEP_REQUIRE_VALUE,
 						&deps, &num_deps);
 				if (fid == FUNC_UNSET) {
@@ -2283,7 +2539,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				func_id fid;
 				fid = ast_dt_expr_codegen(
-						ctx, expr->value.node,
+						ctx, expr->parent, expr->value.node,
 						AST_NAME_DEP_REQUIRE_TYPE,
 						&deps, &num_deps);
 				if (fid == FUNC_UNSET) {
@@ -2302,11 +2558,17 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				struct ast_dt_bind *bind;
 				bind = get_bind(ctx, job->bind);
 
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, bind->expr);
+
+				struct ast_dt_composite *parent;
+				parent = get_composite(ctx, expr->parent);
+
 				int err;
 				err = ast_composite_node_resolve_names(
 						ctx->ast_ctx, NULL, NULL,
-						false, ctx->root_node, bind->target_node,
-						ctx->local_member_ids, NULL);
+						false, parent->root_node, bind->target_node,
+						parent->local_member_ids, NULL);
 				if (err) {
 					return -1;
 				}
@@ -2438,6 +2700,16 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			if (job->id_loc) {
 				assert(*job->id_loc == job_id);
 				*job->id_loc = -1;
+			}
+			break;
+
+		case AST_DT_JOB_COMPOSITE_PACK:
+			{
+				struct ast_dt_composite *comp;
+				comp = get_composite(ctx, job->composite);
+
+				assert(comp->finalize_job == job_id);
+				comp->finalize_job = -1;
 			}
 			break;
 
@@ -2676,6 +2948,13 @@ ast_dt_job_location(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			return STG_NO_LOC;
 		case AST_DT_JOB_NOP:
 			return STG_NO_LOC;
+
+		case AST_DT_JOB_COMPOSITE_PACK:
+			{
+				struct ast_dt_composite *comp;
+				comp = get_composite(ctx, job->composite);
+				return comp->root_node->loc;
+			}
 
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
@@ -3095,45 +3374,49 @@ struct type_base ast_dt_composite_base = {
 };
 
 static type_id
-ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
+ast_dt_composite_make_type(struct ast_dt_context *ctx,
+		ast_dt_composite_id comp_id)
 {
-	struct ast_node *comp = ctx->root_node;
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
 
-	struct arena *mem = &mod->mem;
+	struct ast_node *node = comp->root_node;
+
+	struct arena *mem = &ctx->mod->mem;
 
 	struct object_cons *def;
-	def = arena_alloc(&mod->mem, sizeof(struct object_cons));
+	def = arena_alloc(&ctx->mod->mem, sizeof(struct object_cons));
 	def->pack      = ast_dt_pack_func;
 	def->pack_type = ast_dt_pack_type_func;
 	def->unpack    = ast_dt_unpack_func;
 
 	struct ast_dt_local_member *local_members;
-	local_members = arena_allocn(mem, comp->composite.num_members,
+	local_members = arena_allocn(mem, node->composite.num_members,
 			sizeof(struct ast_dt_local_member));
 
 	struct object_cons_param *params;
-	params = arena_allocn(mem, comp->composite.num_members,
+	params = arena_allocn(mem, node->composite.num_members,
 			sizeof(struct object_cons_param));
 
 	size_t offset = 0;
 	ast_member_id cumulative_persistant_id = 1;
-	for (size_t i = 0; i < comp->composite.num_members; i++) {
-		local_members[i].name = comp->composite.members[i].name;
+	for (size_t i = 0; i < node->composite.num_members; i++) {
+		local_members[i].name = node->composite.members[i].name;
 		local_members[i].location = offset;
 
 		ast_member_id mbr_id;
-		mbr_id = ctx->local_member_ids[i];
+		mbr_id = comp->local_member_ids[i];
 
 		struct ast_dt_member *mbr;
 		mbr = get_member(ctx, mbr_id);
 
-		params[i].name = comp->composite.members[i].name;
+		params[i].name = node->composite.members[i].name;
 		params[i].type = mbr->type;
 		params[i].def_loc = mbr->decl_loc;
 
 		mbr->persistant_id = cumulative_persistant_id;
 		cumulative_persistant_id += 1 +
-			ast_dt_num_descendant_members(ctx, mod, mbr->type);
+			ast_dt_num_descendant_members(ctx, ctx->mod, mbr->type);
 
 		struct type *member_type;
 		member_type = vm_get_type(ctx->ast_ctx->vm, mbr->type);
@@ -3149,7 +3432,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 	// members.
 
 	def->params = params;
-	def->num_params = comp->composite.num_members;
+	def->num_params = node->composite.num_members;
 
 	size_t num_bound_members = 0;
 	for (ast_member_id mbr = 0; mbr < ctx->members.length; mbr++) {
@@ -3216,7 +3499,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 
 	inst->exprs = exprs;
 	inst->num_exprs = ctx->exprs.length;
-	inst->init_monad = ctx->root_node->composite.is_init_monad;
+	inst->init_monad = node->composite.is_init_monad;
 
 	size_t bind_i = 0;
 	for (size_t mbr_i = 0; mbr_i < ctx->members.length; mbr_i++) {
@@ -3249,7 +3532,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 	struct ast_dt_composite_info *info;
 	info = arena_alloc(mem, sizeof(struct ast_dt_composite_info));
 
-	info->num_members = comp->composite.num_members;
+	info->num_members = node->composite.num_members;
 	info->members = local_members;
 
 	def->data = info;
@@ -3261,10 +3544,12 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx, struct stg_module *mod)
 	dt_type.data = info;
 
 	type_id result;
-	result = stg_register_type(mod, dt_type);
+	result = stg_register_type(ctx->mod, dt_type);
 
 	info->type = result;
 	inst->type = result;
+
+	comp->type = result;
 
 	return result;
 }
@@ -3280,11 +3565,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct stg_module *mod,
 	struct ast_dt_context dt_ctx = {0};
 	dt_ctx.ast_ctx = ctx;
 	dt_ctx.mod = mod;
-	dt_ctx.root_node = comp;
 	dt_ctx.terminal_jobs  = -1;
-
-	dt_ctx.closures = closures;
-	dt_ctx.num_closures  = num_closures;
 
 	paged_list_init(
 			&dt_ctx.jobs,
@@ -3315,12 +3596,9 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct stg_module *mod,
 
 	int err;
 
-	dt_ctx.target_names_resolved =
-		ast_dt_job_nop(&dt_ctx, &dt_ctx.target_names_resolved);
-	dt_ctx.use_resolved =
-		ast_dt_job_nop(&dt_ctx, &dt_ctx.use_resolved);
-
-	ast_dt_composite_populate(&dt_ctx, comp);
+	ast_dt_composite_id root_comp_id;
+	root_comp_id = ast_dt_register_composite(
+			&dt_ctx, comp, closures, num_closures);
 
 	err = ast_dt_run_jobs(&dt_ctx);
 #if AST_DT_DEBUG_JOBS
@@ -3332,10 +3610,16 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct stg_module *mod,
 	type_id result = TYPE_UNSET;
 
 	if (!err && dt_ctx.num_errors == 0) {
-		result = ast_dt_composite_make_type(&dt_ctx, mod);
+		struct ast_dt_composite *comp;
+		comp = get_composite(&dt_ctx, root_comp_id);
+		result = comp->type;
 	}
 
-	free(dt_ctx.local_member_ids);
+	for (size_t comp_i = 0; comp_i < dt_ctx.num_composites; comp_i++) {
+		struct ast_dt_composite *comp;
+		comp = get_composite(&dt_ctx, comp_i);
+		free(comp->local_member_ids);
+	}
 
 	for (size_t expr_i = 0; expr_i < dt_ctx.exprs.length; expr_i++) {
 		struct ast_dt_expr *expr;
