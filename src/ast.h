@@ -844,6 +844,12 @@ ast_node_composite_add_member(
 		struct ast_node *type, int type_giving_bind);
 
 int
+ast_node_composite_add_namespace(
+		struct ast_context *ctx,
+		struct ast_node *target, struct atom *name,
+		struct ast_node *type);
+
+int
 ast_node_composite_bind(
 		struct ast_context *ctx,
 		struct ast_node *composite, struct ast_node *target,

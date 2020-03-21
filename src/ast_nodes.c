@@ -488,6 +488,37 @@ ast_node_composite_add_member(
 }
 
 int
+ast_node_composite_add_namespace(
+		struct ast_context *ctx,
+		struct ast_node *target, struct atom *name,
+		struct ast_node *type)
+{
+	assert(target && name && type);
+	assert(target->kind == AST_NODE_COMPOSITE);
+	assert(type->kind   == AST_NODE_COMPOSITE);
+
+	for (size_t i = 0; i < target->composite.num_members; i++) {
+		if (target->composite.members[i].name == name) {
+			return -1;
+		}
+	}
+
+	struct ast_datatype_member new_member = {0};
+	new_member.name = name;
+	new_member.loc = target->loc;
+	new_member.is_namespace = true;
+	new_member.type = type;
+	new_member.type_giving_bind = AST_NO_TYPE_GIVING_BIND;
+
+	dlist_append(
+			target->composite.members,
+			target->composite.num_members,
+			&new_member);
+
+	return 0;
+}
+
+int
 ast_node_composite_bind(
 		struct ast_context *ctx,
 		struct ast_node *composite, struct ast_node *target,

@@ -149,6 +149,10 @@ ast_slot_require_is_obj(
 			AST_SLOT_REQ_IS_OBJ, source, loc, target
 			PASS_DEBUG_PARAM);
 
+	if (val.type == 4) {
+		assert(TYPE_VALID(*(type_id *)val.data));
+	}
+
 	constr->is.obj = val;
 }
 
@@ -163,6 +167,8 @@ ast_slot_require_is_type(
 	constr = ast_alloc_constraint(env,
 			AST_SLOT_REQ_IS_TYPE, source, loc, target
 			PASS_DEBUG_PARAM);
+
+	assert(TYPE_VALID(val));
 
 	constr->is.type = val;
 }
@@ -1131,6 +1137,8 @@ ast_solve_apply_value_type(
 	print_type_repr(ctx->vm, vm_get_type(ctx->vm, type));
 #endif
 
+	assert(TYPE_VALID(type));
+
 	struct object type_obj = {0};
 	type_obj.type = ctx->type;
 	type_obj.data = &type;
@@ -1696,6 +1704,7 @@ ast_slot_try_get_value_type(
 	}
 
 	assert_type_equals(ctx->vm, obj.type, ctx->type);
+	assert(TYPE_VALID(*(type_id *)obj.data));
 	*out_type = *(type_id *)obj.data;
 	return AST_SLOT_GET_OK;
 }
@@ -2337,6 +2346,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				} else if (err > 0) {
 					continue;
 				}
+				assert(TYPE_VALID(arg_types[param_i]));
 
 				arg_set[param_i] = true;
 			}

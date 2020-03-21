@@ -32,21 +32,19 @@ ast_namespace_add_ns(struct ast_context *ctx,
 {
 	assert(ns->kind == AST_NODE_COMPOSITE);
 
-	for (size_t i = 0; i < ns->composite.num_members; i++) {
-		if (ns->composite.members[i].name == name) {
-			return ns->composite.members[i].type;
-		}
-	}
-
 	struct ast_node *ns_type;
 	// TODO: Add a location to make error messages more helpful.
 	ns_type = ast_init_node_composite(
 			ctx, AST_NODE_NEW, STG_NO_LOC);
 
 	int err;
-	err = ast_node_composite_add_member(
-			ctx, ns, name, ns_type, AST_NO_TYPE_GIVING_BIND);
-	assert(!err);
+	err = ast_node_composite_add_namespace(
+			ctx, ns, name, ns_type);
+	if (err) {
+		stg_error(ctx->err, ns->loc,
+				"This namespace already has a member named '%.*s'.",
+				ALIT(name));
+	}
 
 	return ns_type;
 }
