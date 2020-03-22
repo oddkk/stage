@@ -93,6 +93,7 @@ stg_memory_request_page_slot(struct stg_memory *mem)
 		index->pages[0] = index_page;
 
 		mem->head_index_page = index;
+		mem->head_num_pages_alloced = 1;
 	}
 
 	struct stg_memory_page *slot = NULL;
