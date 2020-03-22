@@ -602,6 +602,33 @@ ast_node_composite_add_use(
 			&use);
 }
 
+void
+ast_node_composite_add_impl(
+		struct ast_context *ctx, struct stg_location loc,
+		struct ast_node *composite, struct ast_node *target,
+		struct ast_datatype_impl_arg *args, size_t num_args,
+		struct ast_node *value)
+{
+	assert(composite && target && value);
+	assert(composite->kind == AST_NODE_COMPOSITE);
+
+	struct ast_datatype_impl new_impl = {0};
+
+	new_impl.target = target;
+	new_impl.num_args = num_args;
+	new_impl.args = arena_allocn(ctx->mem,
+			num_args, sizeof(struct ast_datatype_impl_arg));
+	memcpy(new_impl.args, args, num_args * sizeof(struct ast_datatype_impl_arg));
+
+	new_impl.value = value;
+	new_impl.loc = loc;
+
+	dlist_append(
+			composite->composite.impls,
+			composite->composite.num_impls,
+			&new_impl);
+}
+
 struct ast_node *
 ast_init_node_variant(
 		struct ast_context *ctx,

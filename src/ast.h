@@ -481,6 +481,21 @@ struct ast_datatype_use {
 	struct atom *as_name;
 };
 
+struct ast_datatype_impl_arg {
+	struct atom *name;
+	struct ast_node *value;
+};
+
+struct ast_datatype_impl {
+	struct ast_node *target;
+	struct ast_datatype_impl_arg *args;
+	size_t num_args;
+
+	struct ast_node *value;
+
+	struct stg_location loc;
+};
+
 struct ast_closure_member {
 	struct atom *name;
 	struct ast_name_ref ref;
@@ -609,6 +624,9 @@ struct ast_node {
 			struct ast_datatype_use *uses;
 			size_t num_uses;
 
+			struct ast_datatype_impl *impls;
+			size_t num_impls;
+
 			struct ast_closure_target closure;
 
 			bool is_init_monad;
@@ -714,6 +732,15 @@ ast_node_name(enum ast_node_kind);
 				}																\
 				for (size_t i = 0; i < (node)->composite.num_init_exprs; i++) { \
 					VISIT_NODE((node)->composite.init_exprs[i]);				\
+				}																\
+				for (size_t i = 0; i < (node)->composite.num_impls; i++) {		\
+					struct ast_datatype_impl *impl; 							\
+					impl = &(node)->composite.impls[i];							\
+					VISIT_NODE(impl->target);									\
+					for (size_t j = 0; j < impl->num_args; j++) { 				\
+						VISIT_NODE(impl->args[j].value);						\
+					}															\
+					VISIT_NODE(impl->value);									\
 				}																\
 			}																	\
 			break;																\
@@ -876,6 +903,13 @@ ast_node_composite_add_use(
 		struct ast_context *ctx, struct stg_location,
 		struct ast_node *target, struct ast_node *expr,
 		struct atom *as_name);
+
+void
+ast_node_composite_add_impl(
+		struct ast_context *ctx, struct stg_location,
+		struct ast_node *composite, struct ast_node *target,
+		struct ast_datatype_impl_arg *args, size_t num_args,
+		struct ast_node *value);
 
 struct ast_node *
 ast_init_node_variant(

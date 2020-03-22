@@ -285,6 +285,64 @@ st_node_visit_stmt(struct ast_context *ctx, struct stg_module *mod,
 			}
 			break;
 
+		case ST_NODE_IMPL_STMT:
+			{
+				struct st_node *impl = stmt->STMT.stmt;
+
+				struct st_expr_context target_ctx = {0};
+				target_ctx.init_target = struct_node;
+
+				struct ast_node *target;
+				target = st_node_visit_expr(
+						ctx, mod, &target_ctx,
+						impl->IMPL_STMT.target);
+
+				struct st_node *arg_items;
+				assert(impl->IMPL_STMT.args->type == ST_NODE_TUPLE_LIT);
+				arg_items = impl->IMPL_STMT.args->TUPLE_LIT.items;
+
+				size_t num_args = 0;
+				struct st_node *arg_iter;
+				arg_iter = arg_items;
+				while (arg_iter) {
+					num_args += 1;
+					arg_iter = arg_iter->next_sibling;
+				}
+
+				struct ast_datatype_impl_arg args[num_args];
+
+				size_t arg_i = 0;
+				arg_iter = arg_items;
+				while (arg_iter) {
+					assert(arg_iter->type == ST_NODE_TUPLE_LIT_ITEM);
+					args[arg_i].name = arg_iter->TUPLE_LIT_ITEM.name;
+					args[arg_i].value = st_node_visit_expr(
+							ctx, mod, &target_ctx, arg_iter->TUPLE_LIT_ITEM.value);
+
+					arg_i += 1;
+					arg_iter = arg_iter->next_sibling;
+				}
+				assert(arg_i == num_args);
+
+
+				struct ast_node *body_node;
+				body_node = ast_init_node_composite(
+						ctx, AST_NODE_NEW, impl->loc);
+
+				struct st_node *body_iter;
+				body_iter = impl->IMPL_STMT.body;
+				while (body_iter) {
+					st_node_visit_stmt(
+							ctx, mod, body_node, body_iter);
+					body_iter = body_iter->next_sibling;
+				}
+
+				ast_node_composite_add_impl(
+						ctx, impl->loc, struct_node,
+						target, args, num_args, body_node);
+			}
+			break;
+
 		default:
 			{
 				struct st_node *expr_node;
