@@ -410,6 +410,7 @@ enum ast_node_kind {
 	AST_NODE_MATCH,
 	AST_NODE_WILDCARD,
 	AST_NODE_INIT_EXPR,
+	AST_NODE_TYPE_CLASS,
 
 	// Datatype declarations
 	AST_NODE_COMPOSITE,
@@ -508,8 +509,27 @@ struct ast_closure_target {
 	size_t num_members;
 };
 
+// struct ast_type_class_param {
+// 	struct atom *name;
+// 	struct ast_node *type;
+// };
+
+struct ast_type_class_member {
+	struct atom *name;
+	struct ast_node *type;
+};
+
 // defined in ast_nodes.c
 struct ast_templ_node_data;
+
+enum ast_composite_kind {
+	AST_COMPOSITE_STRUCT,
+	AST_COMPOSITE_STATIC_OBJ,
+	AST_COMPOSITE_MODULE,
+	AST_COMPOSITE_NAMESPACE,
+	AST_COMPOSITE_TYPE_CLASS,
+	AST_COMPOSITE_TYPE_CLASS_IMPL,
+};
 
 struct ast_node {
 	enum ast_node_kind kind;
@@ -629,11 +649,26 @@ struct ast_node {
 
 			struct ast_closure_target closure;
 
+			enum ast_composite_kind kind;
+
 			bool is_init_monad;
 
 			type_id type;
 			bool failed;
 		} composite;
+
+		struct {
+			struct ast_pattern pattern;
+
+			struct ast_type_class_member *members;
+			size_t num_members;
+
+			struct ast_closure_target closure;
+
+			struct object_cons *cons;
+
+			bool failed;
+		} type_class;
 
 		struct {
 			struct ast_datatype_variant *options;
@@ -741,6 +776,18 @@ ast_node_name(enum ast_node_kind);
 						VISIT_NODE(impl->args[j].value);						\
 					}															\
 					VISIT_NODE(impl->value);									\
+				}																\
+			}																	\
+			break;																\
+		case AST_NODE_TYPE_CLASS:												\
+			for (size_t i = 0; i < (node)->type_class.pattern.num_params; i++) {\
+				if ((node)->type_class.pattern.params[i].type) {				\
+					VISIT_NODE((node)->type_class.pattern.params[i].type);		\
+				}																\
+			}																	\
+			if (visit_composite_body) {											\
+				for (size_t i = 0; i < (node)->type_class.num_members; i++) {	\
+					VISIT_NODE((node)->type_class.members[i].type);				\
 				}																\
 			}																	\
 			break;																\
@@ -860,7 +907,14 @@ ast_pattern_register_param(
 struct ast_node *
 ast_init_node_composite(
 		struct ast_context *ctx,
-		struct ast_node *target, struct stg_location);
+		struct ast_node *target, struct stg_location,
+		enum ast_composite_kind kind);
+
+struct ast_node *
+ast_init_node_type_class(
+		struct ast_context *ctx, struct ast_node *node,
+		struct stg_location,
+		struct ast_type_class_member *members, size_t num_members);
 
 #define AST_NO_TYPE_GIVING_BIND ((int)-1)
 
@@ -921,10 +975,6 @@ ast_node_variant_add_option(
 		struct ast_context *ctx,
 		struct ast_node *target, struct stg_location,
 		struct atom *name, struct ast_node *data_type);
-
-void
-ast_node_substitute_slot(struct ast_node *,
-		ast_slot_id target, ast_slot_id new_slot);
 
 struct stg_native_module;
 
@@ -1004,6 +1054,11 @@ ast_node_resolve_datatypes(
 		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_node *node);
+
+void
+ast_constr_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
+		struct ast_typecheck_dep *out_deps, struct ast_closure_target *closure,
+		struct ast_typecheck_dep *deps, size_t num_deps);
 
 ast_slot_id
 ast_node_constraints(

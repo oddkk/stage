@@ -244,6 +244,10 @@ struct object_cons_param {
 	struct stg_location def_loc;
 };
 
+struct object_cons_base {
+	struct string name;
+};
+
 struct object_cons {
 	struct object_cons_param *params;
 	size_t num_params;
@@ -260,6 +264,7 @@ struct object_cons {
 	object_ct_pack_type_func ct_pack_type;
 	object_impose_constraints impose_constraints;
 
+	struct object_cons_base *base;
 	void *data;
 };
 

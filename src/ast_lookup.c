@@ -72,6 +72,9 @@ ast_node_get_closure_target(struct ast_node *node)
 		case AST_NODE_TEMPL:
 			return &node->templ.closure;
 
+		case AST_NODE_TYPE_CLASS:
+			return &node->type_class.closure;
+
 		default:
 			panic("Attempted to get closure target off a node that does not allow closures (%s).");
 			return NULL;
@@ -482,6 +485,41 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 
 				err += ast_closure_resolve_names(ctx, info,
 						scope, flags, &node->composite.closure);
+			}
+			break;
+
+		case AST_NODE_TYPE_CLASS:
+			{
+				struct ast_scope body_scope = {0};
+
+				ast_scope_push_templ(&body_scope, scope);
+				body_scope.closure_target = node;
+
+				body_scope.num_names = node->type_class.pattern.num_params;
+				struct ast_scope_name template_scope_names[body_scope.num_names];
+				body_scope.names = template_scope_names;
+
+				for (size_t i = 0; i < body_scope.num_names; i++) {
+					body_scope.names[i].name =
+						node->type_class.pattern.params[i].name;
+					body_scope.names[i].ref.kind = AST_NAME_REF_TEMPL;
+					body_scope.names[i].ref.templ = i;
+
+					if (node->type_class.pattern.params[i].type) {
+						err += ast_node_resolve_names_internal(
+								ctx, info, scope, flag_req_const(flags),
+								node->type_class.pattern.params[i].type);
+					}
+				}
+
+				for (size_t i = 0; i < node->type_class.num_members; i++) {
+					err += ast_node_resolve_names_internal(
+							ctx, info, &body_scope, flag_req_const(flags),
+							node->type_class.members[i].type);
+				}
+
+				err += ast_closure_resolve_names(ctx, info,
+						scope, flags, &node->type_class.closure);
 			}
 			break;
 

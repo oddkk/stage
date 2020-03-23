@@ -1830,6 +1830,20 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 			}
 			return result;
 
+		case AST_NODE_TYPE_CLASS:
+			{
+				struct object obj = {0};
+				obj.type = ctx->vm->default_types.cons;
+				obj.data = &node->type_class.cons;
+
+				obj = register_object(ctx->vm, &mod->store, obj);
+
+				result.first = result.last =
+					bc_gen_load(bc_env, BC_VAR_NEW, obj);
+				result.out_var = result.first->load.target;
+			}
+			return result;
+
 		case AST_NODE_VARIANT:
 			{
 				type_id type;

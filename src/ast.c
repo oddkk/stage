@@ -35,7 +35,8 @@ ast_namespace_add_ns(struct ast_context *ctx,
 	struct ast_node *ns_type;
 	// TODO: Add a location to make error messages more helpful.
 	ns_type = ast_init_node_composite(
-			ctx, AST_NODE_NEW, STG_NO_LOC);
+			ctx, AST_NODE_NEW, STG_NO_LOC,
+			AST_COMPOSITE_NAMESPACE);
 
 	int err;
 	err = ast_node_composite_add_namespace(

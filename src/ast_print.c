@@ -210,6 +210,25 @@ ast_print_internal(struct ast_context *ctx,
 					&node->composite.closure, depth + 1);
 			break;
 
+		case AST_NODE_TYPE_CLASS:
+			print_indent(depth);
+			printf("type class:\n");
+			for (size_t i = 0; i < node->type_class.pattern.num_params; i++) {
+				print_indent(depth + 2);
+				printf("'%.*s'", ALIT(node->type_class.pattern.params[i].name));
+				if (node->type_class.pattern.params[i].type) {
+					printf(" type\n");
+					ast_print_internal(ctx,
+							node->type_class.pattern.params[i].type, depth+3);
+				} else {
+					printf("\n");
+				}
+			}
+			print_indent(depth + 1);
+			printf("body:\n");
+			ast_print_internal(ctx, node->type_class.pattern.node, depth + 2);
+			break;
+
 		case AST_NODE_VARIANT:
 			print_indent(depth);
 			printf("variant:\n");
@@ -424,6 +443,11 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 
 		case AST_NODE_COMPOSITE:
 			printf("Struct {");
+			printf(" }");
+			break;
+
+		case AST_NODE_TYPE_CLASS:
+			printf("class {");
 			printf(" }");
 			break;
 

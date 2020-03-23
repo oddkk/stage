@@ -174,7 +174,7 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
 %token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>"
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_stmt impl_stmt match_expr match_cases match_case
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_decl impl_stmt match_expr match_cases match_case
 
 %type <struct atom *> IDENTIFIER
 %type <struct string> STRINGLIT
@@ -223,7 +223,6 @@ stmt:			stmt1					{ $$ = MKNODE(STMT, .stmt=$1); }
 stmt1:			';'                     { $$ = NULL; }
 		|		mod_stmt        ';'     { $$ = $1; }
 		|		use_stmt        ';'     { $$ = $1; }
-		|		type_class_stmt ';'     { $$ = $1; }
 		|		impl_stmt       ';'     { $$ = $1; }
 		|		assign_stmt     ';'     { $$ = $1; }
 		|		expr            ';'     { $$ = $1; }
@@ -240,9 +239,9 @@ assign_stmt:
 		|		expr   "~=" expr          { $$ = MKNODE(ASSIGN_STMT, .ident=$1, .type=NULL, .body=$3,   .decl=false, .overridable=true);  }
 		;
 
-type_class_stmt:
-				"class" IDENTIFIER '[' templ_decl_params ']' object_decl1
-					{ $$ = MKNODE(TYPE_CLASS_STMT, .ident=$2, .params=$4, .body=$6); }
+type_class_decl:
+				"class" '[' templ_decl_params ']' object_decl1
+					{ $$ = MKNODE(TYPE_CLASS_DECL, .params=$3, .body=$5); }
 		;
 
 impl_stmt:
@@ -406,6 +405,7 @@ namespace_ident:
 expr:			expr1                   { $$ = $1; }
 		|		func_decl				{ $$ = $1; }
 		|		object_decl				{ $$ = $1; }
+		|		type_class_decl			{ $$ = $1; }
 		|		match_expr				{ $$ = $1; }
 		;
 

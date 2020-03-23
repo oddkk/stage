@@ -5,6 +5,7 @@
 #include "error.h"
 #include "term_color.h"
 #include "base/mod.h"
+#include "type_class.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,7 +53,7 @@ ast_find_dep(struct ast_typecheck_dep *deps, size_t num_deps,
 }
 
 // If NULL is passed as env, the value member of all out_deps will be set to -1.
-static void
+void
 ast_constr_fill_closure_deps(struct ast_context *ctx, struct ast_env *env,
 		struct ast_typecheck_dep *out_deps, struct ast_closure_target *closure,
 		struct ast_typecheck_dep *deps, size_t num_deps)
@@ -255,6 +256,11 @@ ast_node_resolve_datatypes(
 					node->composite.failed = true;
 				}
 			}
+			break;
+
+		case AST_NODE_TYPE_CLASS:
+			stg_type_class_from_ast_node(
+					ctx, mod, node, deps, num_deps);
 			break;
 
 		case AST_NODE_VARIANT:
@@ -807,9 +813,33 @@ ast_node_constraints(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
 						res_slot, node->composite.type);
 			} else if (node->composite.failed) {
-				ast_slot_require_is_type(
+				ast_slot_value_error(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
-						res_slot, node->composite.type);
+						res_slot);
+			}
+
+			node->typecheck_slot = res_slot;
+		}
+		break;
+
+		case AST_NODE_TYPE_CLASS:
+		{
+			ast_slot_id res_slot;
+			res_slot = ast_slot_alloc(env);
+
+			if (node->type_class.cons != NULL) {
+				struct object cons_obj = {0};
+				cons_obj.type = ctx->vm->default_types.cons;
+				cons_obj.data = &node->type_class.cons;
+				cons_obj = register_object(
+						ctx->vm, &mod->store, cons_obj);
+				ast_slot_require_is_obj(
+						env, node->loc, AST_CONSTR_SRC_DT_DECL,
+						res_slot, cons_obj);
+			} else if (node->type_class.failed) {
+				ast_slot_value_error(
+						env, node->loc, AST_CONSTR_SRC_DT_DECL,
+						res_slot);
 			}
 
 			node->typecheck_slot = res_slot;
@@ -1030,6 +1060,25 @@ ast_node_resolve_types(
 					}
 				}
 				break;
+
+			case AST_NODE_TYPE_CLASS:
+				{
+					if (res->result == AST_SLOT_RES_ERROR) {
+						errors += 1;
+					} else {
+						if (ast_slot_value_result(res->result) <
+								AST_SLOT_RES_TYPE_FOUND) {
+							ast_node_resolve_handle_value_result(
+									ctx, env, &errors, node, res, "");
+						} else {
+							node->type = res->type;
+						}
+					}
+				}
+				// Abort the resolve before we can visit the template's
+				// children. These have already been handled in resolve
+				// datatype.
+				return errors;
 
 			default:
 				break;

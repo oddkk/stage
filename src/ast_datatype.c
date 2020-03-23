@@ -1622,8 +1622,8 @@ ast_dt_composite_populate(struct ast_dt_context *ctx,
 		struct ast_datatype_member *mbr;
 		mbr = &node->composite.members[i];
 
-		if (mbr->is_namespace) {
-			assert(mbr->type != NULL);
+		if (mbr->type && mbr->type->kind == AST_NODE_COMPOSITE &&
+				mbr->type->composite.kind == AST_COMPOSITE_NAMESPACE) {
 			ast_dt_composite_id comp_id;
 			comp_id = ast_dt_register_composite(
 					ctx, mbr->type, false, NULL, 0);
@@ -4212,7 +4212,8 @@ ast_dt_create_variant_type_scope(
 	struct ast_node *scope;
 
 	scope = ast_init_node_composite(
-			ctx, AST_NODE_NEW, info->loc);
+			ctx, AST_NODE_NEW, info->loc,
+			AST_COMPOSITE_STATIC_OBJ);
 
 	struct type *variant_type;
 	variant_type = vm_get_type(mod->vm, info->type);

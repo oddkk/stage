@@ -445,7 +445,8 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 					should_discover_files = module_found;
 				}
 				data->mod_root = ast_init_node_composite(
-						ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC);
+						ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC,
+						AST_COMPOSITE_MODULE);
 
 				struct atom *base_mod_name = vm_atoms(ctx->vm, "base");
 

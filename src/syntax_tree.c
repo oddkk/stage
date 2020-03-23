@@ -327,7 +327,8 @@ st_node_visit_stmt(struct ast_context *ctx, struct stg_module *mod,
 
 				struct ast_node *body_node;
 				body_node = ast_init_node_composite(
-						ctx, AST_NODE_NEW, impl->loc);
+						ctx, AST_NODE_NEW, impl->loc,
+						AST_COMPOSITE_TYPE_CLASS_IMPL);
 
 				struct st_node *body_iter;
 				body_iter = impl->IMPL_STMT.body;
@@ -718,16 +719,19 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 	case ST_NODE_MODULE:
 	case ST_NODE_OBJECT_DECL:
 	{
-		struct ast_node *struct_node;
-		struct_node = ast_init_node_composite(
-				ctx, AST_NODE_NEW, node->loc);
-
+		enum ast_composite_kind kind;
 		struct st_node *member;
 		if (node->type == ST_NODE_OBJECT_DECL) {
 			member = node->OBJECT_DECL.body;
+			kind = AST_COMPOSITE_STRUCT;
 		} else {
 			member = node->MODULE.body;
+			kind = AST_COMPOSITE_MODULE;
 		}
+
+		struct ast_node *struct_node;
+		struct_node = ast_init_node_composite(
+				ctx, AST_NODE_NEW, node->loc, kind);
 
 		while (member) {
 			st_node_visit_stmt(ctx, mod, struct_node, member);
@@ -1130,6 +1134,125 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			return ast_init_node_mod(
 					ctx, AST_NODE_NEW, node->loc,
 					node->MOD_STMT.ident);
+		}
+
+	case ST_NODE_TYPE_CLASS_DECL:
+		{
+			size_t num_members = 0;
+			struct st_node *body_stmt_iter;
+			body_stmt_iter = node->TYPE_CLASS_DECL.body;
+
+			while (body_stmt_iter) {
+				assert(body_stmt_iter->type == ST_NODE_STMT);
+				struct st_node *body_stmt = body_stmt_iter->STMT.stmt;
+				if (body_stmt->type != ST_NODE_ASSIGN_STMT) {
+					stg_error(ctx->err, body_stmt->loc,
+							"Only member declarations can appear in type class declarations.");
+					continue;
+				}
+
+				if (!body_stmt->ASSIGN_STMT.decl) {
+					stg_error(ctx->err, body_stmt->loc,
+							"Only member declarations can appear in type class declarations.");
+					continue;
+				}
+
+				if (body_stmt->ASSIGN_STMT.body != NULL) {
+					// TODO: Allow template declarations of type class member values.
+					stg_error(ctx->err, body_stmt->loc,
+							"Type class members can not be assigned during type class declaration.");
+					continue;
+				}
+
+				if (body_stmt->ASSIGN_STMT.type == NULL) {
+					// TODO: Allow template declarations of type class member values.
+					stg_error(ctx->err, body_stmt->loc,
+							"Type class members must have an explicit type.");
+					continue;
+				}
+
+				if (body_stmt->ASSIGN_STMT.ident->type != ST_NODE_IDENT) {
+					stg_error(ctx->err, body_stmt->ASSIGN_STMT.ident->loc,
+							"Type class members must have trivial names.");
+					continue;
+				}
+
+				num_members += 1;
+				body_stmt_iter = body_stmt->next_sibling;
+			}
+
+			body_stmt_iter = node->TYPE_CLASS_DECL.body;
+
+			struct st_expr_context member_ctx = {0};
+			struct ast_type_class_member members[num_members];
+
+			size_t member_i = 0;
+			while (body_stmt_iter) {
+				assert(body_stmt_iter->type == ST_NODE_STMT);
+				struct st_node *body_stmt = body_stmt_iter->STMT.stmt;
+
+				if (body_stmt->type != ST_NODE_ASSIGN_STMT ||
+						!body_stmt->ASSIGN_STMT.decl ||
+						body_stmt->ASSIGN_STMT.body != NULL ||
+						body_stmt->ASSIGN_STMT.type  == NULL ||
+						body_stmt->ASSIGN_STMT.ident->type != ST_NODE_IDENT) {
+					continue;
+				}
+
+				struct atom *name = body_stmt->ASSIGN_STMT.ident->IDENT;
+				struct st_node *type_node = body_stmt->ASSIGN_STMT.type;
+
+				struct ast_node *type;
+				type = st_node_visit_expr(
+						ctx, mod, &member_ctx, type_node);
+
+				members[member_i].name = name;
+				members[member_i].type = type;
+
+				member_i += 1;
+				body_stmt_iter = body_stmt_iter->next_sibling;
+			}
+			assert(member_i == num_members);
+
+			struct ast_node *tc;
+			tc = ast_init_node_type_class(
+					ctx, AST_NODE_NEW, node->loc,
+					members, num_members);
+
+			struct st_expr_context param_ctx = *expr_ctx;
+			param_ctx.pattern = &tc->type_class.pattern;
+
+			struct st_node *param_iter;
+			param_iter = node->TYPE_CLASS_DECL.params;
+			while (param_iter) {
+				switch (param_iter->type) {
+					case ST_NODE_TEMPLATE_VAR:
+						{
+							struct ast_node *type_node;
+							type_node = st_node_visit_expr(
+									ctx, mod, expr_ctx,
+									param_iter->TEMPLATE_VAR.type);
+
+							ast_pattern_register_param(
+									ctx, param_ctx.pattern,
+									param_iter->TEMPLATE_VAR.name,
+									type_node, param_iter->loc);
+						}
+						break;
+
+						// TODO: More complex pattern variables, such as type
+						// constraints.
+
+					default:
+						stg_error(ctx->err, param_iter->loc,
+								"Expected template parameters.");
+						break;
+				}
+
+				param_iter = param_iter->next_sibling;
+			}
+
+			return tc;
 		}
 
 	default:

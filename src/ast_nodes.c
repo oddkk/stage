@@ -30,6 +30,7 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_INIT_EXPR:	return "INIT_EXPR";
 
 		case AST_NODE_COMPOSITE:	return "COMPOSITE";
+		case AST_NODE_TYPE_CLASS:	return "TYPE_CLASS";
 		case AST_NODE_VARIANT:		return "VARIANT";
 	}
 
@@ -435,9 +436,33 @@ ast_pattern_register_param(
 }
 
 struct ast_node *
+ast_init_node_type_class(
+		struct ast_context *ctx, struct ast_node *node,
+		struct stg_location loc,
+		struct ast_type_class_member *members, size_t num_members)
+{
+	if (node == AST_NODE_NEW) {
+		node = arena_alloc(ctx->mem, sizeof(struct ast_node));
+	}
+
+	memset(node, 0, sizeof(struct ast_node));
+	node->kind = AST_NODE_TYPE_CLASS;
+	node->loc = loc;
+
+	node->type_class.num_members = num_members;
+	node->type_class.members = arena_allocn(ctx->mem,
+			num_members, sizeof(struct ast_type_class_member));
+	memcpy(node->type_class.members, members,
+			num_members * sizeof(struct ast_type_class_member));
+
+	return node;
+}
+
+struct ast_node *
 ast_init_node_composite(
 		struct ast_context *ctx,
-		struct ast_node *target, struct stg_location loc)
+		struct ast_node *target, struct stg_location loc,
+		enum ast_composite_kind kind)
 {
 	if (target == AST_NODE_NEW) {
 		target = arena_alloc(ctx->mem, sizeof(struct ast_node));
@@ -446,6 +471,7 @@ ast_init_node_composite(
 	memset(target, 0, sizeof(struct ast_node));
 	target->kind = AST_NODE_COMPOSITE;
 	target->loc = loc;
+	target->composite.kind = kind;
 
 	return target;
 }
@@ -822,6 +848,14 @@ ast_node_find_named_dependencies(
 			// We will not visit the body of the template.
 			break;
 
+		case AST_NODE_TYPE_CLASS:
+			err += ast_node_closure_find_named_dependencies(
+					req, &node->type_class.closure,
+					out_refs, out_num_refs);
+
+			// We will not visit the body of the type class.
+			break;
+
 		default:
 			break;
 	}
@@ -998,6 +1032,21 @@ ast_node_deep_copy(struct arena *mem, struct ast_node *src)
 		}
 
 		DCP_LIT(composite.closure);
+		break;
+
+	case AST_NODE_TYPE_CLASS:
+		DCP_NODE(type_class.pattern.node);
+
+		DCP_DLIST(type_class.pattern.params, type_class.pattern.num_params);
+		for (size_t i = 0; i < result->type_class.pattern.num_params; i++) {
+			DCP_LIT(type_class.pattern.params[i].name);
+			if (src->type_class.pattern.params[i].type) {
+				DCP_NODE(type_class.pattern.params[i].type);
+			} else {
+				result->type_class.pattern.params[i].type = NULL;
+			}
+			DCP_LIT(type_class.pattern.params[i].loc);
+		}
 		break;
 
 	case AST_NODE_VARIANT:

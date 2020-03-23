@@ -45,8 +45,7 @@ ST_NODE(USE_ALL, struct {
 	struct st_node *target;
 })
 
-ST_NODE(TYPE_CLASS_STMT, struct {
-	struct atom *ident;
+ST_NODE(TYPE_CLASS_DECL, struct {
 	struct st_node *params;
 	struct st_node *body;
 })
