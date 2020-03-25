@@ -912,10 +912,14 @@ ast_node_deep_copy(struct arena *mem, struct ast_node *src)
 		DCP_DLIST(func.params, func.num_params);
 		for (size_t i = 0; i < result->func.num_params; i++) {
 			DCP_LIT(func.params[i].name);
-			DCP_NODE(func.params[i].type);
+			if (src->func.params[i].type) {
+				DCP_NODE(func.params[i].type);
+			}
 		}
 
-		DCP_NODE(func.return_type);
+		if (src->func.return_type) {
+			DCP_NODE(func.return_type);
+		}
 		DCP_LIT(func.instance);
 		DCP_LIT(func.closure);
 		break;

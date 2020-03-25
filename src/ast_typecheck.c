@@ -347,8 +347,10 @@ ast_node_constraints(
 							type_slot, i+1, param_type_slot);
 
 					body_deps[i].value = ast_slot_alloc(env);
-					ast_slot_require_type(
-							env, node->func.params[i].type->loc,
+					ast_slot_require_type(env,
+							node->func.params[i].type
+							? node->func.params[i].type->loc
+							: node->loc,
 							AST_CONSTR_SRC_FUNC_DECL,
 							body_deps[i].value, param_type_slot);
 				}
