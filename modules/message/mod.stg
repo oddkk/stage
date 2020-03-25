@@ -1,26 +1,25 @@
 Msg := @native("Msg");
+# MsgTrigger := @native("MsgTrigger");
 onStart := @native("onStart");
 
-map := (a: Msg[$T], fn: (T) -> $U) -> Msg[U]
-	=> ((a: Msg[T], fn: (T) -> U, typeIn: Type, typeOut: Type) -> Msg[U]
-		@native("msg_functor_map"))(a, fn, T, U);
+return := (val: $T) -> Msg[T]
+	=> ((val: T, type: Type) -> Msg[T]
+		@native("msg_monad_return"))(val, T);
 
-# TODO: Bool
-# filter := (a: Msg[$T], fn: (T) -> Bool) -> Msg[T]
-# 	=> ((a: Msg[T], fn: (T) -> U, type: Type) -> Msg[T]
-# 		@native("msg_functor_filter"))(a, fn, T);
+# drop := () -> Msg[T]
+# 	=> ((type: Type) -> Msg[T]
+# 		@native("msg_monad_return")(T);
 
-# TODO: IO
-# io := (a: Msg[$T], fn: (T) -> IO[$U]) -> Init[Msg[U]]
-# 	=> ((a: Msg[T], fn: (T) -> IO[U], typeIn: Type, typeOut: Type) -> Init[Msg[U]]
-# 		@native("msg_functor_io"))(a, fn, T, U);
+bind := (a: Msg[$T], f: (T) -> Msg[$U]) -> Msg[U]
+	=> ((a: Msg[T], f: (T) -> Msg[U], In: Type, Out: Type) -> Msg[U]
+		@native("msg_monad_bind"))(a, f, T, U);
 
-# print := (a: Msg[$T]) -> Init[Unit]
-# 	=> io(a, io.print);
+filter := (in: Msg[$T], f: (T) -> Bool) -> Msg[T]
+	=> bind(in, a => match f(a) {
+		true => return(a);
+		false => return(a);
+	});
 
-# !print(map(!onStart, (a: Unit) => 2));
-# main := bind(
-# 	onStart,
-# 	(onStart: Msg[Unit])
-# 		=> print(map(onStart, a => 2))
-# );
+# msg := (trigger: MsgTrigger[$T], pipe: (T) -> Msg[$U]) -> Init[Unit]
+# 	=> ((trg: MsgEntry[T], pipe: (T) -> Msg[$U], In: Type, Out: Type) -> Init[Unit]
+# 		@native("msg_monad_trigger"))(trigger, pipe, T, U);

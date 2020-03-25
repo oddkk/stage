@@ -19,6 +19,12 @@ mod_arena(struct stg_module *mod, struct arena *out)
 	arena_init(out, &mod->vm->mem);
 }
 
+struct object
+stg_register_object(struct stg_module *mod, struct object obj)
+{
+	return register_object(mod->vm, &mod->store, obj);
+}
+
 type_id
 stg_register_type(struct stg_module *mod, struct type t)
 {

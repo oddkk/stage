@@ -86,6 +86,9 @@ mod_atom(struct stg_module *, struct string name);
 void
 mod_arena(struct stg_module *mod, struct arena *out);
 
+struct object
+stg_register_object(struct stg_module *, struct object);
+
 type_id
 stg_register_type(struct stg_module *, struct type);
 

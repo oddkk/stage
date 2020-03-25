@@ -54,6 +54,10 @@
 #error "TYPE_INFO_TYPE must be defined when importing the native monad template."
 #endif
 
+#ifndef EXPOSE_FUNCS
+#define EXPOSE_FUNCS 0
+#endif
+
 #include <ffi.h>
 
 #define FUNC_CONCAT1(prefix, suffix) prefix ## _ ## suffix
@@ -62,6 +66,26 @@
 
 #define STRINGIFY1(name) STR(#name)
 #define STRINGIFY(name) STRINGIFY1(name)
+
+#if EXPOSE_FUNCS
+#define MONAD_FUNC_EXPOSED
+#else
+#define MONAD_FUNC_EXPOSED static
+#endif
+
+#define LIST_END(end) , end
+
+#ifdef MONAD_EXTRA_PARAMS
+#define _MONAD_EXTRA_PARAMS LIST_END(MONAD_EXTRA_PARAMS)
+#else
+#define _MONAD_EXTRA_PARAMS
+#endif
+
+#ifdef MONAD_EXTRA_ARGS
+#define _MONAD_EXTRA_ARGS LIST_END(MONAD_EXTRA_ARGS)
+#else
+#define _MONAD_EXTRA_ARGS
+#endif
 
 // The caller is expected to have defined this function to return this monad's
 // type cons.
@@ -98,7 +122,7 @@ MONAD_FUNC(type_repr)(struct vm *vm, struct arena *mem, struct type *type)
 	return res;
 }
 
-static void
+MONAD_FUNC_EXPOSED void
 MONAD_FUNC(monad_copy)(struct stg_exec *ctx, MONAD_DATA_TYPE *data);
 
 static void
@@ -108,7 +132,7 @@ MONAD_FUNC(obj_copy)(struct stg_exec *ctx, void *type_data, void *obj_data)
 	MONAD_FUNC(monad_copy)(ctx, data);
 }
 
-static void
+MONAD_FUNC_EXPOSED void
 MONAD_FUNC(monad_copy)(struct stg_exec *ctx, MONAD_DATA_TYPE *data)
 {
 	void *new_closure = NULL;
@@ -146,7 +170,7 @@ static ffi_type MONAD_FUNC(ffi_type) = {
 	.elements = MONAD_FUNC(ffi_type_members),
 };
 
-static type_id
+MONAD_FUNC_EXPOSED type_id
 MONAD_FUNC(register_type)(struct stg_module *mod, type_id res_type);
 
 static int
@@ -201,7 +225,7 @@ MONAD_FUNC(type_unpack)(
 	return 0;
 }
 
-static type_id
+MONAD_FUNC_EXPOSED type_id
 MONAD_FUNC(register_type)(struct stg_module *mod, type_id res_type)
 {
 	TYPE_INFO_TYPE *info;
@@ -252,14 +276,17 @@ struct MONAD_FUNC(fmap_data) {
 };
 
 static void
-MONAD_FUNC(fmap_unsafe)(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
+MONAD_FUNC(fmap_unsafe)(
+		struct vm *vm, struct stg_exec *ctx,
+		void *data, void *out _MONAD_EXTRA_PARAMS)
 {
 	struct MONAD_FUNC(fmap_data) *closure = data;
 
 	uint8_t in_buffer[closure->in_type_size];
 
 	closure->monad.call(vm, ctx,
-			closure->monad.data, in_buffer);
+			closure->monad.data, in_buffer
+			_MONAD_EXTRA_ARGS);
 
 	struct object arg;
 	arg.type = closure->in_type;
@@ -342,17 +369,20 @@ MONAD_FUNC(join_copy)(struct stg_exec *ctx, void *data)
 }
 
 static void
-MONAD_FUNC(join_unsafe)(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
+MONAD_FUNC(join_unsafe)(struct vm *vm, struct stg_exec *ctx,
+		void *data, void *out _MONAD_EXTRA_PARAMS)
 {
 	struct MONAD_FUNC(join_data) *closure = data;
 
 	MONAD_DATA_TYPE inner_monad = {0};
 
 	closure->monad.call(vm, ctx,
-			closure->monad.data, &inner_monad);
+			closure->monad.data, &inner_monad
+			_MONAD_EXTRA_ARGS);
 
 	inner_monad.call(vm, ctx,
-			inner_monad.data, out);
+			inner_monad.data, out
+			_MONAD_EXTRA_ARGS);
 }
 
 static MONAD_DATA_TYPE 
@@ -382,7 +412,8 @@ struct MONAD_FUNC(return_data) {
 };
 
 static void
-MONAD_FUNC(return_unsafe)(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
+MONAD_FUNC(return_unsafe)(struct vm *vm, struct stg_exec *ctx,
+		void *data, void *out _MONAD_EXTRA_PARAMS)
 {
 	struct MONAD_FUNC(return_data) *closure = data;
 
@@ -451,14 +482,16 @@ struct MONAD_FUNC(bind_data) {
 };
 
 static void
-MONAD_FUNC(bind_unsafe)(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
+MONAD_FUNC(bind_unsafe)(struct vm *vm, struct stg_exec *ctx,
+		void *data, void *out _MONAD_EXTRA_PARAMS)
 {
 	struct MONAD_FUNC(bind_data) *closure = data;
 
 	uint8_t in_buffer[closure->in_type_size];
 
 	closure->monad.call(vm, ctx,
-			closure->monad.data, in_buffer);
+			closure->monad.data, in_buffer
+			_MONAD_EXTRA_ARGS);
 
 	struct object arg;
 	arg.type = closure->in_type;
@@ -474,7 +507,8 @@ MONAD_FUNC(bind_unsafe)(struct vm *vm, struct stg_exec *ctx, void *data, void *o
 			vm, ctx, closure->func,
 			&arg, 1, &out_monad_obj);
 
-	out_monad.call(vm, ctx, out_monad.data, out);
+	out_monad.call(vm, ctx, out_monad.data, out
+			_MONAD_EXTRA_ARGS);
 }
 
 static void
@@ -550,25 +584,16 @@ MONAD_FUNC(register_native)(struct stg_native_module *mod)
 	native_func(monad_fmap, STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
 
 #undef native_func
-
-	// stg_native_register_func(mod, STRINGIFY(MONAD_FUNC(monad_return)),
-	// 		STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE|STG_NATIVE_FUNC_REFS);
-	// stg_native_register_func(mod, STRINGIFY(MONAD_FUNC(monad_bind)),
-	// 		STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
-	// stg_native_register_func(mod, STRINGIFY(MONAD_FUNC(monad_join)),
-	// 		STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
-	// stg_native_register_func(mod, STRINGIFY(MONAD_FUNC(monad_fmap)),
-	// 		STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
 }
 
-static type_id
+MONAD_FUNC_EXPOSED bool
 MONAD_FUNC(type_is_inst)(struct vm *vm, type_id tid)
 {
 	struct type *type;
 	type = vm_get_type(vm, tid);
 	return type->base == &MONAD_FUNC(type_base);
 }
-static type_id
+MONAD_FUNC_EXPOSED type_id
 MONAD_FUNC(return_type)(struct vm *vm, type_id tid)
 {
 	struct type *type;
@@ -581,10 +606,10 @@ MONAD_FUNC(return_type)(struct vm *vm, type_id tid)
 	return info->type;
 }
 
-static void
+MONAD_FUNC_EXPOSED void
 MONAD_FUNC(monad_call)(
 		struct vm *vm, struct stg_exec *ctx,
-		struct object obj, struct object *out)
+		struct object obj, struct object *out _MONAD_EXTRA_PARAMS)
 {
 	type_id ret_type_id;
 	ret_type_id = MONAD_FUNC(return_type)(vm, obj.type);
@@ -597,7 +622,7 @@ MONAD_FUNC(monad_call)(
 
 	MONAD_DATA_TYPE *data = obj.data;
 
-	data->call(vm, ctx, data->data, out->data);
+	data->call(vm, ctx, data->data, out->data _MONAD_EXTRA_ARGS);
 }
 
 #undef FUNC_CONCAT1
