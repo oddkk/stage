@@ -3,6 +3,7 @@
 
 #include <module.h>
 
+typedef unsigned int msg_trigger_id;
 typedef unsigned int msg_node_id;
 typedef unsigned char msg_node_point_id;
 

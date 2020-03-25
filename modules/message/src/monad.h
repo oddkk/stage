@@ -8,7 +8,7 @@ struct msg_system;
 
 typedef void (*msg_monad_callback)(
 		struct vm *vm, struct stg_exec *,
-		void *data, void *out, struct msg_system *);
+		void *data, void *out);
 
 typedef void (*msg_monad_copy_func)(
 		struct stg_exec *, void *data);
@@ -29,6 +29,6 @@ bool    msg_is_inst(struct stg_module *, type_id);
 type_id msg_return_type(struct vm *, type_id);
 void    msg_monad_copy(struct stg_exec *, struct msg_monad_data *);
 void    msg_monad_call(struct vm *, struct stg_exec *,
-		struct object, struct object *out, struct msg_system *);
+		struct object, struct object *out);
 
 #endif

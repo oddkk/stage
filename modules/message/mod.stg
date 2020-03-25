@@ -1,6 +1,7 @@
 Msg := @native("Msg");
+Trigger := @native("Trigger");
 # MsgTrigger := @native("MsgTrigger");
-onStart := @native("onStart");
+# onStart := @native("onStart");
 
 return := (val: $T) -> Msg[T]
 	=> ((val: T, type: Type) -> Msg[T]
@@ -20,6 +21,6 @@ filter := (in: Msg[$T], f: (T) -> Bool) -> Msg[T]
 		false => return(a);
 	});
 
-# msg := (trigger: MsgTrigger[$T], pipe: (T) -> Msg[$U]) -> Init[Unit]
-# 	=> ((trg: MsgEntry[T], pipe: (T) -> Msg[$U], In: Type, Out: Type) -> Init[Unit]
-# 		@native("msg_monad_trigger"))(trigger, pipe, T, U);
+msg := (trigger: Trigger[$T], pipe: (T) -> Msg[$U]) -> Init[Unit]
+	=> ((trg: Trigger[T], pipe: (T) -> Msg[$U], In: Type, Out: Type) -> Init[Unit]
+		@native("msg_trigger_register_init"))(trigger, pipe, T, U);

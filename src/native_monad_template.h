@@ -1,18 +1,11 @@
 // Provides a basic single type parameter monade type with return and bind.
 //
-// The template mainly provides the following functions:
+// The template mainly provides the following functions, in addition to the
+// unary wrapping type's functions:
 //
 // void *CNAME_register_native(struct stg_native_module *)
 // Registers the native functions as `<CNAME>_monad_<FUNC NAME>`, where FUNC
 // NAME is return and bind.
-//
-// type_id CNAME_register_type(struct stg_module *mod, type_id res_type)
-// Creates a new type with the given type as its member.
-//
-// struct object_cons *CNAME_register_cons(struct stg_module *mod)
-// Creates the monad's type constructor. The constructor should be created
-// during the register hook. The caller is responsible for storing the returned
-// cons in a way such that it can be retreived through CNAME_cons_from_vm.
 //
 // void CNAME_monad_copy(struct stg_exec *ctx, MONAD_DATA_TYPE *data)
 // Copies the content of data.
@@ -20,12 +13,6 @@
 // void CNAME_monad_call(struct vm *, struct stg_exec *, struct object,
 // 					struct object *out)
 // Calls the monad.
-//
-// bool CNAME_type_is_inst(struct vm *, type_id tid)
-// Returns true if the given type is an instance of this monad.
-//
-// type_id CNAME_return_type(struct vm *, type_id tid)
-// Returns the type of the monad type's member type.
 
 // A prefix applied to all members of this template.
 #ifndef CNAME
@@ -53,6 +40,10 @@
 #error "TYPE_INFO_TYPE must be defined when importing the native monad template."
 #endif
 
+#ifndef MONAD_CALLBACK_PARAMS
+#error "MONAD_CALLBACK_PARAMS must be defined when importing the native monad template."
+#endif
+
 #ifndef EXPOSE_FUNCS
 #define EXPOSE_FUNCS 0
 #endif
@@ -71,55 +62,6 @@
 #else
 #define MONAD_FUNC_EXPOSED static
 #endif
-
-#define LIST_END(end) , end
-
-#ifdef MONAD_EXTRA_PARAMS
-#define _MONAD_EXTRA_PARAMS LIST_END(MONAD_EXTRA_PARAMS)
-#else
-#define _MONAD_EXTRA_PARAMS
-#endif
-
-#ifdef MONAD_EXTRA_ARGS
-#define _MONAD_EXTRA_ARGS LIST_END(MONAD_EXTRA_ARGS)
-#else
-#define _MONAD_EXTRA_ARGS
-#endif
-
-// The caller is expected to have defined this function to return this monad's
-// type cons.
-static struct object_cons *
-MONAD_FUNC(cons_from_vm)(struct vm *vm);
-
-static bool
-MONAD_FUNC(type_equals)(struct vm *vm, struct type *lhs, struct type *rhs)
-{
-	TYPE_INFO_TYPE *lhs_info;
-	TYPE_INFO_TYPE *rhs_info;
-
-	lhs_info = (TYPE_INFO_TYPE *)lhs->data;
-	rhs_info = (TYPE_INFO_TYPE *)rhs->data;
-
-	return type_equals(vm, lhs_info->type, rhs_info->type);
-}
-
-static struct string
-MONAD_FUNC(type_repr)(struct vm *vm, struct arena *mem, struct type *type)
-{
-	TYPE_INFO_TYPE *info;
-	info = (TYPE_INFO_TYPE *)type->data;
-
-	struct string res = {0};
-	arena_string_append(mem, &res, STR(REAL_NAME "["));
-
-	struct type *item_type;
-	item_type = vm_get_type(vm, info->type);
-	arena_string_append_type_repr(&res, vm, mem, item_type);
-
-	arena_string_append(mem, &res, STR("]"));
-
-	return res;
-}
 
 MONAD_FUNC_EXPOSED void
 MONAD_FUNC(monad_copy)(struct stg_exec *ctx, MONAD_DATA_TYPE *data);
@@ -147,13 +89,6 @@ MONAD_FUNC(monad_copy)(struct stg_exec *ctx, MONAD_DATA_TYPE *data)
 	}
 }
 
-static struct type_base MONAD_FUNC(type_base) = {
-	.name = STR(REAL_NAME),
-	.equals = MONAD_FUNC(type_equals),
-	.repr = MONAD_FUNC(type_repr),
-	.obj_copy = MONAD_FUNC(obj_copy),
-};
-
 static ffi_type *MONAD_FUNC(ffi_type_members)[] = {
 	&ffi_type_pointer,
 	&ffi_type_pointer,
@@ -169,99 +104,16 @@ static ffi_type MONAD_FUNC(ffi_type) = {
 	.elements = MONAD_FUNC(ffi_type_members),
 };
 
-MONAD_FUNC_EXPOSED type_id
-MONAD_FUNC(register_type)(struct stg_module *mod, type_id res_type);
+#define UWT_TYPE_INFO_TYPE TYPE_INFO_TYPE
+#define UWT_OBJ_COPY_FUNC MONAD_FUNC(obj_copy)
+#define UWT_OBJ_FFI_TYPE &MONAD_FUNC(ffi_type)
+#define UWT_OBJ_DATA_TYPE MONAD_DATA_TYPE
+#include "unary_wrapping_type_template.h"
+#undef UWT_OBJ_COPY_FUNC
+#undef UWT_OBJ_FFI_TYPE
+#undef UWT_OBJ_DATA_TYPE
+#undef UWT_TYPE_INFO_TYPE
 
-static int
-MONAD_FUNC(type_pack)(
-		struct ast_context *ctx, struct stg_module *mod,
-		void *data, void *out, void **params, size_t num_params)
-{
-	assert(num_params == 1);
-
-	type_id tid = *(type_id *)params[0];
-
-	type_id result_type;
-	result_type = MONAD_FUNC(register_type)(
-			mod, tid);
-
-	memcpy(out, &result_type, sizeof(type_id));
-
-	return 0;
-}
-
-static type_id
-MONAD_FUNC(type_pack_type)(
-		struct ast_context *ctx, struct stg_module *mod,
-		void *data, void **params, size_t num_params)
-{
-	return ctx->vm->default_types.type;
-}
-
-int
-MONAD_FUNC(type_unpack)(
-		struct ast_context *ctx, struct stg_module *mod,
-		void *data, void *out, struct object obj, int param_id)
-{
-	assert_type_equals(ctx->vm,
-			obj.type, ctx->vm->default_types.type);
-
-	type_id tid = *(type_id *)obj.data;
-
-	struct type *type;
-	type = vm_get_type(ctx->vm, tid);
-	// TODO: Properly report type mismatch error.
-	if (type->base != &MONAD_FUNC(type_base)) {
-		stg_error(ctx->err, STG_NO_LOC,
-				"Expected " REAL_NAME " type, got %.*s.",
-				LIT(type->base->name));
-		return -1;
-	}
-
-	TYPE_INFO_TYPE *info = type->data;
-	memcpy(out, &info->type, sizeof(type_id));
-
-	return 0;
-}
-
-MONAD_FUNC_EXPOSED type_id
-MONAD_FUNC(register_type)(struct stg_module *mod, type_id res_type)
-{
-	TYPE_INFO_TYPE *info;
-	info = arena_alloc(&mod->mem, sizeof(TYPE_INFO_TYPE));
-
-	info->type = res_type;
-
-	struct type type = {0};
-	type.base = &MONAD_FUNC(type_base);
-	type.data = info;
-	type.size = sizeof(MONAD_DATA_TYPE);
-	type.type_def = MONAD_FUNC(cons_from_vm)(mod->vm);
-	type.ffi_type = &MONAD_FUNC(ffi_type);
-
-	return stg_register_type(mod, type);
-}
-
-static struct object_cons *
-MONAD_FUNC(register_cons)(struct stg_module *mod)
-{
-	struct object_cons *cons;
-	cons = arena_alloc(&mod->mem,
-			sizeof(struct object_cons));
-
-	cons->num_params = 1;
-	cons->params = arena_allocn(&mod->mem,
-			cons->num_params, sizeof(struct object_cons_param));
-
-	cons->params[0].name = mod_atoms(mod, "T");
-	cons->params[0].type = mod->vm->default_types.type;
-
-	cons->ct_pack      = MONAD_FUNC(type_pack);
-	cons->ct_pack_type = MONAD_FUNC(type_pack_type);
-	cons->ct_unpack    = MONAD_FUNC(type_unpack);
-
-	return cons;
-}
 
 struct MONAD_FUNC(return_data) {
 	void *value;
@@ -270,14 +122,8 @@ struct MONAD_FUNC(return_data) {
 	void *type_data;
 };
 
-static void
-MONAD_FUNC(return_unsafe)(struct vm *vm, struct stg_exec *ctx,
-		void *data, void *out _MONAD_EXTRA_PARAMS)
-{
-	struct MONAD_FUNC(return_data) *closure = data;
-
-	memcpy(out, closure->value, closure->size);
-}
+static MONAD_CALLBACK_RET
+MONAD_FUNC(return_callback)(MONAD_CALLBACK_PARAMS);
 
 static void
 MONAD_FUNC(return_copy)(struct stg_exec *ctx, void *data)
@@ -310,7 +156,7 @@ MONAD_FUNC(monad_return)(void **args, size_t num_args, void *ret)
 	type_id value_type_id = *(type_id *)args[3];
 
 	MONAD_DATA_TYPE data = {0};
-	data.call = MONAD_FUNC(return_unsafe);
+	data.call = MONAD_FUNC(return_callback);
 	data.copy = MONAD_FUNC(return_copy);
 	data.data_size = sizeof(struct MONAD_FUNC(return_data));
 	data.data = stg_alloc(heap, 1, data.data_size);
@@ -340,35 +186,8 @@ struct MONAD_FUNC(bind_data) {
 	type_id out_monad_type;
 };
 
-static void
-MONAD_FUNC(bind_unsafe)(struct vm *vm, struct stg_exec *ctx,
-		void *data, void *out _MONAD_EXTRA_PARAMS)
-{
-	struct MONAD_FUNC(bind_data) *closure = data;
-
-	uint8_t in_buffer[closure->in_type_size];
-
-	closure->monad.call(vm, ctx,
-			closure->monad.data, in_buffer
-			_MONAD_EXTRA_ARGS);
-
-	struct object arg;
-	arg.type = closure->in_type;
-	arg.data = in_buffer;
-
-
-	MONAD_DATA_TYPE out_monad = {0};
-	struct object out_monad_obj;
-	out_monad_obj.type = closure->out_monad_type;
-	out_monad_obj.data = &out_monad;
-
-	vm_call_func_obj(
-			vm, ctx, closure->func,
-			&arg, 1, &out_monad_obj);
-
-	out_monad.call(vm, ctx, out_monad.data, out
-			_MONAD_EXTRA_ARGS);
-}
+static MONAD_CALLBACK_RET
+MONAD_FUNC(bind_callback)(MONAD_CALLBACK_PARAMS);
 
 static void
 MONAD_FUNC(bind_copy)(struct stg_exec *ctx, void *data)
@@ -386,7 +205,7 @@ MONAD_FUNC(monad_bind)(struct stg_exec *heap,
 		type_id type_in_id, type_id type_out_id)
 {
 	MONAD_DATA_TYPE data = {0};
-	data.call = MONAD_FUNC(bind_unsafe);
+	data.call = MONAD_FUNC(bind_callback);
 	data.copy = MONAD_FUNC(bind_copy);
 	data.data_size = sizeof(struct MONAD_FUNC(bind_data));
 	data.data = stg_alloc(heap, 1, data.data_size);
@@ -443,45 +262,10 @@ MONAD_FUNC(register_native)(struct stg_native_module *mod)
 #undef native_func
 }
 
-MONAD_FUNC_EXPOSED bool
-MONAD_FUNC(type_is_inst)(struct vm *vm, type_id tid)
-{
-	struct type *type;
-	type = vm_get_type(vm, tid);
-	return type->base == &MONAD_FUNC(type_base);
-}
-MONAD_FUNC_EXPOSED type_id
-MONAD_FUNC(return_type)(struct vm *vm, type_id tid)
-{
-	struct type *type;
-	type = vm_get_type(vm, tid);
-	assert(type->base == &MONAD_FUNC(type_base));
-
-	TYPE_INFO_TYPE *info;
-	info = type->data;
-
-	return info->type;
-}
-
-MONAD_FUNC_EXPOSED void
-MONAD_FUNC(monad_call)(
-		struct vm *vm, struct stg_exec *ctx,
-		struct object obj, struct object *out _MONAD_EXTRA_PARAMS)
-{
-	type_id ret_type_id;
-	ret_type_id = MONAD_FUNC(return_type)(vm, obj.type);
-
-	struct type *ret_type;
-	ret_type = vm_get_type(vm, ret_type_id);
-
-	assert_type_equals(vm, out->type, ret_type_id);
-	assert(out->data || ret_type->size == 0);
-
-	MONAD_DATA_TYPE *data = obj.data;
-
-	data->call(vm, ctx, data->data, out->data _MONAD_EXTRA_ARGS);
-}
-
 #undef FUNC_CONCAT1
 #undef FUNC_CONCAT
 #undef MONAD_FUNC
+#undef EXPOSE_FUNCS
+#undef MONAD_FUNC_EXPOSED
+#undef STRINGIFY1
+#undef STRINGIFY

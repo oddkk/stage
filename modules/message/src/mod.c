@@ -12,9 +12,14 @@
 // Defined in monad.c.
 void
 msg_monad_register(struct stg_module *mod);
-
 void
 msg_monad_register_native(struct stg_native_module *mod);
+
+// Defined in trigger.c.
+void
+msg_trigger_register(struct stg_module *mod);
+void
+msg_trigger_register_native(struct stg_native_module *mod);
 
 int
 mod_message_register(struct stg_module *mod)
@@ -31,21 +36,7 @@ mod_message_register(struct stg_module *mod)
 			&ctx->sys, mod->vm->default_types.unit);
 
 	msg_monad_register(mod);
-
-	stg_mod_register_native_cons(mod,
-			mod_atoms(mod, "Msg"), ctx->msg_type_cons);
-
-	{
-		/*
-		struct object res = {0};
-		res.type = msg_register_type(
-				mod, mod->vm->default_types.unit);
-		res.data = &ctx->on_start_msg;
-
-		stg_mod_register_native_object(mod,
-				mod_atoms(mod, "onStart"), res);
-		*/
-	}
+	msg_trigger_register(mod);
 
 	return 0;
 }
@@ -87,6 +78,7 @@ mod_message_load(struct stg_native_module *mod)
 	mod->hook_start       = mod_message_start;
 
 	msg_monad_register_native(mod);
+	msg_trigger_register_native(mod);
 
 	return 0;
 }

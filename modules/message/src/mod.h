@@ -9,7 +9,12 @@
 struct msg_context {
 	struct msg_system sys;
 	struct object_cons *msg_type_cons;
-	msg_node_id on_start_msg;
+	struct object_cons *msg_trigger_cons;
+	msg_trigger_id on_start_msg;
 };
+
+type_id msg_trigger_register_type(struct stg_module *mod, type_id res_type);
+bool    msg_trigger_is_inst(struct vm *mod, type_id res_type);
+type_id msg_trigger_return_type(struct vm *mod, type_id res_type);
 
 #endif
