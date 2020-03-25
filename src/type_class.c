@@ -258,17 +258,17 @@ stg_type_class_from_ast_node(struct ast_context *ctx,
 #if AST_DEBUG_SLOT_SOLVE
 	printf("Preliminary type solve for type class\n");
 	for (size_t i = 0; i < num_params; i++) {
-		printf(" - param %.*s: %i:%i\n",
-				ALIT(info->templ_node->templ.pattern.params[i].name),
-				body_deps[info->num_deps+i].value, param_type_slots[i]);
-		if (info->templ_node->templ.pattern.params[i].type) {
+		printf(" - param %.*s: %i\n",
+				ALIT(params[i].name),
+				body_deps[num_closure_members+i].value);
+		if (node->type_class.pattern.params[i].type) {
 			printf("     ");
 			ast_print_node(ctx,
-					info->templ_node->templ.pattern.params[i].type, true);
+					node->type_class.pattern.params[i].type, true);
 		}
 	}
 	ast_print_node(ctx,
-			info->templ_node->templ.pattern.node, true);
+			node->type_class.pattern.node, true);
 	printf("\n");
 #endif
 

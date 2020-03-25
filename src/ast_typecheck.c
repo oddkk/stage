@@ -214,6 +214,8 @@ ast_node_resolve_datatypes(
 		struct ast_typecheck_dep *deps, size_t num_deps,
 		struct ast_node *node)
 {
+	// TODO: The deps are not being transformed when passing into functions.
+
 	switch (node->kind) {
 		case AST_NODE_TEMPL:
 			if (!node->templ.cons) {

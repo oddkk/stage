@@ -331,9 +331,14 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 		case AST_NODE_FUNC_NATIVE:
 			printf("(");
 			for (size_t i = 0; i < node->func.num_params; i++) {
-				printf("%s%.*s: ", (i != 0) ? ", " : "",
-						ALIT(node->func.params[i].name));
-				ast_print_node(ctx, node->func.params[i].type, print_type_slot);
+				if (node->func.params[i].type) {
+					printf("%s%.*s: ", (i != 0) ? ", " : "",
+							ALIT(node->func.params[i].name));
+					ast_print_node(ctx, node->func.params[i].type, print_type_slot);
+				} else {
+					printf("%s%.*s", (i != 0) ? ", " : "",
+							ALIT(node->func.params[i].name));
+				}
 			}
 			if (node->func.return_type) {
 				printf(") -> ");

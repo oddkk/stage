@@ -825,8 +825,8 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 
 					default:
 						assert(stmt->type < ST_NODES_LEN);
-						panic("Invalid node %s in object instantiation.",
-								st_node_names[stmt->type]);
+						invalid_arg = true;
+						node_kind_name = "Expression";
 						break;
 				}
 
