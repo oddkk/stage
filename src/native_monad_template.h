@@ -1,11 +1,10 @@
-// Provides a basic single type parameter monade type with return, fmap, join,
-// and bind.
+// Provides a basic single type parameter monade type with return and bind.
 //
 // The template mainly provides the following functions:
 //
 // void *CNAME_register_native(struct stg_native_module *)
 // Registers the native functions as `<CNAME>_monad_<FUNC NAME>`, where FUNC
-// NAME is return, fmap, join, and bind.
+// NAME is return and bind.
 //
 // type_id CNAME_register_type(struct stg_module *mod, type_id res_type)
 // Creates a new type with the given type as its member.
@@ -264,146 +263,6 @@ MONAD_FUNC(register_cons)(struct stg_module *mod)
 	return cons;
 }
 
-struct MONAD_FUNC(fmap_data) {
-	struct stg_func_object func;
-	MONAD_DATA_TYPE monad;
-
-	size_t in_type_size;
-	type_id in_type;
-
-	size_t out_type_size;
-	type_id out_type;
-};
-
-static void
-MONAD_FUNC(fmap_unsafe)(
-		struct vm *vm, struct stg_exec *ctx,
-		void *data, void *out _MONAD_EXTRA_PARAMS)
-{
-	struct MONAD_FUNC(fmap_data) *closure = data;
-
-	uint8_t in_buffer[closure->in_type_size];
-
-	closure->monad.call(vm, ctx,
-			closure->monad.data, in_buffer
-			_MONAD_EXTRA_ARGS);
-
-	struct object arg;
-	arg.type = closure->in_type;
-	arg.data = in_buffer;
-
-
-	struct object ret;
-	ret.type = closure->out_type;
-	ret.data = out;
-
-	vm_call_func_obj(
-			vm, ctx, closure->func,
-			&arg, 1, &ret);
-}
-
-static void
-MONAD_FUNC(fmap_copy)(struct stg_exec *ctx, void *data)
-{
-	struct MONAD_FUNC(fmap_data) *closure = data;
-	MONAD_FUNC(monad_copy)(ctx, &closure->monad);
-}
-
-static MONAD_DATA_TYPE
-MONAD_FUNC(monad_fmap)(struct stg_exec *heap,
-		struct stg_module *mod,
-		struct stg_func_object func,
-		MONAD_DATA_TYPE monad,
-		type_id type_in_id, type_id type_out_id)
-{
-	MONAD_DATA_TYPE data = {0};
-	data.call = MONAD_FUNC(fmap_unsafe);
-	data.copy = MONAD_FUNC(fmap_copy);
-	data.data_size = sizeof(struct MONAD_FUNC(fmap_data));
-	data.data = stg_alloc(heap, 1, data.data_size);
-
-	struct MONAD_FUNC(fmap_data) *closure;
-	closure = data.data;
-	closure->func  = func;
-	closure->monad = monad;
-
-	struct type *func_type;
-	func_type = vm_get_type(mod->vm,
-			vm_get_func(mod->vm, func.func)->type);
-	struct stg_func_type *func_info;
-	func_info = func_type->data;
-
-	assert(func_info->num_params == 1);
-
-	assert_type_equals(mod->vm,
-			type_in_id, func_info->params[0]);
-	assert_type_equals(mod->vm,
-			type_out_id, func_info->return_type);
-
-	struct type *type_out;
-	type_out = vm_get_type(mod->vm, type_out_id);
-
-	closure->out_type_size = type_out->size;
-	closure->out_type = type_out_id;
-
-	struct type *type_in;
-	type_in = vm_get_type(mod->vm, type_in_id);
-
-	closure->in_type_size = type_in->size;
-	closure->in_type = type_in_id;
-
-	return data;
-}
-
-struct MONAD_FUNC(join_data) {
-	MONAD_DATA_TYPE monad;
-
-	type_id data_type;
-};
-
-static void
-MONAD_FUNC(join_copy)(struct stg_exec *ctx, void *data)
-{
-	struct MONAD_FUNC(join_data) *closure = data;
-	MONAD_FUNC(monad_copy)(ctx, &closure->monad);
-}
-
-static void
-MONAD_FUNC(join_unsafe)(struct vm *vm, struct stg_exec *ctx,
-		void *data, void *out _MONAD_EXTRA_PARAMS)
-{
-	struct MONAD_FUNC(join_data) *closure = data;
-
-	MONAD_DATA_TYPE inner_monad = {0};
-
-	closure->monad.call(vm, ctx,
-			closure->monad.data, &inner_monad
-			_MONAD_EXTRA_ARGS);
-
-	inner_monad.call(vm, ctx,
-			inner_monad.data, out
-			_MONAD_EXTRA_ARGS);
-}
-
-static MONAD_DATA_TYPE 
-MONAD_FUNC(monad_join)(struct stg_exec *heap,
-		struct stg_module *mod,
-		MONAD_DATA_TYPE monad,
-		type_id data_type_id)
-{
-	MONAD_DATA_TYPE data = {0};
-	data.call = MONAD_FUNC(join_unsafe);
-	data.copy = MONAD_FUNC(join_copy);
-	data.data_size = sizeof(struct MONAD_FUNC(join_data));
-	data.data = stg_alloc(heap, 1, data.data_size);
-
-	struct MONAD_FUNC(join_data) *closure = data.data;
-	closure->monad = monad;
-	closure->data_type = data_type_id;
-
-	return data;
-}
-
 struct MONAD_FUNC(return_data) {
 	void *value;
 	size_t size;
@@ -580,8 +439,6 @@ MONAD_FUNC(register_native)(struct stg_native_module *mod)
 	native_func(monad_return,
 			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE|STG_NATIVE_FUNC_REFS);
 	native_func(monad_bind, STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
-	native_func(monad_join, STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
-	native_func(monad_fmap, STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
 
 #undef native_func
 }
