@@ -66,9 +66,6 @@ ast_node_get_closure_target(struct ast_node *node)
 		case AST_NODE_COMPOSITE:
 			return &node->composite.closure;
 
-		case AST_NODE_VARIANT:
-			return &node->variant.closure;
-
 		case AST_NODE_TEMPL:
 			return &node->templ.closure;
 
@@ -525,17 +522,10 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 
 		case AST_NODE_VARIANT:
 			{
-				struct ast_scope member_scope = {0};
-				ast_scope_push_composite(&member_scope, scope);
-				member_scope.closure_target = node;
-
-				err += ast_closure_resolve_names(ctx, info,
-						scope, flags, &node->variant.closure);
-
 				for (size_t i = 0; i < node->variant.num_options; i++) {
 					if (node->variant.options[i].data_type) {
 						err += ast_node_resolve_names_internal(
-								ctx, info, &member_scope,
+								ctx, info, scope,
 								flag_req_const(flags),
 								node->variant.options[i].data_type);
 					}

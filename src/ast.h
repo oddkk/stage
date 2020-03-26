@@ -674,8 +674,6 @@ struct ast_node {
 			struct ast_datatype_variant *options;
 			size_t num_options;
 
-			struct ast_closure_target closure;
-
 			type_id type;
 			bool failed;
 		} variant;
@@ -687,7 +685,6 @@ ast_node_name(enum ast_node_kind);
 
 #define AST_NODE_VISIT(node, 													\
 		visit_composite_body, 													\
-		visit_variant_body, 													\
 		visit_func_body, 														\
 		visit_templ_body) 														\
 	do { assert((node)); switch ((node)->kind) {								\
@@ -792,11 +789,9 @@ ast_node_name(enum ast_node_kind);
 			}																	\
 			break;																\
 		case AST_NODE_VARIANT:													\
-			if (visit_variant_body) {											\
-				for (size_t i = 0; i < (node)->variant.num_options; i++) {		\
-					if ((node)->variant.options[i].data_type) {					\
-						VISIT_NODE((node)->variant.options[i].data_type);		\
-					}															\
+			for (size_t i = 0; i < (node)->variant.num_options; i++) {			\
+				if ((node)->variant.options[i].data_type) {						\
+					VISIT_NODE((node)->variant.options[i].data_type);			\
 				}																\
 			}																	\
 			break;																\
@@ -1047,7 +1042,7 @@ int
 ast_node_typecheck(struct ast_context *ctx,
 		struct stg_module *mod, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps,
-		type_id expected_type);
+		type_id expected_type, struct object *out_value);
 
 void
 ast_node_resolve_datatypes(
@@ -1205,6 +1200,6 @@ type_id
 ast_dt_finalize_variant(
 		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_datatype_variant *options, size_t num_options,
-		struct ast_typecheck_closure *closure_values, size_t num_closures);
+		struct ast_typecheck_dep *deps, size_t num_deps);
 
 #endif

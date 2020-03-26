@@ -832,14 +832,6 @@ ast_node_find_named_dependencies(
 			// the composite.
 			break;
 
-		case AST_NODE_VARIANT:
-			err += ast_node_closure_find_named_dependencies(
-					req, &node->variant.closure,
-					out_refs, out_num_refs);
-
-			// We will not visit the options of the variant.
-			break;
-
 		case AST_NODE_TEMPL:
 			err += ast_node_closure_find_named_dependencies(
 					req, &node->templ.closure,
@@ -863,7 +855,7 @@ ast_node_find_named_dependencies(
 #define VISIT_NODE(node) \
 	err += ast_node_find_named_dependencies(\
 			(node), req, out_refs, out_num_refs);
-	AST_NODE_VISIT(node, false, false, false, false);
+	AST_NODE_VISIT(node, false, false, false);
 #undef VISIT_NODE
 
 	return err;
@@ -1061,8 +1053,6 @@ ast_node_deep_copy(struct arena *mem, struct ast_node *src)
 				DCP_NODE(variant.options[i].data_type);
 			}
 		}
-
-		DCP_LIT(variant.closure);
 		break;
 	}
 
@@ -1165,7 +1155,8 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	size_t num_errors_pre = ctx->err->num_errors;
 	int err;
 	err = ast_node_typecheck(ctx, info->mod,
-			body, body_deps, num_body_deps, TYPE_UNSET);
+			body, body_deps, num_body_deps,
+			TYPE_UNSET, NULL);
 	if (err) {
 		return -1;
 	}

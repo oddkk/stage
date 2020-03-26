@@ -267,22 +267,12 @@ ast_node_resolve_datatypes(
 
 		case AST_NODE_VARIANT:
 			if (node->variant.type == TYPE_UNSET) {
-				struct ast_closure_target *closure;
-				closure = &node->variant.closure;
-
-				struct ast_typecheck_closure closure_values[closure->num_members];
-				memset(closure_values, 0,
-						sizeof(struct ast_typecheck_closure) * closure->num_members);
-
-				ast_fill_closure(closure, closure_values,
-						deps, num_deps);
-
 				node->variant.type =
 					ast_dt_finalize_variant(
 							ctx, mod,
 							node->variant.options,
 							node->variant.num_options,
-							closure_values, closure->num_members);
+							deps, num_deps);
 
 				if (node->variant.type == TYPE_UNSET) {
 					node->variant.failed = true;
@@ -297,7 +287,7 @@ ast_node_resolve_datatypes(
 #define VISIT_NODE(child) \
 	ast_node_resolve_datatypes( \
 			ctx, mod, deps, num_deps, child);
-	AST_NODE_VISIT(node, false, false, true, false);
+	AST_NODE_VISIT(node, false, true, false);
 #undef VISIT_NODE
 }
 
@@ -1084,13 +1074,31 @@ ast_node_resolve_types(
 				// datatype.
 				return errors;
 
+			case AST_NODE_VARIANT:
+				{
+					if (res->result == AST_SLOT_RES_ERROR) {
+						errors += 1;
+					} else {
+						if (ast_slot_value_result(res->result) <
+								AST_SLOT_RES_TYPE_FOUND) {
+							ast_node_resolve_handle_value_result(
+									ctx, env, &errors, node, res, "");
+						} else {
+							node->type = res->type;
+						}
+					}
+				}
+				// Abort the resolve as the variant's types have already been
+				// resolved in ast_dt_finalize_variant.
+				return errors;
+
 			default:
 				break;
 		}
 	}
 
 #define VISIT_NODE(child) errors += ast_node_resolve_types(ctx, env, slots, child);
-	AST_NODE_VISIT(node, false, false, true, false);
+	AST_NODE_VISIT(node, false, true, false);
 #undef VISIT_NODE
 
 	assert(node->type == TYPE_UNSET);
@@ -1263,7 +1271,7 @@ int
 ast_node_typecheck(struct ast_context *ctx,
 		struct stg_module *mod, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps,
-		type_id expected_type)
+		type_id expected_type, struct object *out_value)
 {
 	struct ast_env env = {0};
 	env.store = &mod->store;
@@ -1332,6 +1340,29 @@ ast_node_typecheck(struct ast_context *ctx,
 #endif
 		ast_env_free(&env);
 		return -1;
+	}
+
+	if (out_value) {
+		struct ast_slot_result *res;
+		res = &result[expr_slot];
+
+		out_value->type = TYPE_UNSET;
+		out_value->data = NULL;
+
+		switch (ast_slot_value_result(res->result)) {
+			case AST_SLOT_RES_VALUE_FOUND_OBJ:
+				*out_value = res->value.obj;
+				break;
+
+			case AST_SLOT_RES_VALUE_FOUND_TYPE:
+				out_value->type = ctx->vm->default_types.type;
+				out_value->data = &res->value.type;
+				*out_value = stg_register_object(mod, *out_value);
+				break;
+
+			default:
+				break;
+		}
 	}
 
 	err = ast_node_resolve_types(

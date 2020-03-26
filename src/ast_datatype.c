@@ -2313,7 +2313,8 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 
 	err = ast_node_typecheck(
 			ctx->ast_ctx, ctx->mod, node,
-			body_deps, num_deps, expected_type);
+			body_deps, num_deps,
+			expected_type, NULL);
 	if (err) {
 		return -1;
 	}
@@ -4301,7 +4302,7 @@ type_id
 ast_dt_finalize_variant(
 		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_datatype_variant *options, size_t num_options,
-		struct ast_typecheck_closure *closure_values, size_t num_closures)
+		struct ast_typecheck_dep *deps, size_t num_deps)
 {
 	bool ok = true;
 	size_t max_data_size = 0;
@@ -4310,19 +4311,6 @@ ast_dt_finalize_variant(
 	opts = arena_allocn(&mod->mem,
 			num_options, sizeof(struct stg_type_variant_option));
 
-	struct ast_typecheck_dep body_deps[num_closures];
-
-	for (size_t i = 0; i < num_closures; i++) {
-		assert(closure_values[i].req == AST_NAME_DEP_REQUIRE_VALUE);
-
-		body_deps[i].ref.kind = AST_NAME_REF_CLOSURE;
-		body_deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
-		body_deps[i].ref.closure = i;
-		body_deps[i].lookup_failed = closure_values[i].lookup_failed;
-		body_deps[i].determined = true;
-		body_deps[i].val = closure_values[i].value;
-	}
-
 	for (size_t i = 0; i < num_options; i++) {
 		opts[i].name = options[i].name;
 		opts[i].data_type = TYPE_UNSET;
@@ -4330,11 +4318,15 @@ ast_dt_finalize_variant(
 
 		if (options[i].data_type) {
 			int err;
+
+			struct object type_out = {0};
+
 			err = ast_node_typecheck(
 					ctx, mod,
 					options[i].data_type,
-					body_deps, num_closures,
-					ctx->vm->default_types.type);
+					deps, num_deps,
+					ctx->vm->default_types.type,
+					&type_out);
 			if (err) {
 				ok = false;
 				continue;
@@ -4343,30 +4335,15 @@ ast_dt_finalize_variant(
 			assert_type_equals(ctx->vm,
 					options[i].data_type->type, ctx->vm->default_types.type);
 
-			struct bc_env *type_expr_bc;
-			type_expr_bc = ast_type_expr_gen_bytecode(
-					ctx, mod, options[i].data_type,
-					closure_values, num_closures);
-
-			if (!type_expr_bc) {
-				printf("Failed to generate bytecode for variant data type expression.\n");
-				return TYPE_UNSET;
+			if (!type_equals(ctx->vm,
+						type_out.type, ctx->vm->default_types.type)) {
+				stg_error(ctx->err, opts[i].loc,
+						"Failed to evaluate the option's data type.");
+				ok = false;
+				continue;
 			}
 
-			type_id out_type = TYPE_UNSET;
-
-			struct stg_exec exec_ctx = {0};
-			exec_ctx.heap = &mod->vm->transient;
-			arena_mark cp = arena_checkpoint(exec_ctx.heap);
-
-			nbc_exec(ctx->vm, &exec_ctx, type_expr_bc->nbc,
-					NULL, 0, NULL, &out_type);
-
-			arena_reset(exec_ctx.heap, cp);
-
-			assert(out_type != TYPE_UNSET);
-
-			opts[i].data_type = out_type;
+			opts[i].data_type = *(type_id *)type_out.data;
 
 			struct type *type;
 			type = vm_get_type(ctx->vm, opts[i].data_type);
