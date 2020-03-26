@@ -6,392 +6,103 @@
 #include <stdlib.h>
 #include <string.h>
 
-// For sysconf
-#include <unistd.h>
-// For mmap
-#include <sys/mman.h>
-
-#define MSG_GEN_SHOW_BC 0
-
-static inline void
-append_bc_instr(struct ast_gen_bc_result *res, struct bc_instr *instr)
+void
+msg_system_init(struct msg_system *sys, struct stg_module *mod)
 {
-	if (res->last) {
-		assert(res->first);
-		res->last->next = instr;
-	} else {
-		res->first = instr;
-	}
-	res->last = instr;
+	memset(sys, 0, sizeof(struct msg_system));
+	sys->mod = mod;
+	sys->transient = &mod->vm->transient;
+
+	paged_list_init(
+			&sys->triggers,
+			&mod->vm->mem,
+			sizeof(struct msg_trigger));
+
+	paged_list_init(
+			&sys->subscribers,
+			&mod->vm->mem,
+			sizeof(struct msg_subscriber));
 }
 
-static inline void
-append_bc_instrs(struct ast_gen_bc_result *res, struct ast_gen_bc_result instrs)
+static struct msg_trigger *
+msg_get_trigger(struct msg_system *sys, msg_trigger_id id)
 {
-	if (!instrs.first) {
-		return;
-	}
-	assert(instrs.first && instrs.last);
-	append_bc_instr(res, instrs.first);
-	res->last = instrs.last;
-}
-
-struct msg_pipe_node *
-msg_pipe_get_node(struct msg_system *sys, msg_node_id node_i)
-{
-	assert(node_i < sys->num_alloced_nodes);
-
-	const size_t cons_per_page =
-		sys->page_size / sizeof(struct msg_pipe_node);
-
-	return &sys->node_pages[node_i / cons_per_page][node_i % cons_per_page];
-}
-
-static inline struct msg_pipe_connection *
-msg_pipe_get_connection(struct msg_system *sys, size_t connection_i)
-{
-	assert(connection_i < sys->num_alloced_connections);
-
-	const size_t cons_per_page =
-		sys->page_size / sizeof(struct msg_pipe_connection);
-
-	return &sys->connection_pages[connection_i / cons_per_page][connection_i % cons_per_page];
-}
-
-int
-msg_pipe_iter_outgoing_connections(
-		struct msg_system *sys, msg_node_id from,
-		msg_node_id *out_to, size_t *iter)
-{
-	for (; *iter < sys->num_alloced_connections; (*iter)++) {
-		struct msg_pipe_connection *con;
-		con = msg_pipe_get_connection(sys, *iter);
-		if (con->from == from) {
-			*out_to = con->to;
-			*iter += 1;
-			return 1;
-		}
-	}
-	return 0;
-}
-
-static inline void
-msg_init_page_size(struct msg_system *sys)
-{
-	if (!sys->page_size) {
-		sys->page_size = sysconf(_SC_PAGESIZE);
-	}
+	return paged_list_get(&sys->triggers, id);
 }
 
 void
-msg_pipe_connect(struct msg_system *sys,
-		msg_node_id from, msg_node_id to)
+msg_system_destroy(struct msg_system *sys)
 {
-	msg_init_page_size(sys);
+	paged_list_destroy(&sys->triggers);
+	paged_list_destroy(&sys->subscribers);
 
-	assert(from < sys->num_alloced_nodes);
-	assert(to   < sys->num_alloced_nodes);
+	memset(sys, 0, sizeof(struct msg_system));
+}
 
-	assert(msg_pipe_get_node(sys, from)->kind != MSG_PIPE_ENDPOINT);
-	assert(msg_pipe_get_node(sys, to  )->kind != MSG_PIPE_ENTRYPOINT);
+msg_trigger_id
+msg_register_trigger(struct msg_system *sys, type_id type)
+{
+	msg_trigger_id id;
+	id = paged_list_push(&sys->triggers);
 
-	const size_t cons_per_page =
-		sys->page_size / sizeof(struct msg_pipe_connection);
+	struct msg_trigger *trigger;
+	trigger = msg_get_trigger(sys, id);
+	trigger->id = id;
+	trigger->type = type;
+	trigger->first_subscriber = NULL;
 
-	if (cons_per_page * sys->num_connection_pages >= sys->num_alloced_connections) {
-		struct msg_pipe_connection **new_pages;
+	return id;
+}
 
-		new_pages = realloc(sys->connection_pages,
-				sizeof(struct msg_pipe_connection *) * (sys->num_connection_pages+1));
+int
+msg_trigger_subscribe(struct msg_system *sys,
+		msg_trigger_id trigger_id, struct stg_func_object func)
+{
+	struct vm *vm = sys->mod->vm;
 
-		if (!new_pages) {
-			printf("Failed to allocate connection page.\n");
-			return;
-		}
+	struct msg_trigger *trigger;
+	trigger = msg_get_trigger(sys, trigger_id);
 
-		sys->connection_pages = new_pages;
+	struct func *fn;
+	fn = vm_get_func(vm, func.func);
 
-		struct msg_pipe_connection *new_page;
-		new_page = mmap(
-				NULL, sys->page_size,
-				PROT_READ|PROT_WRITE,
-				MAP_PRIVATE|MAP_ANONYMOUS,
-				-1, 0);
+	struct type *fn_type;
+	fn_type = vm_get_type(vm, fn->type);
 
-		if (new_page == MAP_FAILED) {
-			perror("mmap");
-			return;
-		}
+	struct stg_func_type *fn_type_info;
+	fn_type_info = fn_type->data;
 
-		sys->connection_pages[sys->num_connection_pages] = new_page;
-		sys->num_connection_pages += 1;
+	if (fn_type_info->num_params != 1) {
+		return -1;
+	}
+	if (!type_equals(vm, trigger->type, fn_type_info->params[0])) {
+		return -1;
 	}
 
-	size_t con_i;
-	con_i = sys->num_alloced_connections;
-	sys->num_alloced_connections += 1;
-
-	struct msg_pipe_connection *con;
-	con = msg_pipe_get_connection(sys, con_i);
-	memset(con, 0, sizeof(struct msg_pipe_connection));
-
-	con->from = from;
-	con->to   = to;
-}
-
-static msg_node_id
-msg_alloc_node(struct msg_system *sys)
-{
-	msg_init_page_size(sys);
-
-	const size_t cons_per_page =
-		sys->page_size / sizeof(struct msg_pipe_node);
-
-	if (cons_per_page * sys->num_node_pages >= sys->num_alloced_nodes) {
-		struct msg_pipe_node **new_pages;
-
-		new_pages = realloc(sys->node_pages,
-				sizeof(struct msg_pipe_node *) * (sys->num_node_pages+1));
-
-		if (!new_pages) {
-			printf("Failed to allocate node page.\n");
-			return -1;
-		}
-
-		sys->node_pages = new_pages;
-
-		struct msg_pipe_node *new_page;
-		new_page = mmap(
-				NULL, sys->page_size,
-				PROT_READ|PROT_WRITE,
-				MAP_PRIVATE|MAP_ANONYMOUS,
-				-1, 0);
-
-		if (new_page == MAP_FAILED) {
-			perror("mmap");
-			return -1;
-		}
-
-		sys->node_pages[sys->num_node_pages] = new_page;
-		sys->num_node_pages += 1;
+	if (!msg_type_is_inst(vm, fn_type_info->return_type)) {
+		return -1;
 	}
 
-	msg_node_id node_i;
-	node_i = sys->num_alloced_nodes;
-	sys->num_alloced_nodes += 1;
+	int sub_id;
+	sub_id = paged_list_push(&sys->subscribers);
 
-	struct msg_pipe_node *node;
-	node = msg_pipe_get_node(sys, node_i);
-	memset(node, 0, sizeof(struct msg_pipe_node));
+	struct msg_subscriber *sub;
+	sub = paged_list_get(&sys->subscribers, sub_id);
 
-	return node_i;
-}
+	sub->trigger = trigger_id;
+	// TODO: The function closure is currently being calloced. We should have a
+	// better system for memory ownership for function closures.
+	sub->func = func;
 
-msg_node_id
-msg_pipe_map(struct msg_system *sys, struct stg_func_object func)
-{
-	msg_node_id node_i;
-	node_i = msg_alloc_node(sys);
+	sub->out_monad_type = fn_type_info->return_type;
+	sub->out_inner_type = msg_return_type(vm, sub->out_monad_type);
 
-	struct msg_pipe_node *node;
-	node = msg_pipe_get_node(sys, node_i);
-	node->kind = MSG_PIPE_MAP;
+	struct type *ret_type;
+	ret_type = vm_get_type(vm, sub->out_inner_type);
+	sub->out_inner_size = ret_type->size;
 
-	node->map.func = func;
-
-	return node_i;
-}
-
-msg_node_id
-msg_pipe_filter(struct msg_system *sys, struct stg_func_object func)
-{
-	msg_node_id node_i;
-	node_i = msg_alloc_node(sys);
-
-	struct msg_pipe_node *node;
-	node = msg_pipe_get_node(sys, node_i);
-	node->kind = MSG_PIPE_FILTER;
-
-	node->filter.func = func;
-
-	return node_i;
-}
-
-msg_node_id
-msg_pipe_entrypoint(struct msg_system *sys, type_id type)
-{
-	msg_node_id node_i;
-	node_i = msg_alloc_node(sys);
-
-	struct msg_pipe_node *node;
-	node = msg_pipe_get_node(sys, node_i);
-	node->kind = MSG_PIPE_ENTRYPOINT;
-
-	node->entrypoint.pipe_func = FUNC_UNSET;
-	node->entrypoint.type = type;
-
-	return node_i;
-}
-
-msg_node_id
-msg_pipe_endpoint(struct msg_system *sys, func_id callback, void *closure)
-{
-	msg_node_id node_i;
-	node_i = msg_alloc_node(sys);
-
-	struct msg_pipe_node *node;
-	node = msg_pipe_get_node(sys, node_i);
-	node->kind = MSG_PIPE_ENDPOINT;
-
-	node->endpoint.callback = callback;
-	node->endpoint.closure = closure;
-
-	return node_i;
-}
-
-static struct ast_gen_bc_result
-msg_system_compile_node(
-		struct msg_system *sys, struct bc_env *bc_env,
-		msg_node_id node_id, bc_var in_var)
-{
-	struct ast_gen_bc_result result = {0};
-
-	struct msg_pipe_node *node;
-	node = msg_pipe_get_node(sys, node_id);
-
-	bc_var out_var = BC_VAR_NEW;
-
-	switch (node->kind) {
-		case MSG_PIPE_MAP:
-			{
-				struct bc_instr *func_load;
-				func_load = bc_gen_load(bc_env, BC_VAR_NEW,
-						stg_register_func_object(sys->vm, &sys->mod->store,
-							node->map.func.func, node->map.func.closure));
-				append_bc_instr(&result, func_load);
-
-				append_bc_instr(&result,
-						bc_gen_push_arg(bc_env, in_var));
-				struct bc_instr *map_op;
-				map_op = bc_gen_vcall(bc_env, BC_VAR_NEW,
-						func_load->load.target);
-				append_bc_instr(&result, map_op);
-				out_var = map_op->vcall.target;
-			}
-			break;
-
-		case MSG_PIPE_FILTER:
-			{
-				struct bc_instr *func_load;
-				func_load = bc_gen_load(bc_env, BC_VAR_NEW,
-						stg_register_func_object(sys->vm, &sys->mod->store,
-							node->filter.func.func, node->filter.func.closure));
-				append_bc_instr(&result, func_load);
-
-				append_bc_instr(&result,
-						bc_gen_push_arg(bc_env, in_var));
-				struct bc_instr *filter_op;
-				filter_op = bc_gen_vcall(bc_env, BC_VAR_NEW,
-						func_load->load.target);
-				append_bc_instr(&result, filter_op);
-				// TODO: Conditionals in byte code.
-				out_var = in_var;
-			}
-			break;
-
-		case MSG_PIPE_ENTRYPOINT:
-			out_var = in_var;
-			break;
-
-		case MSG_PIPE_ENDPOINT:
-			{
-				struct func *func;
-				func = vm_get_func(sys->vm, node->endpoint.callback);
-
-				append_bc_instr(&result,
-						bc_gen_push_arg(bc_env, in_var));
-
-				if ((func->flags & FUNC_CLOSURE) != 0) {
-					append_bc_instr(&result,
-							bc_gen_clcall(bc_env, BC_VAR_NEW,
-								node->endpoint.callback,
-								node->endpoint.closure));
-				} else {
-					append_bc_instr(&result,
-							bc_gen_lcall(bc_env, BC_VAR_NEW,
-								node->endpoint.callback));
-				}
-			}
-			return result;
-	}
-
-	assert(out_var != BC_VAR_NEW);
-
-	size_t iter = 0;
-	msg_node_id child;
-	while (msg_pipe_iter_outgoing_connections(
-				sys, node_id, &child, &iter)) {
-		append_bc_instrs(&result,
-			msg_system_compile_node(sys, bc_env, child, out_var));
-	}
-
-	return result;
-}
-
-static int
-msg_system_compile_entrypoint(
-		struct msg_system *sys, msg_node_id entrypoint)
-{
-	struct msg_pipe_node *node;
-	node = msg_pipe_get_node(sys, entrypoint);
-	assert(node->kind == MSG_PIPE_ENTRYPOINT);
-
-	struct bc_env *bc_env;
-	bc_env = calloc(1, sizeof(struct bc_env));
-
-	bc_env->vm = sys->vm;
-	bc_env->store = sys->vm->instr_store;
-
-	struct ast_gen_bc_result result = {0};
-
-	result = msg_system_compile_node(
-			sys, bc_env, entrypoint,
-			bc_alloc_param(bc_env, 0, node->entrypoint.type));
-
-	struct object unit = {0};
-	unit.type = bc_env->vm->default_types.unit;
-	append_bc_instr(&result,
-			bc_gen_load(bc_env, BC_VAR_NEW, unit));
-	append_bc_instr(&result,
-			bc_gen_ret(bc_env, result.last->load.target));
-
-	bc_env->entry_point = result.first;
-
-#if MSG_GEN_SHOW_BC
-	printf("\nunpack bc:\n");
-	bc_print(bc_env, bc_env->entry_point);
-#endif
-
-	bc_env->nbc = calloc(1, sizeof(struct nbc_func));
-	// TODO: Figure out what arena should contain the byte code.
-	nbc_compile_from_bc(
-			&sys->vm->transient,
-			&sys->mod->mem, bc_env->nbc, bc_env);
-
-#if MSG_GEN_SHOW_BC
-	printf("\nunpack nbc:\n");
-	nbc_print(bc_env->nbc);
-#endif
-
-	struct func func = {0};
-	func.kind = FUNC_BYTECODE;
-	func.type = stg_register_func_type(
-			sys->mod, sys->vm->default_types.unit,
-			&node->entrypoint.type, 1);
-	func.bytecode = bc_env;
-
-	node->entrypoint.pipe_func =
-		stg_register_func(sys->mod, func);
+	sub->next = trigger->first_subscriber;
+	trigger->first_subscriber = sub;
 
 	return 0;
 }
@@ -399,40 +110,49 @@ msg_system_compile_entrypoint(
 int
 msg_system_compile(struct msg_system *sys)
 {
-	int result = 0;
+	return 0;
+}
 
-	for (msg_node_id i = 0; i < sys->num_alloced_nodes; i++) {
-		struct msg_pipe_node *node;
-		node = msg_pipe_get_node(sys, i);
-		if (node->kind == MSG_PIPE_ENTRYPOINT) {
-			int err;
-			err = msg_system_compile_entrypoint(sys, i);
-			if (err) {
-				result = -1;
-			}
-		}
-	}
+static void
+msg_notify(struct msg_system *sys,
+		struct msg_subscriber *sub,
+		struct object obj)
+{
+	struct stg_exec ctx = {0};
+	ctx.heap = sys->transient;
 
-	return result;
+	struct msg_monad_data monad = {0};
+	struct object monad_obj = {0};
+	monad_obj.type = sub->out_monad_type;
+	monad_obj.data = &monad;
+
+	arena_mark cp = arena_checkpoint(ctx.heap);
+	vm_call_func_obj(sys->mod->vm, &ctx, sub->func, &obj, 1, &monad_obj);
+
+	struct object out = {0};
+	out.type = sub->out_inner_type;
+	out.data = stg_alloc(&ctx, sub->out_inner_size, 1);
+
+	msg_monad_call(sys->mod->vm, &ctx, monad_obj, &out);
+
+	arena_reset(ctx.heap, cp);
 }
 
 void
 msg_post(struct msg_system *sys,
-		msg_node_id entrypoint, struct object obj)
+		msg_trigger_id id, struct object obj)
 {
-	struct msg_pipe_node *node;
-	node = msg_pipe_get_node(sys, entrypoint);
-	assert(node->kind == MSG_PIPE_ENTRYPOINT);
-	assert(node->entrypoint.pipe_func != FUNC_UNSET);
+	struct msg_trigger *trigger;
+	trigger = msg_get_trigger(sys, id);
 
-	struct object ret = {0};
-	ret.type = sys->vm->default_types.unit;
-	int err;
+	struct msg_subscriber *sub;
+	sub = trigger->first_subscriber;
 
-	err = vm_call_func(
-			sys->vm, NULL, node->entrypoint.pipe_func,
-			&obj, 1, &ret);
-	if (err) {
-		printf("Failed to post message.\n");
+	assert_type_equals(sys->mod->vm, trigger->type, obj.type);
+
+	while (sub) {
+		msg_notify(sys, sub, obj);
+
+		sub = sub->next;
 	}
 }

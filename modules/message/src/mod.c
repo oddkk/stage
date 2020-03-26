@@ -21,6 +21,19 @@ msg_trigger_register(struct stg_module *mod);
 void
 msg_trigger_register_native(struct stg_native_module *mod);
 
+struct msg_system *
+msg_get_system(struct vm *vm)
+{
+	struct stg_module *mod;
+	mod = vm_get_module(vm, vm_atoms(vm, "message"));
+	assert(mod);
+
+	struct msg_context *ctx;
+	ctx = mod->data;
+
+	return &ctx->sys;
+}
+
 int
 mod_message_register(struct stg_module *mod)
 {
@@ -29,10 +42,9 @@ mod_message_register(struct stg_module *mod)
 	// ctx = arena_alloc(&mod->mem, sizeof(struct msg_context));
 	mod->data = ctx;
 
-	ctx->sys.vm = mod->vm;
-	ctx->sys.mod = mod;
+	msg_system_init(&ctx->sys, mod);
 
-	ctx->on_start_msg = msg_pipe_entrypoint(
+	ctx->on_start_msg = msg_register_trigger(
 			&ctx->sys, mod->vm->default_types.unit);
 
 	msg_monad_register(mod);

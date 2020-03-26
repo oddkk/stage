@@ -25,7 +25,7 @@ struct msg_monad_type_info {
 };
 
 type_id msg_register_type(struct stg_module *, type_id);
-bool    msg_is_inst(struct stg_module *, type_id);
+bool    msg_type_is_inst(struct vm *, type_id);
 type_id msg_return_type(struct vm *, type_id);
 void    msg_monad_copy(struct stg_exec *, struct msg_monad_data *);
 void    msg_monad_call(struct vm *, struct stg_exec *,

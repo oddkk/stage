@@ -1,6 +1,8 @@
 use mod base.*;
 use mod base.init.*;
 
+use mod message;
+
 !bind[](
 	bind[](
 		return[](10),
@@ -17,3 +19,13 @@ printIntTwice := (val: int) -> Init[Unit]
 	Maybe[int].Some($a) => "something else";
 	Maybe[int].None     => "nothing";
 });
+
+!message.msg[](message.onStart, a =>
+	message.bind[](message.return[](2),
+		b => message.io[](io.printInt(b))));
+
+# !msg(message.onStart, do {
+# 	a := Pass(2);
+# });
+
+# !onStart >> _ => Pass(2) >>= a => io(printInt(a));

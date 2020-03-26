@@ -70,25 +70,44 @@ msg_bind_callback(struct vm *vm, struct stg_exec *ctx,
 	out_monad.call(vm, ctx, out_monad.data, out);
 }
 
-/*
-static void
-msg_monad_on_start_register(struct stg_module *mod)
+struct msg_monad_io_data {
+	struct stg_io_data monad;
+	type_id data_type;
+};
+
+void
+msg_monad_io_callback(struct vm *vm, struct stg_exec *ctx,
+		void *data, void *out)
+{
+	struct msg_monad_io_data *closure = data;
+	closure->monad.call(vm, ctx,
+			closure->monad.data, out);
+}
+
+void
+msg_monad_io_copy(struct stg_exec *ctx, void *data)
+{
+	struct msg_monad_io_data *closure = data;
+	stg_monad_io_copy(ctx, &closure->monad);
+}
+
+static struct msg_monad_data
+msg_monad_io(struct stg_exec *heap,
+		struct stg_io_data monad,
+		type_id data_type_id)
 {
 	struct msg_monad_data data = {0};
-	data.call = msg_on_start_unsafe;
-	data.copy = NULL;
-	data.data = NULL;
-	data.data_size = 0;
+	data.call = msg_monad_io_callback;
+	data.copy = msg_monad_io_copy;
+	data.data_size = sizeof(struct msg_monad_io_data);
+	data.data = stg_alloc(heap, 1, data.data_size);
 
-	struct object obj = {0};
-	obj.type = msg_register_type(
-			mod, mod->vm->default_types.unit);
-	obj.data = &data;
+	struct msg_monad_io_data *closure = data.data;
+	closure->monad = monad;
+	closure->data_type = data_type_id;
 
-	stg_mod_register_native_object(mod,
-			mod_atoms(mod, "onStart"), obj);
+	return data;
 }
-*/
 
 // Used in mod.c.
 void
@@ -109,6 +128,9 @@ void
 msg_monad_register_native(struct stg_native_module *mod)
 {
 	msg_register_native(mod);
+
+	stg_native_register_funcs(mod, msg_monad_io,
+			STG_NATIVE_FUNC_HEAP);
 }
 
 void

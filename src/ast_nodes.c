@@ -1243,14 +1243,15 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	res.data = buffer;
 
 	struct stg_exec exec_ctx = {0};
-	mod_arena(mod, &exec_ctx.heap);
+	exec_ctx.heap = trans;
+	arena_mark call_cp = arena_checkpoint(exec_ctx.heap);
 
 	nbc_exec(ctx->vm, &exec_ctx, &nbc_func,
 			NULL, 0, NULL, buffer);
 
-	arena_destroy(&exec_ctx.heap);
-
 	res = register_object(ctx->vm, &mod->store, res);
+
+	arena_reset(exec_ctx.heap, call_cp);
 
 	struct ast_templ_cons_inst inst = {0};
 

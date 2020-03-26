@@ -94,13 +94,15 @@ vm_mod_init(struct stg_module *mod)
 		result.data = result_buffer;
 
 		struct stg_exec exec_ctx = {0};
-		mod_arena(mod, &exec_ctx.heap);
+
+		exec_ctx.heap = &mod->vm->transient;
+		arena_mark cp = arena_checkpoint(exec_ctx.heap);
 		stg_unsafe_call_init(mod->vm, &exec_ctx, main_obj, &result);
 
 		result = register_object(
 				mod->vm, &mod->store, result);
 
-		arena_destroy(&exec_ctx.heap);
+		arena_reset(exec_ctx.heap, cp);
 
 		mod->instance = result;
 	}
@@ -286,9 +288,11 @@ vm_call_func_obj(
 
 	bool tmp_exec_ctx = !ctx;
 	struct stg_exec _tmp_exec_ctx = {0};
+	arena_mark cp = {0};
 
 	if (tmp_exec_ctx) {
-		arena_init(&_tmp_exec_ctx.heap, &vm->mem);
+		_tmp_exec_ctx.heap = &vm->transient;
+		cp = arena_checkpoint(_tmp_exec_ctx.heap);
 		ctx = &_tmp_exec_ctx;
 	}
 
@@ -355,7 +359,7 @@ vm_call_func_obj(
 	}
 
 	if (tmp_exec_ctx) {
-		arena_destroy(&_tmp_exec_ctx.heap);
+		arena_reset(_tmp_exec_ctx.heap, cp);
 	}
 
 	return 0;

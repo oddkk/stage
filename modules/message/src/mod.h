@@ -5,6 +5,7 @@
 #include <module.h>
 #include "message.h"
 #include "monad.h"
+#include "trigger.h"
 
 struct msg_context {
 	struct msg_system sys;
@@ -13,8 +14,7 @@ struct msg_context {
 	msg_trigger_id on_start_msg;
 };
 
-type_id msg_trigger_register_type(struct stg_module *mod, type_id res_type);
-bool    msg_trigger_is_inst(struct vm *mod, type_id res_type);
-type_id msg_trigger_return_type(struct vm *mod, type_id res_type);
+struct msg_system *
+msg_get_system(struct vm *vm);
 
 #endif

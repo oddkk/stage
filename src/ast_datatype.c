@@ -1432,7 +1432,8 @@ ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
 	obj.data = buffer;
 
 	struct stg_exec exec_ctx = {0};
-	arena_init(&exec_ctx.heap, &ctx->ast_ctx->vm->mem);
+	exec_ctx.heap = &ctx->ast_ctx->vm->transient;
+	arena_mark cp = arena_checkpoint(exec_ctx.heap);
 
 	int err;
 	err = vm_call_func(
@@ -1447,7 +1448,7 @@ ast_dt_try_eval_expr_const(struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
 		register_object(ctx->ast_ctx->vm,
 				&ctx->mod->store, obj);
 
-	arena_destroy(&exec_ctx.heap);
+	arena_reset(exec_ctx.heap, cp);
 
 	expr->constant = true;
 	*out = expr->const_value;
@@ -4355,10 +4356,13 @@ ast_dt_finalize_variant(
 			type_id out_type = TYPE_UNSET;
 
 			struct stg_exec exec_ctx = {0};
-			mod_arena(mod, &exec_ctx.heap);
+			exec_ctx.heap = &mod->vm->transient;
+			arena_mark cp = arena_checkpoint(exec_ctx.heap);
+
 			nbc_exec(ctx->vm, &exec_ctx, type_expr_bc->nbc,
 					NULL, 0, NULL, &out_type);
-			arena_destroy(&exec_ctx.heap);
+
+			arena_reset(exec_ctx.heap, cp);
 
 			assert(out_type != TYPE_UNSET);
 

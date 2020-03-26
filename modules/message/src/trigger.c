@@ -59,6 +59,16 @@ msg_trigger_init_callback(
 		struct vm *vm, struct stg_exec *heap,
 		void *data, void *out)
 {
+	struct msg_trigger_init_data *closure;
+	closure = data;
+
+	struct msg_system *sys;
+	sys = msg_get_system(vm);
+
+	int err;
+	err = msg_trigger_subscribe(
+			sys, closure->trigger.trigger,
+			closure->pipe);
 }
 
 static struct stg_init_data
@@ -98,6 +108,10 @@ msg_trigger_register_on_start(struct stg_module *mod)
 	struct object obj = {0};
 	obj.type = msg_trigger_register_type(
 			mod, mod->vm->default_types.unit);
+	obj.data = &data;
+
+	stg_mod_register_native_object(mod,
+			mod_atoms(mod, "on_start"), obj);
 }
 
 // Used in mod.c.

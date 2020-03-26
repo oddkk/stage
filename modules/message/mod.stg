@@ -1,7 +1,9 @@
+use mod base.io.IO;
+
 Msg := @native("Msg");
 Trigger := @native("Trigger");
-# MsgTrigger := @native("MsgTrigger");
-# onStart := @native("onStart");
+
+onStart := @native("on_start");
 
 return := (val: $T) -> Msg[T]
 	=> ((val: T, type: Type) -> Msg[T]
@@ -22,5 +24,9 @@ filter := (in: Msg[$T], f: (T) -> Bool) -> Msg[T]
 	});
 
 msg := (trigger: Trigger[$T], pipe: (T) -> Msg[$U]) -> Init[Unit]
-	=> ((trg: Trigger[T], pipe: (T) -> Msg[$U], In: Type, Out: Type) -> Init[Unit]
+	=> ((trg: Trigger[T], pipe: (T) -> Msg[U], In: Type, Out: Type) -> Init[Unit]
 		@native("msg_trigger_register_init"))(trigger, pipe, T, U);
+
+io := (ops: IO[$T]) -> Msg[Unit]
+	=> ((ops: IO[T], IOType: Type) -> Msg[Unit]
+		@native("msg_monad_io"))(ops, T);

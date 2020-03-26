@@ -147,7 +147,7 @@ stg_alloc(struct stg_exec *ctx, size_t nmemb, size_t size)
 	if (ctx->store) {
 		return objstore_alloc(ctx->store, res);
 	} else {
-		return arena_alloc(&ctx->heap, res);
+		return arena_alloc(ctx->heap, res);
 	}
 }
 
@@ -1753,13 +1753,15 @@ stg_instantiate_static_object(
 	obj.type = final_tid;
 
 	struct stg_exec exec_ctx = {0};
-	mod_arena(mod, &exec_ctx.heap);
+	exec_ctx.heap = &mod->vm->transient;
+	arena_mark cp = arena_checkpoint(exec_ctx.heap);
+
 	vm_call_func(ctx->vm, &exec_ctx, init_func_id, NULL, 0, &obj);
 
 	*out =
 		register_object(ctx->vm, &mod->store, obj);
 
-	arena_destroy(&exec_ctx.heap);
+	arena_reset(exec_ctx.heap, cp);
 
 	return 0;
 }

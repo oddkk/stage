@@ -7,6 +7,10 @@
 #include <string.h>
 #include <ffi.h>
 
+struct stg_init_type_info {
+	type_id type;
+};
+
 struct init_print_int_data {
 	int64_t value;
 };

@@ -463,7 +463,7 @@ stg_instantiate_static_object(
 
 struct stg_exec {
 	struct objstore *store;
-	struct arena heap;
+	struct arena *heap;
 };
 
 void *
