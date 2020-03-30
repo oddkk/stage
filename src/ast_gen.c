@@ -598,7 +598,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 		switch (act->op) {
 			case OBJ_INST_EXPR:
 				{
-					assert(act->expr.id < inst->num_exprs);
+					assert(act->expr.id < inst_ctx->num_exprs);
 					assert(inst_ctx->expr_vars[act->expr.id] == BC_VAR_NEW);
 
 					int expr_id = act->expr.id;
