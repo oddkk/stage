@@ -110,9 +110,9 @@ struct ast_dt_member {
 		ast_member_id anscestor_local_member;
 	};
 
+	ast_dt_job_id type_names_resolved;
 	ast_dt_job_id type_resolved;
 	ast_dt_job_id const_resolved;
-	struct ast_dt_expr_jobs type_jobs;
 
 	struct object const_value;
 
@@ -177,7 +177,6 @@ enum ast_dt_job_kind {
 	AST_DT_JOB_COMPOSITE_CONST_EVAL,
 
 	AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES,
-	AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES,
 	AST_DT_JOB_MBR_TYPE_EVAL,
 	AST_DT_JOB_MBR_CONST_EVAL,
 
@@ -551,8 +550,6 @@ ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
 			return "COMP CONSTEVAL";
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
 			return "MBR TPE NAMES";
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
-			return "MBR TPE TYPES";
 		case AST_DT_JOB_MBR_TYPE_EVAL:
 			return "MBR TPE EVAL";
 		case AST_DT_JOB_MBR_CONST_EVAL:
@@ -612,7 +609,6 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 			break;
 
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
 		case AST_DT_JOB_MBR_TYPE_EVAL:
 		case AST_DT_JOB_MBR_CONST_EVAL:
 			{
@@ -1019,58 +1015,50 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 	mbr->overridden_bind = -1;
 
 	mbr->type_resolved = -1;
+	mbr->type_names_resolved = -1;
 	mbr->const_resolved = -1;
 
-	mbr->type_jobs.resolve_names = -1;
-	mbr->type_jobs.resolve_types = -1;
-	mbr->type_jobs.codegen = -1;
+	mbr->const_resolved =
+		ast_dt_job_type(ctx, mbr_id,
+				AST_DT_JOB_MBR_CONST_EVAL);
+
 
 	if (type_expr) {
-		mbr->type_jobs.resolve_names =
+		mbr->type_names_resolved =
 			ast_dt_job_type(ctx, mbr_id,
 					AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES);
 
-		mbr->type_jobs.resolve_types =
-			ast_dt_job_type(ctx, mbr_id,
-					AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES);
-
-		mbr->type_jobs.codegen =
+		mbr->type_resolved =
 			ast_dt_job_type(ctx, mbr_id,
 					AST_DT_JOB_MBR_TYPE_EVAL);
 
 		ast_dt_job_dependency(ctx,
 				parent->closures_evaled,
-				mbr->type_jobs.resolve_types);
+				mbr->type_resolved);
 
 		ast_dt_job_dependency(ctx,
-				mbr->type_jobs.resolve_names,
-				mbr->type_jobs.resolve_types);
-
-		ast_dt_job_dependency(ctx,
-				mbr->type_jobs.resolve_types,
-				mbr->type_jobs.codegen);
+				mbr->type_names_resolved,
+				mbr->type_resolved);
 
 		if (ast_dt_expr_has_ambiguous_refs(
 					ctx, parent_id,
 					mbr->type_node, NULL)) {
 			ast_dt_job_dependency(ctx,
 					parent->use_resolved,
-					mbr->type_jobs.resolve_names);
+					mbr->type_names_resolved);
 		}
 
-		mbr->type_resolved = mbr->type_jobs.codegen;
+		ast_dt_job_dependency(ctx,
+				parent->target_names_resolved,
+				mbr->type_resolved);
+	} else {
+		ast_dt_job_dependency(ctx,
+				parent->target_names_resolved,
+				mbr->const_resolved);
 	}
 
-	mbr->const_resolved =
-		ast_dt_job_type(ctx, mbr_id,
-				AST_DT_JOB_MBR_CONST_EVAL);
-
 	ast_dt_job_dependency(ctx,
-			parent->target_names_resolved,
-			mbr->const_resolved);
-
-	ast_dt_job_dependency(ctx,
-			mbr->type_jobs.codegen,
+			mbr->type_resolved,
 			mbr->const_resolved);
 
 	ast_dt_job_dependency(ctx,
@@ -1104,12 +1092,9 @@ ast_dt_register_local_sub_composite_member(
 	mbr->typegiving_bind = -1;
 	mbr->overridden_bind = -1;
 
+	mbr->type_names_resolved = -1;
 	mbr->type_resolved = -1;
 	mbr->const_resolved = -1;
-
-	mbr->type_jobs.resolve_names = -1;
-	mbr->type_jobs.resolve_types = -1;
-	mbr->type_jobs.codegen = -1;
 
 	struct ast_dt_composite *sub_composite;
 	sub_composite = get_composite(ctx, sub_composite_id);
@@ -1172,10 +1157,8 @@ ast_dt_register_descendant_member(struct ast_dt_context *ctx,
 	mbr->sub_composite = -1;
 
 	mbr->bound = -1;
-	mbr->type_jobs.resolve_names = -1;
-	mbr->type_jobs.resolve_types = -1;
-	mbr->type_jobs.codegen = -1;
 
+	mbr->type_names_resolved = -1;
 	mbr->type_resolved = -1;
 
 	mbr->const_resolved =
@@ -2286,7 +2269,8 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 
 static int
 ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
-		struct ast_node *node, enum ast_name_dep_requirement dep_req, type_id expected_type)
+		struct ast_node *node, enum ast_name_dep_requirement dep_req,
+		type_id expected_type, struct object *out)
 {
 	struct ast_name_dep *deps = NULL;
 	size_t num_deps = 0;
@@ -2314,7 +2298,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 	err = ast_node_typecheck(
 			ctx->ast_ctx, ctx->mod, node,
 			body_deps, num_deps,
-			expected_type, NULL);
+			expected_type, out);
 	if (err) {
 		return -1;
 	}
@@ -2536,7 +2520,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				}
 
 				ast_dt_find_named_dependencies(
-						ctx, mbr->type_jobs.resolve_types,
+						ctx, mbr->type_resolved,
 						AST_NAME_DEP_REQUIRE_VALUE, mbr->type_node);
 			}
 			return 0;
@@ -2567,22 +2551,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			return 0;
 
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-
-				int err;
-				err = ast_dt_expr_typecheck(
-						ctx, mbr->parent, mbr->type_node,
-						AST_NAME_DEP_REQUIRE_VALUE,
-						ctx->ast_ctx->vm->default_types.type);
-				if (err) {
-					return -1;
-				}
-			}
-			return 0;
-
 		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
 			{
 				struct ast_dt_expr *expr;
@@ -2592,7 +2560,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				err = ast_dt_expr_typecheck(
 						ctx, expr->parent, expr->value.node,
 						AST_NAME_DEP_REQUIRE_TYPE,
-						expr->type);
+						expr->type, NULL);
 				if (err) {
 					return -1;
 				}
@@ -2607,6 +2575,25 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				struct ast_dt_member *mbr;
 				mbr = get_member(ctx, job->member);
 
+				struct object out_type_obj = {0};
+
+				int err;
+				err = ast_dt_expr_typecheck(
+						ctx, mbr->parent, mbr->type_node,
+						AST_NAME_DEP_REQUIRE_VALUE,
+						ctx->ast_ctx->vm->default_types.type,
+						&out_type_obj);
+				if (err) {
+					return -1;
+				}
+
+				assert_type_equals(ctx->ast_ctx->vm,
+						out_type_obj.type,
+						ctx->ast_ctx->vm->default_types.type);
+
+				type_id out_type = *(type_id *)out_type_obj.data;
+
+				/*
 				struct ast_gen_dt_param *deps = NULL;
 				size_t num_deps = 0;
 
@@ -2661,6 +2648,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					printf("Failed to evaluate member type.\n");
 					return -1;
 				}
+				*/
 
 				ast_try_set_local_member_type(
 						ctx, job->member, out_type);
@@ -3017,24 +3005,14 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			{
 				struct ast_dt_member *mbr;
 				mbr = get_member(ctx, job->member);
-				assert(mbr->type_jobs.resolve_names == job_id);
-				mbr->type_jobs.resolve_names = -1;
-			}
-			break;
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				assert(mbr->type_jobs.resolve_types == job_id);
-				mbr->type_jobs.resolve_types = -1;
+				assert(mbr->type_names_resolved == job_id);
+				mbr->type_names_resolved = -1;
 			}
 			break;
 		case AST_DT_JOB_MBR_TYPE_EVAL:
 			{
 				struct ast_dt_member *mbr;
 				mbr = get_member(ctx, job->member);
-				assert(mbr->type_jobs.codegen == job_id);
-				mbr->type_jobs.codegen = -1;
 				assert(mbr->type_resolved == job_id);
 				mbr->type_resolved = -1;
 			}
@@ -3260,7 +3238,6 @@ ast_dt_job_location(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 
 		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_TYPES:
 		case AST_DT_JOB_MBR_TYPE_EVAL:
 			{
 				struct ast_dt_member *mbr;
@@ -3812,7 +3789,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx,
 
 	for (size_t i = 0; i < ctx->num_init_exprs; i++) {
 		struct ast_dt_init_expr *init_expr;
-		init_expr = get_init_expr(ctx, i);
+		init_expr = &ctx->init_exprs[i];
 
 		if (init_expr->parent != comp_id) {
 			continue;
