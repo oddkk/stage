@@ -529,6 +529,9 @@ ast_node_composite_add_namespace(
 		}
 	}
 
+	type->composite.is_init_monad =
+		target->composite.is_init_monad;
+
 	struct ast_datatype_member new_member = {0};
 	new_member.name = name;
 	new_member.loc = target->loc;
