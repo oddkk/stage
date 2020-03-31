@@ -93,7 +93,9 @@ struct ast_dt_member_bind {
 	enum ast_dt_member_bind_flags flags;
 	struct ast_node *l_expr;
 	ast_dt_bind_id bind;
-	size_t unpack_id;
+	// The unpack id refers to what descendent id of the target should be
+	// bound.
+	ssize_t unpack_id;
 };
 
 struct ast_dt_member {
@@ -766,6 +768,7 @@ ast_dt_bind_to_member(struct ast_dt_context *ctx,
 	assert(bind_id >= 0);
 	mbr_bind.l_expr = target;
 	mbr_bind.bind = bind_id;
+	mbr_bind.unpack_id = -1;
 
 	dlist_append(
 			member->binds,
@@ -1578,7 +1581,8 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 		struct ast_dt_member_bind *mbr_bind;
 		mbr_bind = &mbr->binds[i];
 
-		if (mbr_bind->l_expr && mbr_bind->unpack_id < 0) {
+		if (mbr_bind->l_expr && ((mbr_bind->flags & AST_DT_MBR_BIND_UNPACK_ID_RESOLVED) == 0)) {
+			assert(mbr_bind->unpack_id < 0);
 			struct ast_dt_l_expr_target target;
 			target = ast_dt_l_expr_real_member(
 					ctx, mbr->type, mbr_bind->l_expr);
@@ -1588,6 +1592,7 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 			assert(target.member == mbr_id);
 
 			mbr_bind->unpack_id = target.unpack_id;
+			mbr_bind->flags |= AST_DT_MBR_BIND_UNPACK_ID_RESOLVED;
 		}
 
 		assert(mbr_bind->unpack_id >= 0);
@@ -2074,7 +2079,12 @@ ast_dt_try_pack_member(
 	if (top_bind_state == 0) {
 		struct object_inst *inst;
 		inst = mbr_type->obj_inst;
-		assert(inst);
+
+		if (!inst) {
+			// This member is not bound and can not be implicitly bound from
+			// its inst.
+			return false;
+		}
 
 		struct arena *mem;
 		mem = &ctx->ast_ctx->vm->transient;
@@ -2114,6 +2124,14 @@ ast_dt_try_pack_member(
 
 			struct ast_dt_bind *bind;
 			bind = get_bind(ctx, mbr_bind->bind);
+
+			// The target id here is the unpack id from this member because the
+			// extra binds are from the perspective of the member's inst.
+			extra_binds[i].target_id   = mbr_bind->unpack_id;
+			// TODO: Unpack id?
+			extra_binds[i].unpack_id   = 0;
+			extra_binds[i].expr_id     = inst->num_exprs + i;
+			extra_binds[i].overridable = bind->overridable;
 
 			struct ast_dt_expr *expr;
 			expr = get_expr(ctx, bind->expr);
@@ -3732,7 +3750,8 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx,
 						ctx, mbr_i, mbr_bind->unpack_id);
 			binds[bind_i].loc = bind->loc;
 			binds[bind_i].expr_id = expr->comp_local_id;
-			binds[bind_i].unpack_id = mbr_bind->unpack_id;
+			// TODO: Unpack id?
+			binds[bind_i].unpack_id = 0;
 			binds[bind_i].overridable = bind->overridable;
 
 			bind_i += 1;
