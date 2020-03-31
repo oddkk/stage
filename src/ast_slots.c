@@ -149,6 +149,8 @@ ast_slot_require_is_obj(
 			AST_SLOT_REQ_IS_OBJ, source, loc, target
 			PASS_DEBUG_PARAM);
 
+	assert(val.type != TYPE_UNSET);
+
 	if (val.type == 4) {
 		assert(TYPE_VALID(*(type_id *)val.data));
 	}

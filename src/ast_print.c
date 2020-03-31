@@ -22,7 +22,7 @@ ast_print_name_ref(struct ast_name_ref ref)
 			break;
 
 		case AST_NAME_REF_MEMBER:
-			printf("member %i", ref.member);
+			printf("member %i[%i]", ref.member.id, ref.member.unpack_id);
 			break;
 
 		case AST_NAME_REF_PARAM:

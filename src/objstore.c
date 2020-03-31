@@ -183,6 +183,22 @@ func_return_type(struct vm *vm, type_id func_type_id)
 	return func_info->return_type;
 }
 
+type_id
+func_inst_return_type(struct vm *vm, func_id fid)
+{
+	struct func *func;
+	func = vm_get_func(vm, fid);
+	assert(stg_type_is_func(vm, func->type));
+
+	struct type *func_type;
+	func_type = vm_get_type(vm, func->type);
+
+	struct stg_func_type *func_info;
+	func_info = func_type->data;
+
+	return func_info->return_type;
+}
+
 size_t
 func_num_params(struct vm *vm, type_id func_type_id)
 {
@@ -219,6 +235,11 @@ void print_type_repr(struct vm *vm, struct type *type)
 	printf("%.*s", LIT(res));
 
 	arena_reset(mem, cp);
+}
+
+void print_type_id_repr(struct vm *vm, type_id tid)
+{
+	print_type_repr(vm, vm_get_type(vm, tid));
 }
 
 struct string
@@ -1155,7 +1176,9 @@ object_inst_order(
 {
 #if OBJ_DEBUG_ACTIONS
 	printf("\n\nbegin object_inst_order\n");
+	object_inst_print(vm, inst);
 #endif
+
 	struct object_inst_context _ctx = {0};
 	struct object_inst_context *ctx = &_ctx;
 
@@ -1198,10 +1221,10 @@ object_inst_order(
 				func_info = func_type->data;
 
 				ctx->exprs[offset+i].type = func_info->return_type;
-
-				ctx->exprs[offset+i].is_init_expr = expr->is_init_expr;
-				ctx->exprs[offset+i].init_id = expr->init_id;
 			}
+
+			ctx->exprs[offset+i].is_init_expr = expr->is_init_expr;
+			ctx->exprs[offset+i].init_id = expr->init_id;
 
 			assert(ctx->exprs[offset+i].type != TYPE_UNSET);
 
@@ -1666,6 +1689,52 @@ object_cons_print(struct vm *vm, struct object_cons *cons)
 	object_cons_print_internal(
 			vm, cons, 0, num_desc_digits, 1);
 	printf("\n");
+}
+
+void
+object_inst_print(struct vm *vm, struct object_inst *inst)
+{
+	printf("\nobject inst:%s ", inst->init_monad ? " init monad" : "");
+	print_type_repr(vm, vm_get_type(vm, inst->type));
+	printf("\n");
+	object_cons_print(vm, inst->cons);
+
+	printf("exprs:\n");
+	for (size_t i = 0; i < inst->num_exprs; i++) {
+		struct object_inst_expr *expr;
+		expr = &inst->exprs[i];
+
+		printf("  %03zu ", i);
+		if (expr->is_init_expr) {
+			printf("(init %zu) ", expr->init_id);
+		}
+		if (expr->constant) {
+			printf("const: ");
+			print_obj_repr(vm, expr->const_value);
+			printf(": ");
+			print_type_repr(vm, vm_get_type(vm, expr->const_value.type));
+		} else {
+			printf("func: %lu", expr->func);
+
+			printf(": ");
+			type_id ret_type;
+			ret_type = func_inst_return_type(
+					vm, expr->func);
+			print_type_repr(vm, vm_get_type(vm, ret_type));
+		}
+
+		printf("\n");
+	}
+
+	printf("\nbinds:\n");
+	for (size_t i = 0; i < inst->num_binds; i++) {
+		struct object_inst_bind *bind;
+		bind = &inst->binds[i];
+
+		printf("  %03zu target: %zu, unpack id: %zu, expr: %zu%s\n",
+				i, bind->target_id, bind->unpack_id, bind->expr_id,
+				bind->overridable ? "overridable" : "");
+	}
 }
 
 int

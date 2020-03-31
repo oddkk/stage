@@ -45,7 +45,8 @@ ast_gen_dt_param_ref_equals(struct ast_gen_dt_ref lhs, struct ast_gen_dt_ref rhs
 
 	switch (lhs.kind) {
 		case AST_GEN_DT_PARAM_MEMBER:
-			return lhs.member == rhs.member;
+			return lhs.member.id == rhs.member.id
+				&& lhs.member.unpack_id == rhs.member.unpack_id;
 
 		case AST_GEN_DT_PARAM_INIT_EXPR:
 			return lhs.init_expr == rhs.init_expr;
@@ -126,7 +127,8 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 			{
 				struct ast_gen_dt_ref dt_ref = {0};
 				dt_ref.kind = AST_GEN_DT_PARAM_MEMBER;
-				dt_ref.member = ref.member;
+				dt_ref.member.id = ref.member.id;
+				dt_ref.member.unpack_id = ref.member.unpack_id;
 
 				return ast_gen_dt_resolve_closure(
 						bc_env, info, dt_ref);
@@ -252,7 +254,8 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 			{
 				struct ast_gen_dt_ref dt_ref = {0};
 				dt_ref.kind = AST_GEN_DT_PARAM_MEMBER;
-				dt_ref.member = ref.member;
+				dt_ref.member.id = ref.member.id;
+				dt_ref.member.unpack_id = ref.member.unpack_id;
 
 				return ast_gen_get_dt_param(
 						bc_env, info, dt_ref);
@@ -653,7 +656,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 							inst_ctx->num_filled_exprs += 1;
 						}
 					} else {
-						int extra_expr_id = inst->num_exprs;
+						int extra_expr_id = expr_id - inst->num_exprs;
 						assert(extra_expr_id < node->call.num_args);
 
 						// TODO: Allow referencing other members.
@@ -695,10 +698,8 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 							instr = bc_gen_load(
 									bc_env, BC_VAR_NEW,
 									expr->const_value);
-							assert(inst_ctx->expr_vars[expr_id] == BC_VAR_NEW);
-							inst_ctx->expr_vars[expr_id] = instr->load.target;
-							inst_ctx->num_filled_exprs += 1;
 							append_bc_instr(&init_expr, instr);
+							init_expr.out_var = instr->load.target;
 						} else {
 							for (size_t i = 0; i < act->init_expr.num_deps; i++) {
 								switch (act->init_expr.deps[i].kind) {

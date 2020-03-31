@@ -470,7 +470,8 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 					for (size_t i = 0; i < node->composite.num_members; i++) {
 						names[i].name = node->composite.members[i].name;
 						names[i].ref.kind = AST_NAME_REF_MEMBER;
-						names[i].ref.member = -1;
+						names[i].ref.member.id = -1;
+						names[i].ref.member.unpack_id = -1;
 					}
 
 					member_scope.names = names;
@@ -610,7 +611,8 @@ ast_composite_setup_scope(struct ast_context *ctx, struct ast_scope *target_scop
 			names_buffer[names_offset+i].ref.self_offset = 0;
 		} else {
 			names_buffer[names_offset+i].ref.kind = AST_NAME_REF_MEMBER;
-			names_buffer[names_offset+i].ref.member = local_members[i];
+			names_buffer[names_offset+i].ref.member.id = local_members[i];
+			names_buffer[names_offset+i].ref.member.unpack_id = 0;
 		}
 	}
 

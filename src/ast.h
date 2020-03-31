@@ -30,7 +30,10 @@ enum ast_name_ref_kind {
 struct ast_name_ref {
 	enum ast_name_ref_kind kind;
 	union {
-		ast_member_id  member;
+		struct {
+			ast_member_id id;
+			int unpack_id;
+		} member;
 		ast_param_id   param;
 		ast_closure_id closure;
 		ast_param_id   templ;
@@ -1106,7 +1109,10 @@ struct ast_gen_dt_ref {
 	enum ast_gen_dt_param_kind kind;
 
 	union {
-		ast_member_id member;
+		struct {
+			ast_member_id id;
+			int unpack_id;
+		} member;
 		ast_init_expr_id init_expr;
 	};
 };

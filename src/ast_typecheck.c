@@ -20,7 +20,8 @@ ast_name_ref_equals(struct ast_name_ref lhs, struct ast_name_ref rhs)
 		case AST_NAME_REF_NOT_FOUND:
 			return true;
 		case AST_NAME_REF_MEMBER:
-			return lhs.member == rhs.member;
+			return lhs.member.id == rhs.member.id
+				&& lhs.member.unpack_id == rhs.member.unpack_id;
 		case AST_NAME_REF_PARAM:
 			return lhs.param == rhs.param;
 		case AST_NAME_REF_CLOSURE:

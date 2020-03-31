@@ -169,6 +169,9 @@ store_register_func(struct objstore *store, struct func func);
 type_id
 func_return_type(struct vm *, type_id func_type);
 
+type_id
+func_inst_return_type(struct vm *, func_id func);
+
 size_t
 func_num_params(struct vm *, type_id func_type);
 
@@ -176,6 +179,7 @@ type_id
 func_param_type(struct vm *, type_id func_type, size_t param_i);
 
 void print_type_repr(struct vm *vm, struct type *);
+void print_type_id_repr(struct vm *vm, type_id);
 void print_obj_repr(struct vm *vm, struct object);
 
 struct string
@@ -329,6 +333,9 @@ struct object_inst {
 
 void
 object_cons_print(struct vm *, struct object_cons *);
+
+void
+object_inst_print(struct vm *, struct object_inst *);
 
 ssize_t
 object_cons_find_param(
