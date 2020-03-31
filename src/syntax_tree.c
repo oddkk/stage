@@ -765,6 +765,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		}
 
 		struct ast_func_arg func_args[num_args];
+		memset(func_args, 0, num_args * sizeof(struct ast_func_arg));
 
 		{
 			struct st_node *arg = args;
@@ -793,16 +794,19 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 						if (stmt->ASSIGN_STMT.decl) {
 							stg_error(ctx->err, stmt->loc,
 									"Members can not be declared on object instantiation.");
+							err = true;
 							break;
 						}
 						if (stmt->ASSIGN_STMT.ident->type != ST_NODE_IDENT) {
 							stg_error(ctx->err, stmt->ASSIGN_STMT.ident->loc,
 									"[TODO] Object instantiation assignments must be trivial.");
+							err = true;
 							break;
 						}
 						if (stmt->ASSIGN_STMT.overridable) {
 							stg_error(ctx->err, stmt->ASSIGN_STMT.ident->loc,
 									"[TODO] Object instantiation assignments can not be overridable.");
+							err = true;
 							break;
 						}
 
