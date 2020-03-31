@@ -3654,6 +3654,12 @@ ast_slot_try_solve(
 			res->result |= AST_SLOT_RES_INST_UNKNOWN;
 		}
 
+		if (ast_slot_inst_result(res->result) == AST_SLOT_RES_INST_FOUND &&
+				ast_slot_value_result(res->result) == AST_SLOT_RES_VALUE_UNKNOWN) {
+			res->type = res->inst->type;
+			res->result |= AST_SLOT_RES_TYPE_FOUND;
+		}
+
 		if (error) {
 			slot->flags |= AST_SLOT_HAS_ERROR;
 			res->result = AST_SLOT_RES_ERROR;
