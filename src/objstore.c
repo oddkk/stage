@@ -1132,33 +1132,35 @@ obj_inst_expr_emit_actions(
 		struct object_inst_bind *bind;
 		bind = get_bind(ctx, target->bind);
 
-		// Note that we iterate through the target->num_descendants+1 members
-		// from target to include the target itself.
-		for (ssize_t i = target->num_descendants; i >= 0; i--) {
-			obj_member_id desc_id = target_id + i;
-			struct obj_inst_member *desc;
-			desc = get_member(ctx, desc_id);
+		if (bind->expr_id == expr_id) {
+			// Note that we iterate through the target->num_descendants+1 members
+			// from target to include the target itself.
+			for (ssize_t i = target->num_descendants; i >= 0; i--) {
+				obj_member_id desc_id = target_id + i;
+				struct obj_inst_member *desc;
+				desc = get_member(ctx, desc_id);
 
-			if (desc->bind != target->bind) {
-				continue;
-			}
+				if (desc->bind != target->bind) {
+					continue;
+				}
 
-			if (desc->action_emitted) {
-				continue;
-			}
+				if (desc->action_emitted) {
+					continue;
+				}
 
-			if (desc->num_descendants == 0) {
-				struct object_inst_action act = {0};
-				act.op = OBJ_INST_BIND;
-				act.bind.expr_id = bind->expr_id;
-				act.bind.member_id = desc_id;
-				act.bind.unpack_id = desc->unpack_id;
-				obj_inst_emit_action(ctx, act);
+				if (desc->num_descendants == 0) {
+					struct object_inst_action act = {0};
+					act.op = OBJ_INST_BIND;
+					act.bind.expr_id = bind->expr_id;
+					act.bind.member_id = desc_id;
+					act.bind.unpack_id = desc->unpack_id;
+					obj_inst_emit_action(ctx, act);
 
-				desc->action_emitted = true;
+					desc->action_emitted = true;
 #if OBJ_DEBUG_ACTIONS
-				printf("Emit bind %i\n", desc_id);
+					printf("Emit bind %i\n", desc_id);
 #endif
+				}
 			}
 		}
 
@@ -1177,6 +1179,26 @@ object_inst_order(
 #if OBJ_DEBUG_ACTIONS
 	printf("\n\nbegin object_inst_order\n");
 	object_inst_print(vm, inst);
+
+	printf("extra exprs:\n");
+	for (size_t i = 0; i < num_extra_exprs; i++) {
+		struct object_inst_extra_expr *expr;
+		expr = &extra_exprs[i];
+
+		printf("  %03zu type:", inst->num_exprs+i);
+		print_type_id_repr(vm, expr->type);
+		printf("\n");
+	}
+
+	printf("extra binds:\n");
+	for (size_t i = 0; i < num_extra_binds; i++) {
+		struct object_inst_bind *bind;
+		bind = &extra_binds[i];
+
+		printf("  %03zu target: %zu, unpack id: %zu, expr: %zu%s\n",
+				inst->num_binds+i, bind->target_id, bind->unpack_id, bind->expr_id,
+				bind->overridable ? "overridable" : "");
+	}
 #endif
 
 	struct object_inst_context _ctx = {0};
