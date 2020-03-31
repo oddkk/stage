@@ -1276,7 +1276,8 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 
 static int
 ast_templ_pack(struct ast_context *ctx, struct stg_module *mod,
-		void *data, void *out, void **params, size_t num_params)
+		struct stg_exec *heap, void *data, void *out,
+		void **params, size_t num_params)
 {
 	struct ast_templ_cons_info *info = data;
 
@@ -1316,7 +1317,7 @@ ast_templ_pack_type(struct ast_context *ctx, struct stg_module *mod,
 
 int
 ast_templ_unpack(
-		struct ast_context *ctx, struct stg_module *mod,
+		struct ast_context *ctx, struct stg_module *mod, struct stg_exec *heap,
 		void *data, void *out, struct object obj, int param_id)
 {
 	struct ast_templ_cons_info *info = data;

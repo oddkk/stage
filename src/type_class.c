@@ -34,7 +34,8 @@ stg_type_class_find_impl(
 
 static int
 stg_tc_pack(struct ast_context *ctx, struct stg_module *mod,
-		void *data, void *out, void **params, size_t num_params)
+		struct stg_exec *heap, void *data, void *out,
+		void **params, size_t num_params)
 {
 	struct stg_type_class *tc = data;
 	assert(num_params == tc->num_params);
@@ -101,7 +102,8 @@ stg_tc_pack_type(struct ast_context *ctx, struct stg_module *mod,
 
 static int
 stg_tc_unpack(struct ast_context *ctx, struct stg_module *mod,
-		void *data, void *out, struct object obj, int param_id)
+		struct stg_exec *heap, void *data, void *out,
+		struct object obj, int param_id)
 {
 	struct stg_type_class *tc = data;
 	assert(param_id < tc->num_params);

@@ -150,14 +150,20 @@ stg_mod_lookup_member(
 	memset(buffer, 0, out_type->size);
 	obj.data = buffer;
 
+	struct stg_exec heap = {0};
+	heap.heap = &mod->vm->transient;
+	arena_mark cp = arena_checkpoint(heap.heap);
+
 	err = object_unpack(
-			mod->vm, mod->instance,
+			mod->vm, &heap, mod->instance,
 			unpack_id, &obj);
 	if (err) {
+		arena_reset(heap.heap, cp);
 		return -3;
 	}
 
 	*out = register_object(mod->vm, &mod->store, obj);
+	arena_reset(heap.heap, cp);
 
 	return 0;
 }

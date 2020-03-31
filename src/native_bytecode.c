@@ -535,7 +535,7 @@ nbc_call_func(struct vm *vm, struct stg_exec *ctx, struct stg_func_object func_o
 
 		case FUNC_CONS:
 			assert(func->cons->pack);
-			func->cons->pack(vm, func->cons->data, ret, args, num_args);
+			func->cons->pack(vm, ctx, func->cons->data, ret, args, num_args);
 			break;
 
 		case FUNC_BYTECODE:
@@ -649,14 +649,14 @@ nbc_exec(struct vm *vm, struct stg_exec *ctx, struct nbc_func *func,
 				break;
 
 			case NBC_PACK:
-				ip->pack.func(vm, ip->pack.data,
+				ip->pack.func(vm, ctx, ip->pack.data,
 						&stack[ip->pack.target],
 						args, num_args);
 				num_args = 0;
 				break;
 
 			case NBC_UNPACK:
-				ip->unpack.func(vm, ip->unpack.data,
+				ip->unpack.func(vm, ctx, ip->unpack.data,
 						&stack[ip->unpack.target],
 						args[0], ip->unpack.param_id);
 				num_args = 0;

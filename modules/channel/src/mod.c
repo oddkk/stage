@@ -10,8 +10,8 @@
 static struct type_base channel_type_base;
 
 static void
-channel_type_unpack(struct vm *vm, void *data,
-		void *out, void *obj, int param_id)
+channel_type_unpack(struct vm *vm, struct stg_exec *heap,
+		void *data, void *out, void *obj, int param_id)
 {
 	assert(param_id == 0);
 
@@ -27,7 +27,7 @@ channel_type_unpack(struct vm *vm, void *data,
 }
 
 static void
-channel_type_pack(struct vm *vm, void *data,
+channel_type_pack(struct vm *vm, struct stg_exec *heap, void *data,
 		void *out, void **params, size_t num_params)
 {
 	struct stg_module *mod = data;

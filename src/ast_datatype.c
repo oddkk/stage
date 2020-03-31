@@ -1194,14 +1194,25 @@ ast_dt_try_unpack_member_const(struct ast_dt_context *ctx,
 
 	out->data = arena_alloc(mem, out_type->size);
 
+	struct stg_exec heap = {0};
+	heap.heap = &ctx->ast_ctx->vm->transient;
+	arena_mark cp = arena_checkpoint(heap.heap);
+
 	err = object_unpack(
-			ctx->ast_ctx->vm, mbr->const_value,
+			ctx->ast_ctx->vm, &heap,
+			mbr->const_value,
 			unpack_id, out);
 	if (err) {
+		arena_reset(heap.heap, cp);
 		memset(out, 0, sizeof(struct object));
 		return -1;
 	}
 
+	mbr->const_value = register_object(
+			ctx->ast_ctx->vm, &ctx->mod->store,
+			mbr->const_value);
+
+	arena_reset(heap.heap, cp);
 	return 0;
 }
 
@@ -1879,17 +1890,23 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 					obj.type = target_type_id;
 					obj.data = buffer;
 
+					struct stg_exec heap = {0};
+					heap.heap = &ctx->ast_ctx->vm->transient;
+					arena_mark cp = arena_checkpoint(heap.heap);
+
 					err = object_unpack(
-							ctx->ast_ctx->vm,
+							ctx->ast_ctx->vm, &heap,
 							use->const_value,
 							deps[i].ref.use.param, &obj);
 					if (err) {
+						arena_reset(heap.heap, cp);
 						printf("Failed to unpack use target.\n");
 						return -1;
 					}
 
 					// TODO: Is this necessary?
 					obj = register_object(ctx->ast_ctx->vm, &ctx->mod->store, obj);
+					arena_reset(heap.heap, cp);
 
 					dep->ref = deps[i].ref;
 					dep->req = AST_NAME_DEP_REQUIRE_VALUE;
@@ -2333,9 +2350,22 @@ ast_dt_try_pack_member(
 
 						out_obj->data = arena_alloc(mem, out_type->size);
 
-						err = object_unpack(ctx->ast_ctx->vm,
+						struct stg_exec heap = {0};
+						heap.heap = &ctx->ast_ctx->vm->transient;
+						arena_mark cp = arena_checkpoint(heap.heap);
+
+						err = object_unpack(ctx->ast_ctx->vm, &heap,
 								in_obj, act->bind.unpack_id,
 								out_obj);
+						if (err) {
+							arena_reset(heap.heap, cp);
+							res = -1;
+							break;
+						}
+
+						*out_obj = register_object(
+								ctx->ast_ctx->vm, &ctx->mod->store, *out_obj);
+						arena_reset(heap.heap, cp);
 					}
 					break;
 
@@ -2384,10 +2414,12 @@ ast_dt_try_pack_member(
 
 						assert(inst->cons->pack);
 
+						struct stg_exec tmp_heap = {0};
+						tmp_heap.heap = ctx->ast_ctx->mem;
 						inst->cons->pack(
-								ctx->ast_ctx->vm,
-								inst->cons->data,
-								out->data, params, num_descs);
+								ctx->ast_ctx->vm, &tmp_heap,
+								inst->cons->data, out->data,
+								params, num_descs);
 					}
 					break;
 			}
@@ -3428,8 +3460,8 @@ ast_dt_composite_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
 }
 
 static void
-ast_dt_pack_func(struct vm *vm, void *data, void *out,
-		void **params, size_t num_params)
+ast_dt_pack_func(struct vm *vm, struct stg_exec *heap,
+		void *data, void *out, void **params, size_t num_params)
 {
 	struct ast_dt_composite_info *info = data;
 	assert(info->num_members == num_params);
@@ -3452,8 +3484,8 @@ ast_dt_pack_type_func(struct vm *vm, void *data,
 
 static void
 ast_dt_unpack_func(
-		struct vm *vm, void *data, void *out,
-		void *obj, int param_id)
+		struct vm *vm, struct stg_exec *heap,
+		void *data, void *out, void *obj, int param_id)
 {
 	struct ast_dt_composite_info *info = data;
 	assert(param_id >= 0 && param_id < info->num_members);
@@ -4062,8 +4094,8 @@ struct ast_dt_variant_cons_closure {
 };
 
 static void
-ast_dt_variant_pack(struct vm *vm, void *data, void *out,
-		void **args, size_t num_args)
+ast_dt_variant_pack(struct vm *vm, struct stg_exec *heap,
+		void *data, void *out, void **args, size_t num_args)
 {
 	struct ast_dt_variant_cons_closure *closure = data;
 	void *arg = args[0];
@@ -4074,8 +4106,8 @@ ast_dt_variant_pack(struct vm *vm, void *data, void *out,
 }
 
 static void
-ast_dt_variant_unpack(struct vm *vm, void *data, void *out,
-		void *obj, int param_id)
+ast_dt_variant_unpack(struct vm *vm, struct stg_exec *heap,
+		void *data, void *out, void *obj, int param_id)
 {
 	assert(param_id == 0);
 

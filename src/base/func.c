@@ -239,8 +239,8 @@ stg_register_func_object(
 }
 
 void
-stg_func_closure_pack(struct vm *vm, void *in_data, void *out,
-		void **params, size_t num_params)
+stg_func_closure_pack(struct vm *vm, struct stg_exec *heap,
+		void *in_data, void *out, void **params, size_t num_params)
 {
 	struct stg_func_closure_data *data = in_data;
 	struct stg_func_object *func_obj = out;

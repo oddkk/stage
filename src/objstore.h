@@ -210,7 +210,7 @@ struct ast_context;
 // TODO: Compile time hooks should take vm and stg_error_context instead of
 // ast_context.
 typedef int (*object_ct_pack_func)(
-		struct ast_context *, struct stg_module *mod,
+		struct ast_context *, struct stg_module *mod, struct stg_exec *,
 		void *data, void *out, void **params, size_t num_params);
 
 typedef type_id (*object_ct_pack_type_func)(
@@ -218,18 +218,18 @@ typedef type_id (*object_ct_pack_type_func)(
 		void *data, void **params, size_t num_params);
 
 typedef int (*object_ct_unpack_func)(
-		struct ast_context *, struct stg_module *mod,
+		struct ast_context *, struct stg_module *mod, struct stg_exec *,
 		void *data, void *out, struct object obj, int param_id);
 
 typedef void (*object_pack_func)(
-		struct vm *, void *data, void *out,
+		struct vm *, struct stg_exec *, void *data, void *out,
 		void **params, size_t num_params);
 
 typedef type_id (*object_pack_type_func)(
 		struct vm *, void *data, void **params, size_t num_params);
 
 typedef void (*object_unpack_func)(
-		struct vm *, void *data, void *out, void *obj, int param_id);
+		struct vm *, struct stg_exec *, void *data, void *out, void *obj, int param_id);
 
 typedef bool (*object_can_unpack_func)(
 		struct vm *, void *data, void *obj);
@@ -381,14 +381,15 @@ object_cons_all_descendens(
 // an object.
 int
 object_unpack(
-		struct vm *, struct object obj,
-		size_t unpack_id, struct object *out);
+		struct vm *, struct stg_exec *,
+		struct object obj, size_t unpack_id,
+		struct object *out);
 
 int
 object_ct_pack(
 		struct ast_context *ctx, struct stg_module *mod,
-		struct object_cons *cons, void *args, size_t num_args,
-		struct object *out);
+		struct stg_exec *heap, struct object_cons *cons,
+		void *args, size_t num_args, struct object *out);
 
 int
 object_ct_pack_type(
@@ -399,8 +400,8 @@ object_ct_pack_type(
 int
 object_ct_unpack_param(
 		struct ast_context *ctx, struct stg_module *mod,
-		struct object_cons *cons, struct object obj, size_t param_id,
-		struct object *out);
+		struct stg_exec *heap, struct object_cons *cons,
+		struct object obj, size_t param_id, struct object *out);
 
 int
 object_cons_descendant_type(

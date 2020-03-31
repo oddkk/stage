@@ -109,7 +109,8 @@ UWT_FUNC(register_type)(struct stg_module *mod, type_id res_type);
 static int
 UWT_FUNC(type_pack)(
 		struct ast_context *ctx, struct stg_module *mod,
-		void *data, void *out, void **params, size_t num_params)
+		struct stg_exec *heap, void *data, void *out,
+		void **params, size_t num_params)
 {
 	assert(num_params == 1);
 
@@ -135,7 +136,8 @@ UWT_FUNC(type_pack_type)(
 int
 UWT_FUNC(type_unpack)(
 		struct ast_context *ctx, struct stg_module *mod,
-		void *data, void *out, struct object obj, int param_id)
+		struct stg_exec *heap, void *data, void *out,
+		struct object obj, int param_id)
 {
 	assert_type_equals(ctx->vm,
 			obj.type, ctx->vm->default_types.type);

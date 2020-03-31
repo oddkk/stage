@@ -546,8 +546,9 @@ object_cons_all_descendences(struct vm *vm, type_id tid,
 
 int
 object_unpack(
-		struct vm *vm, struct object obj,
-		size_t unpack_id, struct object *out)
+		struct vm *vm, struct stg_exec *heap,
+		struct object obj, size_t unpack_id,
+		struct object *out)
 {
 	struct type *type;
 	type = vm_get_type(vm, obj.type);
@@ -587,13 +588,13 @@ object_unpack(
 
 		uint8_t buffer[mbr_type->size];
 		assert(def->unpack);
-		def->unpack(vm, def->data, buffer, obj.data, i);
+		def->unpack(vm, heap, def->data, buffer, obj.data, i);
 
 		struct object mbr = {0};
 		mbr.data = buffer;
 		mbr.type = def->params[i].type;
 
-		return object_unpack(vm,
+		return object_unpack(vm, heap,
 				mbr, unpack_id - offset, out);
 	}
 
@@ -644,14 +645,14 @@ object_ct_pack_type(
 int
 object_ct_pack(
 		struct ast_context *ctx, struct stg_module *mod,
-		struct object_cons *cons, void *args, size_t num_args,
-		struct object *out)
+		struct stg_exec *heap, struct object_cons *cons,
+		void *args, size_t num_args, struct object *out)
 {
 	assert(cons->pack || cons->ct_pack);
 	assert(num_args == cons->num_params);
 	if (cons->pack) {
 		cons->pack(
-				ctx->vm, cons->data, out->data,
+				ctx->vm, heap, cons->data, out->data,
 				args, num_args);
 	} else {
 		int err;
@@ -662,7 +663,7 @@ object_ct_pack(
 		}
 
 		err = cons->ct_pack(
-				ctx, mod, cons->data, out->data,
+				ctx, mod, heap, cons->data, out->data,
 				args, num_args);
 		if (err) {
 			// If the pack failed it must emit an error.
@@ -681,8 +682,8 @@ object_ct_pack(
 int
 object_ct_unpack_param(
 		struct ast_context *ctx, struct stg_module *mod,
-		struct object_cons *cons, struct object obj, size_t param_id,
-		struct object *out)
+		struct stg_exec *heap, struct object_cons *cons,
+		struct object obj, size_t param_id, struct object *out)
 {
 	assert(cons->unpack || cons->ct_unpack);
 	assert(param_id < cons->num_params);
@@ -691,7 +692,7 @@ object_ct_unpack_param(
 
 	if (cons->unpack) {
 		cons->unpack(
-				ctx->vm, cons->data, out->data,
+				ctx->vm, heap, cons->data, out->data,
 				obj.data, param_id);
 	} else {
 		int err;
@@ -701,7 +702,7 @@ object_ct_unpack_param(
 		}
 
 		err = cons->ct_unpack(
-				ctx, mod, cons->data, out->data,
+				ctx, mod, heap, cons->data, out->data,
 				obj, param_id);
 		if (err) {
 			// If the unpack failed it must emit an error.

@@ -78,8 +78,8 @@ struct stg_func_closure_data {
 };
 
 void
-stg_func_closure_pack(struct vm *, void *data, void *out,
-		void **params, size_t num_params);
+stg_func_closure_pack(struct vm *, struct stg_exec *,
+		void *data, void *out, void **params, size_t num_params);
 
 struct stg_func_type {
 	type_id return_type;

@@ -338,7 +338,9 @@ vm_call_func_obj(
 					args_data[i] = args[i].data;
 				}
 				assert(func->cons->pack);
-				func->cons->pack(vm, func->cons->data, ret->data, args_data, num_args);
+				func->cons->pack(vm, ctx,
+						func->cons->data, ret->data,
+						args_data, num_args);
 			}
 			break;
 

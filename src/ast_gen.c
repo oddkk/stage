@@ -205,16 +205,22 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 				obj.type = target_type_id;
 				obj.data = buffer;
 
+				struct stg_exec heap = {0};
+				heap.heap = &mod->vm->transient;
+				arena_mark cp = arena_checkpoint(heap.heap);
+
 				err = object_unpack(
-						bc_env->vm,
+						bc_env->vm, &heap,
 						use_value,
 						ref.use.param, &obj);
 				if (err) {
+					arena_reset(heap.heap, cp);
 					printf("Failed to unpack use target.\n");
 					return (struct ast_typecheck_closure){0};
 				}
 				// TODO: Is this necessary?
 				obj = register_object(bc_env->vm, &mod->store, obj);
+				arena_reset(heap.heap, cp);
 
 				struct ast_typecheck_closure res = {0};
 				// TODO: Allow use of non-constant values.
@@ -973,8 +979,12 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 						bind_func.type = bind_func_type;
 						bind_func.data = &bind_func_obj;
 
+						struct stg_exec heap = {0};
+						heap.heap = &ctx->vm->transient;
+						arena_mark cp = arena_checkpoint(heap.heap);
+
 						err = object_ct_pack(
-								ctx, mod, bind_cons,
+								ctx, mod, &heap, bind_cons,
 								bind_type_params,
 								ARRAY_LENGTH(bind_type_params),
 								&bind_func);
@@ -982,6 +992,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 
 						bind_func = register_object(
 								mod->vm, &mod->store, bind_func);
+						arena_reset(heap.heap, cp);
 
 						struct bc_instr *bind_func_instr;
 						bind_func_instr = bc_gen_load(
@@ -1115,13 +1126,18 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 		return_func.type = return_func_type;
 		return_func.data = &ret_func_obj;
 
+		struct stg_exec heap = {0};
+		heap.heap = &ctx->vm->transient;
+		arena_mark cp = arena_checkpoint(heap.heap);
+
 		err = object_ct_pack(
-				ctx, mod, return_cons,
+				ctx, mod, &heap, return_cons,
 				&out_type_ptr, 1, &return_func);
 		assert(!err);
 
 		return_func = register_object(
 				mod->vm, &mod->store, return_func);
+		arena_reset(heap.heap, cp);
 
 		struct bc_instr *ret_func;
 		ret_func = bc_gen_load(bc_env, BC_VAR_NEW, return_func);
@@ -1607,11 +1623,17 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					res.type = res_type_id;
 					res.data = buffer;
 
-					err = object_unpack(ctx->vm, static_obj,
+					struct stg_exec heap = {0};
+					heap.heap = &mod->vm->transient;
+					arena_mark cp = arena_checkpoint(heap.heap);
+
+					err = object_unpack(
+							ctx->vm, &heap, static_obj,
 							unpack_id, &res);
 					assert(!err);
 
 					res = register_object(ctx->vm, &mod->store, res);
+					arena_reset(heap.heap, cp);
 
 					append_bc_instr(&result,
 							bc_gen_load(bc_env, BC_VAR_NEW, res));

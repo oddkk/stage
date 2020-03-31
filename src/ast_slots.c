@@ -2173,16 +2173,22 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 						memset(buffer, 0, param_type->size);
 						res.data = buffer;
 
+						struct stg_exec heap = {0};
+						heap.heap = &ctx->vm->transient;
+						arena_mark cp = arena_checkpoint(heap.heap);
+
 						int err;
 						err = object_ct_unpack_param(
-								ctx->ast_ctx, ctx->mod,
+								ctx->ast_ctx, ctx->mod, &heap,
 								cons, obj, param_i, &res);
 						if (err) {
+							arena_reset(heap.heap, cp);
 							slot->flags |= AST_SLOT_HAS_ERROR;
 							return false;
 						}
 
 						res = register_object(ctx->vm, ctx->env->store, res);
+						arena_reset(heap.heap, cp);
 
 						made_change |= ast_solve_apply_value_obj(
 								ctx, slot->authority.value,
@@ -2280,16 +2286,22 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 					obj_type = vm_get_type(ctx->vm, obj.type);
 					assert(obj_type->obj_inst == inst);
 
+					struct stg_exec heap = {0};
+					heap.heap = &ctx->vm->transient;
+					arena_mark cp = arena_checkpoint(heap.heap);
+
 					int err;
 					err = object_ct_unpack_param(
-							ctx->ast_ctx, ctx->mod,
+							ctx->ast_ctx, ctx->mod, &heap,
 							inst->cons, obj, inst_member_i, &res);
 					if (err) {
+						arena_reset(heap.heap, cp);
 						slot->flags |= AST_SLOT_HAS_ERROR;
 						return false;
 					}
 
 					res = register_object(ctx->vm, ctx->env->store, res);
+					arena_reset(heap.heap, cp);
 
 					made_change |= ast_solve_apply_value_obj(
 							ctx, slot->authority.value,
@@ -2506,17 +2518,23 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				memset(buffer, 0, res_type->size);
 				res.data = buffer;
 
+				struct stg_exec heap = {0};
+				heap.heap = &ctx->vm->transient;
+				arena_mark cp = arena_checkpoint(heap.heap);
+
 				err = object_ct_pack(
-						ctx->ast_ctx, ctx->mod,
+						ctx->ast_ctx, ctx->mod, &heap,
 						cons, arg_data, cons->num_params,
 						&res);
 				if (err) {
+					arena_reset(heap.heap, cp);
 					slot->flags |= AST_SLOT_HAS_ERROR;
 					return false;
 				}
 
 				res = register_object(
 						ctx->vm, ctx->env->store, res);
+				arena_reset(heap.heap, cp);
 
 				made_change |= ast_solve_apply_value_obj(
 						ctx, slot->authority.value,
@@ -2642,10 +2660,15 @@ ast_slot_verify_param(
 	memset(buffer, 0, exp_type->size);
 	exp_val.data = buffer;
 
+	struct stg_exec heap = {0};
+	heap.heap = &ctx->vm->transient;
+	arena_mark cp = arena_checkpoint(heap.heap);
+
 	err = object_ct_unpack_param(
-			ctx->ast_ctx, ctx->mod,
+			ctx->ast_ctx, ctx->mod, &heap,
 			cons, target_val, param_i, &exp_val);
 	if (err) {
+		arena_reset(heap.heap, cp);
 		return -1;
 	}
 
@@ -2665,9 +2688,11 @@ ast_slot_verify_param(
 		free(exp_str.text);
 		free(got_str.text);
 
+		arena_reset(heap.heap, cp);
 		return -1;
 	}
 
+	arena_reset(heap.heap, cp);
 	return 0;
 }
 
@@ -2766,10 +2791,15 @@ ast_slot_verify_member(
 	memset(buffer, 0, exp_type->size);
 	exp_val.data = buffer;
 
+	struct stg_exec heap = {0};
+	heap.heap = &ctx->vm->transient;
+	arena_mark cp = arena_checkpoint(heap.heap);
+
 	err = object_ct_unpack_param(
-			ctx->ast_ctx, ctx->mod,
+			ctx->ast_ctx, ctx->mod, &heap,
 			inst->cons, target_val, member_i, &exp_val);
 	if (err) {
+		arena_reset(heap.heap, cp);
 		return -1;
 	}
 
@@ -2789,9 +2819,11 @@ ast_slot_verify_member(
 		free(exp_str.text);
 		free(got_str.text);
 
+		arena_reset(heap.heap, cp);
 		return -1;
 	}
 
+	arena_reset(heap.heap, cp);
 	return 0;
 }
 
