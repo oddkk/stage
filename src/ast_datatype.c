@@ -1029,7 +1029,8 @@ ast_dt_register_local_sub_composite_member(
 static ast_dt_bind_id
 ast_dt_register_bind(struct ast_dt_context *ctx,
 		ast_dt_composite_id parent_id,
-		struct ast_node *target_node, ast_dt_expr_id expr_id)
+		struct ast_node *target_node, ast_dt_expr_id expr_id,
+		bool overridable)
 {
 	ast_dt_bind_id bind_id;
 	bind_id = ast_dt_alloc_bind(ctx);
@@ -1042,6 +1043,7 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 
 	assert(expr->parent == parent_id);
 
+	bind->overridable = overridable;
 	bind->target_node = target_node;
 	bind->expr = expr_id;
 
@@ -1077,11 +1079,11 @@ static ast_dt_bind_id
 ast_dt_register_explicit_bind(struct ast_dt_context *ctx,
 		ast_dt_composite_id parent_id,
 		ast_member_id mbr_id, ast_dt_expr_id expr_id,
-		int unpack_id, bool typegiving)
+		int unpack_id, bool typegiving, bool overridable)
 {
 	ast_dt_bind_id bind_id;
 	bind_id = ast_dt_register_bind(
-			ctx, parent_id, NULL, expr_id);
+			ctx, parent_id, NULL, expr_id, overridable);
 
 	struct ast_dt_bind *bind;
 	bind = get_bind(ctx, bind_id);
@@ -1466,10 +1468,12 @@ ast_dt_composite_populate(struct ast_dt_context *ctx,
 
 		if (type_giving_for[i] >= 0) {
 			ast_dt_register_explicit_bind(
-					ctx, parent_id, type_giving_for[i], expr_id, 0, true);
+					ctx, parent_id, type_giving_for[i],
+					expr_id, 0, true, bind->overridable);
 		} else {
 			ast_dt_register_bind(
-					ctx, parent_id, bind->target, expr_id);
+					ctx, parent_id, bind->target,
+					expr_id, bind->overridable);
 		}
 	}
 

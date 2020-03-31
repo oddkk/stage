@@ -605,6 +605,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 					assert(inst_ctx->expr_vars[act->expr.id] == BC_VAR_NEW);
 
 					int expr_id = act->expr.id;
+					bc_var out_var = BC_VAR_NEW;
 
 					if (expr_id < inst->num_exprs) {
 						struct object_inst_expr *expr;
@@ -615,9 +616,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 							instr = bc_gen_load(
 									bc_env, BC_VAR_NEW,
 									expr->const_value);
-							assert(inst_ctx->expr_vars[expr_id] == BC_VAR_NEW);
-							inst_ctx->expr_vars[expr_id] = instr->load.target;
-							inst_ctx->num_filled_exprs += 1;
+							out_var = instr->load.target;
 							append_bc_instr(&result, instr);
 						} else {
 							for (size_t i = 0; i < act->expr.num_deps; i++) {
@@ -652,8 +651,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 							call_instr = bc_gen_lcall(
 									bc_env, BC_VAR_NEW, expr->func);
 							append_bc_instr(&result, call_instr);
-							inst_ctx->expr_vars[expr_id] = call_instr->lcall.target;
-							inst_ctx->num_filled_exprs += 1;
+							out_var = call_instr->lcall.target;
 						}
 					} else {
 						int extra_expr_id = expr_id - inst->num_exprs;
@@ -674,10 +672,13 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 						AST_GEN_EXPECT_OK(expr);
 
 						append_bc_instrs(&result, expr);
-						assert(inst_ctx->expr_vars[expr_id] == BC_VAR_NEW);
-						inst_ctx->expr_vars[expr_id] = expr.out_var;
-						inst_ctx->num_filled_exprs += 1;
+						out_var = expr.out_var;
 					}
+
+					assert(inst_ctx->expr_vars[expr_id] == BC_VAR_NEW);
+					assert(out_var != BC_VAR_NEW);
+					inst_ctx->expr_vars[expr_id] = out_var;
+					inst_ctx->num_filled_exprs += 1;
 				}
 				break;
 
