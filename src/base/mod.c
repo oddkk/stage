@@ -118,6 +118,7 @@ stg_base_register(struct stg_module *mod)
 
 	base_init_register_init(mod);
 	base_init_register_io(mod);
+	stg_list_register(mod);
 
 	return 0;
 }
@@ -142,6 +143,7 @@ stg_base_load(struct vm *vm)
 	base_init_register_native(mod);
 	base_io_register_native(mod);
 	stg_native_register_funcs(mod, print_int, STG_NATIVE_FUNC_IMPURE);
+	stg_list_register_native(mod);
 
 	mod->hook_register = stg_base_register;
 }

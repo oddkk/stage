@@ -1,0 +1,22 @@
+List := @native("stg_list");
+
+nil := @native("stg_list_nil");
+cons := @native("stg_list_cons");
+
+head := (a: List[$T]) -> Maybe[T]
+	=> match a {
+		cons[T]($h, _) => Maybe[T].Some(h);
+		nil[T]         => Maybe[T].None;
+	};
+
+tail := (a: List[$T]) -> List[T]
+	=> match a {
+		cons[T](_, $t) => t;
+		nil[T]         => nil[T];
+	};
+
+map := (fn: (T) -> $U, l: List[$T]) -> List[U]
+	=> match l {
+		cons[T]($h, $t) => cons[U](fn(h), map[](fn, t));
+		nil[T] => nil[U];
+	};

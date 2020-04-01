@@ -1,18 +1,23 @@
 use mod base.*;
 use mod base.init.*;
+use mod base.list.*;
 
 use mod message;
+
+testList := cons[int](5, cons[int](2, nil[int]));
+
+a := head[int](testList);
+b := head[int](nil[int]);
 
 !bind[](
 	bind[](
 		return[](10),
-		(a: int) => return[](a * 5)),
-	(a: int) -> Init[Unit]
-		=> printIntTwice(a));
+		a => return[](a * 5)),
+	a => printIntTwice(a));
 
 printIntTwice := (val: int) -> Init[Unit]
 	=> init.bind[](printInt(val),
-		(a: Unit) => printInt(val));
+		a => printInt(val));
 
 !printLn(match Maybe[int].Some(3) {
 	Maybe[int].Some(2)  => "two";

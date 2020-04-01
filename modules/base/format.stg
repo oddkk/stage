@@ -1,0 +1,10 @@
+FormatPart := [Param: Type] Variant {
+	Lit String,
+	Expr (Param) -> String,
+};
+
+format := (f: list.List[FormatPart[$T]], arg: T) -> list.List[String]
+	=> list.map[](part => match part {
+		FormatPart[T].Lit($s) => s;
+		FormatPart[T].Expr($fn) => fn(arg);
+	}, f);

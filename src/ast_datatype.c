@@ -1836,23 +1836,25 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 					dep->ref = deps[i].ref;
 					dep->req = cls->req;
 
-					dep->determined = true;
 					dep->lookup_failed = cls->lookup_failed;
+					if (!dep->lookup_failed) {
+						dep->determined = true;
 
-					switch (cls->req) {
-						case AST_NAME_DEP_REQUIRE_VALUE:
-							// The closure provided a value. It
-							// does not matter if we asked for a
-							// type instead.
-							dep->val = cls->value;
-							break;
+						switch (cls->req) {
+							case AST_NAME_DEP_REQUIRE_VALUE:
+								// The closure provided a value. It
+								// does not matter if we asked for a
+								// type instead.
+								dep->val = cls->value;
+								break;
 
-						case AST_NAME_DEP_REQUIRE_TYPE:
-							// The closure provided only a type.
-							// Make sure that is all we asked for.
-							assert(deps[i].req == AST_NAME_DEP_REQUIRE_TYPE);
-							dep->type = cls->type;
-							break;
+							case AST_NAME_DEP_REQUIRE_TYPE:
+								// The closure provided only a type.
+								// Make sure that is all we asked for.
+								assert(deps[i].req == AST_NAME_DEP_REQUIRE_TYPE);
+								dep->type = cls->type;
+								break;
+						}
 					}
 				} else {
 					dep->ref = deps[i].ref;
@@ -3937,30 +3939,7 @@ ast_dt_finalize_composite(struct ast_context *ctx, struct stg_module *mod,
 	return result;
 }
 
-struct stg_type_variant_option {
-	struct atom *name;
-	type_id data_type;
-	size_t size;
-	obj_copy copy;
-	void *type_data;
-	struct stg_location loc;
-};
-
-struct stg_type_variant_info {
-	struct stg_type_variant_option *options;
-	size_t num_options;
-	uint8_t tag_size;
-	size_t total_size;
-	struct stg_location loc;
-	type_id type;
-};
-
-struct ast_dt_variant {
-	uint64_t tag;
-	struct object data;
-};
-
-static struct ast_dt_variant
+struct ast_dt_variant
 ast_dt_decode_variant(struct stg_type_variant_info *info, void *obj_data)
 {
 	uint64_t tag;
@@ -3988,7 +3967,7 @@ ast_dt_decode_variant(struct stg_type_variant_info *info, void *obj_data)
 	return var;
 }
 
-static void
+void
 ast_dt_encode_variant(struct stg_type_variant_info *info,
 		uint64_t tag, void *in_data, void *out_data)
 {
@@ -4345,4 +4324,49 @@ ast_dt_finalize_variant(
 				ctx, mod, info);
 
 	return variant_type_id;
+}
+
+bool
+ast_dt_variant_type_is_inst(
+		struct vm *vm, type_id tid)
+{
+	struct type *type;
+	type = vm_get_type(vm, tid);
+	return type->base == &variant_type_base;
+}
+
+ssize_t
+ast_dt_variant_tag_by_name(
+		struct vm *vm, type_id tid, struct atom *name)
+{
+	struct type *type;
+	type = vm_get_type(vm, tid);
+	assert(type->base == &variant_type_base);
+
+	struct stg_type_variant_info *info;
+	info = type->data;
+
+	for (size_t i = 0; i < info->num_options; i++) {
+		if (info->options[i].name == name) {
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+type_id
+ast_dt_variant_tag_data_type(
+		struct vm *vm, type_id tid, size_t tag)
+{
+	struct type *type;
+	type = vm_get_type(vm, tid);
+	assert(type->base == &variant_type_base);
+
+	struct stg_type_variant_info *info;
+	info = type->data;
+
+	assert(tag < info->num_options);
+
+	return info->options[tag].data_type;
 }

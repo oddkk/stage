@@ -537,17 +537,17 @@ ast_pattern_gen_match_unpack(
 			}
 			break;
 
-		case AST_NODE_CONS:
-			panic("TODO: Pattern match cons.");
-			return ast_pattern_gen_match_expr(
-					ctx, mod, info, bc_env, node, in,
-					pattern_match_fail);
+		// case AST_NODE_CONS:
+		// 	panic("TODO: Pattern match cons.");
+		// 	return ast_pattern_gen_match_expr(
+		// 			ctx, mod, info, bc_env, node, in,
+		// 			pattern_match_fail);
 
-		case AST_NODE_INST:
-			panic("TODO: Pattern match inst.");
-			return ast_pattern_gen_match_expr(
-					ctx, mod, info, bc_env, node, in,
-					pattern_match_fail);
+		// case AST_NODE_INST:
+		// 	panic("TODO: Pattern match inst.");
+		// 	return ast_pattern_gen_match_expr(
+		// 			ctx, mod, info, bc_env, node, in,
+		// 			pattern_match_fail);
 
 		case AST_NODE_LOOKUP:
 			if (node->lookup.ref.kind != AST_NAME_REF_TEMPL) {

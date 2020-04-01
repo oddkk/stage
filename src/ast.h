@@ -1208,4 +1208,47 @@ ast_dt_finalize_variant(
 		struct ast_datatype_variant *options, size_t num_options,
 		struct ast_typecheck_dep *deps, size_t num_deps);
 
+struct ast_dt_variant {
+	uint64_t tag;
+	struct object data;
+};
+
+struct stg_type_variant_option {
+	struct atom *name;
+	type_id data_type;
+	size_t size;
+	obj_copy copy;
+	void *type_data;
+	struct stg_location loc;
+};
+
+struct stg_type_variant_info {
+	struct stg_type_variant_option *options;
+	size_t num_options;
+	uint8_t tag_size;
+	size_t total_size;
+	struct stg_location loc;
+	type_id type;
+};
+
+
+struct ast_dt_variant
+ast_dt_decode_variant(struct stg_type_variant_info *info, void *obj_data);
+
+void
+ast_dt_encode_variant(struct stg_type_variant_info *info,
+		uint64_t tag, void *in_data, void *out_data);
+
+bool
+ast_dt_variant_type_is_inst(
+		struct vm *vm, type_id);
+
+ssize_t
+ast_dt_variant_tag_by_name(
+		struct vm *vm, type_id, struct atom *name);
+
+type_id
+ast_dt_variant_tag_data_type(
+		struct vm *vm, type_id, size_t tag);
+
 #endif

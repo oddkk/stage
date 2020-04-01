@@ -58,6 +58,7 @@ stg_register_func_object(
 struct stg_base_mod_info {
 	struct object_cons *init_cons;
 	struct object_cons *io_cons;
+	struct object_cons *list_cons;
 };
 
 struct stg_func_closure_member {
@@ -124,5 +125,12 @@ stg_monad_io_copy(struct stg_exec *new_ctx, struct stg_io_data *);
 
 type_id
 stg_io_get_return_type(struct vm *, type_id);
+
+// Defined in list.c
+void
+stg_list_register(struct stg_module *mod);
+
+void
+stg_list_register_native(struct stg_native_module *mod);
 
 #endif
