@@ -34,4 +34,9 @@ stg_list_return_type(struct vm *, type_id);
 bool
 stg_list_type_is_inst(struct vm *, type_id);
 
+// data is expected to be availbe for the lifetime of the list.
+struct stg_list_data
+stg_list_from_carray(struct vm *, struct stg_exec *heap,
+		type_id element_type, void *data, size_t num_elements);
+
 #endif

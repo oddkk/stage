@@ -147,7 +147,7 @@ struct stg_list_cons_data {
 	uint8_t head[];
 };
 
-int
+static int
 stg_list_cons_head(struct stg_exec *heap,
 		struct stg_list_data *list, void *out)
 {
@@ -158,7 +158,7 @@ stg_list_cons_head(struct stg_exec *heap,
 	return 0;
 }
 
-struct stg_list_data
+static struct stg_list_data
 stg_list_cons_tail(struct stg_exec *heap,
 		struct stg_list_data *list)
 {
@@ -167,7 +167,7 @@ stg_list_cons_tail(struct stg_exec *heap,
 	return data->tail;
 }
 
-void
+static void
 stg_list_cons_copy(struct stg_exec *heap,
 		void *list_data)
 {
@@ -458,4 +458,96 @@ stg_list_register(struct stg_module *mod)
 void
 stg_list_register_native(struct stg_native_module *mod)
 {
+}
+
+struct stg_list_array_data {
+	size_t element_size;
+	obj_copy element_copy;
+	void *element_type_data;
+	type_id element_type;
+
+	void *elements;
+	size_t num_elements;
+};
+
+static int
+stg_list_array_cons_head(struct stg_exec *heap,
+		struct stg_list_data *list, void *out)
+{
+	struct stg_list_array_data *data;
+	data = list->data;
+	assert(data->num_elements > 0);
+	memcpy(out, data->elements, data->element_size);
+
+	return 0;
+}
+
+static struct stg_list_data
+stg_list_array_cons_tail(struct stg_exec *heap,
+		struct stg_list_data *list)
+{
+	struct stg_list_array_data *data;
+	data = list->data;
+
+	struct stg_list_data new_list;
+	new_list = *list;
+	new_list.data = stg_alloc(heap, 1,
+			sizeof(struct stg_list_array_data));
+	memcpy(new_list.data, list->data,
+			sizeof(struct stg_list_array_data));
+
+	struct stg_list_array_data *array;
+	array = new_list.data;
+
+	array->elements = (uint8_t *)array->elements + array->element_size;
+	array->num_elements -= 1;
+
+	return new_list;
+}
+
+void
+stg_list_array_cons_copy(struct stg_exec *heap,
+		void *list_data)
+{
+	struct stg_list_array_data *data;
+	data = list_data;
+
+	void *new_array = stg_alloc(heap,
+			data->num_elements, data->element_size);
+	memcpy(new_array, data->elements, data->num_elements * data->element_size);
+
+	if (data->element_copy) {
+		for (size_t i = 0; i < data->num_elements; i++) {
+			void *elem = (uint8_t *)data->elements + (i * data->element_size);
+			data->element_copy(
+					heap, data->element_type_data, elem);
+		}
+	}
+}
+
+struct stg_list_data
+stg_list_from_carray(struct vm *vm, struct stg_exec *heap,
+		type_id element_type, void *data, size_t num_elements)
+{
+	struct stg_list_data list = {0};
+	list.head = stg_list_array_cons_head;
+	list.tail = stg_list_array_cons_tail;
+	list.copy = stg_list_array_cons_copy;
+
+	struct type *type;
+	type = vm_get_type(vm, element_type);
+
+	struct stg_list_array_data *array_data;
+	array_data = stg_alloc(heap, 1, sizeof(struct stg_list_array_data));
+	array_data->element_type = element_type;
+	array_data->element_size = type->size;
+	array_data->element_copy = type->base->obj_copy;
+	array_data->element_type_data = type->data;
+
+	array_data->elements = data;
+	array_data->num_elements = num_elements;
+
+	list.data = array_data;
+
+	return list;
 }
