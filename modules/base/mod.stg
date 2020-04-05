@@ -2,6 +2,14 @@ use prelude.*;
 
 Maybe := [T: Type] Variant { Some T, None };
 
+Eq := class [$T, $U] {
+	op==: (T, U) -> Bool;
+};
+
+impl Eq[int, int] {
+	op== := (a: int, b: int) -> Bool @native("op_eq_int_int");
+};
+
 op+ := (lhs: int, rhs: int) -> int @native("op_add_int_int");
 op- := (lhs: int, rhs: int) -> int @native("op_sub_int_int");
 op* := (lhs: int, rhs: int) -> int @native("op_mul_int_int");

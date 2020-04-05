@@ -11,14 +11,20 @@ static struct object_cons_base stg_tc_cons_base = {
 static struct stg_type_class_impl *
 stg_type_class_find_impl(
 		struct vm *vm, struct stg_type_class *tc,
-		struct object *params)
+		struct object *args)
 {
 	for (size_t impl_i = 0; impl_i < tc->num_impls; impl_i++) {
 		struct stg_type_class_impl *impl;
 		impl = &tc->impls[impl_i];
 		bool match = true;
-		for (size_t param_i = 0; param_i < tc->num_params; param_i++) {
-			if (!obj_equals(vm, params[param_i], impl->params[param_i])) {
+		for (size_t arg_i = 0; arg_i < tc->num_params; arg_i++) {
+			if (impl->args[arg_i].constant) {
+				if (!obj_equals(vm, args[arg_i], impl->args[arg_i].constant_value)) {
+					match = false;
+					break;
+				}
+			} else {
+				panic("TODO: Parametric impls");
 				match = false;
 				break;
 			}
@@ -68,10 +74,14 @@ stg_tc_pack(struct ast_context *ctx, struct stg_module *mod,
 		return -1;
 	}
 
-	struct type *impl_type;
-	impl_type = vm_get_type(ctx->vm, impl->inst.type);
+	if (impl->num_params == 0) {
+		struct type *impl_type;
+		impl_type = vm_get_type(ctx->vm, impl->constant_inst.type);
 
-	memcpy(out, impl->inst.data, impl_type->size);
+		memcpy(out, impl->constant_inst.data, impl_type->size);
+	} else {
+		panic("TODO: Parametric impls.");
+	}
 
 	return 0;
 }
@@ -97,7 +107,12 @@ stg_tc_pack_type(struct ast_context *ctx, struct stg_module *mod,
 		return TYPE_UNSET;
 	}
 
-	return impl->inst.type;
+	if (impl->num_params == 0) {
+		return impl->constant_inst.type;
+	} else {
+		panic("TODO: Parametric impls");
+		return TYPE_UNSET;
+	}
 }
 
 static int
@@ -112,10 +127,18 @@ stg_tc_unpack(struct ast_context *ctx, struct stg_module *mod,
 		struct stg_type_class_impl *impl;
 		impl = &tc->impls[impl_i];
 
-		if (obj_equals(ctx->vm, impl->inst, obj)) {
-			struct type *param_type;
-			param_type = vm_get_type(ctx->vm, tc->params[param_id].type);
-			memcpy(out, impl->params[param_id].data, param_type->size);
+		if (impl->num_params > 0) {
+			continue;
+		}
+
+		if (obj_equals(ctx->vm, impl->constant_inst, obj)) {
+			if (impl->args[param_id].constant) {
+				struct type *param_type;
+				param_type = vm_get_type(ctx->vm, impl->args[param_id].constant_value.type);
+				memcpy(out, impl->args[param_id].constant_value.data, param_type->size);
+			} else {
+				panic("TODO: Parametric impls");
+			}
 			return 0;
 		}
 	}
@@ -181,6 +204,8 @@ stg_type_class_create(struct stg_module *mod,
 	// cons->can_unpack = ;
 
 	tc->cons = cons;
+
+	stg_type_class_print(mod->vm, tc);
 
 	return tc;
 }
@@ -311,18 +336,22 @@ stg_type_class_from_ast_node(struct ast_context *ctx,
 
 int
 stg_type_class_impl(struct stg_module *mod, struct stg_type_class *tc,
-		struct object *params, size_t num_params,
+		struct object *args, size_t num_args,
 		struct object value)
 {
-	if (num_params != tc->num_params) {
+	if (num_args != tc->num_params) {
 		return -1;
 	}
 
 	struct stg_type_class_impl *impl;
 	impl = stg_type_class_find_impl(
-			mod->vm, tc, params);
+			mod->vm, tc, args);
 	if (impl) {
-		if (!obj_equals(mod->vm, impl->inst, value)) {
+		if (impl->num_params > 0) {
+			// TODO: Allow parametric impls to be overridden by more specific
+			// impls.
+			return -3;
+		} else if (!obj_equals(mod->vm, impl->constant_inst, value)) {
 			// TODO: Report the conflicting implementations.
 			return -2;
 		} else {
@@ -331,12 +360,74 @@ stg_type_class_impl(struct stg_module *mod, struct stg_type_class *tc,
 	}
 
 	struct stg_type_class_impl new_impl = {0};
-	new_impl.params = arena_allocn(&mod->mem,
-			num_params, sizeof(struct object));
-	memcpy(new_impl.params, params,
-			num_params * sizeof(struct object));
+	new_impl.args = arena_allocn(&mod->mem,
+			num_args, sizeof(struct object));
+	memcpy(new_impl.args, args,
+			num_args * sizeof(struct object));
 
-	new_impl.inst = value;
+	new_impl.constant_inst = value;
 
 	return 0;
+}
+
+int
+stg_type_class_templ_impl(struct stg_module *mod, struct stg_type_class *tc,
+		struct stg_type_class_impl_arg *args, size_t num_args,
+		struct stg_type_class_impl_param *impl_params, size_t num_impl_params,
+		struct ast_node *expr)
+{
+	panic("TODO: Parametric impls");
+	return -1;
+}
+
+void
+stg_type_class_print(struct vm *vm, struct stg_type_class *tc)
+{
+	printf("type class:\n  parameters:\n");
+	for (size_t i = 0; i < tc->num_params; i++) {
+		printf("  - %.*s: ", ALIT(tc->params[i].name));
+		print_type_id_repr(vm, tc->params[i].type);
+		printf("\n");
+	}
+
+	struct ast_context ctx = {0};
+	ast_init_context(&ctx, NULL, vm);
+
+	printf("  members:\n");
+	for (size_t i = 0; i < tc->num_members; i++) {
+		printf("  - %.*s: ", ALIT(tc->members[i].name));
+		ast_print_node(&ctx, tc->members[i].type, false);
+		printf("\n");
+	}
+
+	printf("  impls:\n");
+	for (size_t impl_i = 0; impl_i < tc->num_impls; impl_i++) {
+		struct stg_type_class_impl *impl;
+		impl = &tc->impls[impl_i];
+
+		printf("  - impl %zu:\n", impl_i);
+		if (tc->num_params > 0) {
+			printf("    parameters:\n");
+			for (size_t param_i = 0; param_i < impl->num_params; param_i++) {
+				printf("    - %.*s: ", ALIT(impl->params[param_i].name));
+				print_type_id_repr(vm, impl->params[param_i].type);
+				printf("\n");
+			}
+		}
+		printf("    arguments:\n");
+		for (size_t arg_i = 0; arg_i < tc->num_params; arg_i++) {
+			printf("      %.*s = ", ALIT(tc->params[arg_i].name));
+			if (impl->args[arg_i].constant) {
+				print_obj_repr(vm, impl->args[arg_i].constant_value);
+			} else {
+				ast_print_node(&ctx, impl->args[arg_i].node, false);
+			}
+			printf("\n");
+		}
+	}
+	if (tc->num_impls == 0) {
+		printf("    (none)\n");
+	}
+
+	ast_destroy_context(&ctx);
 }

@@ -1232,10 +1232,12 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 				switch (param_iter->type) {
 					case ST_NODE_TEMPLATE_VAR:
 						{
-							struct ast_node *type_node;
-							type_node = st_node_visit_expr(
-									ctx, mod, expr_ctx,
-									param_iter->TEMPLATE_VAR.type);
+							struct ast_node *type_node = NULL;
+							if (param_iter->TEMPLATE_VAR.type) {
+								type_node = st_node_visit_expr(
+										ctx, mod, expr_ctx,
+										param_iter->TEMPLATE_VAR.type);
+							}
 
 							ast_pattern_register_param(
 									ctx, param_ctx.pattern,
