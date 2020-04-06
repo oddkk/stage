@@ -172,7 +172,7 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 %token MATCH "match"
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
-%token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>"
+%token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>" BIND ">>="
 
 %type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_decl impl_stmt match_expr match_cases match_case
 
@@ -180,6 +180,7 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 %type <struct string> STRINGLIT
 %type <int64_t> NUMLIT
 
+%left ">>="
 %right "->"
 %left "<-"
 %left "||"
@@ -441,6 +442,7 @@ expr1:			ident					{ $$ = $1; }
 		|		expr1 '^' expr1  { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BXOR, .loc=SLOC(@2));}
 		|		expr1 ">>" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_LSFT, .loc=SLOC(@2));}
 		|		expr1 "<<" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_RSFT, .loc=SLOC(@2));}
+		|		expr1 ">>=" expr1 { $$ = MKNODE(BIN_OP, .lhs=$1, .rhs=$3, .op=ST_OP_BIND, .loc=SLOC(@2));}
 
 /*
 		|		expr1 "->" expr1 { $$ = MKNODE(BIND, .src=$1, .drain=$3);  }
@@ -578,6 +580,8 @@ re2c:define:YYFILL:naked = 1;
 ">>"          { lloc_col(ctx, lloc, CURRENT_LEN); return LEFT_SHIFT; }
 "<<"          { lloc_col(ctx, lloc, CURRENT_LEN); return RIGHT_SHIFT; }
 
+">>="         { lloc_col(ctx, lloc, CURRENT_LEN); return BIND; }
+
 "\x00"        { lloc_col(ctx, lloc, CURRENT_LEN); return END; }
 "\r\n" | [\r\n] { lloc_line(ctx, lloc); return yylex(lval, lloc, ctx); }
  "#" [^\r\n]*  { lloc_col(ctx, lloc, CURRENT_LEN); return yylex(lval, lloc, ctx); }
@@ -617,7 +621,7 @@ re2c:define:YYFILL:naked = 1;
 	return *ctx->tok;
  }
 
-"op" ([-+*/:;={}()\[\].,_$@\\~&|^] | "->" | "<-" | "==" | "!=" | "<=" | ">=" | "~=" | "&&" | "||" | ">>" | "<<") {
+"op" ([-+*/:;={}()\[\].,_$@\\~&|^] | "->" | "<-" | "==" | "!=" | "<=" | ">=" | "~=" | "&&" | "||" | ">>" | "<<" | ">>=") {
 	lloc_col(ctx, lloc, CURRENT_LEN);
 	lval->IDENTIFIER = atom_create(ctx->atom_table, CURRENT_TOKEN);
 	return IDENTIFIER;

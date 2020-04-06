@@ -24,7 +24,7 @@
 	OP(LOR, "||")								\
 	OP(LSFT, "<<")								\
 	OP(RSFT, ">>")								\
-	OP(BIND, "->")								\
+	OP(BIND, ">>=")								\
 	OP(SUBSCRIPT, "[]")							\
 
 #define ST_BIN_OPS_MAX_LEN (2)

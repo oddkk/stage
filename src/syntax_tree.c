@@ -143,6 +143,73 @@ ast_node_use_expr_name(struct ast_node *node)
 }
 
 void
+st_node_visit_templ_param(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct ast_pattern *pat, struct st_node *node,
+		type_id expected_type)
+{
+	switch (node->type) {
+		case ST_NODE_TEMPLATE_VAR:
+			{
+				struct ast_node *type_node = NULL;
+				if (node->TEMPLATE_VAR.type) {
+					assert(expected_type == TYPE_UNSET);
+					struct st_expr_context expr_ctx = {0};
+					expr_ctx.pattern = pat;
+					type_node = st_node_visit_expr(
+							ctx, mod, &expr_ctx,
+							node->TEMPLATE_VAR.type);
+				} else if (expected_type != TYPE_UNSET) {
+					struct object cons_type_obj = {0};
+					cons_type_obj.type = ctx->vm->default_types.type;
+					cons_type_obj.data = &expected_type;
+					cons_type_obj = stg_register_object(mod, cons_type_obj);
+
+					type_node = ast_init_node_lit(
+							ctx, AST_NODE_NEW, node->loc, cons_type_obj);
+				}
+
+				ast_pattern_register_param(
+						ctx, pat, node->TEMPLATE_VAR.name,
+						type_node, node->loc);
+			}
+			break;
+
+		case ST_NODE_TEMPL_INST:
+			{
+				struct st_node *ident, *params;
+				ident = node->TEMPL_INST.ident;
+				params = node->TEMPL_INST.params;
+
+				st_node_visit_templ_param(
+						ctx, mod, pat, ident,
+						ctx->vm->default_types.cons);
+
+				if (params) {
+					assert(params->type == ST_NODE_TUPLE_LIT);
+					params = params->TUPLE_LIT.items;
+
+					while (params) {
+						st_node_visit_templ_param(
+								ctx, mod, pat, params->TUPLE_LIT_ITEM.value,
+								TYPE_UNSET);
+						params = params->next_sibling;
+					}
+				}
+			}
+			break;
+
+			// TODO: More complex pattern variables, such as type
+			// constraints.
+
+		default:
+			stg_error(ctx->err, node->loc,
+					"Expected template parameters.");
+			break;
+	}
+}
+
+void
 st_node_visit_stmt(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *struct_node, struct st_node *stmt)
 {
@@ -1182,13 +1249,14 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 				}
 
 				num_members += 1;
-				body_stmt_iter = body_stmt->next_sibling;
+				body_stmt_iter = body_stmt_iter->next_sibling;
 			}
 
 			body_stmt_iter = node->TYPE_CLASS_DECL.body;
 
 			struct st_expr_context member_ctx = {0};
 			struct ast_type_class_member members[num_members];
+			memset(members, 0, sizeof(struct ast_type_class_member) * num_members);
 
 			size_t member_i = 0;
 			while (body_stmt_iter) {
@@ -1206,12 +1274,14 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 				struct atom *name = body_stmt->ASSIGN_STMT.ident->IDENT;
 				struct st_node *type_node = body_stmt->ASSIGN_STMT.type;
 
+				member_ctx.pattern = &members[member_i].type;
+
 				struct ast_node *type;
 				type = st_node_visit_expr(
 						ctx, mod, &member_ctx, type_node);
 
 				members[member_i].name = name;
-				members[member_i].type = type;
+				members[member_i].type.node = type;
 
 				member_i += 1;
 				body_stmt_iter = body_stmt_iter->next_sibling;
@@ -1229,32 +1299,9 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			struct st_node *param_iter;
 			param_iter = node->TYPE_CLASS_DECL.params;
 			while (param_iter) {
-				switch (param_iter->type) {
-					case ST_NODE_TEMPLATE_VAR:
-						{
-							struct ast_node *type_node = NULL;
-							if (param_iter->TEMPLATE_VAR.type) {
-								type_node = st_node_visit_expr(
-										ctx, mod, expr_ctx,
-										param_iter->TEMPLATE_VAR.type);
-							}
-
-							ast_pattern_register_param(
-									ctx, param_ctx.pattern,
-									param_iter->TEMPLATE_VAR.name,
-									type_node, param_iter->loc);
-						}
-						break;
-
-						// TODO: More complex pattern variables, such as type
-						// constraints.
-
-					default:
-						stg_error(ctx->err, param_iter->loc,
-								"Expected template parameters.");
-						break;
-				}
-
+				st_node_visit_templ_param(ctx, mod,
+						&tc->type_class.pattern, param_iter,
+						TYPE_UNSET);
 				param_iter = param_iter->next_sibling;
 			}
 

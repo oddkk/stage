@@ -495,6 +495,8 @@ struct ast_datatype_impl {
 	struct ast_datatype_impl_arg *args;
 	size_t num_args;
 
+	// TODO: Support parametric impls.
+
 	struct ast_node *value;
 
 	struct stg_location loc;
@@ -519,7 +521,7 @@ struct ast_closure_target {
 
 struct ast_type_class_member {
 	struct atom *name;
-	struct ast_node *type;
+	struct ast_pattern type;
 };
 
 // defined in ast_nodes.c
@@ -787,7 +789,7 @@ ast_node_name(enum ast_node_kind);
 			}																	\
 			if (visit_composite_body) {											\
 				for (size_t i = 0; i < (node)->type_class.num_members; i++) {	\
-					VISIT_NODE((node)->type_class.members[i].type);				\
+					VISIT_NODE((node)->type_class.members[i].type.node);		\
 				}																\
 			}																	\
 			break;																\

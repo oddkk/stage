@@ -511,9 +511,30 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 				}
 
 				for (size_t i = 0; i < node->type_class.num_members; i++) {
+					struct ast_type_class_member *mbr;
+					mbr = &node->type_class.members[i];
+					struct ast_scope mbr_scope = {0};
+					ast_scope_push_pattern(&mbr_scope, &body_scope);
+
+					mbr_scope.num_names = mbr->type.num_params;
+					struct ast_scope_name mbr_scope_names[mbr_scope.num_names];
+					mbr_scope.names = mbr_scope_names;
+
+					for (size_t p_i = 0; p_i < mbr->type.num_params; p_i++) {
+						mbr_scope.names[p_i].name = mbr->type.params[p_i].name;
+						mbr_scope.names[p_i].ref.kind = AST_NAME_REF_TEMPL;
+						mbr_scope.names[p_i].ref.templ = p_i;
+
+						if (mbr->type.params[p_i].type) {
+							err += ast_node_resolve_names_internal(
+									ctx, info, scope, flag_req_const(flags),
+									mbr->type.params[p_i].type);
+						}
+					}
+
 					err += ast_node_resolve_names_internal(
-							ctx, info, &body_scope, flag_req_const(flags),
-							node->type_class.members[i].type);
+							ctx, info, &mbr_scope, flag_req_const(flags),
+							node->type_class.members[i].type.node);
 				}
 
 				err += ast_closure_resolve_names(ctx, info,

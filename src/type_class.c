@@ -224,6 +224,11 @@ stg_type_class_from_ast_node(struct ast_context *ctx,
 	struct ast_env env = {0};
 	env.store = &mod->store;
 
+#if AST_DEBUG_UNINITIALIZED_SLOT_ID
+	// Add a slot 0 to debug invalid references.
+	ast_slot_alloc(&env);
+#endif
+
 	size_t num_params = node->type_class.pattern.num_params;
 	size_t num_closure_members = node->type_class.closure.num_members;
 	size_t num_body_deps = num_closure_members + num_params;
@@ -263,24 +268,63 @@ stg_type_class_from_ast_node(struct ast_context *ctx,
 			type_slot = ast_node_constraints(
 					ctx, mod, &env, deps, num_deps,
 					param->type);
+
+			ast_slot_require_type(
+					&env, param->type->loc,
+					AST_CONSTR_SRC_TEMPL_PARAM_DECL,
+					param_slots[i], type_slot);
 		}
 	}
 
 	size_t num_members = node->type_class.num_members;
 	struct stg_type_class_member members[num_members];
 	memset(members, 0, num_members * sizeof(struct stg_type_class_member));
+
+	size_t num_member_params = 0;
+	for (size_t i = 0; i < num_members; i++) {
+		struct ast_type_class_member *mbr;
+		mbr = &node->type_class.members[i];
+
+		num_member_params += mbr->type.num_params;
+	}
+
+	ast_slot_id member_param_slots[num_member_params];
+
+	size_t mbr_param_i = 0;
 	for (size_t i = 0; i < num_members; i++) {
 		struct ast_type_class_member *mbr;
 		mbr = &node->type_class.members[i];
 		members[i].name = mbr->name;
 		members[i].type = ast_node_deep_copy(
-				&mod->mem, mbr->type);
+				&mod->mem, mbr->type.node);
 
 		ast_node_constraints(
 				ctx, mod, &env,
 				body_deps, num_body_deps,
-				mbr->type);
+				members[i].type);
+
+		members[i].num_params = mbr->type.num_params;
+		members[i].params = arena_allocn(&mod->mem,
+				members[i].num_params, sizeof(struct stg_type_class_member_param));
+
+		for (size_t param_i = 0; param_i < members[i].num_params; param_i++) {
+			members[i].params[param_i].name = mbr->type.params[param_i].name;
+			members[i].params[param_i].loc = mbr->type.params[param_i].loc;
+
+			if (mbr->type.params[param_i].type) {
+				member_param_slots[mbr_param_i] =
+					ast_node_constraints(
+							ctx, mod, &env,
+							body_deps, num_body_deps,
+							mbr->type.params[param_i].type);
+			} else {
+				member_param_slots[mbr_param_i] =
+					ast_slot_alloc(&env);
+			}
+			mbr_param_i += 1;
+		}
 	}
+	assert(mbr_param_i == num_member_params);
 
 #if AST_DEBUG_SLOT_SOLVE
 	printf("Preliminary type solve for type class\n");
@@ -311,12 +355,46 @@ stg_type_class_from_ast_node(struct ast_context *ctx,
 		struct ast_slot_result *res;
 		res = &result[param_slots[i]];
 		if (ast_slot_value_result(res->result) < AST_SLOT_RES_TYPE_FOUND) {
-			stg_error(ctx->err, node->type_class.pattern.params[i].type->loc,
-					"Failed to resolve the type of this parameter.");
+			stg_error(ctx->err, node->type_class.pattern.params[i].loc,
+					"Failed to resolve the type of the parameter '%.*s'. <%zu:%i>",
+					ALIT(node->type_class.pattern.params[i].name),
+					env.invoc_id, param_slots[i]);
 			all_param_types_ok = false;
 			continue;
 		}
 		params[i].type = res->type;
+	}
+
+	mbr_param_i = 0;
+	for (size_t i = 0; i < num_members; i++) {
+		struct ast_type_class_member *mbr;
+		mbr = &node->type_class.members[i];
+
+		for (size_t param_i = 0; param_i < members[i].num_params; param_i++) {
+			struct ast_slot_result *res;
+			res = &result[member_param_slots[mbr_param_i]];
+			mbr_param_i += 1;
+
+			if (ast_slot_value_result(res->result) < AST_SLOT_RES_TYPE_FOUND) {
+				// stg_error(ctx->err, members[i].params[param_i].loc,
+				// 		"Failed to resolve the type of the parameter '%.*s' of member '%.*s'.",
+				// 		ALIT(members[i].params[param_i].name),
+				// 		ALIT(members[i].name));
+				// all_param_types_ok = false;
+				//
+				// TODO: Handle cons of unknown type.
+				members[i].params[param_i].type =
+					ctx->vm->default_types.type;
+				continue;
+			}
+
+			members[i].params[param_i].type = res->type;
+		}
+	}
+	assert(mbr_param_i == num_member_params);
+
+	if (!all_param_types_ok) {
+		return NULL;
 	}
 
 	struct stg_type_class *tc;
@@ -395,9 +473,20 @@ stg_type_class_print(struct vm *vm, struct stg_type_class *tc)
 
 	printf("  members:\n");
 	for (size_t i = 0; i < tc->num_members; i++) {
-		printf("  - %.*s: ", ALIT(tc->members[i].name));
-		ast_print_node(&ctx, tc->members[i].type, false);
+		struct stg_type_class_member *mbr;
+		mbr = &tc->members[i];
+		printf("  - %.*s: ", ALIT(mbr->name));
+		ast_print_node(&ctx, mbr->type, false);
 		printf("\n");
+
+		if (mbr->num_params > 0) {
+			printf("    parameters:\n");
+			for (size_t param_i = 0; param_i < mbr->num_params; param_i++) {
+				printf("    - %.*s: ", ALIT(mbr->params[param_i].name));
+				print_type_id_repr(vm, mbr->params[param_i].type);
+				printf("\n");
+			}
+		}
 	}
 
 	printf("  impls:\n");

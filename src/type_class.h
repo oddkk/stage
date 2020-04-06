@@ -43,10 +43,18 @@ struct stg_type_class_param {
 	struct stg_location decl_loc;
 };
 
+struct stg_type_class_member_param {
+	struct atom *name;
+	type_id type;
+	struct stg_location loc;
+};
+
 struct stg_type_class_member {
 	struct atom *name;
-	// type_id type;
 	struct ast_node *type;
+
+	struct stg_type_class_member_param *params;
+	size_t num_params;
 };
 
 struct stg_type_class {
