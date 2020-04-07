@@ -96,6 +96,9 @@ stg_type_class_templ_impl(struct stg_module *, struct stg_type_class *,
 		struct stg_type_class_impl_param *impl_params, size_t num_impl_params,
 		struct ast_node *expr);
 
+struct stg_type_class *
+stg_cons_to_type_class(struct object_cons *cons);
+
 void
 stg_type_class_print(struct vm *vm, struct stg_type_class *tc);
 

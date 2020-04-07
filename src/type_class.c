@@ -2,6 +2,7 @@
 #include "vm.h"
 #include "ast.h"
 #include "arena.h"
+#include "dlist.h"
 #include <string.h>
 
 static struct object_cons_base stg_tc_cons_base = {
@@ -38,6 +39,26 @@ stg_type_class_find_impl(
 	return NULL;
 }
 
+static void
+stg_tc_report_missing_impl(struct ast_context *ctx,
+		struct stg_type_class *tc, struct object *params)
+{
+	struct arena *str_mem = &ctx->vm->transient;
+	struct string param_values_desc = {0};
+	for (size_t i = 0; i < tc->num_params; i++) {
+		arena_string_append_sprintf(
+				str_mem, &param_values_desc, "\n%.*s = ",
+				ALIT(tc->params[i].name));
+		arena_string_append_obj_repr(
+				&param_values_desc, ctx->vm, str_mem, &params[i]);
+	}
+
+	// TODO: Location
+	stg_error(ctx->err, STG_NO_LOC,
+			"No implementation of this type class for:%.*s",
+			LIT(param_values_desc));
+}
+
 static int
 stg_tc_pack(struct ast_context *ctx, struct stg_module *mod,
 		struct stg_exec *heap, void *data, void *out,
@@ -57,20 +78,7 @@ stg_tc_pack(struct ast_context *ctx, struct stg_module *mod,
 	impl = stg_type_class_find_impl(
 			mod->vm, tc, param_vals);
 	if (!impl) {
-		struct arena *str_mem = &ctx->vm->transient;
-		struct string param_values_desc = {0};
-		for (size_t i = 0; i < tc->num_params; i++) {
-			arena_string_append_sprintf(
-					str_mem, &param_values_desc, "\n%.*s = ",
-					ALIT(tc->params[i].name));
-			arena_string_append_obj_repr(
-					&param_values_desc, ctx->vm, str_mem, &param_vals[i]);
-		}
-
-		// TODO: Location
-		stg_error(ctx->err, STG_NO_LOC,
-				"No implementation of this type class for:%.*s",
-				LIT(param_values_desc));
+		stg_tc_report_missing_impl(ctx, tc, param_vals);
 		return -1;
 	}
 
@@ -104,6 +112,7 @@ stg_tc_pack_type(struct ast_context *ctx, struct stg_module *mod,
 	impl = stg_type_class_find_impl(
 			mod->vm, tc, param_vals);
 	if (!impl) {
+		stg_tc_report_missing_impl(ctx, tc, param_vals);
 		return TYPE_UNSET;
 	}
 
@@ -204,8 +213,6 @@ stg_type_class_create(struct stg_module *mod,
 	// cons->can_unpack = ;
 
 	tc->cons = cons;
-
-	stg_type_class_print(mod->vm, tc);
 
 	return tc;
 }
@@ -328,18 +335,26 @@ stg_type_class_from_ast_node(struct ast_context *ctx,
 
 #if AST_DEBUG_SLOT_SOLVE
 	printf("Preliminary type solve for type class\n");
+	printf("params:\n");
 	for (size_t i = 0; i < num_params; i++) {
-		printf(" - param %.*s: %i\n",
+		printf(" - %.*s: %i\n",
 				ALIT(params[i].name),
 				body_deps[num_closure_members+i].value);
 		if (node->type_class.pattern.params[i].type) {
 			printf("     ");
 			ast_print_node(ctx,
 					node->type_class.pattern.params[i].type, true);
+			printf("\n");
 		}
 	}
-	ast_print_node(ctx,
-			node->type_class.pattern.node, true);
+
+	printf("members:\n");
+	for (size_t i = 0; i < num_members; i++) {
+		printf(" - %.*s: ", ALIT(node->type_class.members[i].name));
+		ast_print_node(ctx,
+				node->type_class.members[i].type.node, true);
+		printf("\n");
+	}
 	printf("\n");
 #endif
 
@@ -439,11 +454,19 @@ stg_type_class_impl(struct stg_module *mod, struct stg_type_class *tc,
 
 	struct stg_type_class_impl new_impl = {0};
 	new_impl.args = arena_allocn(&mod->mem,
-			num_args, sizeof(struct object));
-	memcpy(new_impl.args, args,
-			num_args * sizeof(struct object));
+			num_args, sizeof(struct stg_type_class_impl_arg));
+	for (size_t i = 0; i < num_args; i++) {
+		new_impl.args[i].constant = true;
+		new_impl.args[i].constant_value =
+			stg_register_object(mod, args[i]);
+	}
 
 	new_impl.constant_inst = value;
+
+	dlist_append(
+			tc->impls,
+			tc->num_impls,
+			&new_impl);
 
 	return 0;
 }
@@ -456,6 +479,16 @@ stg_type_class_templ_impl(struct stg_module *mod, struct stg_type_class *tc,
 {
 	panic("TODO: Parametric impls");
 	return -1;
+}
+
+struct stg_type_class *
+stg_cons_to_type_class(struct object_cons *cons)
+{
+	if (cons->base == &stg_tc_cons_base) {
+		return (struct stg_type_class *)cons->data;
+	} else {
+		return NULL;
+	}
 }
 
 void

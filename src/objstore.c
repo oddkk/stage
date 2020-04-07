@@ -511,7 +511,7 @@ object_cons_local_descendent_ids(
 }
 
 ssize_t
-object_cons_all_descendences(struct vm *vm, type_id tid,
+object_cons_all_descendants(struct vm *vm, type_id tid,
 		struct object_cons_param *out_descs, size_t out_descs_size)
 {
 	assert(out_descs_size > 0);
@@ -531,7 +531,7 @@ object_cons_all_descendences(struct vm *vm, type_id tid,
 		assert(offset < out_descs_size);
 		out_descs[offset] = inst->cons->params[i];
 		ssize_t err;
-		err = object_cons_all_descendences(
+		err = object_cons_all_descendants(
 				vm, out_descs[offset].type,
 				&out_descs[offset], out_descs_size - offset);
 		if (err < 0) {
@@ -1284,7 +1284,7 @@ object_inst_order(
 		memset(descs, 0, sizeof(struct object_cons_param) * num_descs);
 		type_id inst_type = inst->type;
 
-		object_cons_all_descendences(
+		object_cons_all_descendants(
 				vm, inst_type, descs, num_descs);
 
 		// Determine what bind is assigned to each member.

@@ -1309,7 +1309,7 @@ ast_node_typecheck(struct ast_context *ctx,
 
 		ast_slot_require_is_type(
 				&env, node->loc, AST_CONSTR_SRC_EXPECTED,
-				expr_type_slot, ctx->vm->default_types.type);
+				expr_type_slot, expected_type);
 		ast_slot_require_type(
 				&env, node->loc, AST_CONSTR_SRC_EXPECTED,
 				expr_slot, expr_type_slot);

@@ -745,9 +745,28 @@ ast_composite_resolve_internal(struct ast_context *ctx,
 		}
 
 		for (size_t i = 0; i < node->composite.num_init_exprs; i++) {
-			err += ast_node_discover_potential_closures(ctx,
-					scope, flag_no_req_const(flags),
+			err += ast_node_resolve_names_internal(ctx,
+					info, scope, flag_no_req_const(flags),
 					node->composite.init_exprs[i]);
+		}
+
+		for (size_t impl_i = 0; impl_i < node->composite.num_impls; impl_i++) {
+			struct ast_datatype_impl *impl;
+			impl = &node->composite.impls[impl_i];
+
+			err += ast_node_resolve_names_internal(ctx,
+					info, scope, flag_req_const(flags),
+					impl->target);
+
+			for (size_t arg_i = 0; arg_i < impl->num_args; arg_i++) {
+				err += ast_node_resolve_names_internal(ctx,
+						info, scope, flag_req_const(flags),
+						impl->args[arg_i].value);
+			}
+
+			err += ast_node_resolve_names_internal(ctx,
+					info, scope, flag_req_const(flags),
+					impl->value);
 		}
 
 		// TODO: Visit use targets.

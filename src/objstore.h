@@ -372,7 +372,7 @@ object_cons_local_descendent_ids(
 // inst's descendents. The top object itself will be at out_descs[0], but will
 // onl have its type filled.
 ssize_t
-object_cons_all_descendens(
+object_cons_all_descendants(
 		struct vm *, type_id top_type,
 		struct object_cons_param *out_descs, size_t out_descs_size);
 
