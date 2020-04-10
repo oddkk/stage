@@ -3632,7 +3632,11 @@ ast_dt_job_location(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			{
 				struct ast_dt_member *mbr;
 				mbr = get_member(ctx, job->member);
-				return mbr->type_node->loc;
+				if (mbr->type_node) {
+					return mbr->type_node->loc;
+				} else {
+					return mbr->decl_loc;
+				}
 			}
 
 		case AST_DT_JOB_MBR_CONST_EVAL:
