@@ -44,4 +44,9 @@ bool string_split(struct string in, struct string *result,
 struct string string_replace_all_char(struct arena *, struct string str,
 		int target, struct string replacement);
 
+struct stg_exec;
+
+struct string
+stg_exec_sprintf(struct stg_exec *, const char *fmt, ...);
+
 #endif

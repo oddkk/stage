@@ -6,9 +6,6 @@ bind := (a: Init[$T], f: (T) -> Init[$U]) -> Init[U]
 	=> ((a: Init[T], f: (T) -> Init[U], In: Type, Out: Type) -> Init[U]
 		@native("init_monad_bind"))(a, f, T, U);
 
-printInt := (val: int) -> Init[Unit]
-	@native("init_monad_print_int");
-
 printLn := (val: String) -> Init[Unit]
 	@native("init_monad_print_str");
 

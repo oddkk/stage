@@ -13,11 +13,21 @@ b := head[int](nil[int]);
 	bind[](
 		return[](10),
 		a => return[](a * 5)),
-	a => printIntTwice(a));
+	a => printTwice[int](a));
 
-printIntTwice := (val: int) -> Init[Unit]
-	=> init.bind[](printInt(val),
-		a => printInt(val));
+!bind[](
+	bind[](
+		return[]("Hello, World!"),
+		a => return[]("Hello, World!")),
+	a => printTwice[](a));
+
+
+!printTwice[](false);
+!printTwice[](true);
+
+printTwice := (val: $T) -> Init[Unit]
+	=> init.bind[](printLn(ToString[T].toString(val)),
+		a => printLn(ToString[T].toString(val)));
 
 !printLn(match Maybe[int].Some(3) {
 	Maybe[int].Some(2)  => "two";

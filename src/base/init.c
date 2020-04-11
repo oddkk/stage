@@ -11,34 +11,6 @@ struct stg_init_type_info {
 	type_id type;
 };
 
-struct init_print_int_data {
-	int64_t value;
-};
-
-static void
-init_print_int_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
-{
-	struct init_print_int_data *closure;
-	closure = data;
-
-	printf(" = %zi\n", closure->value);
-}
-
-static struct stg_init_data
-init_monad_print_int(struct stg_exec *heap, int64_t val)
-{
-	struct stg_init_data data = {0};
-	data.call = init_print_int_unsafe;
-	data.data_size = sizeof(struct init_print_int_data);
-	data.data = stg_alloc(heap, 1, data.data_size);
-
-	struct init_print_int_data *closure;
-	closure = data.data;
-	closure->value = val;
-
-	return data;
-}
-
 struct init_print_str_data {
 	struct string value;
 };
@@ -187,8 +159,6 @@ base_init_register_native(struct stg_native_module *mod)
 
 	stg_native_register_funcs(mod, init_monad_io,
 			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
-	stg_native_register_funcs(mod, init_monad_print_int,
-			STG_NATIVE_FUNC_HEAP);
 	stg_native_register_funcs(mod, init_monad_print_str,
 			STG_NATIVE_FUNC_HEAP);
 }

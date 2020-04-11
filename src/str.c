@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
+// For stg_alloc
+#include "objstore.h"
+
 bool string_equal(struct string lhs, struct string rhs)
 {
 	if (lhs.length != rhs.length) {
@@ -260,4 +263,41 @@ string_replace_all_char(struct arena *mem, struct string str,
 	}
 
 	return result;
+}
+
+struct string
+stg_exec_sprintf(struct stg_exec *heap, const char *fmt, ...)
+{
+	struct string res = {0};
+
+	int err;
+
+	va_list ap;
+	va_start(ap, fmt);
+
+#define BUF_CAP 4096
+	char buffer[BUF_CAP];
+	err = vsnprintf(buffer, BUF_CAP, fmt, ap);
+
+	va_end(ap);
+
+	if (err < 0) {
+		perror("vsnprintf");
+		return STR_EMPTY;
+	}
+
+	res.length = err;
+	res.text = stg_alloc(heap, res.length+1, sizeof(char));
+
+	if (res.length >= BUF_CAP) {
+		va_start(ap, fmt);
+		err = vsnprintf(res.text, res.length+1, fmt, ap);
+		va_end(ap);
+	} else {
+		memcpy(res.text, buffer, res.length+1);
+	}
+
+#undef BUF_CAP
+
+	return res;
 }

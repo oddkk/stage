@@ -17,7 +17,26 @@ op- := (lhs: int, rhs: int) -> int @native("op_sub_int_int");
 op* := (lhs: int, rhs: int) -> int @native("op_mul_int_int");
 op/ := (lhs: int, rhs: int) -> int @native("op_div_int_int");
 
-print := (val: int) -> Unit @native("print_int");
+ToString := class [$T] {
+	toString: ($T) -> String;
+};
+
+impl ToString[String] {
+	toString := (a: String) -> String => a;
+};
+
+impl ToString[int] {
+	toString := (a: int) -> String
+		@native("int_to_string");
+};
+
+impl ToString[Bool] {
+	toString := (a: Bool) -> String
+		=> match a {
+			true => "true";
+			false => "false";
+		};
+};
 
 id := (a: $T) -> T => a;
 

@@ -38,6 +38,13 @@ op_neq_int_int(int64_t lhs, int64_t rhs)
 {
 	return lhs != rhs;
 }
+
+static struct string
+int_to_string(struct stg_exec *heap, int64_t val)
+{
+	return stg_exec_sprintf(heap, "%li", val);
+}
+
 static struct string
 obj_integer_repr(struct vm *vm, struct arena *mem, struct object *obj)
 {
@@ -74,4 +81,5 @@ base_integer_register_native(struct stg_native_module *mod) {
 	stg_native_register_funcs(mod, op_div_int_int, 0);
 	stg_native_register_funcs(mod, op_eq_int_int,  0);
 	stg_native_register_funcs(mod, op_neq_int_int, 0);
+	stg_native_register_funcs(mod, int_to_string, STG_NATIVE_FUNC_HEAP);
 }
