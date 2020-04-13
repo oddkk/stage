@@ -8,5 +8,5 @@ bind := (a: IO[$T], f: (T) -> IO[$U]) -> IO[U]
 	=> ((a: IO[T], f: (T) -> IO[U], In: Type, Out: Type) -> IO[U]
 		@native("io_monad_bind"))(a, f, T, U);
 
-printInt := (val: int) -> IO[Unit]
-	@native("io_monad_print_int");
+printLn := (val: String) -> IO[Unit]
+	@native("io_monad_print");

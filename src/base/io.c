@@ -66,27 +66,40 @@ io_bind_callback(struct vm *vm, struct stg_exec *ctx,
 	out_monad.call(vm, ctx, out_monad.data, out);
 }
 
-struct io_print_int_data {
-	int64_t value;
+struct io_print_data {
+	struct string value;
 };
 
 static void
-io_print_int_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
+io_print_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
 {
-	struct io_print_int_data *closure = data;
+	struct io_print_data *closure = data;
 
-	printf(" => %zu\n", closure->value);
+	printf("%.*s\n", LIT(closure->value));
+}
+
+static void
+io_print_copy(struct stg_exec *heap, void *data)
+{
+	struct io_print_data *closure = data;
+
+	struct string *str = &closure->value;
+	char *new_text = stg_alloc(heap, str->length+1, sizeof(char));
+	memcpy(new_text, str->text, str->length);
+	new_text[str->length] = '\0';
+	str->text = new_text;
 }
 
 static struct stg_io_data
-io_monad_print_int(struct stg_exec *heap, struct stg_module *mod, int64_t val)
+io_monad_print(struct stg_exec *heap, struct stg_module *mod, struct string val)
 {
 	struct stg_io_data data = {0};
-	data.call = io_print_int_unsafe;
-	data.data_size = sizeof(struct io_print_int_data);
-	data.data = stg_alloc(heap, 1, sizeof(struct io_print_int_data));
+	data.call = io_print_unsafe;
+	data.copy = io_print_copy;
+	data.data_size = sizeof(struct io_print_data);
+	data.data = stg_alloc(heap, 1, sizeof(struct io_print_data));
 
-	struct io_print_int_data *closure;
+	struct io_print_data *closure;
 	closure = data.data;
 	closure->value = val;
 
@@ -98,7 +111,7 @@ base_io_register_native(struct stg_native_module *mod)
 {
 	io_register_native(mod);
 
-	stg_native_register_funcs(mod, io_monad_print_int,
+	stg_native_register_funcs(mod, io_monad_print,
 			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
 }
 

@@ -37,7 +37,7 @@ printTwice := (val: $T) -> Init[Unit]
 
 !message.msg[](message.onStart, a =>
 	message.bind[](message.return[](2),
-		b => message.io[](io.printInt(b))));
+		b => message.io[](io.printLn(ToString[int].toString(b)))));
 
 # !msg(message.onStart, do {
 # 	a := Pass(2);

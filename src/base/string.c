@@ -1,6 +1,7 @@
 #include "mod.h"
 #include "../module.h"
 #include <ffi.h>
+#include <string.h>
 
 static struct string
 stg_string_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
@@ -9,9 +10,20 @@ stg_string_obj_repr(struct vm *vm, struct arena *mem, struct object *obj)
 	return arena_sprintf(mem, "\"%.*s\"", LIT(str));
 }
 
+static void
+stg_string_obj_copy(struct stg_exec *heap, void *type_data, void *obj_data)
+{
+	struct string *str = obj_data;
+	char *new_text = stg_alloc(heap, str->length+1, sizeof(char));
+	memcpy(new_text, str->text, str->length);
+	new_text[str->length] = '\0';
+	str->text = new_text;
+}
+
 static struct type_base stg_string_type_base = {
 	.name     = STR("String"),
 	.obj_repr = stg_string_obj_repr,
+	.obj_copy = stg_string_obj_copy,
 };
 
 static ffi_type *ffi_type_stg_string_members[] = {
