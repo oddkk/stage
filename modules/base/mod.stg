@@ -42,3 +42,6 @@ id := (a: $T) -> T => a;
 
 compose := (lhs: ($T) -> $U, rhs: (U) -> $V) -> (T) -> V
 	=> (a: T) -> V => rhs(lhs(a));
+
+concat := (l: String, r: String) -> String
+	@native("stg_string_concat");

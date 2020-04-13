@@ -1,6 +1,7 @@
 use mod base.*;
 use mod base.init.*;
 use mod base.list.*;
+use mod base.format.FormatPart;
 
 use mod message;
 
@@ -39,8 +40,23 @@ printTwice := (val: $T) -> Init[Unit]
 	message.bind[](message.return[](2),
 		b => message.io[](io.printLn(ToString[int].toString(b)))));
 
+
+foo := true;
+bar := 2;
+baz := "hello";
+
+!printLn(f"${baz}, world! ${foo}, ${bar}+2 = ${bar+2}");
+
 # !msg(message.onStart, do {
 # 	a := Pass(2);
 # });
 
 # !onStart >> _ => Pass(2) >>= a => io(printInt(a));
+
+fmt := cons[FormatPart](
+	FormatPart.Lit("Foo Hello, "),
+	cons[FormatPart](
+		FormatPart.Expr(() => ToString[String].toString("World")),
+			cons[FormatPart](
+				FormatPart.Lit("!"), nil[FormatPart])));
+!printLn(format.format(fmt));

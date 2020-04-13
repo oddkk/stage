@@ -1,5 +1,6 @@
 #include "mod.h"
 #include "../module.h"
+#include "../native.h"
 #include <ffi.h>
 #include <string.h>
 
@@ -39,6 +40,18 @@ static ffi_type ffi_type_stg_string = {
 	.elements = ffi_type_stg_string_members,
 };
 
+static struct string
+stg_string_concat(struct stg_exec *heap, struct string lhs, struct string rhs)
+{
+	struct string res = {0};
+	res.length = lhs.length + rhs.length;
+	res.text = stg_alloc(heap, res.length + 1, sizeof(char));
+	memcpy(res.text, lhs.text, lhs.length);
+	memcpy(res.text+lhs.length, rhs.text, rhs.length);
+	res.text[res.length] = '\0';
+	return res;
+}
+
 void
 base_bootstrap_register_string(struct stg_module *mod)
 {
@@ -52,4 +65,10 @@ base_bootstrap_register_string(struct stg_module *mod)
 	type_id tid;
 	tid = stg_register_type(mod, str_type);
 	mod->vm->default_types.string = tid;
+}
+
+void
+base_string_register_native(struct stg_native_module *mod)
+{
+	stg_native_register_funcs(mod, stg_string_concat, STG_NATIVE_FUNC_HEAP);
 }

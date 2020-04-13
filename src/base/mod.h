@@ -26,6 +26,9 @@ void
 base_integer_register_native(struct stg_native_module *mod);
 
 void
+base_string_register_native(struct stg_native_module *mod);
+
+void
 base_boolean_register(struct stg_module *);
 
 void

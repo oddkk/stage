@@ -15,8 +15,16 @@ tail := (a: List[$T]) -> List[T]
 		nil[T]         => nil[T];
 	};
 
-map := (fn: (T) -> $U, l: List[$T]) -> List[U]
+# map := (fn: (T) -> $U, l: List[$T]) -> List[U]
+# 	=> match l {
+# 		cons[T]($h, $t) => cons[U](fn(h), map[](fn, t));
+# 		nil[T] => nil[U];
+# 	};
+
+map := @native("stg_list_map");
+
+join := (l: List[String]) -> String
 	=> match l {
-		cons[T]($h, $t) => cons[U](fn(h), map[](fn, t));
-		nil[T] => nil[U];
+		cons[String]($h, $t) => concat(h, join(t));
+		nil[String]          => "";
 	};

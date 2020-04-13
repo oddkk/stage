@@ -1,10 +1,10 @@
-FormatPart := [Param: Type] Variant {
+FormatPart := Variant {
 	Lit String,
-	Expr (Param) -> String,
+	Expr () -> String,
 };
 
-format := (f: list.List[FormatPart[$T]], arg: T) -> list.List[String]
-	=> list.map[](part => match part {
-		FormatPart[T].Lit($s) => s;
-		FormatPart[T].Expr($fn) => fn(arg);
-	}, f);
+format := (f: list.List[FormatPart]) -> String
+	=> list.join(list.map[FormatPart, String](part => match part {
+		FormatPart.Lit($s) => s;
+		FormatPart.Expr($fn) => fn();
+	}, f));

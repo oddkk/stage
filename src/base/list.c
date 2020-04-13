@@ -3,6 +3,7 @@
 #include "../ast.h"
 #include "../module.h"
 #include "../native.h"
+#include "../dlist.h"
 #include <string.h>
 
 #include <ffi.h>
@@ -440,6 +441,286 @@ stg_list_register_list_cons(struct stg_module *mod)
 			mod, mod_atoms(mod, "stg_list_cons"), cons_cons);
 }
 
+struct object_cons_base stg_list_map_func_base = {
+	.name = STR("map"),
+};
+
+static type_id
+stg_list_map_func_type(struct stg_module *mod, type_id type_in, type_id type_out)
+{
+	type_id map_fn_type;
+	map_fn_type = stg_register_func_type(mod, type_out, &type_in, 1);
+
+	type_id in_list_type  = stg_list_register_type(mod, type_in);
+	type_id out_list_type = stg_list_register_type(mod, type_out);
+
+	type_id param_types[] = {map_fn_type, in_list_type};
+
+	return stg_register_func_type(mod, out_list_type, param_types, 2);
+}
+
+struct stg_list_map_impl {
+	type_id type_t;
+	type_id type_u;
+	struct stg_func_object fn;
+};
+
+struct stg_list_map_func_info {
+	struct stg_list_map_impl *impls;
+	size_t num_impls;
+};
+
+struct stg_list_map_info {
+	struct stg_list_data list;
+	struct stg_func_object func;
+	size_t element_size;
+	type_id out_type;
+
+	struct stg_module *mod;
+};
+
+static int
+stg_list_map_head(struct stg_exec *heap, struct stg_list_data *list, void *out)
+{
+	struct stg_list_map_info *info;
+	info = list->data;
+
+	uint8_t buffer[info->element_size];
+	memset(buffer, 0, info->element_size);
+
+	if (!info->list.head) {
+		return 1;
+	}
+
+	int end;
+	end = info->list.head(heap, &info->list, buffer);
+	if (end) {
+		return 1;
+	}
+
+	struct object arg = {0};
+	arg.data = buffer;
+	arg.type = info->list.element_type;
+
+	struct object ret = {0};
+	ret.data = out;
+	ret.type = info->out_type;
+
+	int err;
+	err = vm_call_func_obj(info->mod->vm, heap,
+			info->func, &arg, 1, &ret);
+	assert(!err);
+
+	return 0;
+}
+
+static struct stg_list_data
+stg_list_map_tail(struct stg_exec *heap, struct stg_list_data *list)
+{
+	struct stg_list_map_info *info;
+	info = list->data;
+
+	if (!info->list.head) {
+		return (struct stg_list_data){0};
+	}
+
+	struct stg_list_data tail = *list;
+
+	struct stg_list_map_info *tail_data;
+	tail_data = stg_alloc(heap, 1, sizeof(struct stg_list_map_info));
+	tail.data = tail_data;
+	assert(tail.data_size == sizeof(struct stg_list_map_info));
+
+	*tail_data = *info;
+	tail_data->list = info->list.tail(heap, &info->list);
+
+	return tail;
+}
+
+static void
+stg_list_map_copy(struct stg_exec *heap, void *data)
+{
+	struct stg_list_map_info *info;
+	info = data;
+
+	stg_list_copy(heap, &info->list);
+}
+
+static struct stg_list_data
+stg_list_map_eval(struct stg_exec *heap, struct stg_module *mod,
+		struct stg_func_object fn, struct stg_list_data list)
+{
+	struct func *func;
+	func = vm_get_func(mod->vm, fn.func);
+
+	struct type *func_type;
+	func_type = vm_get_type(mod->vm, func->type);
+
+	struct stg_func_type *type_info;
+	type_info = func_type->data;
+
+	struct type *in_type = vm_get_type(mod->vm, type_info->params[0]);
+
+	assert(type_info->num_params == 1);
+
+	assert_type_equals(mod->vm, list.element_type, type_info->params[0]);
+
+	struct stg_list_map_info *info;
+	info = stg_alloc(heap, 1, sizeof(struct stg_list_map_info));
+
+	info->element_size = in_type->size;
+	info->list = list;
+	info->func = fn;
+	info->out_type = type_info->return_type;
+	info->mod = mod;
+
+	struct stg_list_data out_list = {0};
+
+	out_list.element_type = type_info->return_type;
+	out_list.data = info;
+	out_list.data_size = sizeof(struct stg_list_map_info);
+
+	out_list.head = stg_list_map_head;
+	out_list.tail = stg_list_map_tail;
+	out_list.copy = stg_list_map_copy;
+
+	return out_list;
+}
+
+static struct stg_func_object
+stg_list_map_register_func(struct stg_module *mod,
+		struct stg_list_map_func_info *info,
+		type_id type_t, type_id type_u)
+{
+	for (size_t i = 0; i < info->num_impls; i++) {
+		if (type_equals(mod->vm, type_t, info->impls[i].type_t) &&
+			type_equals(mod->vm, type_u, info->impls[i].type_u)) {
+			return info->impls[i].fn;
+		}
+	}
+
+	type_id fn_type;
+	fn_type = stg_list_map_func_type(
+			mod, type_t, type_u);
+
+	struct func func = {0};
+	func.kind = FUNC_NATIVE;
+	func.flags = FUNC_HEAP | FUNC_CLOSURE;
+	func.native = (void *)stg_list_map_eval;
+	func.type = fn_type;
+
+	struct stg_func_object fn = {0};
+	fn.func = stg_register_func(mod, func);
+	fn.closure = mod;
+
+	struct stg_list_map_impl impl = {0};
+	impl.type_t = type_t;
+	impl.type_u = type_u;
+	impl.fn = fn;
+
+	dlist_append(
+			info->impls,
+			info->num_impls,
+			&impl);
+
+	return fn;
+}
+
+static int
+stg_list_map_func_pack(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct stg_exec *heap, void *data, void *out,
+		void **params, size_t num_params)
+{
+	struct stg_list_map_func_info *info = data;
+
+	type_id type_t = *(type_id *)params[0];
+	type_id type_u = *(type_id *)params[1];
+
+	*(struct stg_func_object *)out =
+		stg_list_map_register_func(
+				mod, info, type_t, type_u);
+
+	return 0;
+}
+
+static type_id
+stg_list_map_func_pack_type(
+		struct ast_context *ctx, struct stg_module *mod,
+		void *data, void **params, size_t num_params)
+{
+	type_id type_t = *(type_id *)params[0];
+	type_id type_u = *(type_id *)params[1];
+
+	return stg_list_map_func_type(
+			mod, type_t, type_u);
+}
+
+static int
+stg_list_map_func_unpack(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct stg_exec *heap, void *data, void *out,
+		struct object obj, int param_id)
+{
+	if (param_id > 2) {
+		return -1;
+	}
+
+	assert(stg_type_is_func(ctx->vm, obj.type));
+	struct stg_func_object *func_obj = obj.data;
+
+	struct func *func = vm_get_func(ctx->vm, func_obj->func);
+	assert(func->kind == FUNC_NATIVE);
+
+	struct type *func_type = vm_get_type(ctx->vm, func->type);
+
+	struct stg_func_type *func_type_info;
+	func_type_info = func_type->data;
+
+	assert(func_type_info->num_params == 2);
+
+	type_id *out_type = out;
+
+	if (param_id == 0) {
+		*out_type = stg_list_return_type(
+				ctx->vm, func_type_info->params[1]);
+	} else {
+		*out_type = stg_list_return_type(
+				ctx->vm, func_type_info->return_type);
+	}
+
+	return 0;
+}
+
+static void
+stg_list_register_list_map(struct stg_module *mod)
+{
+	struct object_cons *map_cons;
+	map_cons = arena_alloc(&mod->mem, sizeof(struct object_cons));
+	map_cons->num_params = 2;
+	map_cons->params = arena_allocn(&mod->mem, 2, sizeof(struct object_cons_param));
+
+	map_cons->params[0].name = mod_atoms(mod, "T");
+	map_cons->params[0].type = mod->vm->default_types.type;
+
+	map_cons->params[1].name = mod_atoms(mod, "U");
+	map_cons->params[1].type = mod->vm->default_types.type;
+
+	map_cons->ct_pack = stg_list_map_func_pack;
+	map_cons->ct_pack_type = stg_list_map_func_pack_type;
+	map_cons->ct_unpack = stg_list_map_func_unpack;
+
+	map_cons->base = &stg_list_map_func_base;
+
+	struct stg_list_map_func_info *info;
+	info = arena_alloc(&mod->mem, sizeof(struct stg_list_map_func_info));
+
+	map_cons->data = info;
+
+	stg_mod_register_native_cons(
+			mod, mod_atoms(mod, "stg_list_map"), map_cons);
+}
+
 void
 stg_list_register(struct stg_module *mod)
 {
@@ -453,6 +734,7 @@ stg_list_register(struct stg_module *mod)
 
 	stg_list_register_list_nil(mod);
 	stg_list_register_list_cons(mod);
+	stg_list_register_list_map(mod);
 }
 
 void
