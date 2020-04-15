@@ -6,9 +6,9 @@ bind := (a: Init[$T], f: (T) -> Init[$U]) -> Init[U]
 	=> ((a: Init[T], f: (T) -> Init[U], In: Type, Out: Type) -> Init[U]
 		@native("init_monad_bind"))(a, f, T, U);
 
-printLn := (val: String) -> Init[Unit]
-	@native("init_monad_print_str");
-
 withIO := (a: io.IO[$T]) -> Init[T]
 	=> ((a: io.IO[T], type: Type) -> Init[T]
 		@native("init_monad_io"))(a, T);
+
+printLn := (val: String) -> Init[Unit]
+	=> withIO[](io.printLn(val));

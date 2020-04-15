@@ -11,48 +11,6 @@ struct stg_init_type_info {
 	type_id type;
 };
 
-struct init_print_str_data {
-	struct string value;
-};
-
-static void
-init_print_str_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
-{
-	struct init_print_str_data *closure;
-	closure = data;
-
-	printf("%.*s\n", LIT(closure->value));
-}
-
-static void
-init_print_str_copy(struct stg_exec *heap, void *data)
-{
-	struct init_print_str_data *closure;
-	closure = data;
-
-	struct string *str = &closure->value;
-	char *new_text = stg_alloc(heap, str->length+1, sizeof(char));
-	memcpy(new_text, str->text, str->length);
-	new_text[str->length] = '\0';
-	str->text = new_text;
-}
-
-static struct stg_init_data
-init_monad_print_str(struct stg_exec *heap, struct string val)
-{
-	struct stg_init_data data = {0};
-	data.call = init_print_str_unsafe;
-	data.copy = init_print_str_copy;
-	data.data_size = sizeof(struct init_print_str_data);
-	data.data = stg_alloc(heap, 1, data.data_size);
-
-	struct init_print_str_data *closure;
-	closure = data.data;
-	closure->value = val;
-
-	return data;
-}
-
 struct init_io_data {
 	struct stg_io_data monad;
 
@@ -173,8 +131,6 @@ base_init_register_native(struct stg_native_module *mod)
 
 	stg_native_register_funcs(mod, init_monad_io,
 			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
-	stg_native_register_funcs(mod, init_monad_print_str,
-			STG_NATIVE_FUNC_HEAP);
 }
 
 void
