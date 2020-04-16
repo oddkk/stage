@@ -151,6 +151,19 @@ stg_alloc(struct stg_exec *ctx, size_t nmemb, size_t size)
 	}
 }
 
+struct string
+stg_exec_copy_string(struct stg_exec *heap, struct string str)
+{
+	struct string out = {0};
+
+	out.text = stg_alloc(heap, 1, str.length+1);
+	out.length = str.length;
+	memcpy(out.text, str.text, str.length);
+	out.text[str.length] = '\0';
+
+	return out;
+}
+
 modtype_id
 store_register_type(struct objstore *store, struct type type)
 {

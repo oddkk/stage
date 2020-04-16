@@ -477,6 +477,9 @@ struct stg_exec {
 void *
 stg_alloc(struct stg_exec *, size_t nmemb, size_t size);
 
+struct string
+stg_exec_copy_string(struct stg_exec *, struct string);
+
 void free_objstore(struct objstore *store);
 
 void

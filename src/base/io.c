@@ -82,12 +82,7 @@ static void
 io_print_copy(struct stg_exec *heap, void *data)
 {
 	struct io_print_data *closure = data;
-
-	struct string *str = &closure->value;
-	char *new_text = stg_alloc(heap, str->length+1, sizeof(char));
-	memcpy(new_text, str->text, str->length);
-	new_text[str->length] = '\0';
-	str->text = new_text;
+	closure->value = stg_exec_copy_string(heap, closure->value);
 }
 
 static struct stg_io_data
