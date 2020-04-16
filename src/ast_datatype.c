@@ -134,6 +134,7 @@ struct ast_dt_type_class_impl {
 	struct object *arg_values;
 
 	ast_dt_job_id resolve_names;
+	ast_dt_job_id resolve_target;
 	ast_dt_job_id resolve;
 };
 
@@ -205,6 +206,7 @@ enum ast_dt_job_kind {
 	AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES,
 
 	AST_DT_JOB_TC_IMPL_RESOLVE_NAMES,
+	AST_DT_JOB_TC_IMPL_RESOLVE_TARGET,
 	AST_DT_JOB_TC_IMPL_RESOLVE,
 
 	AST_DT_JOB_USE_CONST_EVAL,
@@ -220,6 +222,7 @@ struct ast_dt_job {
 
 	// Use to keep track of internal vertex id in cycle detection.
 	int aux_id;
+	bool failed;
 
 	size_t num_incoming_deps;
 	size_t num_outgoing_deps;
@@ -627,6 +630,9 @@ ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
 		case AST_DT_JOB_TC_IMPL_RESOLVE_NAMES:
 			return "TC IMPL NAMES";
 
+		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
+			return "TC IMPL TARGET";
+
 		case AST_DT_JOB_TC_IMPL_RESOLVE:
 			return "TC IMPL RESOLVE";
 
@@ -731,6 +737,7 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 			break;
 
 		case AST_DT_JOB_TC_IMPL_RESOLVE_NAMES:
+		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
 		case AST_DT_JOB_TC_IMPL_RESOLVE:
 			{
 				struct ast_dt_type_class_impl *impl;
@@ -914,6 +921,10 @@ ast_dt_register_impl(
 		ast_dt_job_tc_impl(ctx, id,
 				AST_DT_JOB_TC_IMPL_RESOLVE_NAMES);
 
+	dt_impl->resolve_target =
+		ast_dt_job_tc_impl(ctx, id,
+				AST_DT_JOB_TC_IMPL_RESOLVE_TARGET);
+
 	dt_impl->resolve =
 		ast_dt_job_tc_impl(ctx, id,
 				AST_DT_JOB_TC_IMPL_RESOLVE);
@@ -924,10 +935,14 @@ ast_dt_register_impl(
 
 	ast_dt_job_dependency(ctx,
 			dt_impl->resolve_names,
+			dt_impl->resolve_target);
+
+	ast_dt_job_dependency(ctx,
+			dt_impl->resolve_target,
 			dt_impl->resolve);
 
 	ast_dt_job_dependency(ctx,
-			dt_impl->resolve,
+			dt_impl->resolve_target,
 			ctx->impl_targets_resolved);
 
 	bool ambigious_refs = false;
@@ -3148,7 +3163,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 					return -1;
 				}
 				ast_dt_find_named_dependencies(
-						ctx, impl->resolve,
+						ctx, impl->resolve_target,
 						AST_NAME_DEP_REQUIRE_VALUE, impl->impl->target);
 
 				err = ast_composite_node_resolve_names(
@@ -3180,47 +3195,51 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			return 0;
 
-		case AST_DT_JOB_TC_IMPL_RESOLVE:
+		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
 			{
 				struct ast_dt_type_class_impl *impl;
 				impl = get_type_class_impl(ctx, job->tc_impl);
 
-				// handle target
-				if (impl->tc < 0) {
-					struct object target_obj = {0};
+				struct object target_obj = {0};
 
-					int err;
-					err = ast_dt_expr_typecheck(
-							ctx, impl->parent, impl->impl->target,
-							AST_NAME_DEP_REQUIRE_VALUE,
-							job_id, false, ctx->ast_ctx->vm->default_types.cons,
-							&target_obj);
-					if (err) {
-						return -1;
-					}
-
-					if (target_obj.type == TYPE_UNSET) {
-						stg_error(ctx->ast_ctx->err, impl->impl->target->loc,
-								"The target of the implementation could not be determined.");
-						return -1;
-					}
-
-					assert_type_equals(ctx->ast_ctx->vm,
-							target_obj.type, ctx->ast_ctx->vm->default_types.cons);
-
-					struct object_cons *tc_cons;
-					tc_cons = *(struct object_cons **)target_obj.data;
-
-					struct stg_type_class *tc;
-					tc = stg_cons_to_type_class(tc_cons);
-					if (!tc) {
-						stg_error(ctx->ast_ctx->err, impl->impl->target->loc,
-								"Expected type class, got other constructor.");
-						return -1;
-					}
-
-					impl->tc = ast_dt_find_or_register_tc(ctx, tc);
+				int err;
+				err = ast_dt_expr_typecheck(
+						ctx, impl->parent, impl->impl->target,
+						AST_NAME_DEP_REQUIRE_VALUE,
+						job_id, false, ctx->ast_ctx->vm->default_types.cons,
+						&target_obj);
+				if (err) {
+					return -1;
 				}
+
+				if (target_obj.type == TYPE_UNSET) {
+					stg_error(ctx->ast_ctx->err, impl->impl->target->loc,
+							"The target of the implementation could not be determined.");
+					return -1;
+				}
+
+				assert_type_equals(ctx->ast_ctx->vm,
+						target_obj.type, ctx->ast_ctx->vm->default_types.cons);
+
+				struct object_cons *tc_cons;
+				tc_cons = *(struct object_cons **)target_obj.data;
+
+				struct stg_type_class *tc;
+				tc = stg_cons_to_type_class(tc_cons);
+				if (!tc) {
+					stg_error(ctx->ast_ctx->err, impl->impl->target->loc,
+							"Expected type class, got other constructor.");
+					return -1;
+				}
+
+				impl->tc = ast_dt_find_or_register_tc(ctx, tc);
+			}
+			return 0;
+
+		case AST_DT_JOB_TC_IMPL_RESOLVE:
+			{
+				struct ast_dt_type_class_impl *impl;
+				impl = get_type_class_impl(ctx, job->tc_impl);
 
 				struct ast_dt_type_class *type_class;
 				type_class = get_type_class(ctx, impl->tc);
@@ -3470,6 +3489,14 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 			break;
 
+		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
+			{
+				struct ast_dt_type_class_impl *impl;
+				impl = get_type_class_impl(ctx, job->tc_impl);
+				assert(impl->resolve_target == job_id);
+				impl->resolve_target = -1;
+			}
+			break;
 		case AST_DT_JOB_TC_IMPL_RESOLVE:
 			{
 				struct ast_dt_type_class_impl *impl;
@@ -3675,6 +3702,7 @@ ast_dt_job_location(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			}
 
 		case AST_DT_JOB_TC_IMPL_RESOLVE_NAMES:
+		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
 		case AST_DT_JOB_TC_IMPL_RESOLVE:
 			{
 				struct ast_dt_type_class_impl *impl;
@@ -3820,13 +3848,30 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 		ctx->terminal_jobs = job->terminal_jobs;
 		job->terminal_jobs = -1;
 
+		if (job->failed) {
+			ast_dt_remove_job_from_target(ctx, job_id);
+			ast_dt_free_job(ctx, job_id);
+			continue;
+		}
+
 		int err;
 		err = ast_dt_dispatch_job(ctx, job_id);
-		if (err) {
+		if (err < 0) {
 #if AST_DT_DEBUG_JOBS
 			printf(TC(TC_BRIGHT_RED, "job failed!") "\n");
 #endif
+
 			failed_jobs += 1;
+
+			if (job->num_incoming_deps > 0) {
+				// The job prepared itself to yield, but failed instead.
+				// Because other jobs now have outgoing dependencies on this
+				// node we have to allow it to pass through again and
+				// immediatly fail on the next dispatch.
+
+				job->failed = true;
+				continue;
+			}
 
 			ast_dt_remove_job_from_target(ctx, job_id);
 			ast_dt_free_job(ctx, job_id);
@@ -3841,6 +3886,8 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 			// visited to allow it to pass through again.
 			continue;
 		}
+
+		assert(!err);
 
 		for (size_t i = 0; i < job->num_outgoing_deps; i++) {
 			struct ast_dt_job_dep *dep;
