@@ -819,6 +819,7 @@ stg_list_from_carray(struct vm *vm, struct stg_exec *heap,
 	list.head = stg_list_array_cons_head;
 	list.tail = stg_list_array_cons_tail;
 	list.copy = stg_list_array_cons_copy;
+	list.element_type = element_type;
 
 	struct type *type;
 	type = vm_get_type(vm, element_type);
@@ -833,7 +834,16 @@ stg_list_from_carray(struct vm *vm, struct stg_exec *heap,
 	array_data->elements = data;
 	array_data->num_elements = num_elements;
 
+	list.data_size = sizeof(struct stg_list_array_data);
 	list.data = array_data;
 
+	return list;
+}
+
+struct stg_list_data
+stg_list_empty(struct vm *vm, struct stg_exec *heap, type_id element_type)
+{
+	struct stg_list_data list = {0};
+	list.element_type = element_type;
 	return list;
 }
