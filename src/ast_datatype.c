@@ -3796,7 +3796,7 @@ ast_dt_report_cyclic_dependencies(struct ast_dt_context *ctx)
 		struct ast_dtc_vertex *vert;
 		vert = &graph.vertices[job->aux_id];
 
-		assert(edge_i < graph.num_edges);
+		assert(edge_i + job->num_outgoing_deps <= graph.num_edges);
 		vert->outgoing_edges = &graph.edges[edge_i];
 
 		for (size_t i = 0; i < job->num_outgoing_deps; i++) {
