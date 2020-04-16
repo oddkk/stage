@@ -30,6 +30,10 @@
 #error "UWT_OBJ_COPY_FUNC macro must be defined when importing the native monad template"
 #endif
 
+#ifndef UWT_OBJ_EQUALS_FUNC
+#define UWT_OBJ_EQUALS_FUNC NULL
+#endif
+
 #ifndef UWT_OBJ_DATA_TYPE
 #error "UWT_OBJ_DATA_TYPE macro must be defined when importing the native monad template"
 #endif
@@ -101,6 +105,7 @@ static struct type_base UWT_FUNC(type_base) = {
 	.equals = UWT_FUNC(type_equals),
 	.repr = UWT_FUNC(type_repr),
 	.obj_copy = UWT_OBJ_COPY_FUNC,
+	.obj_equals = UWT_OBJ_EQUALS_FUNC,
 };
 
 UWT_FUNC_EXPOSED type_id

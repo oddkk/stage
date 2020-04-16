@@ -45,6 +45,52 @@ stg_list_obj_copy(struct stg_exec *ctx, void *type_data, void *obj_data)
 	stg_list_copy(ctx, list);
 }
 
+bool
+stg_list_obj_equals(struct vm *vm, void *type_data,
+		void *lhs_obj_data, void *rhs_obj_data)
+{
+	struct stg_list_data lhs = *(struct stg_list_data *)lhs_obj_data;
+	struct stg_list_data rhs = *(struct stg_list_data *)rhs_obj_data;
+
+	assert_type_equals(vm, lhs.element_type, rhs.element_type);
+
+	type_id tid = lhs.element_type;
+	struct type *type = vm_get_type(vm, tid);
+
+	uint8_t lhs_buffer[type->size];
+	uint8_t rhs_buffer[type->size];
+
+	struct object lhs_obj = {0};
+	lhs_obj.type = tid;
+	lhs_obj.data = lhs_buffer;
+
+	struct object rhs_obj = {0};
+	rhs_obj.type = tid;
+	rhs_obj.data = rhs_buffer;
+
+	struct stg_exec heap = {0};
+	heap.heap = &vm->transient;
+
+	arena_mark cp = arena_checkpoint(heap.heap);
+
+	int lhs_end = 0, rhs_end = 0;
+	do {
+		lhs_end = lhs.head(&heap, lhs.data, lhs_buffer);
+		rhs_end = rhs.head(&heap, rhs.data, rhs_buffer);
+
+		if (!lhs_end && !rhs_end) {
+			if (!obj_equals(vm, lhs_obj, rhs_obj)) {
+				arena_reset(heap.heap, cp);
+				return false;
+			}
+		}
+	} while (!lhs_end && !rhs_end);
+
+	arena_reset(heap.heap, cp);
+
+	return lhs_end && rhs_end;
+}
+
 void
 stg_list_copy(struct stg_exec *heap, struct stg_list_data *list)
 {
@@ -65,12 +111,13 @@ stg_list_copy(struct stg_exec *heap, struct stg_list_data *list)
 #define REAL_NAME "List"
 #define UWT_TYPE_INFO_TYPE struct stg_list_type_info
 #define UWT_OBJ_COPY_FUNC stg_list_obj_copy
+#define UWT_OBJ_EQUALS_FUNC stg_list_obj_equals
 #define UWT_OBJ_FFI_TYPE stg_list_ffi_type
 #define UWT_OBJ_DATA_TYPE struct stg_list_data
 #define EXPOSE_FUNCS 1
 #include "../unary_wrapping_type_template.h"
 #undef UWT_TYPE_INFO_TYPE
-#undef UWT_OBJ_COPY_FUNC
+#undef UWT_OBJ_EQUALS_FUNC
 #undef UWT_OBJ_FFI_TYPE
 #undef UWT_OBJ_DATA_TYPE
 
