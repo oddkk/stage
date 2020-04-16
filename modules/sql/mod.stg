@@ -1,12 +1,59 @@
+use mod base;
+use mod base.io.*;
+use mod base.list.List;
+
 mod message;
 
-int     := base.int;
-String  := base.String;
-Unit    := base.Unit;
-Type    := base.Type;
-IO      := base.IO;
+# SQLFragmentPart := Variant {
+# 	frag String,
+# 	var int,
+# };
+#
+# SQLFragmentVar := Struct {
+# 	id: int;
+# 	sqlType: base.Maybe[String];
+# 	value: String;
+# };
+#
+# SQLFragment := Struct {
+# 	parts: List[SQLFragmentPart];
+# 	vars:  List[SQLFragmentVar];
+# 	nextVar: int;
+# };
+#
+# SQLType := class [$T] {
+# 	toSQLString: (T) -> String;
+# 	fromSQLString: (String) -> T;
+# 	# typeName: base.Maybe[String];
+# };
 
-DBConnectionHandle := base.int;
+# SQLFrag := class [$T] {
+# 	cons: (T, SQLFragment) -> SQLFragment;
+# };
+#
+# impl SQLFrag[$T] + SQLType[T] {
+# 	cons := (var: T, tail: SQLFragment) -> SQLFragment
+# 		=> SQLFragment {
+# 			parts = cons[](, tail.
+# 		};
+# };
+
+# impl SQLFrag[SQLFragment] {
+# };
+
+# impl SQLType[int] {
+# 	toSQLString := base.ToString[int].toString;
+# 	fromSQLString := (a: String) -> int => 0; # TODO
+# 	# typeName := base.Maybe[String].Some("integer");
+# };
+#
+# impl SQLType[String] {
+# 	toSQLString := base.id[String];
+# 	fromSQLString := base.id[String]; # TODO
+# 	# typeName := base.Maybe[String].Some("text");
+# };
+
+DBConnectionHandle := int;
 
 _dbConnect := (kind: String, conStr: String) -> IO[DBConnectionHandle]
 	@native("sql_db_connect");
@@ -20,18 +67,21 @@ Connection := Struct {
 	# = _dbConnect(dbKind, connectionString);
 };
 
-Query := [ParamsType: Type] Struct {
-	stmt: String;
-	params: ParamsType;
-};
+query := (db: Connection, q: String) -> IO[List[List[String]]]
+	=> ((db: DBConnectionHandle, query: String) -> IO[List[List[String]]]
+		@native("sql_db_query"))(db._handle, q);
 
-sql := (a: String, parameters: T) -> Query[$T]
-	=> Query[T] { stmt = a; params = parameters; };
+# SQLQuery := Struct {
+# 	stmt: String;
+# 	params: List[String];
+# };
 
+# query := (db: Connection, q: SQLQuery) -> IO[List[$U]]
+# 	=> ((db: DBConnectionHandle,
+# 		query: String,
+# 		paramType: Type,
+# 		resultType: Type) -> IO[U]
+# 			@native("sql_db_query"))(db._handle, q.stmt, T, U);
 
-query := (db: Connection, q: Query[$T]) -> IO[$U]
-	=> ((db: DBConnectionHandle,
-		query: String,
-		paramType: Type,
-		resultType: Type) -> IO[U]
-			@native("sql_db_query"))(db._handle, q.stmt, T, U);
+# transact := (db: Connection, ) -> IO[List[$U]]
+# 	=> ...;

@@ -1,8 +1,8 @@
 connect := (connectionString: String) -> IO[Connection]
-	=> base.io.bind[](
+	=> bind[](
 		_dbConnect("postgresql", connectionString),
 		(handle: DBConnectionHandle) =>
-			base.io.return[](Connection {
+			return[](Connection {
 				dbKind = "postgresql";
 				connectionString = connectionString;
 				_handle = handle;
