@@ -257,9 +257,6 @@ struct ast_dt_job {
 struct ast_dt_type_class {
 	struct stg_type_class *tc;
 
-	// The type class instance is created, but it's impls are not yet filled
-	// in.
-	ast_dt_job_id type_class_resolved;
 	// The type class instance is ready to be used.
 	ast_dt_job_id type_class_ready;
 };
@@ -891,11 +888,12 @@ ast_dt_find_or_register_tc(struct ast_dt_context *ctx,
 	dt_tc = get_type_class(ctx, tc_id);
 	dt_tc->tc = tc;
 
-	dt_tc->type_class_resolved =
-		ast_dt_job_nop(ctx, &dt_tc->type_class_resolved);
-
 	dt_tc->type_class_ready =
 		ast_dt_job_nop(ctx, &dt_tc->type_class_ready);
+
+	ast_dt_job_dependency(ctx,
+			ctx->impl_targets_resolved,
+			dt_tc->type_class_ready);
 
 	return tc_id;
 }
@@ -3233,6 +3231,12 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				}
 
 				impl->tc = ast_dt_find_or_register_tc(ctx, tc);
+
+				struct ast_dt_type_class *type_class;
+				type_class = get_type_class(ctx, impl->tc);
+
+				ast_dt_job_dependency(ctx,
+					impl->resolve, type_class->type_class_ready);
 			}
 			return 0;
 
