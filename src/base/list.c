@@ -758,7 +758,11 @@ stg_list_array_cons_head(struct stg_exec *heap,
 {
 	struct stg_list_array_data *data;
 	data = list->data;
-	assert(data->num_elements > 0);
+
+	if (data->num_elements <=  0) {
+		return -1;
+	}
+
 	memcpy(out, data->elements, data->element_size);
 
 	return 0;
