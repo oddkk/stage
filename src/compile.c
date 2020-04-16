@@ -192,9 +192,15 @@ job_parse_file(struct compile_ctx *ctx, job_parse_file_t *data)
 	struct st_node *stmt;
 	stmt = node->MODULE.body;
 
+	size_t num_errors = ctx->ast_ctx->err->num_errors;
+
 	while (stmt) {
 		st_node_visit_stmt(ctx->ast_ctx, data->mod, data->scope, stmt);
 		stmt = stmt->next_sibling;
+	}
+
+	if (num_errors < ctx->ast_ctx->err->num_errors) {
+		return JOB_ERROR;
 	}
 
 	if (data->num_unparsed_files) {

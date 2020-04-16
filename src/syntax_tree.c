@@ -724,6 +724,7 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		}
 
 		struct ast_func_arg func_args[num_args];
+		bool failed = false;
 
 		{
 			struct st_node *arg = args;
@@ -735,8 +736,16 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 					st_node_visit_expr(ctx, mod,
 							expr_ctx,
 							arg->TUPLE_LIT_ITEM.value);
+				if (!func_args[i].value) {
+					failed = true;
+				}
+
 				arg = arg->next_sibling;
 			}
+		}
+
+		if (failed) {
+			return NULL;
 		}
 
 		if (node->type == ST_NODE_FUNC_CALL) {
