@@ -4,6 +4,22 @@ use mod base.list.List;
 
 mod message;
 
+DBConnectionHandle := int;
+
+_dbConnect := (kind: String, conStr: String) -> IO[DBConnectionHandle]
+	@native("sql_db_connect");
+
+Connection := Struct {
+	dbKind: String;
+	connectionString: String;
+	_handle: DBConnectionHandle;
+};
+
+query := (db: Connection, q: String, args: List[String]) -> IO[List[List[String]]]
+	=> ((db: DBConnectionHandle, query: String, args: List[String]) -> IO[List[List[String]]]
+		@native("sql_db_query"))(db._handle, q, args);
+
+
 # SQLFragmentPart := Variant {
 # 	frag String,
 # 	var int,
@@ -52,24 +68,6 @@ mod message;
 # 	fromSQLString := base.id[String]; # TODO
 # 	# typeName := base.Maybe[String].Some("text");
 # };
-
-DBConnectionHandle := int;
-
-_dbConnect := (kind: String, conStr: String) -> IO[DBConnectionHandle]
-	@native("sql_db_connect");
-
-Connection := Struct {
-	dbKind: String;
-	connectionString: String;
-	_handle: DBConnectionHandle;
-	# TODO: Fix binds from non-overridable members conflicting with implicit
-	# binds.
-	# = _dbConnect(dbKind, connectionString);
-};
-
-query := (db: Connection, q: String) -> IO[List[List[String]]]
-	=> ((db: DBConnectionHandle, query: String) -> IO[List[List[String]]]
-		@native("sql_db_query"))(db._handle, q);
 
 # SQLQuery := Struct {
 # 	stmt: String;

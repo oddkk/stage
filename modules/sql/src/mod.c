@@ -85,6 +85,8 @@ sql_db_connect(struct stg_exec *ctx, struct string kind, struct string con_str)
 struct sql_query_data {
 	int64_t db;
 	struct string query;
+	struct string *args;
+	size_t num_args;
 };
 
 void
@@ -111,8 +113,22 @@ sql_db_query_unsafe(struct vm *vm, struct stg_exec *heap,
 	memcpy(query, closure->query.text, closure->query.length);
 	query[closure->query.length] = '\0';
 
+	char const *args[closure->num_args];
+	for (size_t i = 0; i < closure->num_args; i++) {
+		assert(closure->args[i].text[closure->args[i].length] == 0);
+
+		args[i] = closure->args[i].text;
+	}
+
 	PGresult *res;
-	res = PQexec(db->con, query);
+	res = PQexecParams(db->con, query,
+			closure->num_args,
+			NULL, // paramTypes
+			args, // paramValues
+			NULL, // paramLengths: This argument is ignored for text params.
+			NULL, // paramFormats: When NULL, all args are presumed to be text.
+			0     // resultFormat: 0 indicates results should be text.
+		);
 
 	arena_reset(tmp_mem, cp);
 
@@ -170,8 +186,7 @@ sql_db_query_unsafe(struct vm *vm, struct stg_exec *heap,
 		case PGRES_NONFATAL_ERROR:
 		case PGRES_FATAL_ERROR:
 		default:
-			PQresultErrorMessage(res);
-			panic("Query failed.");
+			panic("Query failed:\n%s", PQresultErrorMessage(res));
 			break;
 	}
 
@@ -183,11 +198,24 @@ sql_db_query_copy(struct stg_exec *heap, void *data)
 {
 	struct sql_query_data *closure = data;
 	closure->query = stg_exec_copy_string(heap, closure->query);
+
+	struct string *new_args = stg_alloc(heap, closure->num_args, sizeof(struct string));
+
+	for (size_t i = 0; i < closure->num_args; i++) {
+		new_args[i] = stg_exec_copy_string(heap, closure->args[i]);
+	}
+
+	closure->args = new_args;
 }
 
+struct tmp_arg {
+	struct string str;
+	struct tmp_arg *next;
+};
+
 struct stg_init_data
-sql_db_query(struct stg_exec *ctx, int64_t db,
-		struct string query)
+sql_db_query(struct stg_exec *ctx, struct stg_module *mod,
+		int64_t db, struct string query, struct stg_list_data args_list)
 {
 	struct stg_init_data monad = {0};
 	monad.call = sql_db_query_unsafe;
@@ -199,6 +227,53 @@ sql_db_query(struct stg_exec *ctx, int64_t db,
 	closure = monad.data;
 	closure->db = db;
 	closure->query = query;
+
+	struct arena *tmp;
+	tmp = &mod->vm->transient;
+	arena_mark cp = arena_checkpoint(tmp);
+
+	size_t num_args = 0;
+	struct tmp_arg *head = NULL;
+	struct tmp_arg **end = &head;
+
+	assert_type_equals(mod->vm,
+			args_list.element_type,
+			mod->vm->default_types.string);
+
+	struct string current_arg = {0};
+	int eol;
+	while (args_list.head && !(eol = args_list.head(ctx, &args_list, &current_arg))) {
+		struct tmp_arg *new_arg;
+		new_arg = arena_alloc(tmp, sizeof(struct tmp_arg));
+		new_arg->str = current_arg;
+
+		*end = new_arg;
+		end = &new_arg->next;
+		num_args += 1;
+
+		args_list = args_list.tail(ctx, &args_list);
+	}
+
+	closure->args = stg_alloc(ctx,
+			num_args, sizeof(struct string));
+	closure->num_args = num_args;
+
+	{
+		struct tmp_arg *it = head;
+		for (size_t i = 0; i < num_args; i++) {
+			closure->args[i] = it->str;
+			
+			it = it->next;
+		}
+		assert(it == NULL);
+	}
+
+	if (ctx->heap == tmp) {
+		closure->args = arena_reset_and_keep(tmp, cp, closure->args,
+				closure->num_args * sizeof(struct string));
+	} else {
+		arena_reset(tmp, cp);
+	}
 
 	return monad;
 }
@@ -232,7 +307,7 @@ mod_sql_load(struct stg_native_module *mod)
 	stg_native_register_funcs(mod, sql_db_connect,
 			STG_NATIVE_FUNC_HEAP);
 	stg_native_register_funcs(mod, sql_db_query,
-			STG_NATIVE_FUNC_HEAP);
+			STG_NATIVE_FUNC_HEAP|STG_NATIVE_FUNC_MODULE_CLOSURE);
 
 	return 0;
 }

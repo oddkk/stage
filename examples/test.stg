@@ -109,15 +109,10 @@ printAccount := (a: Account) -> io.IO[Unit]
 		)
 	);
 
-# printRow := (r: List[String]) -> String
-# 	=> join(map[String, String](f => concat(f, "|"), r));
-#
-# printRows := (r: List[List[String]]) -> String
-# 	=> join(map[List[String], String](f => concat(printRow(f), "\n"), r));
-
 !withIO[Unit](
 	io.bind[](sql.postgresql.connect("dbname=test"),
-		con => io.bind[](sql.query(con, "select * from account"),
+		con => io.bind[](sql.query(con, "select * from account where account=$1",
+				cons[String]("6", nil[String])),
 			rows => match rows {
 				cons[List[String]]($r, _) => match rowToAccount(r) {
 					Maybe[Account].Some($a) => printAccount(a);

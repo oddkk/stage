@@ -130,6 +130,8 @@ stg_list_nil_cons_pack(
 	struct stg_list_data *list = out;
 	memset(list, 0, sizeof(struct stg_list_data));
 
+	list->element_type = *(type_id *)params[0];
+
 	return 0;
 }
 
