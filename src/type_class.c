@@ -249,6 +249,11 @@ stg_type_class_from_ast_node(struct ast_context *ctx,
 	ast_typecheck_deps_slots(&env,
 			body_deps, num_deps);
 
+	struct ast_typecheck_dep param_deps[num_deps];
+	memcpy(param_deps, deps, num_deps * sizeof(struct ast_typecheck_dep));
+	ast_typecheck_deps_slots(&env,
+			param_deps, num_deps);
+
 	struct stg_type_class_param params[num_params];
 	ast_slot_id param_slots[num_params];
 
@@ -273,7 +278,7 @@ stg_type_class_from_ast_node(struct ast_context *ctx,
 		if (param->type) {
 			ast_slot_id type_slot;
 			type_slot = ast_node_constraints(
-					ctx, mod, &env, deps, num_deps,
+					ctx, mod, &env, param_deps, num_deps,
 					param->type);
 
 			ast_slot_require_type(
