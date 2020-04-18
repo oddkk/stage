@@ -467,6 +467,7 @@ struct solve_context {
 	struct ast_slot_resolve *slots;
 	struct ast_context *ast_ctx;
 	size_t num_slots;
+	size_t num_initial_slots;
 
 	size_t num_extra_slots;
 	struct ast_slot_resolve *extra_slots;
@@ -501,15 +502,21 @@ ast_constraint_source_name(enum ast_constraint_source source)
 #endif
 
 static inline size_t
-ast_env_num_constraints(struct solve_context *ctx)
+ast_env_in_num_constraints(struct ast_env *env)
 {
-	if (ctx->env->num_pages == 0) {
+	if (env->num_pages == 0) {
 		return 0;
 	}
 
 	return
-		(ctx->env->num_pages - 1) * ctx->env->constraints_per_page
-		+ ctx->env->last_page_num_used;
+		(env->num_pages - 1) * env->constraints_per_page
+		+ env->last_page_num_used;
+}
+
+static inline size_t
+ast_env_num_constraints(struct solve_context *ctx)
+{
+	return ast_env_in_num_constraints(ctx->env);
 }
 
 static inline struct ast_slot_constraint *
@@ -565,10 +572,11 @@ ast_print_constraint(
 	struct ast_slot_constraint *constr;
 	constr = ast_get_constraint(ctx, constr_id);
 
-	printf("%s:%zu %s ",
+	printf("%s:%zu %s %s",
 			constr->reason.impose_loc.filename,
 			constr->reason.impose_loc.line,
-			ast_constraint_source_name(constr->source));
+			ast_constraint_source_name(constr->source),
+			constr->disabled ? "[disabled] " : "");
 
 	switch (constr->kind) {
 		case AST_SLOT_REQ_ERROR:
@@ -652,7 +660,8 @@ ast_print_slot_result(
 	struct ast_slot_result res;
 	res = result[slot_id];
 
-	printf("  result: 0x%02x\n", res.result);
+	printf("  result: 0x%02x%s\n", res.result,
+	((res.result & AST_SLOT_RES_DECAYED) != 0) ? " [decayed]" : "");
 	switch (ast_slot_value_result(res.result)) {
 		case AST_SLOT_RES_VALUE_UNKNOWN:
 			printf("   -value: unknown\n");
@@ -742,7 +751,7 @@ ast_print_slot(
 		printf(" " TC(TC_BRIGHT_RED, "(error)\n"));
 	}
 
-	if (slot_id < ctx->num_slots) {
+	if (slot_id < ctx->num_initial_slots) {
 		ast_print_slot_result(ctx->vm, result, slot_id);
 	}
 
@@ -1882,6 +1891,10 @@ ast_slot_solve_impose_constraint(
 	struct ast_slot_constraint *constr;
 	constr = ast_get_constraint(ctx, constr_id);
 
+	if (constr->disabled) {
+		return;
+	}
+
 	switch (constr->kind) {
 		case AST_SLOT_REQ_ERROR:
 			{
@@ -2579,6 +2592,30 @@ ast_slot_verify_fail(
 }
 #endif
 
+static ssize_t
+ast_slot_member_ref_lookup(
+		struct solve_context *ctx,
+		struct object_cons *cons, struct ast_slot_member_ref ref)
+{
+	size_t param_i = -1;
+	if (ref.named) {
+		ssize_t lookup_res;
+		lookup_res = object_cons_find_param(
+				cons, ref.name);
+		if (lookup_res < 0) {
+			return -1;
+		}
+
+		param_i = lookup_res;
+	} else if (ref.index < cons->num_params) {
+		param_i = ref.index;
+	} else {
+		return -1;
+	}
+
+	return param_i;
+}
+
 int
 ast_slot_verify_param(
 		struct solve_context *ctx, struct stg_location loc,
@@ -2601,25 +2638,19 @@ ast_slot_verify_param(
 		return 1;
 	}
 
-	size_t param_i = -1;
-	if (ref.named) {
-		ssize_t lookup_res;
-		lookup_res = object_cons_find_param(
-				cons, ref.name);
-		if (lookup_res < 0) {
+	ssize_t param_i;
+	param_i = ast_slot_member_ref_lookup(
+			ctx, cons, ref);
+	if (param_i < 0) {
+		if (ref.named) {
 			stg_error(ctx->err, loc,
 					"Object has no param '%.*s'.\n",
 					ALIT(ref.name));
-			return -1;
+		} else {
+			stg_error(ctx->err, loc,
+					"Object has no param %zu.\n",
+					ref.index);
 		}
-
-		param_i = lookup_res;
-	} else if (ref.index < cons->num_params) {
-		param_i = ref.index;
-	} else {
-		stg_error(ctx->err, loc,
-				"Object has no param %zu.\n",
-				ref.index);
 		return -1;
 	}
 
@@ -2696,57 +2727,21 @@ ast_slot_verify_param(
 	return 0;
 }
 
-int
-ast_slot_verify_member(
-		struct solve_context *ctx, struct stg_location loc,
-		ast_slot_id target_id, ast_slot_id member_id,
-		struct ast_slot_member_ref ref)
+static int
+ast_slot_try_get_inst_target(
+		struct solve_context *ctx, ast_slot_id target_id,
+		struct object_inst **out_inst, struct object *out_target_val)
 {
+	int err;
+
 	struct ast_slot_resolve *target;
 	target = ast_get_slot(ctx, target_id);
-
-	int err;
 
 	struct object_inst *inst;
 	err = ast_slot_try_get_inst(
 			ctx, target_id, &inst, NULL);
 	if (err < 0) {
-		stg_error(ctx->err, loc,
-				"Object has no members.");
-		return -1;
-	} else if (err > 0) {
-		return 1;
-	}
-
-	size_t member_i = -1;
-	if (ref.named) {
-		ssize_t lookup_res;
-		lookup_res = object_cons_find_param(
-				inst->cons, ref.name);
-		if (lookup_res < 0) {
-			stg_error(ctx->err, loc,
-					"Object has no member '%.*s'.\n",
-					ALIT(ref.name));
-			return -1;
-		}
-
-		member_i = lookup_res;
-	} else if (ref.index < inst->cons->num_params) {
-		member_i = ref.index;
-	} else {
-		stg_error(ctx->err, loc,
-				"Object has no member %zu.\n",
-				ref.index);
-		return -1;
-	}
-
-	struct object mbr_val = {0};
-	err = ast_slot_try_get_value(
-			ctx, member_id, TYPE_UNSET, &mbr_val);
-	if (err < 0) {
-		// TODO: Better error message.
-		stg_error(ctx->err, loc,
-				"Failed to resolve the value of this member.");
+		// The object has no members.
 		return -1;
 	} else if (err > 0) {
 		return 1;
@@ -2760,10 +2755,8 @@ ast_slot_verify_member(
 	err = ast_slot_try_get_value(
 			ctx, target_id, TYPE_UNSET, &target_val);
 	if (err < 0) {
-		// TODO: Better error message.
-		stg_error(ctx->err, loc,
-				"Failed to resolve the value of the target.");
-		return -1;
+		// Failed to resolve the value of the target.
+		return -2;
 	} else if (err > 0) {
 		return 1;
 	}
@@ -2776,10 +2769,84 @@ ast_slot_verify_member(
 		if (target_val_type->static_object.type != TYPE_UNSET) {
 			target_val = target_val_type->static_object;
 		} else {
-			stg_error(ctx->err, loc,
-					"This type has no static members.");
-			return -1;
+			// The type has no static members.
+			return -3;
 		}
+	}
+
+
+
+	*out_inst = inst;
+	*out_target_val = target_val;
+	return 0;
+}
+
+int
+ast_slot_verify_member(
+		struct solve_context *ctx, struct stg_location loc,
+		ast_slot_id target_id, ast_slot_id member_id,
+		struct ast_slot_member_ref ref)
+{
+	struct ast_slot_resolve *target;
+	target = ast_get_slot(ctx, target_id);
+
+	int err;
+
+	struct object_inst *inst;
+	struct object target_val;
+	err = ast_slot_try_get_inst_target(
+			ctx, target_id, &inst, &target_val);
+	if (err) {
+		switch (err) {
+			case -1:
+				stg_error(ctx->err, loc,
+						"Object has no members.");
+				break;
+
+			case -2:
+				// TODO: Better error message.
+				stg_error(ctx->err, loc,
+						"Failed to resolve the value of the target.");
+				break;
+
+			case -3:
+				stg_error(ctx->err, loc,
+						"This type has no static members.");
+				break;
+
+			default:
+				break;
+		}
+
+		return err > 0 ? err : -1;
+	}
+
+	ssize_t member_i;
+	member_i = ast_slot_member_ref_lookup(
+			ctx, inst->cons, ref);
+	if (member_i < 0) {
+		if (ref.named) {
+			stg_error(ctx->err, loc,
+					"Object has no param '%.*s'.\n",
+					ALIT(ref.name));
+		} else {
+			stg_error(ctx->err, loc,
+					"Object has no param %zu.\n",
+					ref.index);
+		}
+		return -1;
+	}
+
+	struct object mbr_val = {0};
+	err = ast_slot_try_get_value(
+			ctx, member_id, TYPE_UNSET, &mbr_val);
+	if (err < 0) {
+		// TODO: Better error message.
+		stg_error(ctx->err, loc,
+				"Failed to resolve the value of this member.");
+		return -1;
+	} else if (err > 0) {
+		return 1;
 	}
 
 	struct object exp_val = {0};
@@ -2837,6 +2904,10 @@ ast_slot_verify_constraint(
 #endif
 	struct ast_slot_constraint *constr;
 	constr = ast_get_constraint(ctx, constr_id);
+
+	if (constr->disabled) {
+		return 0;
+	}
 
 	struct ast_slot_resolve *target;
 	target = ast_get_slot(ctx, constr->target);
@@ -3355,6 +3426,82 @@ ast_slot_verify_constraint(
 #endif
 }
 
+static void
+ast_slot_detect_cons_conflicts(
+		struct solve_context *ctx, struct ast_env *in_env, ast_constraint_id **conflicts, size_t *num_conflicts)
+{
+	size_t num_constraints = ast_env_in_num_constraints(in_env);
+	for (ast_constraint_id constr_i = 0; constr_i < num_constraints; constr_i++) {
+		struct ast_slot_constraint *constr;
+		constr = ast_get_constraint(ctx, constr_i);
+
+		if (constr->disabled) {
+			continue;
+		}
+
+		switch (constr->kind) {
+			case AST_SLOT_REQ_IS_OBJ:
+				{
+					int err;
+					type_id real_type = {0};
+					err = ast_slot_try_get_type(
+							ctx, constr->target, &real_type);
+					if (err) {
+						break;
+					}
+
+					if (constr->is.obj.type == ctx->vm->default_types.cons &&
+							real_type != ctx->vm->default_types.cons) {
+						dlist_append(*conflicts, *num_conflicts, &constr_i);
+					}
+				}
+				break;
+
+			case AST_SLOT_REQ_MEMBER_NAMED:
+				{
+					int err;
+
+					struct object_inst *inst;
+					struct object target_val;
+					err = ast_slot_try_get_inst_target(
+							ctx, constr->target, &inst, &target_val);
+					if (err) {
+						break;
+					}
+
+					struct ast_slot_member_ref ref = {0};
+					ref.named = true;
+					ref.name = constr->member.name;
+
+					ssize_t member_i;
+					member_i = ast_slot_member_ref_lookup(
+							ctx, inst->cons, ref);
+					if (member_i < 0) {
+						break;
+					}
+
+					type_id mbr_type = inst->cons->params[member_i].type;
+
+					type_id real_type = {0};
+					err = ast_slot_try_get_type(
+							ctx, constr->member.slot, &real_type);
+					if (err) {
+						break;
+					}
+
+					if (mbr_type == ctx->vm->default_types.cons &&
+							real_type != ctx->vm->default_types.cons) {
+						dlist_append(*conflicts, *num_conflicts, &constr_i);
+					}
+				}
+				break;
+
+			default:
+				break;
+		}
+	}
+}
+
 __attribute__((__format__ (__printf__, 5, 6)))
 static inline void
 dot_slot_rel(FILE *fp, struct solve_context *ctx,
@@ -3514,16 +3661,12 @@ ast_slot_try_solve(
 		struct ast_context *ast_ctx, struct stg_module *mod,
 		struct ast_env *in_env, struct ast_slot_result *out_result)
 {
-	struct ast_env _env = {0};
-	ast_env_copy(&_env, in_env);
-
 	struct solve_context _ctx = {0};
 	struct solve_context *ctx = &_ctx;
 
 	static size_t next_invoc_id = 0;
 	size_t invoc_id = next_invoc_id;
 	in_env->invoc_id = invoc_id;
-	_env.invoc_id = invoc_id;
 	next_invoc_id += 1;
 
 	ctx->vm = ast_ctx->vm;
@@ -3532,63 +3675,152 @@ ast_slot_try_solve(
 	ctx->type = ctx->vm->default_types.type;
 	ctx->cons = ctx->vm->default_types.cons;
 	ctx->inst = ctx->vm->default_types.inst;
-	ctx->env = &_env;
 	ctx->ast_ctx = ast_ctx;
-	ctx->num_slots = ctx->env->num_alloced_slots;
+	ctx->num_initial_slots = in_env->num_alloced_slots;
 
-	struct ast_slot_resolve _slots[ctx->num_slots];
-	memset(_slots, 0, sizeof(struct ast_slot_resolve) * ctx->num_slots);
-	ctx->slots = _slots;
+	struct ast_env _env = {0};
+	ctx->env = &_env;
+
+	ast_env_free(ctx->env);
+	ast_env_copy(ctx->env, in_env);
+
+
+	struct arena *mem = &ctx->vm->transient;
+	arena_mark cp = arena_checkpoint(mem);
 
 #if AST_DEBUG_SLOT_SOLVE
 	printf("====== begin solve slots ======\n");
-	size_t original_num_constraints = ast_env_num_constraints(ctx);
+	size_t original_num_constraints = ast_env_in_num_constraints(in_env);
 #endif
 
 	size_t num_applied_constraints = 0;
-	bool made_progress = true;
 
-	while (made_progress) {
-		made_progress = false;
+	ast_constraint_id *conflicts = NULL;
+	size_t num_conflicts = 0;
 
-		if (ctx->num_slots + ctx->num_extra_slots < ctx->env->num_alloced_slots) {
-			size_t new_num_extra_slots = ctx->env->num_alloced_slots - ctx->num_slots;
-			ctx->extra_slots = realloc(ctx->extra_slots,
-					new_num_extra_slots * sizeof(struct ast_slot_resolve));
-			if (!ctx->extra_slots) {
-				panic("Failed to alloc new slots during solve.");
-				return -1;
+	int num_tries = 0;
+	bool should_retry = true;
+	while (should_retry) {
+		arena_reset(mem, cp);
+		cp = arena_checkpoint(mem);
+
+		ctx->num_extra_slots = 0;
+		ctx->num_slots = ctx->env->num_alloced_slots;
+		ctx->slots = arena_allocn(mem, ctx->num_slots, sizeof(struct ast_slot_resolve));
+
+		should_retry = false;
+		num_applied_constraints = 0;
+
+		bool made_progress = true;
+
+		while (made_progress) {
+			made_progress = false;
+
+			if (ctx->num_slots + ctx->num_extra_slots < ctx->env->num_alloced_slots) {
+				size_t new_num_extra_slots = ctx->env->num_alloced_slots - ctx->num_slots;
+				ctx->extra_slots = realloc(ctx->extra_slots,
+						new_num_extra_slots * sizeof(struct ast_slot_resolve));
+				if (!ctx->extra_slots) {
+					panic("Failed to alloc new slots during solve.");
+					return -1;
+				}
+
+				memset(&ctx->extra_slots[ctx->num_extra_slots], 0,
+						(new_num_extra_slots-ctx->num_extra_slots) *
+						sizeof(struct ast_slot_resolve));
+
+				ctx->num_extra_slots = new_num_extra_slots;
 			}
 
-			memset(&ctx->extra_slots[ctx->num_extra_slots], 0,
-					(new_num_extra_slots-ctx->num_extra_slots) *
-					sizeof(struct ast_slot_resolve));
+			size_t num_constraints = ast_env_num_constraints(ctx);
+			for (ast_constraint_id constr_id = num_applied_constraints;
+					constr_id < num_constraints; constr_id++) {
+				ast_slot_solve_impose_constraint(
+						ctx, constr_id);
+			}
+			num_applied_constraints = num_constraints;
 
-			ctx->num_extra_slots = new_num_extra_slots;
+			// Immediatly apply new constraints and slots.
+			if (num_applied_constraints < ast_env_num_constraints(ctx)) {
+				made_progress = true;
+				continue;
+			}
+
+			for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
+				bool this_slot_made_progress;
+				
+				this_slot_made_progress = ast_slot_solve_push_value(
+						ctx, slot_id);
+				made_progress |= this_slot_made_progress;
+			}
 		}
 
-		size_t num_constraints = ast_env_num_constraints(ctx);
-		for (ast_constraint_id constr_id = num_applied_constraints;
-				constr_id < num_constraints; constr_id++) {
-			ast_slot_solve_impose_constraint(
-					ctx, constr_id);
-		}
-		num_applied_constraints = num_constraints;
+		{
+			size_t old_num_conflicts = num_conflicts;
+			ast_slot_detect_cons_conflicts(
+						ctx, in_env, &conflicts, &num_conflicts);
 
-		// Immediatly apply new constraints and slots.
-		if (num_applied_constraints < ast_env_num_constraints(ctx)) {
-			made_progress = true;
-			continue;
+			if (num_conflicts > old_num_conflicts) {
+				if (num_tries >= 10) {
+					break;
+				}
+
+				ast_env_free(ctx->env);
+				ast_env_copy(ctx->env, in_env);
+
+				size_t real_num_constraints = ast_env_num_constraints(ctx);
+
+				for (size_t i = 0; i < num_conflicts; i++) {
+					assert(conflicts[i] < real_num_constraints);
+					struct ast_slot_constraint *constr;
+					constr = ast_get_constraint(ctx, conflicts[i]);
+
+					switch (constr->kind) {
+						case AST_SLOT_REQ_IS_OBJ:
+							{
+								ast_slot_id cons_slot;
+								cons_slot = ast_slot_alloc(ctx->env);
+
+								ast_slot_require_is_obj(
+										ctx->env, constr->reason.loc, constr->source,
+										cons_slot, constr->is.obj SLOT_DEBUG_ARG);
+
+								ast_slot_require_cons(
+										ctx->env, constr->reason.loc, AST_CONSTR_SRC_DECAY,
+										constr->target, cons_slot SLOT_DEBUG_ARG);
+							}
+							break;
+
+						case AST_SLOT_REQ_MEMBER_NAMED:
+							{
+								ast_slot_id cons_slot;
+								cons_slot = ast_slot_alloc(ctx->env);
+
+								ast_slot_require_member_named(
+										ctx->env, constr->reason.loc, constr->source,
+										constr->target, constr->member.name, cons_slot
+										SLOT_DEBUG_ARG);
+
+								ast_slot_require_cons(
+										ctx->env, constr->reason.loc, AST_CONSTR_SRC_DECAY,
+										constr->member.slot, cons_slot SLOT_DEBUG_ARG);
+							}
+							break;
+
+						default:
+							panic("Invalid conflicting constraint.");
+							break;
+					}
+
+					constr->disabled = true;
+				}
+
+				should_retry = true;
+			}
 		}
 
-		for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
-			bool this_slot_made_progress;
-			
-			this_slot_made_progress = ast_slot_solve_push_value(
-					ctx, slot_id);
-			made_progress |= this_slot_made_progress;
-		}
-	};
+		num_tries +=1;
+	}
 
 	// Verify the solution.
 	for (ast_constraint_id constr_id = 0;
@@ -3609,8 +3841,8 @@ ast_slot_try_solve(
 
 	// Produce result.
 	int num_errors = 0;
-	memset(out_result, 0, sizeof(struct ast_slot_result) * ctx->num_slots);
-	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
+	memset(out_result, 0, sizeof(struct ast_slot_result) * ctx->num_initial_slots);
+	for (ast_slot_id slot_id = 0; slot_id < ctx->num_initial_slots; slot_id++) {
 		struct ast_slot_resolve *slot;
 		slot = ast_get_real_slot(ctx, slot_id);
 
@@ -3699,9 +3931,48 @@ ast_slot_try_solve(
 		}
 	}
 
+	// Tag slots with object constructors that have decayed.
+	for (size_t i = 0; i < num_conflicts; i++) {
+		ast_slot_id slot_id = -1;
+
+		struct ast_slot_constraint *constr;
+		constr = ast_get_constraint(ctx, conflicts[i]);
+
+		switch (constr->kind) {
+			case AST_SLOT_REQ_IS_OBJ:
+				slot_id = constr->target;
+				break;
+
+			case AST_SLOT_REQ_MEMBER_NAMED:
+				slot_id = constr->member.slot;
+				break;
+
+			default:
+				panic("This constraint kind can not have a conflict.");
+				break;
+		}
+
+		if (slot_id >= ctx->num_initial_slots) {
+			continue;
+		}
+
+		struct ast_slot_resolve *slot;
+		slot = ast_get_real_slot(ctx, slot_id);
+
+		if ((slot->flags & AST_SLOT_HAS_SUBST) != 0) {
+			// We will produce the result of substitutions in the next step.
+			continue;
+		}
+
+		struct ast_slot_result *res;
+		res = &out_result[slot_id];
+
+		res->result |= AST_SLOT_RES_DECAYED;
+	}
+
 	// Produce the result of substitutions by copying from the already produced
 	// subst target.
-	for (ast_slot_id slot_id = 0; slot_id < ctx->num_slots; slot_id++) {
+	for (ast_slot_id slot_id = 0; slot_id < ctx->num_initial_slots; slot_id++) {
 		struct ast_slot_resolve *slot;
 		slot = ast_get_real_slot(ctx, slot_id);
 
@@ -3785,6 +4056,7 @@ ast_slot_try_solve(
 
 	ast_env_free(ctx->env);
 	free(ctx->extra_slots);
+	free(conflicts);
 
 	return -num_errors;
 }

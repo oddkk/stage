@@ -1121,6 +1121,16 @@ ast_node_resolve_types(
 				break;
 		}
 
+		if ((res->result & AST_SLOT_RES_DECAYED) != 0) {
+			struct ast_node *new_node;
+			new_node = arena_alloc(ctx->mem, sizeof(struct ast_node));
+			*new_node = *node;
+			memset(node, 0, sizeof(struct ast_node));
+			ast_init_node_cons(ctx, node, new_node->loc, new_node, NULL, 0);
+			assert(res->cons);
+			node->call.cons = res->cons;
+		}
+
 		switch (node->kind) {
 			case AST_NODE_CALL:
 				{
@@ -1142,7 +1152,7 @@ ast_node_resolve_types(
 						exp_str = type_repr_to_alloced_string(
 								ctx->vm, type);
 						stg_error(ctx->err, node->loc,
-								"Function (%.*s) expected %zu arument%s, got %zu.",
+								"Function %.*s expected %zu arument%s, got %zu.",
 								LIT(exp_str), func_info->num_params,
 								func_info->num_params != 1 ? "s" : "",
 								node->call.num_args);

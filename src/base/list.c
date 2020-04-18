@@ -414,7 +414,7 @@ stg_list_cons_cons_pack(
 		void **params, size_t num_params)
 {
 	struct stg_func_object *func = out;
-	memset(func, 0, sizeof(struct stg_list_data));
+	memset(func, 0, sizeof(struct stg_func_object));
 
 	assert(num_params == 1);
 	type_id tid = *(type_id *)params[0];

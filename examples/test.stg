@@ -101,17 +101,17 @@ rowToAccount := (r: List[String]) -> Maybe[Account]
 	};
 
 printAccount := (a: Account) -> io.IO[Unit]
-	=> io.bind[](io.printLn(concat("id: ", a.id)),
-		b => io.bind[](io.printLn(concat("name: ", a.name)),
-			b => io.bind[](io.printLn(concat("register: ", a.register)),
+	=> io.bind(io.printLn(concat("id: ", a.id)),
+		b => io.bind(io.printLn(concat("name: ", a.name)),
+			b => io.bind(io.printLn(concat("register: ", a.register)),
 				b => io.printLn(concat("last login: ", a.lastLogin))
 			)
 		)
 	);
 
-!withIO[Unit](
-	io.bind[](sql.postgresql.connect("dbname=test"),
-		con => io.bind[](sql.query(con, "select * from account where account=$1",
+!withIO(
+	io.bind(sql.postgresql.connect("dbname=test"),
+		con => io.bind(sql.query(con, "select * from account where account=$1",
 				cons[String]("6", nil[String])),
 			rows => match rows {
 				cons[List[String]]($r, _) => match rowToAccount(r) {

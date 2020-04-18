@@ -137,6 +137,7 @@ struct ast_slot_constraint {
 	enum ast_constraint_kind kind;
 	enum ast_constraint_source source;
 	ast_slot_id target;
+	bool disabled;
 
 	union {
 		union {
@@ -340,25 +341,27 @@ ast_slot_require_inst(
 #endif
 
 enum ast_slot_result_state {
-	AST_SLOT_RES_ERROR                  = 0x0,
+	AST_SLOT_RES_ERROR                  = 0x000,
 
-	AST_SLOT_RES_VALUE_UNKNOWN          = 0x01,
-	AST_SLOT_RES_TYPE_FOUND             = 0x02,
-	AST_SLOT_RES_VALUE_FOUND_OBJ        = 0x03,
-	AST_SLOT_RES_VALUE_FOUND_TYPE       = 0x04,
+	AST_SLOT_RES_VALUE_UNKNOWN          = 0x001,
+	AST_SLOT_RES_TYPE_FOUND             = 0x002,
+	AST_SLOT_RES_VALUE_FOUND_OBJ        = 0x003,
+	AST_SLOT_RES_VALUE_FOUND_TYPE       = 0x004,
 
-	AST_SLOT_RES_VALUE_MASK             = 0x07,
+	AST_SLOT_RES_VALUE_MASK             = 0x007,
 
-	AST_SLOT_RES_CONS_UNKNOWN           = 0x10,
-	AST_SLOT_RES_CONS_FOUND             = 0x20,
-	AST_SLOT_RES_CONS_FOUND_FUNC_TYPE   = 0x30,
+	AST_SLOT_RES_CONS_UNKNOWN           = 0x010,
+	AST_SLOT_RES_CONS_FOUND             = 0x020,
+	AST_SLOT_RES_CONS_FOUND_FUNC_TYPE   = 0x030,
 
-	AST_SLOT_RES_CONS_MASK              = 0x30,
+	AST_SLOT_RES_CONS_MASK              = 0x030,
 
-	AST_SLOT_RES_INST_UNKNOWN           = 0x40,
-	AST_SLOT_RES_INST_FOUND             = 0x80,
+	AST_SLOT_RES_INST_UNKNOWN           = 0x040,
+	AST_SLOT_RES_INST_FOUND             = 0x080,
 
-	AST_SLOT_RES_INST_MASK              = 0xc0,
+	AST_SLOT_RES_INST_MASK              = 0x0c0,
+
+	AST_SLOT_RES_DECAYED                = 0x100,
 };
 
 static inline enum ast_slot_result_state
