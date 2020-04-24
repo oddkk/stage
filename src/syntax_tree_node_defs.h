@@ -169,6 +169,15 @@ ST_NODE(INIT_EXPR, struct {
 	struct st_node *expr;
 })
 
+ST_NODE(DO_EXPR, struct {
+	struct st_node *body;
+})
+
+ST_NODE(DO_EXPR_STMT, struct {
+	struct st_node *target;
+	struct st_node *expr;
+})
+
 ST_NODE(NUM_LIT, int64_t)
 
 ST_NODE(STR_LIT, struct string)

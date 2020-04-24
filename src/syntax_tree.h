@@ -27,7 +27,7 @@
 	OP(BIND, ">>=")								\
 	OP(SUBSCRIPT, "[]")							\
 
-#define ST_BIN_OPS_MAX_LEN (2)
+#define ST_BIN_OPS_MAX_LEN (3)
 
 enum st_bin_op {
 #define OP(name, sym) ST_OP_##name,
@@ -230,6 +230,15 @@ extern struct string st_node_names[ST_NODES_LEN];
 														\
 	case ST_NODE_INIT_EXPR:								\
 		TREE_VISIT_NODE((node), INIT_EXPR, expr);	 	\
+		break;											\
+														\
+	case ST_NODE_DO_EXPR:								\
+		TREE_VISIT_NODE((node), DO_EXPR, body);	 		\
+		break;											\
+														\
+	case ST_NODE_DO_EXPR_STMT:							\
+		TREE_VISIT_NODE((node), DO_EXPR_STMT, target);	\
+		TREE_VISIT_NODE((node), DO_EXPR_STMT, expr);	\
 		break;											\
 														\
 	case ST_NODE_NUM_LIT:								\

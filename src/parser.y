@@ -167,14 +167,14 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 
 %token END 0
 %token IDENTIFIER "identifier" NUMLIT "number" STRINGLIT "string"
-%token NAMESPACE "namespace" VARIANT "Variant" STRUCT "Struct" USE "use" MOD "mod"
+%token NAMESPACE "namespace" VARIANT "Variant" STRUCT "Struct" USE "use" MOD "mod" DO "do"
 %token IMPL "impl" CLASS "class"
 %token MATCH "match"
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
 %token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>" BIND ">>="
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit strformat mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_decl impl_stmt match_expr match_cases match_case
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit strformat mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_decl impl_stmt match_expr match_cases match_case do_expr do_expr_stmts do_expr_stmt
 
 %type <struct atom *> IDENTIFIER
 %type <struct string> STRINGLIT
@@ -420,6 +420,7 @@ expr1:			ident					{ $$ = $1; }
 		|		func_call               { $$ = $1; }
 		|		func_proto              { $$ = $1; }
 		|		special                 { $$ = $1; }
+		|		do_expr                 { $$ = $1; }
 		|		'$' IDENTIFIER          { $$ = MKNODE(TEMPLATE_VAR, .name=$2); }
 
 		|		expr1 '.'  IDENTIFIER   { $$ = MKNODE(ACCESS, .target=$1, .name=$3); }
@@ -477,6 +478,17 @@ func_args1:		func_args1 ',' func_arg { $$ = MKNODE(INTERNAL_LIST, .head=$3, .tai
 
 func_arg: 		expr                    { $$ = MKNODE(TUPLE_LIT_ITEM, .name=NULL, .value=$1); }
 		/*|		ident '=' expr TODO: named args */
+		;
+
+do_expr:		"do" '{' do_expr_stmts '}'	{ $$ = MKNODE(DO_EXPR, .body=$3); }
+	   ;
+
+do_expr_stmts:	do_expr_stmts do_expr_stmt	{ $$ = MKNODE(INTERNAL_LIST, .head=$2, .tail=$1); }
+		|		%empty						{ $$ = NULL; }
+		;
+
+do_expr_stmt:	ident "<-" expr ';'			{ $$ = MKNODE(DO_EXPR_STMT, .target=$1,   .expr=$3); }
+		|		expr ';'					{ $$ = MKNODE(DO_EXPR_STMT, .target=NULL, .expr=$1); }
 		;
 
 /*
@@ -567,6 +579,7 @@ re2c:define:YYFILL:naked = 1;
 "class"       { lloc_col(ctx, lloc, CURRENT_LEN); return CLASS; }
 "impl"        { lloc_col(ctx, lloc, CURRENT_LEN); return IMPL; }
 "match"       { lloc_col(ctx, lloc, CURRENT_LEN); return MATCH; }
+"do"          { lloc_col(ctx, lloc, CURRENT_LEN); return DO; }
 ".."          { lloc_col(ctx, lloc, CURRENT_LEN); return RANGE; }
 /* "..."         { lloc_col(ctx, lloc, CURRENT_LEN); return ELLIPSIS; } */
 "<-"          { lloc_col(ctx, lloc, CURRENT_LEN); return BIND_LEFT; }

@@ -97,21 +97,45 @@ rowToAccount := (r: List[String]) -> Maybe[Account]
 		_ => Maybe[Account].None;
 	};
 
+op>>= := io.bind;
+op>> := (a: io.IO[$T], b: io.IO[$U]) -> io.IO[U]
+	=> a >>= (dc => b);
+
+# printAccount := (a: Account) -> io.IO[Unit]
+# 	=> io.bind(io.printLn(concat("id: ", a.id)),
+# 		b => io.bind(io.printLn(concat("name: ", a.name)),
+# 			b => io.bind(io.printLn(concat("register: ", a.register)),
+# 				b => io.printLn(concat("last login: ", a.lastLogin))
+# 			)
+# 		)
+# 	);
+
+# printAccount := (a: Account) -> io.IO[Unit]
+# 	=>  io.printLn(concat("id: ", a.id))
+# 	>>= (b => io.printLn(concat("name: ", a.name)))
+# 	>>= (b => io.printLn(concat("register: ", a.register)))
+# 	>>= (b => io.printLn(concat("last login: ", a.lastLogin)));
+
+# printAccount := (a: Account) -> io.IO[Unit]
+# 	=> io.printLn(concat("id: ", a.id))
+# 	>> io.printLn(concat("name: ", a.name))
+# 	>> io.printLn(concat("register: ", a.register))
+# 	>> io.printLn(concat("last login: ", a.lastLogin));
+
 printAccount := (a: Account) -> io.IO[Unit]
-	=> io.bind(io.printLn(concat("id: ", a.id)),
-		b => io.bind(io.printLn(concat("name: ", a.name)),
-			b => io.bind(io.printLn(concat("register: ", a.register)),
-				b => io.printLn(concat("last login: ", a.lastLogin))
-			)
-		)
-	);
+	=> do {
+		io.printLn(concat("id: ", a.id));
+		io.printLn(concat("name: ", a.name));
+		io.printLn(concat("register: ", a.register));
+		io.printLn(concat("last login: ", a.lastLogin));
+	};
 
 !withIO(
 	io.bind(sql.postgresql.connect("dbname=test"),
 		con => io.bind(sql.query(con, "select * from account where account=$1",
 				cons("6", nil[])),
 			rows => match rows {
-				cons[List[String]]($r, _) => match rowToAccount(r) {
+				cons($r, _) => match rowToAccount(r) {
 					Maybe[Account].Some($a) => printAccount(a);
 					_ => io.printLn("Invalid account");
 				};

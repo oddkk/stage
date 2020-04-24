@@ -491,6 +491,63 @@ st_node_create_template(struct ast_context *ctx, struct stg_module *mod,
 	return templ_node;
 }
 
+static struct ast_node *
+st_node_visit_do_stmts(struct ast_context *ctx, struct stg_module *mod,
+		struct st_expr_context *expr_ctx, struct st_node *stmt)
+{
+	assert(stmt->type == ST_NODE_DO_EXPR_STMT);
+	struct atom *target = NULL;
+	if (stmt->DO_EXPR_STMT.target) {
+		assert(stmt->DO_EXPR_STMT.target->type == ST_NODE_IDENT);
+		target = stmt->DO_EXPR_STMT.target->IDENT;
+	}
+
+	struct ast_node *expr;
+	expr = st_node_visit_expr(
+			ctx, mod, expr_ctx, stmt->DO_EXPR_STMT.expr);
+
+	if (!stmt->next_sibling) {
+		return expr;
+	}
+
+	struct ast_node *tail;
+	tail = st_node_visit_do_stmts(
+			ctx, mod, expr_ctx, stmt->next_sibling);
+
+	struct ast_node *rhs = NULL;
+	struct atom *bind_op = NULL;
+
+	if (target) {
+		// target_type is intentionally NULL.
+		struct ast_node *target_type = NULL;
+		rhs = ast_init_node_func(
+				ctx, AST_NODE_NEW, stmt->loc,
+				&target, &target_type, 1, NULL, tail);
+
+		bind_op = binop_atom(&ctx->vm->atom_table, ST_OP_BIND);
+	} else {
+		bind_op = binop_atom(&ctx->vm->atom_table, ST_OP_RSFT);
+		rhs = tail;
+	}
+
+	struct ast_node *bind_func;
+	bind_func = ast_init_node_lookup(
+			ctx, AST_NODE_NEW,
+			stmt->loc, bind_op);
+
+	struct ast_func_arg bind_args[] = {
+		{.value=expr},
+		{.value=rhs},
+	};
+
+	struct ast_node *result;
+	result = ast_init_node_call(
+			ctx, AST_NODE_NEW, stmt->loc,
+			bind_func, bind_args, 2);
+
+	return result;
+}
+
 struct ast_node *
 st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		struct st_expr_context *expr_ctx, struct st_node *node)
@@ -1152,6 +1209,27 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 
 			return ast_init_node_init_expr(
 					ctx, AST_NODE_NEW, node->loc, expr_id);
+		}
+		break;
+
+	case ST_NODE_DO_EXPR:
+		{
+
+			struct atom *bind_no_arg_op;
+			bind_no_arg_op = binop_atom(&ctx->vm->atom_table,
+					ST_OP_RSFT);
+
+			struct st_node *stmt;
+			stmt = node->DO_EXPR.body;
+
+			if (!stmt) {
+				stg_error(ctx->err, node->loc,
+						"Expected at least one statement in the do-expression.");
+				return NULL;
+			}
+
+			return st_node_visit_do_stmts(
+					ctx, mod, expr_ctx, stmt);
 		}
 		break;
 
