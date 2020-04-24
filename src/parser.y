@@ -174,7 +174,7 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 %token EQ "==" NEQ "!=" LTE "<=" GTE ">=" LAMBDA "=>" DEFAULT_EQUALS "~="
 %token LOGIC_AND "&&" LOGIC_OR "||" LEFT_SHIFT "<<" RIGHT_SHIFT ">>" BIND ">>="
 
-%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_decl impl_stmt match_expr match_cases match_case
+%type <struct st_node *> module stmt_list stmt stmt1 func_decl func_decl_params func_decl_params1 func_decl_param func_proto func_params func_params1 expr expr1 ident numlit strlit strformat mod_stmt use_stmt use_expr use_expr1 func_call func_args func_args1 func_arg assign_stmt special special_args special_args1 special_arg enum_decl1 enum_items enum_item object_decl object_decl1 templ_decl_params templ_decl_params1 templ_decl_param type_class_decl impl_stmt match_expr match_cases match_case
 
 %type <struct atom *> IDENTIFIER
 %type <struct string> STRINGLIT
@@ -416,6 +416,7 @@ expr1:			ident					{ $$ = $1; }
 		|		numlit                  { $$ = $1; }
 		/*|		numlit ident            { $$ = $1; } TODO: suffix "operators" */
 		|		strlit                  { $$ = $1; }
+		|		strformat               { $$ = $1; }
 		|		func_call               { $$ = $1; }
 		|		func_proto              { $$ = $1; }
 		|		special                 { $$ = $1; }
@@ -504,6 +505,10 @@ numlit:			NUMLIT
 
 strlit:			STRINGLIT
 					{ $$ = alloc_node(ctx, ST_NODE_STR_LIT); $$->STR_LIT = $1; }
+		;
+
+strformat:		ident STRINGLIT
+					{ $$ = alloc_node(ctx, ST_NODE_STR_LIT); $$->STR_LIT = $2; }
 		;
 
 %%
