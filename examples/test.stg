@@ -87,16 +87,13 @@ Account := Struct {
 
 rowToAccount := (r: List[String]) -> Maybe[Account]
 	=> match r {
-		cons[String]($i,
-			cons[String]($n,
-				cons[String]($r,
-					cons[String]($l,
-						_)))) => Maybe[Account].Some(Account {
-							id = i;
-							name = n;
-							register = r;
-							lastLogin = l;
-						});
+		cons($i, cons($n, cons($r, cons($l, _))))
+			=> Maybe[Account].Some(Account {
+				id = i;
+				name = n;
+				register = r;
+				lastLogin = l;
+			});
 		_ => Maybe[Account].None;
 	};
 
@@ -112,7 +109,7 @@ printAccount := (a: Account) -> io.IO[Unit]
 !withIO(
 	io.bind(sql.postgresql.connect("dbname=test"),
 		con => io.bind(sql.query(con, "select * from account where account=$1",
-				cons[String]("6", nil[String])),
+				cons("6", nil[])),
 			rows => match rows {
 				cons[List[String]]($r, _) => match rowToAccount(r) {
 					Maybe[Account].Some($a) => printAccount(a);

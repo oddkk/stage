@@ -1140,13 +1140,22 @@ ast_node_resolve_types(
 			cons_node->typecheck_slot = -1;
 			cons_node->type = res->type;
 
-			if (ast_slot_value_result(res->result) == AST_SLOT_RES_VALUE_FOUND_OBJ) {
-				cons_node->call.cons_value = res->value.obj;
-			} else if (ast_slot_value_result(res->result) == AST_SLOT_RES_VALUE_FOUND_TYPE) {
-				cons_node->call.cons_value.data = &res->value.type;
-				cons_node->call.cons_value.type = ctx->vm->default_types.type;
-				cons_node->call.cons_value =
-					register_object(ctx->vm, env->store, cons_node->call.cons_value);
+			switch (ast_slot_value_result(res->result)) {
+				case AST_SLOT_RES_VALUE_FOUND_OBJ:
+					cons_node->call.cons_value = res->value.obj;
+					break;
+
+				case AST_SLOT_RES_VALUE_FOUND_TYPE:
+					cons_node->call.cons_value.data = &res->value.type;
+					cons_node->call.cons_value.type = ctx->vm->default_types.type;
+					cons_node->call.cons_value =
+						register_object(ctx->vm, env->store, cons_node->call.cons_value);
+					break;
+
+				default:
+					ast_node_resolve_handle_value_result(
+							ctx, env, &errors, node, res, "");
+					break;
 			}
 
 		}

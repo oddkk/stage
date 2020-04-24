@@ -163,6 +163,36 @@ stg_list_nil_cons_unpack(
 }
 
 static void
+stg_list_nil_cons_impose_constraints(
+		struct ast_context *ctx, struct stg_module *mod,
+		void *data, struct ast_env *env,
+		ast_slot_id ret_type_slot, ast_slot_id *param_slots)
+{
+	struct object_cons *list_cons;
+	list_cons = stg_list_cons_from_vm(ctx->vm);
+
+	struct object cons_obj = {0};
+	cons_obj.type = ctx->vm->default_types.cons;
+	cons_obj.data = &list_cons;
+	cons_obj = register_object(ctx->vm, env->store, cons_obj);
+
+	ast_slot_id list_cons_slot;
+	list_cons_slot = ast_slot_alloc(env);
+
+	ast_slot_require_is_obj(
+			env, STG_NO_LOC, AST_CONSTR_SRC_CONS_ARG,
+			list_cons_slot, cons_obj);
+
+	ast_slot_require_cons(
+			env, STG_NO_LOC, AST_CONSTR_SRC_CONS_ARG,
+			ret_type_slot, list_cons_slot);
+
+	ast_slot_require_param_index(
+			env, STG_NO_LOC, AST_CONSTR_SRC_CONS_ARG,
+			ret_type_slot, 0, param_slots[0]);
+}
+
+static void
 stg_list_register_list_nil(struct stg_module *mod)
 {
 	struct object_cons *nil_cons;
@@ -176,6 +206,7 @@ stg_list_register_list_nil(struct stg_module *mod)
 	nil_cons->ct_pack = stg_list_nil_cons_pack;
 	nil_cons->ct_pack_type = stg_list_nil_cons_pack_type;
 	nil_cons->ct_unpack = stg_list_nil_cons_unpack;
+	nil_cons->impose_constraints = stg_list_nil_cons_impose_constraints;
 
 	stg_mod_register_native_cons(
 			mod, mod_atoms(mod, "stg_list_nil"), nil_cons);
@@ -470,6 +501,49 @@ stg_list_cons_cons_unpack(
 }
 
 static void
+stg_list_cons_cons_impose_constraints(
+		struct ast_context *ctx, struct stg_module *mod,
+		void *data, struct ast_env *env,
+		ast_slot_id ret_type_slot, ast_slot_id *param_slots)
+{
+	ast_slot_id type_slot = param_slots[0];
+	ast_slot_id list_slot;
+	list_slot = ast_slot_alloc(env);
+
+	struct object_cons *list_cons;
+	list_cons = stg_list_cons_from_vm(ctx->vm);
+
+	struct object cons_obj = {0};
+	cons_obj.type = ctx->vm->default_types.cons;
+	cons_obj.data = &list_cons;
+	cons_obj = register_object(ctx->vm, env->store, cons_obj);
+
+	ast_slot_id list_cons_slot;
+	list_cons_slot = ast_slot_alloc(env);
+
+	ast_slot_require_is_obj(
+			env, STG_NO_LOC, AST_CONSTR_SRC_SELF,
+			list_cons_slot, cons_obj);
+
+	ast_slot_require_cons(
+			env, STG_NO_LOC, AST_CONSTR_SRC_SELF,
+			list_slot, list_cons_slot);
+
+	ast_slot_require_param_index(
+			env, STG_NO_LOC, AST_CONSTR_SRC_SELF,
+			list_slot, 0, type_slot);
+
+
+	ast_slot_id func_param_slots[] = { type_slot, list_slot };
+
+	ast_slot_require_is_func_type(
+			env, STG_NO_LOC, AST_CONSTR_SRC_SELF,
+			ctx->vm->default_types.type,
+			ret_type_slot, list_slot, func_param_slots, 2);
+}
+
+
+static void
 stg_list_register_list_cons(struct stg_module *mod)
 {
 	struct object_cons *cons_cons;
@@ -483,6 +557,7 @@ stg_list_register_list_cons(struct stg_module *mod)
 	cons_cons->ct_pack = stg_list_cons_cons_pack;
 	cons_cons->ct_pack_type = stg_list_cons_cons_pack_type;
 	cons_cons->ct_unpack = stg_list_cons_cons_unpack;
+	cons_cons->impose_constraints = stg_list_cons_cons_impose_constraints;
 
 	cons_cons->base = &stg_list_cons_cons_base;
 
