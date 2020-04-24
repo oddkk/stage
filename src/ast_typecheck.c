@@ -1122,13 +1122,33 @@ ast_node_resolve_types(
 		}
 
 		if ((res->result & AST_SLOT_RES_DECAYED) != 0) {
-			struct ast_node *new_node;
-			new_node = arena_alloc(ctx->mem, sizeof(struct ast_node));
-			*new_node = *node;
-			memset(node, 0, sizeof(struct ast_node));
-			ast_init_node_cons(ctx, node, new_node->loc, new_node, NULL, 0);
+			// We replace the current node with the constructor node to
+			// maintain all references to node.
+			struct ast_node *cons_node;
+			cons_node = node;
+
+			// Alloc a new node to house the previous one that is being
+			// decayed.
+			node = arena_alloc(ctx->mem, sizeof(struct ast_node));
+			*node = *cons_node;
+			node->type = ctx->vm->default_types.cons;
+
+			memset(cons_node, 0, sizeof(struct ast_node));
+			ast_init_node_cons(ctx, cons_node, node->loc, node, NULL, 0);
 			assert(res->cons);
-			node->call.cons = res->cons;
+			cons_node->call.cons = res->cons;
+			cons_node->typecheck_slot = -1;
+			cons_node->type = res->type;
+
+			if (ast_slot_value_result(res->result) == AST_SLOT_RES_VALUE_FOUND_OBJ) {
+				cons_node->call.cons_value = res->value.obj;
+			} else if (ast_slot_value_result(res->result) == AST_SLOT_RES_VALUE_FOUND_TYPE) {
+				cons_node->call.cons_value.data = &res->value.type;
+				cons_node->call.cons_value.type = ctx->vm->default_types.type;
+				cons_node->call.cons_value =
+					register_object(ctx->vm, env->store, cons_node->call.cons_value);
+			}
+
 		}
 
 		switch (node->kind) {
