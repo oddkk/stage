@@ -4007,7 +4007,7 @@ ast_dt_composite_repr(struct vm *vm, struct arena *mem, struct type *type)
 	struct ast_dt_composite_info *info = type->data;
 	struct string res = {0};
 
-	arena_string_append(mem, &res, STR("Struct { "));
+	arena_string_append(mem, &res, STR("struct { "));
 
 	for (size_t i = 0; i < info->num_members; i++) {
 		struct type *member_type;
@@ -4083,7 +4083,7 @@ ast_dt_unpack_func(
 }
 
 struct type_base ast_dt_composite_base = {
-	.name     = STR("Struct"),
+	.name     = STR("struct"),
 	.repr     = ast_dt_composite_repr,
 	.obj_repr = ast_dt_composite_obj_repr,
 
@@ -4593,7 +4593,7 @@ ast_dt_variant_repr(struct vm *vm, struct arena *mem, struct type *type)
 	struct stg_type_variant_info *info = type->data;
 	struct string res = {0};
 
-	arena_string_append(mem, &res, STR("Variant { "));
+	arena_string_append(mem, &res, STR("variant { "));
 
 	for (size_t i = 0; i < info->num_options; i++) {
 		if (i != 0) {
@@ -4657,7 +4657,7 @@ ast_dt_variant_obj_copy(struct stg_exec *heap, void *type_data, void *obj_data)
 }
 
 struct type_base variant_type_base = {
-	.name     = STR("Variant"),
+	.name     = STR("variant"),
 	.repr     = ast_dt_variant_repr,
 	.obj_repr = ast_dt_variant_obj_repr,
 	.obj_copy = ast_dt_variant_obj_copy,
@@ -4901,7 +4901,7 @@ ast_dt_finalize_variant(
 
 	struct type new_type = {0};
 
-	new_type.name = mod_atoms(mod, "Variant");
+	new_type.name = mod_atoms(mod, "variant");
 	new_type.base = &variant_type_base;
 	new_type.size = info->total_size;
 	new_type.data = info;

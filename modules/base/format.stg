@@ -1,4 +1,4 @@
-FormatPart := Variant {
+FormatPart := variant {
 	Lit String,
 	Expr () -> String,
 };

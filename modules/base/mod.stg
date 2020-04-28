@@ -1,6 +1,6 @@
 use prelude.*;
 
-Maybe := [T: Type] Variant { Some T, None };
+Maybe := [T: Type] variant { Some T, None };
 
 Eq := class [$T, $U] {
 	op==: (T, U) -> Bool;

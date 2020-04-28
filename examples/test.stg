@@ -77,7 +77,7 @@ use mod sql;
 # 	printLn("FOOBAR")
 # );
 
-Account := Struct {
+Account := struct {
 	id: String;
 	name: String;
 	register: String;

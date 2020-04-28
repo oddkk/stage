@@ -167,7 +167,7 @@ yylloc_to_stg_location(struct lex_context *ctx, YYLTYPE loc)
 
 %token END 0
 %token IDENTIFIER "identifier" NUMLIT "number" STRINGLIT "string"
-%token NAMESPACE "namespace" VARIANT "Variant" STRUCT "Struct" USE "use" MOD "mod" DO "do"
+%token NAMESPACE "namespace" VARIANT "variant" STRUCT "struct" USE "use" MOD "mod" DO "do"
 %token IMPL "impl" CLASS "class"
 %token MATCH "match"
 %token BIND_LEFT "<-" BIND_RIGHT "->" RANGE ".." DECL "::" // ELLIPSIS "..."
@@ -329,17 +329,17 @@ func_param:
 */
 
 object_decl:
-				                         "Struct" object_decl1
+				                         "struct" object_decl1
 					{ $$ = MKNODE(OBJECT_DECL, .body=$2); }
-		|		'[' func_decl_params ']' "Struct" object_decl1
+		|		'[' func_decl_params ']' "struct" object_decl1
 					{ $$ = MKNODE(OBJECT_DECL, .body=$5, .params=$2); }
 
 		|		expr1                             object_decl1
 					{ $$ = MKNODE(OBJECT_INST, .name=$1, .body=$2); }
 
-		|		                         "Variant"   enum_decl1
+		|		                         "variant"   enum_decl1
 					{ $$ = MKNODE(VARIANT_DECL, .items=$2); }
-		|		'[' func_decl_params ']' "Variant"   enum_decl1
+		|		'[' func_decl_params ']' "variant"   enum_decl1
 					{ $$ = MKNODE(VARIANT_DECL, .items=$5, .params=$2); }
 		;
 
@@ -572,8 +572,8 @@ re2c:define:YYFILL:naked = 1;
 /* "attr"        { lloc_col(ctx, lloc, CURRENT_LEN); return ATTR; } */
 /* "default"     { lloc_col(ctx, lloc, CURRENT_LEN); return DEFAULT; } */
 "mod"         { lloc_col(ctx, lloc, CURRENT_LEN); return MOD; }
-"Variant"     { lloc_col(ctx, lloc, CURRENT_LEN); return VARIANT; }
-"Struct"      { lloc_col(ctx, lloc, CURRENT_LEN); return STRUCT; }
+"variant"     { lloc_col(ctx, lloc, CURRENT_LEN); return VARIANT; }
+"struct"      { lloc_col(ctx, lloc, CURRENT_LEN); return STRUCT; }
 "namespace"   { lloc_col(ctx, lloc, CURRENT_LEN); return NAMESPACE; }
 "use"         { lloc_col(ctx, lloc, CURRENT_LEN); return USE; }
 "class"       { lloc_col(ctx, lloc, CURRENT_LEN); return CLASS; }

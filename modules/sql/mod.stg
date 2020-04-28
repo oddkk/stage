@@ -9,7 +9,7 @@ DBConnectionHandle := int;
 _dbConnect := (kind: String, conStr: String) -> IO[DBConnectionHandle]
 	@native("sql_db_connect");
 
-Connection := Struct {
+Connection := struct {
 	dbKind: String;
 	connectionString: String;
 	_handle: DBConnectionHandle;
@@ -25,13 +25,13 @@ query := (db: Connection, q: String, args: List[String]) -> IO[List[List[String]
 # 	var int,
 # };
 #
-# SQLFragmentVar := Struct {
+# SQLFragmentVar := struct {
 # 	id: int;
 # 	sqlType: base.Maybe[String];
 # 	value: String;
 # };
 #
-# SQLFragment := Struct {
+# SQLFragment := struct {
 # 	parts: List[SQLFragmentPart];
 # 	vars:  List[SQLFragmentVar];
 # 	nextVar: int;
@@ -69,7 +69,7 @@ query := (db: Connection, q: String, args: List[String]) -> IO[List[List[String]
 # 	# typeName := base.Maybe[String].Some("text");
 # };
 
-# SQLQuery := Struct {
+# SQLQuery := struct {
 # 	stmt: String;
 # 	params: List[String];
 # };
