@@ -87,7 +87,7 @@ Account := struct {
 
 rowToAccount := (r: List[String]) -> Maybe[Account]
 	=> match r {
-		cons($i, cons($n, cons($r, cons($l, _))))
+		[$i, $n, $r, $l, ...]
 			=> Maybe[Account].Some(Account {
 				id = i;
 				name = n;

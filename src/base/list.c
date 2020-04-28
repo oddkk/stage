@@ -75,8 +75,8 @@ stg_list_obj_equals(struct vm *vm, void *type_data,
 
 	int lhs_end = 0, rhs_end = 0;
 	do {
-		lhs_end = lhs.head(&heap, lhs.data, lhs_buffer);
-		rhs_end = rhs.head(&heap, rhs.data, rhs_buffer);
+		lhs_end = lhs.head(&heap, &lhs, lhs_buffer);
+		rhs_end = rhs.head(&heap, &rhs, rhs_buffer);
 
 		if (!lhs_end && !rhs_end) {
 			if (!obj_equals(vm, lhs_obj, rhs_obj)) {
@@ -84,6 +84,13 @@ stg_list_obj_equals(struct vm *vm, void *type_data,
 				return false;
 			}
 		}
+
+		lhs = lhs.tail(&heap, &lhs);
+		rhs = rhs.tail(&heap, &rhs);
+
+		lhs_end |= lhs.head == NULL;
+		rhs_end |= rhs.head == NULL;
+
 	} while (!lhs_end && !rhs_end);
 
 	arena_reset(heap.heap, cp);

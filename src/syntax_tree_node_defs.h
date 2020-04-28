@@ -148,6 +148,7 @@ ST_NODE(TUPLE_LIT_ITEM, struct {
 
 ST_NODE(ARRAY_LIT, struct {
 	struct st_node *items;
+	bool ellipsis;
 })
 
 ST_NODE(SPECIAL, struct {

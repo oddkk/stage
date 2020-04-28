@@ -548,6 +548,52 @@ st_node_visit_do_stmts(struct ast_context *ctx, struct stg_module *mod,
 	return result;
 }
 
+static struct ast_node *
+st_node_visit_array_lit(struct ast_context *ctx, struct stg_module *mod,
+		struct stg_location list_loc, struct st_expr_context *expr_ctx,
+		struct st_node *node, bool ellipsis)
+{
+	if (!node) {
+		if (ellipsis) {
+			// TODO: Better location.
+			return ast_init_node_wildcard(
+					ctx, AST_NODE_NEW, list_loc);
+		} else {
+			struct ast_node *nil_lookup;
+			nil_lookup = ast_init_node_lookup(
+					ctx, AST_NODE_NEW, list_loc,
+					mod_atoms(mod, "nil"));
+
+			// TODO: Make nil work without explicit cons.
+			return ast_init_node_cons(
+					ctx, AST_NODE_NEW, list_loc,
+					nil_lookup, NULL, 0);
+		}
+	}
+
+	struct ast_node *head;
+	head = st_node_visit_expr(
+			ctx, mod, expr_ctx, node);
+
+	struct ast_node *tail;
+	tail = st_node_visit_array_lit(
+			ctx, mod, list_loc, expr_ctx,
+			node->next_sibling, ellipsis);
+
+	struct ast_func_arg cons_args[] = {
+		{.value=head}, {.value=tail}
+	};
+
+	struct ast_node *cons_lookup;
+	cons_lookup = ast_init_node_lookup(
+			ctx, AST_NODE_NEW, node->loc,
+			mod_atoms(mod, "cons"));
+
+	return ast_init_node_call(
+			ctx, AST_NODE_NEW, node->loc,
+			cons_lookup, cons_args, 2);
+}
+
 struct ast_node *
 st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		struct st_expr_context *expr_ctx, struct st_node *node)
@@ -1214,11 +1260,6 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 
 	case ST_NODE_DO_EXPR:
 		{
-
-			struct atom *bind_no_arg_op;
-			bind_no_arg_op = binop_atom(&ctx->vm->atom_table,
-					ST_OP_RSFT);
-
 			struct st_node *stmt;
 			stmt = node->DO_EXPR.body;
 
@@ -1237,7 +1278,10 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		break;
 
 	case ST_NODE_ARRAY_LIT:
-		break;
+		return st_node_visit_array_lit(
+				ctx, mod, node->loc, expr_ctx,
+				node->ARRAY_LIT.items,
+				node->ARRAY_LIT.ellipsis);
 
 	case ST_NODE_NUM_LIT: {
 		struct object obj;
