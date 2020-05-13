@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include "murmurhash.h"
 
 // For stg_alloc
 #include "objstore.h"
@@ -300,4 +301,15 @@ stg_exec_sprintf(struct stg_exec *heap, const char *fmt, ...)
 #undef BUF_CAP
 
 	return res;
+}
+
+stg_hash
+stg_hash_string(struct string str)
+{
+	stg_hash result = {0};
+
+	// TODO: Make this choose the correct routine for the target platform.
+	MurmurHash3_x64_128(str.text, str.length, 0, &result.val);
+
+	return result;
 }

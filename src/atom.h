@@ -5,7 +5,7 @@
 #include "arena.h"
 
 struct atom {
-	uint32_t hash;
+	stg_hash hash;
 	struct string name;
 	struct atom *next_in_bucket;
 };

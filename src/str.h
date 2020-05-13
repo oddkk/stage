@@ -49,4 +49,26 @@ struct stg_exec;
 struct string
 stg_exec_sprintf(struct stg_exec *, const char *fmt, ...);
 
+typedef struct { uint64_t val[2]; } stg_hash;
+
+stg_hash
+stg_hash_string(struct string);
+
+static inline bool
+stg_hash_eq(stg_hash lhs, stg_hash rhs)
+{
+	return
+		lhs.val[0] == rhs.val[0] &&
+		lhs.val[1] == rhs.val[1];
+}
+
+static inline bool
+stg_hash_lte(stg_hash lhs, stg_hash rhs)
+{
+	return
+		lhs.val[0] < rhs.val[0] ||
+		(lhs.val[0] == rhs.val[0] &&
+			lhs.val[1] <= rhs.val[1]);
+}
+
 #endif
