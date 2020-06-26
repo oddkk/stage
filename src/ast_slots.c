@@ -2187,6 +2187,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 						res.data = buffer;
 
 						struct stg_exec heap = {0};
+						heap.vm = ctx->vm;
 						heap.heap = &ctx->vm->transient;
 						arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -2300,6 +2301,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 					assert(obj_type->obj_inst == inst);
 
 					struct stg_exec heap = {0};
+					heap.vm = ctx->vm;
 					heap.heap = &ctx->vm->transient;
 					arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -2532,6 +2534,7 @@ ast_slot_solve_push_value(struct solve_context *ctx, ast_slot_id slot_id)
 				res.data = buffer;
 
 				struct stg_exec heap = {0};
+				heap.vm = ctx->vm;
 				heap.heap = &ctx->vm->transient;
 				arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -2692,6 +2695,7 @@ ast_slot_verify_param(
 	exp_val.data = buffer;
 
 	struct stg_exec heap = {0};
+	heap.vm = ctx->vm;
 	heap.heap = &ctx->vm->transient;
 	arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -2859,6 +2863,7 @@ ast_slot_verify_member(
 	exp_val.data = buffer;
 
 	struct stg_exec heap = {0};
+	heap.vm = ctx->vm;
 	heap.heap = &ctx->vm->transient;
 	arena_mark cp = arena_checkpoint(heap.heap);
 

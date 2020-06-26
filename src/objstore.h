@@ -470,6 +470,8 @@ stg_instantiate_static_object(
 		type_id type, struct object *out);
 
 struct stg_exec {
+	struct vm *vm;
+
 	struct objstore *store;
 	struct arena *heap;
 };

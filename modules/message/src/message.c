@@ -119,6 +119,7 @@ msg_notify(struct msg_system *sys,
 		struct object obj)
 {
 	struct stg_exec ctx = {0};
+	ctx.vm = sys->mod->vm;
 	ctx.heap = sys->transient;
 
 	struct msg_monad_data monad = {0};

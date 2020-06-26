@@ -151,6 +151,7 @@ stg_mod_lookup_member(
 	obj.data = buffer;
 
 	struct stg_exec heap = {0};
+	heap.vm = mod->vm;
 	heap.heap = &mod->vm->transient;
 	arena_mark cp = arena_checkpoint(heap.heap);
 

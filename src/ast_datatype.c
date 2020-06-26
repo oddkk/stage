@@ -1381,6 +1381,7 @@ ast_dt_try_unpack_member_const(struct ast_dt_context *ctx,
 	out->data = arena_alloc(mem, out_type->size);
 
 	struct stg_exec heap = {0};
+	heap.vm = ctx->ast_ctx->vm;
 	heap.heap = &ctx->ast_ctx->vm->transient;
 	arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -1459,6 +1460,7 @@ ast_dt_try_eval_const(struct ast_dt_context *ctx,
 	obj.data = buffer;
 
 	struct stg_exec exec_ctx = {0};
+	exec_ctx.vm = ctx->ast_ctx->vm;
 	exec_ctx.heap = &ctx->ast_ctx->vm->transient;
 	arena_mark cp = arena_checkpoint(exec_ctx.heap);
 
@@ -2096,6 +2098,7 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 					obj.data = buffer;
 
 					struct stg_exec heap = {0};
+					heap.vm = ctx->ast_ctx->vm;
 					heap.heap = &ctx->ast_ctx->vm->transient;
 					arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -2247,6 +2250,7 @@ ast_dt_references_type_class(struct ast_dt_context *ctx, ast_dt_job_id job,
 
 				struct arena *mem = &ctx->ast_ctx->vm->transient;
 				struct stg_exec heap = {0};
+				heap.vm = ctx->ast_ctx->vm;
 				heap.heap = mem;
 
 				arena_mark cp = arena_checkpoint(mem);
@@ -2567,6 +2571,7 @@ ast_dt_try_pack_member(
 							}
 
 							struct stg_exec exec_ctx = {0};
+							exec_ctx.vm = ctx->ast_ctx->vm;
 							exec_ctx.heap = ctx->ast_ctx->mem;
 
 							struct object *out_obj;
@@ -2619,6 +2624,7 @@ ast_dt_try_pack_member(
 							}
 
 							struct stg_exec exec_ctx = {0};
+							exec_ctx.vm = ctx->ast_ctx->vm;
 							exec_ctx.heap = ctx->ast_ctx->mem;
 
 							struct object *out_obj;
@@ -2668,6 +2674,7 @@ ast_dt_try_pack_member(
 						out_obj->data = arena_alloc(mem, out_type->size);
 
 						struct stg_exec heap = {0};
+						heap.vm = ctx->ast_ctx->vm;
 						heap.heap = &ctx->ast_ctx->vm->transient;
 						arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -2732,6 +2739,7 @@ ast_dt_try_pack_member(
 						assert(inst->cons->pack);
 
 						struct stg_exec tmp_heap = {0};
+						tmp_heap.vm = ctx->ast_ctx->vm;
 						tmp_heap.heap = ctx->ast_ctx->mem;
 						inst->cons->pack(
 								ctx->ast_ctx->vm, &tmp_heap,

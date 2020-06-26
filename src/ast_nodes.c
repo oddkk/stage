@@ -1237,6 +1237,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	res.data = buffer;
 
 	struct stg_exec exec_ctx = {0};
+	exec_ctx.vm = ctx->vm;
 	exec_ctx.heap = trans;
 	arena_mark call_cp = arena_checkpoint(exec_ctx.heap);
 

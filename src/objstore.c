@@ -121,6 +121,7 @@ register_object(struct vm *vm, struct objstore *store, struct object obj) {
 
 	if (type->base->obj_copy) {
 		struct stg_exec ctx = {0};
+		ctx.vm = vm;
 		ctx.store = store;
 		type->base->obj_copy(&ctx, type->data, res.data);
 	}
@@ -1859,6 +1860,7 @@ stg_instantiate_static_object(
 	obj.type = final_tid;
 
 	struct stg_exec exec_ctx = {0};
+	exec_ctx.vm = mod->vm;
 	exec_ctx.heap = &mod->vm->transient;
 	arena_mark cp = arena_checkpoint(exec_ctx.heap);
 

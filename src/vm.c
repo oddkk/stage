@@ -95,6 +95,7 @@ vm_mod_init(struct stg_module *mod)
 
 		struct stg_exec exec_ctx = {0};
 
+		exec_ctx.vm = mod->vm;
 		exec_ctx.heap = &mod->vm->transient;
 		arena_mark cp = arena_checkpoint(exec_ctx.heap);
 		stg_unsafe_call_init(mod->vm, &exec_ctx, main_obj, &result);

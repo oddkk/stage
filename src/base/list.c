@@ -69,6 +69,7 @@ stg_list_obj_equals(struct vm *vm, void *type_data,
 	rhs_obj.data = rhs_buffer;
 
 	struct stg_exec heap = {0};
+	heap.vm = vm;
 	heap.heap = &vm->transient;
 
 	arena_mark cp = arena_checkpoint(heap.heap);
@@ -368,6 +369,7 @@ stg_list_cons_func_can_unpack(
 	if (list->head) {
 		uint8_t buffer[info->element_size];
 		struct stg_exec tmp_heap = {0};
+		tmp_heap.vm = vm;
 		tmp_heap.heap = &vm->transient;
 		arena_mark cp = arena_checkpoint(tmp_heap.heap);
 

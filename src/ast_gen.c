@@ -206,6 +206,7 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 				obj.data = buffer;
 
 				struct stg_exec heap = {0};
+				heap.vm = mod->vm;
 				heap.heap = &mod->vm->transient;
 				arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -980,6 +981,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 						bind_func.data = &bind_func_obj;
 
 						struct stg_exec heap = {0};
+						heap.vm = ctx->vm;
 						heap.heap = &ctx->vm->transient;
 						arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -1127,6 +1129,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 		return_func.data = &ret_func_obj;
 
 		struct stg_exec heap = {0};
+		heap.vm = ctx->vm;
 		heap.heap = &ctx->vm->transient;
 		arena_mark cp = arena_checkpoint(heap.heap);
 
@@ -1624,6 +1627,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					res.data = buffer;
 
 					struct stg_exec heap = {0};
+					heap.vm = mod->vm;
 					heap.heap = &mod->vm->transient;
 					arena_mark cp = arena_checkpoint(heap.heap);
 
