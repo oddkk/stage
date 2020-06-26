@@ -2835,7 +2835,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						NULL, true, parent->root_node, comp->root_node,
 						parent->local_member_ids, NULL);
 				if (err) {
-					printf("Failed to resolve names.\n");
 					break;
 				}
 
@@ -2937,7 +2936,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						NULL, true, parent->root_node, mbr->type_node,
 						parent->local_member_ids, NULL);
 				if (err) {
-					printf("Failed to resolve names.\n");
 					break;
 				}
 
@@ -2963,7 +2961,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						parent->local_member_ids,
 						expr->trivial_name);
 				if (err) {
-					printf("Failed to resolve names.\n");
 					break;
 				}
 
@@ -3165,7 +3162,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						NULL, true, parent->root_node, impl->impl->target,
 						parent->local_member_ids, NULL);
 				if (err) {
-					printf("Failed to resolve names.\n");
 					return -1;
 				}
 				ast_dt_find_named_dependencies(
@@ -3177,7 +3173,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						NULL, true, parent->root_node, impl->impl->value,
 						parent->local_member_ids, NULL);
 				if (err) {
-					printf("Failed to resolve names.\n");
 					return -1;
 				}
 				ast_dt_find_named_dependencies(
@@ -3190,7 +3185,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 							NULL, true, parent->root_node, impl->impl->args[i].value,
 							parent->local_member_ids, NULL);
 					if (err) {
-						printf("Failed to resolve names.\n");
 						return -1;
 					}
 
