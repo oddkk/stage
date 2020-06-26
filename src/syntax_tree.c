@@ -456,6 +456,10 @@ st_node_has_templ_params(struct st_node *node)
 #undef TREE_VISIT_NODE
 #undef TREE_VISIT_ATOM
 
+	if (node->next_sibling) {
+		has_param |= st_node_has_templ_params(node->next_sibling);
+	}
+
 	return has_param;
 }
 
