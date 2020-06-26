@@ -197,6 +197,9 @@ obj_repr_to_alloced_string(struct vm *vm, struct object obj);
 struct object
 register_object(struct vm *, struct objstore *store, struct object obj);
 
+struct object
+arena_copy_object(struct vm *, struct arena *, struct object);
+
 static inline struct type *store_get_type(struct objstore *store, type_id id) {
 	return paged_list_get(&store->types, id);
 }

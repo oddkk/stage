@@ -129,6 +129,35 @@ register_object(struct vm *vm, struct objstore *store, struct object obj) {
 	return res;
 }
 
+struct object
+arena_copy_object(struct vm *vm, struct arena *mem, struct object obj)
+{
+	struct type *type;
+	type = vm_get_type(vm, obj.type);
+
+	struct object res = {0};
+	res.type = obj.type;
+	res.data = NULL;
+
+	if (type->size > 0) {
+		res.data = arena_alloc(mem, type->size);
+		if (!res.data) {
+			return OBJ_NONE;
+		}
+
+		memcpy(res.data, obj.data, type->size);
+	}
+
+	if (type->base->obj_copy) {
+		struct stg_exec ctx = {0};
+		ctx.vm = vm;
+		ctx.heap = mem;
+		type->base->obj_copy(&ctx, type->data, res.data);
+	}
+
+	return res;
+}
+
 void free_objstore(struct objstore *store) {
 	arena_destroy(&store->data);
 	paged_list_destroy(&store->types);
