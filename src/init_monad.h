@@ -11,6 +11,7 @@ struct stg_init_context_entry {
 
 struct stg_init_context {
 	struct vm *vm;
+	struct stg_module *mod;
 
 	struct stg_init_context_entry *entries;
 	size_t num_entries;
@@ -24,7 +25,7 @@ void *
 stg_init_get_entry(struct stg_init_context *ctx, struct atom *name);
 
 typedef void (*stg_init_callback)(
-		struct vm *vm, struct stg_exec *, void *data, void *out);
+		struct stg_init_context *, struct stg_exec *, void *data, void *out);
 
 typedef void (*stg_init_copy)(
 		struct stg_exec *, void *data);
@@ -44,8 +45,8 @@ stg_register_init_type(struct stg_module *mod, type_id res_type);
 // point to a buffer sufficiently large to store the resulting object.
 void
 stg_unsafe_call_init(
-		struct vm *vm, struct stg_exec *ctx,
-		struct object obj, struct object *out);
+		struct stg_init_context *, struct stg_exec *,
+		struct object, struct object *out);
 
 void
 stg_monad_init_copy(struct stg_exec *new_ctx, struct stg_init_data *);

@@ -25,10 +25,10 @@ init_io_copy(struct stg_exec *ctx, void *data)
 }
 
 static void
-init_io_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
+init_io_unsafe(struct stg_init_context *ctx, struct stg_exec *heap, void *data, void *out)
 {
 	struct init_io_data *closure = data;
-	closure->monad.call(vm, ctx,
+	closure->monad.call(ctx->vm, heap,
 			closure->monad.data, out);
 }
 
@@ -71,12 +71,12 @@ init_cons_from_vm(struct vm *vm)
 #define TYPE_INFO_TYPE struct stg_init_type_info
 
 #define MONAD_CALLBACK_RET void
-#define MONAD_CALLBACK_PARAMS struct vm *vm, struct stg_exec *ctx, void *data, void *out
+#define MONAD_CALLBACK_PARAMS struct stg_init_context *ctx, struct stg_exec *heap, void *data, void *out
 
 #include "../native_monad_template.h"
 
 static void
-init_return_callback(struct vm *vm, struct stg_exec *ctx,
+init_return_callback(struct stg_init_context *ctx, struct stg_exec *heap,
 		void *data, void *out)
 {
 	struct init_return_data *closure = data;
@@ -85,14 +85,14 @@ init_return_callback(struct vm *vm, struct stg_exec *ctx,
 }
 
 static void
-init_bind_callback(struct vm *vm, struct stg_exec *ctx,
+init_bind_callback(struct stg_init_context *ctx, struct stg_exec *heap,
 		void *data, void *out)
 {
 	struct init_bind_data *closure = data;
 
 	uint8_t in_buffer[closure->in_type_size];
 
-	closure->monad.call(vm, ctx,
+	closure->monad.call(ctx, heap,
 			closure->monad.data, in_buffer);
 
 	struct object arg;
@@ -106,10 +106,10 @@ init_bind_callback(struct vm *vm, struct stg_exec *ctx,
 	out_monad_obj.data = &out_monad;
 
 	vm_call_func_obj(
-			vm, ctx, closure->func,
+			ctx->vm, heap, closure->func,
 			&arg, 1, &out_monad_obj);
 
-	out_monad.call(vm, ctx, out_monad.data, out);
+	out_monad.call(ctx, heap, out_monad.data, out);
 }
 
 void
@@ -147,21 +147,21 @@ stg_register_init_type(struct stg_module *mod, type_id res_type)
 
 void
 stg_unsafe_call_init(
-		struct vm *vm, struct stg_exec *ctx,
+		struct stg_init_context *ctx, struct stg_exec *heap,
 		struct object obj, struct object *out)
 {
 	type_id ret_type_id;
-	ret_type_id = init_return_type(vm, obj.type);
+	ret_type_id = init_return_type(ctx->vm, obj.type);
 
 	struct type *ret_type;
-	ret_type = vm_get_type(vm, ret_type_id);
+	ret_type = vm_get_type(ctx->vm, ret_type_id);
 
-	assert_type_equals(vm, out->type, ret_type_id);
+	assert_type_equals(ctx->vm, out->type, ret_type_id);
 	assert(out->data || ret_type->size == 0);
 
 	struct stg_init_data *data = obj.data;
 
-	data->call(vm, ctx, data->data, out->data);
+	data->call(ctx, heap, data->data, out->data);
 }
 
 bool

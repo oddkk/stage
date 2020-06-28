@@ -14,7 +14,8 @@ struct stream_debug_print_monad_data {
 };
 
 static void
-stream_debug_print_monad_unsafe(struct vm *vm, struct stg_exec *ctx, void *data, void *out)
+stream_debug_print_monad_unsafe(struct stg_init_context *ctx,
+		struct stg_exec *heap, void *data, void *out)
 {
 	struct stream_debug_print_monad_data *closure = data;
 	(void)closure;

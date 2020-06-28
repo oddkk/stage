@@ -98,7 +98,14 @@ vm_mod_init(struct stg_module *mod)
 		exec_ctx.vm = mod->vm;
 		exec_ctx.heap = &mod->vm->transient;
 		arena_mark cp = arena_checkpoint(exec_ctx.heap);
-		stg_unsafe_call_init(mod->vm, &exec_ctx, main_obj, &result);
+
+		struct stg_init_context init_ctx = {0};
+		init_ctx.mod = mod;
+		init_ctx.vm = mod->vm;
+
+		// TODO: Let dependecies initialize the init context.
+
+		stg_unsafe_call_init(&init_ctx, &exec_ctx, main_obj, &result);
 
 		result = register_object(
 				mod->vm, &mod->store, result);

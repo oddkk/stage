@@ -56,14 +56,14 @@ struct msg_trigger_init_data {
 
 static void
 msg_trigger_init_callback(
-		struct vm *vm, struct stg_exec *heap,
+		struct stg_init_context *ctx, struct stg_exec *heap,
 		void *data, void *out)
 {
 	struct msg_trigger_init_data *closure;
 	closure = data;
 
 	struct msg_system *sys;
-	sys = msg_get_system(vm);
+	sys = msg_get_system(ctx->vm);
 
 	int err;
 	err = msg_trigger_subscribe(

@@ -65,10 +65,10 @@ sql_db_connect_copy(struct stg_exec *heap, void *data)
 	closure->con_str = stg_exec_copy_string(heap, closure->con_str);
 }
 
-struct stg_init_data
+struct stg_io_data
 sql_db_connect(struct stg_exec *ctx, struct string kind, struct string con_str)
 {
-	struct stg_init_data monad = {0};
+	struct stg_io_data monad = {0};
 	monad.call = sql_db_connect_unsafe;
 	monad.copy = sql_db_connect_copy;
 	monad.data_size = sizeof(struct sql_connect_data);
@@ -213,11 +213,11 @@ struct tmp_arg {
 	struct tmp_arg *next;
 };
 
-struct stg_init_data
+struct stg_io_data
 sql_db_query(struct stg_exec *ctx, struct stg_module *mod,
 		int64_t db, struct string query, struct stg_list_data args_list)
 {
-	struct stg_init_data monad = {0};
+	struct stg_io_data monad = {0};
 	monad.call = sql_db_query_unsafe;
 	monad.copy = sql_db_query_copy;
 	monad.data_size = sizeof(struct sql_query_data);
