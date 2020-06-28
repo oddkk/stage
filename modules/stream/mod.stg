@@ -1,0 +1,24 @@
+Freq := @native("Freq");
+Stream := @native("Stream");
+
+hz := (f: int) -> Freq
+	@native("stream_freq_from_hz");
+
+f1Hz := hz(1);
+f48kHz := hz(48000);
+
+const := (val: $T) -> Stream[T, $F]
+	=> ((val: T, type: Type, freq: Freq) -> Stream[T, F]
+		@native("stream_funct_const"))(val, T, F);
+
+fmap := (fn: ($T) -> $U, in: Stream[T, $F]) -> Stream[U, F]
+	=> ((fn: (T) -> U, in: Stream[T, F]) -> Stream[U, F]
+		@native("stream_funct_fmap"))(fn, in);
+
+debugPrint := (in: Stream[int, $F])
+	=> ((in: Stream[int, F], F: Freq) -> Init[Unit]
+		@native("stream_funct_debug_print"))(in, F);
+
+# sin := (f: Stream[Freq, $F]) -> Stream[int, F]
+# 	=> ((f: Stream[Freq, F]) -> Stream[int, F]
+# 		@native("stream_funct_sin"))(f);

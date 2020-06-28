@@ -4,6 +4,7 @@ build:
 	@bash ./build.sh
 	@cd ./modules/channel/ && bash ./build.sh
 	@cd ./modules/message/ && bash ./build.sh
+	@cd ./modules/stream/ && bash ./build.sh
 	@cd ./modules/sql/ && bash ./build.sh
 
 clean:

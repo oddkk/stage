@@ -1,0 +1,145 @@
+use mod base.*;
+use mod base.init.*;
+use mod base.list.*;
+use mod base.format.FormatPart;
+
+use mod message;
+
+use mod sql;
+
+# testList := cons[int](5, cons[int](2, nil[int]));
+#
+# a := head[int](testList);
+# b := head[int](nil[int]);
+#
+# !bind[](
+# 	bind[](
+# 		return[](10),
+# 		a => return[](a * 5)),
+# 	a => printTwice[int](a));
+#
+# !bind[](
+# 	bind[](
+# 		return[]("Hello, World!"),
+# 		a => return[]("Hello, World!")),
+# 	a => printTwice[](a));
+#
+#
+# !printTwice[](false);
+# !printTwice[](true);
+#
+# printTwice := (val: $T) -> Init[Unit]
+# 	=> init.bind[](printLn(ToString[T].toString(val)),
+# 		a => printLn(ToString[T].toString(val)));
+#
+# !printLn(match Maybe[int].Some(3) {
+# 	Maybe[int].Some(2)  => "two";
+# 	Maybe[int].Some($a) => "something else";
+# 	Maybe[int].None     => "nothing";
+# });
+#
+# !message.msg[](message.onStart, a =>
+# 	message.bind[](message.return[](2),
+# 		b => message.io[](io.printLn(ToString[int].toString(b)))));
+#
+#
+# foo := true;
+# bar := 2;
+# baz := "hello";
+#
+# !printLn(f"${baz}, world! ${foo}, ${bar}+2 = ${bar+2}");
+# StringInterpolator["f"].combine([
+#	StringInterpolator["f"].fromExpr(baz),
+#	StringInterpolator["f"].fromLit(", world! "),
+#	StringInterpolator["f"].fromExpr(foo),
+#	StringInterpolator["f"].fromLit(", "),
+#	StringInterpolator["f"].fromExpr(bar),
+#	StringInterpolator["f"].fromLit("+2 = "),
+#	StringInterpolator["f"].fromExpr(bar+2),
+# ])
+
+# !msg(message.onStart, do {
+# 	a := Pass(2);
+# });
+
+# !onStart >> _ => Pass(2) >>= a => io(printInt(a));
+
+# fmt := cons[FormatPart](
+# 	FormatPart.Lit("Foo Hello, "),
+# 	cons[FormatPart](
+# 		FormatPart.Expr(() => ToString[String].toString("World")),
+# 			cons[FormatPart](
+# 				FormatPart.Lit("!"), nil[FormatPart])));
+# !printLn(format.format(fmt));
+
+
+# !withIO[](
+# 	printLn("FOOBAR")
+# );
+
+Account := struct {
+	id: String;
+	name: String;
+	register: String;
+	lastLogin: String;
+
+};
+
+rowToAccount := (r: List[String]) -> Maybe[Account]
+	=> match r {
+		[$i, $n, $r, $l, ...]
+			=> Maybe[Account].Some(Account {
+				id = i;
+				name = n;
+				register = r;
+				lastLogin = l;
+			});
+		_ => Maybe[Account].None;
+	};
+
+op>>= := io.bind;
+op>> := (a: io.IO[$T], b: io.IO[$U]) -> io.IO[U]
+	=> a >>= (dc => b);
+
+# printAccount := (a: Account) -> io.IO[Unit]
+# 	=> io.bind(io.printLn(concat("id: ", a.id)),
+# 		b => io.bind(io.printLn(concat("name: ", a.name)),
+# 			b => io.bind(io.printLn(concat("register: ", a.register)),
+# 				b => io.printLn(concat("last login: ", a.lastLogin))
+# 			)
+# 		)
+# 	);
+
+# printAccount := (a: Account) -> io.IO[Unit]
+# 	=>  io.printLn(concat("id: ", a.id))
+# 	>>= (b => io.printLn(concat("name: ", a.name)))
+# 	>>= (b => io.printLn(concat("register: ", a.register)))
+# 	>>= (b => io.printLn(concat("last login: ", a.lastLogin)));
+
+# printAccount := (a: Account) -> io.IO[Unit]
+# 	=> io.printLn(concat("id: ", a.id))
+# 	>> io.printLn(concat("name: ", a.name))
+# 	>> io.printLn(concat("register: ", a.register))
+# 	>> io.printLn(concat("last login: ", a.lastLogin));
+
+printAccount := (a: Account) -> io.IO[Unit]
+	=> do {
+		io.printLn(concat("id: ", a.id));
+		io.printLn(concat("name: ", a.name));
+		io.printLn(concat("register: ", a.register));
+		io.printLn(concat("last login: ", a.lastLogin));
+	};
+
+!withIO(
+	io.bind(sql.postgresql.connect("dbname=test"),
+		con => io.bind(sql.query(con, "select * from account where account=$1",
+				cons("6", nil[])),
+			rows => match rows {
+				cons($r, _) => match rowToAccount(r) {
+					Maybe[Account].Some($a) => printAccount(a);
+					_ => io.printLn("Invalid account");
+				};
+				_ => io.printLn("No accounts");
+			}
+			# io.printLn(printRows(rows))))
+)));
