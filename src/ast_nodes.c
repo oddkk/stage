@@ -1211,7 +1211,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	bc_env.vm = ctx->vm;
 	bc_env.store = ctx->vm->instr_store;
 
-	struct ast_gen_bc_result bc;
+	struct bc_result bc;
 	bc = ast_node_gen_bytecode(
 			ctx, info->mod, &gen_info,
 			&bc_env, body);

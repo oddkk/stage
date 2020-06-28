@@ -1093,13 +1093,6 @@ typedef unsigned int bc_closure;
 
 #define AST_BC_CLOSURE_PRUNED ((bc_closure)UINT_MAX)
 
-struct ast_gen_bc_result {
-	struct bc_instr *first;
-	struct bc_instr *last;
-	bc_var out_var;
-	int err;
-};
-
 struct ast_gen_init_expr {
 	ast_init_expr_id id;
 	type_id type;
@@ -1148,7 +1141,7 @@ struct ast_gen_info {
 	size_t num_pattern_params;
 };
 
-struct ast_gen_bc_result
+struct bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node);
 

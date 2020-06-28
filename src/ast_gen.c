@@ -10,31 +10,8 @@
 
 #define AST_GEN_SHOW_BC 0
 
-#define AST_GEN_ERROR ((struct ast_gen_bc_result){.err=-1})
+#define AST_GEN_ERROR ((struct bc_result){.err=-1})
 #define AST_GEN_EXPECT_OK(res) do { if ((res).err) { return res; } } while (0);
-
-static inline void
-append_bc_instr(struct ast_gen_bc_result *res, struct bc_instr *instr)
-{
-	if (res->last) {
-		assert(res->first);
-		res->last->next = instr;
-	} else {
-		res->first = instr;
-	}
-	res->last = instr;
-}
-
-static inline void
-append_bc_instrs(struct ast_gen_bc_result *res, struct ast_gen_bc_result instrs)
-{
-	if (!instrs.first) {
-		return;
-	}
-	assert(instrs.first && instrs.last);
-	append_bc_instr(res, instrs.first);
-	res->last = instrs.last;
-}
 
 static bool
 ast_gen_dt_param_ref_equals(struct ast_gen_dt_ref lhs, struct ast_gen_dt_ref rhs)
@@ -56,7 +33,7 @@ ast_gen_dt_param_ref_equals(struct ast_gen_dt_ref lhs, struct ast_gen_dt_ref rhs
 	return false;
 }
 
-static struct ast_gen_bc_result
+static struct bc_result
 ast_gen_get_dt_param(struct bc_env *bc_env,
 		struct ast_gen_info *info, struct ast_gen_dt_ref ref)
 {
@@ -65,7 +42,7 @@ ast_gen_get_dt_param(struct bc_env *bc_env,
 		param = &info->dt_params[i];
 
 		if (ast_gen_dt_param_ref_equals(param->ref, ref)) {
-			struct ast_gen_bc_result result = {0};
+			struct bc_result result = {0};
 			if (param->is_const) {
 				append_bc_instr(&result,
 						bc_gen_load(bc_env, BC_VAR_NEW,
@@ -244,17 +221,17 @@ ast_gen_resolve_closure(struct bc_env *bc_env,
 	return (struct ast_typecheck_closure){0};
 }
 
-static struct ast_gen_bc_result
+static struct bc_result
 ast_unpack_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct bc_env *bc_env, bc_var value, size_t descendent);
 
-static struct ast_gen_bc_result
+static struct bc_result
 ast_name_ref_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info,
 		struct bc_env *bc_env, struct ast_name_ref ref,
 		struct stg_location loc, type_id type)
 {
-	struct ast_gen_bc_result result = {0};
+	struct bc_result result = {0};
 
 	switch (ref.kind) {
 		case AST_NAME_REF_MEMBER:
@@ -336,7 +313,7 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 				bc_var value_var;
 				value_var = result.last->load.target;
 
-				struct ast_gen_bc_result unpack_instrs;
+				struct bc_result unpack_instrs;
 				unpack_instrs = ast_unpack_gen_bytecode(
 							ctx, mod, bc_env,
 							value_var, ref.use.param);
@@ -362,11 +339,11 @@ ast_name_ref_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 	return AST_GEN_ERROR;
 }
 
-static struct ast_gen_bc_result
+static struct bc_result
 ast_unpack_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct bc_env *bc_env, bc_var value, size_t descendent)
 {
-	struct ast_gen_bc_result result = {0};
+	struct bc_result result = {0};
 
 	result.out_var = value;
 
@@ -419,12 +396,12 @@ ast_unpack_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 	return result;
 }
 
-static struct ast_gen_bc_result
+static struct bc_result
 ast_pattern_true_or_fail(
 		struct bc_env *bc_env, bc_var in,
 		struct bc_instr *pattern_match_fail)
 {
-	struct ast_gen_bc_result result = {0};
+	struct bc_result result = {0};
 
 	append_bc_instr(&result,
 			bc_gen_push_arg(bc_env, in));
@@ -441,14 +418,14 @@ ast_pattern_true_or_fail(
 	return result;
 }
 
-static struct ast_gen_bc_result
+static struct bc_result
 ast_pattern_gen_match_expr(
 		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env,
 		struct ast_node *node, bc_var in,
 		struct bc_instr *pattern_match_fail)
 {
-	struct ast_gen_bc_result expr;
+	struct bc_result expr;
 	expr = ast_node_gen_bytecode(
 			ctx, mod, info, bc_env, node);
 	AST_GEN_EXPECT_OK(expr);
@@ -465,7 +442,7 @@ ast_pattern_gen_match_expr(
 	return expr;
 }
 
-static struct ast_gen_bc_result
+static struct bc_result
 ast_pattern_gen_match_unpack(
 		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env,
@@ -473,7 +450,7 @@ ast_pattern_gen_match_unpack(
 		bc_var *params_out, size_t num_params,
 		struct bc_instr *pattern_match_fail)
 {
-	struct ast_gen_bc_result result = {0};
+	struct bc_result result = {0};
 	type_id in_type = bc_get_var_type(bc_env, in);
 
 	assert_type_equals(ctx->vm, in_type, node->type);
@@ -524,7 +501,7 @@ ast_pattern_gen_match_unpack(
 					bc_var param_var;
 					param_var = result.last->unpack.target;
 
-					struct ast_gen_bc_result sub_match;
+					struct bc_result sub_match;
 					sub_match = ast_pattern_gen_match_unpack(
 							ctx, mod, info, bc_env,
 							node->call.args[i].value, param_var,
@@ -592,14 +569,14 @@ struct ast_inst_bytecode_part_ctx {
 	size_t num_init_exprs;
 };
 
-struct ast_gen_bc_result
+struct bc_result
 ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env,
 		struct object_inst *inst, struct ast_node *node,
 		struct ast_inst_bytecode_part_ctx *inst_ctx,
 		struct object_inst_action *actions, size_t num_actions)
 {
-	struct ast_gen_bc_result result = {0};
+	struct bc_result result = {0};
 
 	for (size_t act_i = 0; act_i < num_actions; act_i++) {
 		struct object_inst_action *act;
@@ -672,7 +649,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 						   }
 						   */
 
-						struct ast_gen_bc_result expr;
+						struct bc_result expr;
 						expr = ast_node_gen_bytecode(
 								ctx, mod, info, bc_env,
 								node->call.args[extra_expr_id].value);
@@ -695,7 +672,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 
 					int expr_id = act->init_expr.id;
 
-					struct ast_gen_bc_result init_expr = {0};
+					struct bc_result init_expr = {0};
 
 					if (expr_id < inst->num_exprs) {
 						struct object_inst_expr *expr;
@@ -755,7 +732,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 						   }
 						   */
 
-						struct ast_gen_bc_result expr;
+						struct bc_result expr;
 						expr = ast_node_gen_bytecode(
 								ctx, mod, info, bc_env,
 								node->call.args[extra_expr_id].value);
@@ -788,7 +765,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 					// $U
 					type_id final_ret_type = TYPE_UNSET;
 
-					struct ast_gen_bc_result func_instrs = {0};
+					struct bc_result func_instrs = {0};
 
 					{
 						struct bc_env *inner_bc_env;
@@ -796,7 +773,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 						inner_bc_env->vm = ctx->vm;
 						inner_bc_env->store = ctx->vm->instr_store;
 
-						struct ast_gen_bc_result inner_instrs = {0};
+						struct bc_result inner_instrs = {0};
 
 						size_t num_closure_members =
 							inst_ctx->num_filled_members + inst_ctx->num_filled_exprs;
@@ -832,7 +809,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 							arena_allocn(&mod->mem, num_closure_members,
 									sizeof(struct stg_func_closure_member));
 
-						struct ast_gen_bc_result func_closure_args = {0};
+						struct bc_result func_closure_args = {0};
 						size_t closure_offset = 0;
 						for (size_t i = 0; i < total_num_vals; i++) {
 							if (inst_ctx->all_vars[i] != BC_VAR_NEW) {
@@ -873,7 +850,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 							bc_alloc_param(inner_bc_env, 0, init_expr_out_type);
 						inst_ctx->num_filled_exprs += 1;
 
-						struct ast_gen_bc_result sub_expr = {0};
+						struct bc_result sub_expr = {0};
 						sub_expr = ast_inst_gen_bytecode_part(
 								ctx, mod, info, inner_bc_env, inst, node, inst_ctx,
 								&actions[act_i+1], num_actions - (act_i+1));
@@ -937,7 +914,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 						func_instrs.out_var = func_instr->pack.target;
 					}
 
-					struct ast_gen_bc_result bind_func_instrs = {0};
+					struct bc_result bind_func_instrs = {0};
 
 					{
 						struct stg_module *mod_base;
@@ -1026,7 +1003,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 					assert(expr_var != BC_VAR_NEW);
 					assert(inst_ctx->member_vars[act->bind.member_id] == BC_VAR_NEW);
 
-					struct ast_gen_bc_result instrs;
+					struct bc_result instrs;
 					instrs = ast_unpack_gen_bytecode(
 							ctx, mod, bc_env, expr_var,
 							act->bind.unpack_id);
@@ -1164,7 +1141,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 	}
 }
 
-struct ast_gen_bc_result
+struct bc_result
 ast_inst_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node)
 {
@@ -1267,7 +1244,7 @@ ast_inst_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		inst_ctx.all_vars[i] = BC_VAR_NEW;
 	}
 
-	struct ast_gen_bc_result result = {0};
+	struct bc_result result = {0};
 	result = ast_inst_gen_bytecode_part(
 			ctx, mod, info, bc_env, inst, node,
 			&inst_ctx, actions, num_actions);
@@ -1277,11 +1254,11 @@ ast_inst_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 	return result;
 }
 
-struct ast_gen_bc_result
+struct bc_result
 ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node)
 {
-	struct ast_gen_bc_result result = {0};
+	struct bc_result result = {0};
 	switch (node->kind) {
 		case AST_NODE_FUNC:
 			{
@@ -1353,7 +1330,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 							closure_members[closure_ref].offset = closure_offset;
 							closure_offset += closure_members[closure_ref].size;
 
-							struct ast_gen_bc_result value_instrs;
+							struct bc_result value_instrs;
 							value_instrs = ast_name_ref_gen_bytecode(
 									ctx, mod, info, bc_env,
 									cls->ref, node->loc, closure[i].type);
@@ -1494,7 +1471,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 				int err = 0;
 
 				for (size_t i = 0; i < node->call.num_args; i++) {
-					struct ast_gen_bc_result arg;
+					struct bc_result arg;
 					arg = ast_node_gen_bytecode(ctx, mod, info, bc_env,
 							node->call.args[i].value);
 					if (arg.err) {
@@ -1506,7 +1483,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					params[i] = arg.out_var;
 				}
 
-				struct ast_gen_bc_result func;
+				struct bc_result func;
 				func = ast_node_gen_bytecode(ctx, mod, info, bc_env,
 						node->call.func);
 				if (func.err) {
@@ -1644,7 +1621,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					result.out_var = result.last->load.target;
 
 				} else {
-					struct ast_gen_bc_result target = {0};
+					struct bc_result target = {0};
 
 					target = ast_node_gen_bytecode(
 							ctx, mod, info, bc_env,
@@ -1757,7 +1734,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 
 		case AST_NODE_MATCH:
 			{
-				struct ast_gen_bc_result value_instrs;
+				struct bc_result value_instrs;
 				value_instrs = ast_node_gen_bytecode(
 						ctx, mod, info, bc_env,
 						node->match.value);
@@ -1787,7 +1764,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					struct bc_instr *next_case;
 					next_case = bc_gen_nop(bc_env);
 
-					struct ast_gen_bc_result pattern_instrs;
+					struct bc_result pattern_instrs;
 					pattern_instrs = ast_pattern_gen_match_unpack(
 							ctx, mod, info, bc_env, match_case->pattern.node, value,
 							params_vars, match_case->pattern.num_params,
@@ -1798,7 +1775,7 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 					info->pattern_params = params_vars;
 					info->num_pattern_params = match_case->pattern.num_params;
 
-					struct ast_gen_bc_result res_instrs;
+					struct bc_result res_instrs;
 					res_instrs = ast_node_gen_bytecode(
 							ctx, mod, info, bc_env,
 							match_case->expr);
@@ -1970,7 +1947,7 @@ ast_func_gen_bytecode(
 	bc_env->num_closures = num_unpruned_closures;
 	bc_env->closure_types = closure_types;
 
-	struct ast_gen_bc_result func_instr;
+	struct bc_result func_instr;
 	func_instr = ast_node_gen_bytecode(ctx, mod, &info,
 			bc_env, node->func.body);
 	if (func_instr.err) {
@@ -2033,7 +2010,7 @@ ast_composite_bind_gen_bytecode(
 		bc_alloc_param(bc_env, i, dt_params[i].type);
 	}
 
-	struct ast_gen_bc_result func_instr;
+	struct bc_result func_instr;
 	func_instr = ast_node_gen_bytecode(ctx, mod, &info,
 			bc_env, expr);
 	if (func_instr.err) {
@@ -2081,7 +2058,7 @@ ast_type_expr_gen_bytecode(
 	info.closure_refs = NULL;
 	info.num_closures = num_closures;
 
-	struct ast_gen_bc_result func_instr;
+	struct bc_result func_instr;
 	func_instr = ast_node_gen_bytecode(ctx, mod, &info,
 			bc_env, expr);
 	if (func_instr.err) {
@@ -2124,7 +2101,7 @@ ast_gen_value_unpack_func(
 
 	bc_var param_var;
 	param_var = bc_alloc_param(bc_env, 0, value_type);
-	struct ast_gen_bc_result result;
+	struct bc_result result;
 	result = ast_unpack_gen_bytecode(
 			ctx, mod, bc_env, param_var, descendent);
 

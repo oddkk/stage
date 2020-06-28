@@ -244,4 +244,34 @@ bc_tag_labels(struct bc_env *env);
 void
 bc_print(struct bc_env *, struct bc_instr *);
 
+struct bc_result {
+	struct bc_instr *first;
+	struct bc_instr *last;
+	bc_var out_var;
+	int err;
+};
+
+static inline void
+append_bc_instr(struct bc_result *res, struct bc_instr *instr)
+{
+	if (res->last) {
+		assert(res->first);
+		res->last->next = instr;
+	} else {
+		res->first = instr;
+	}
+	res->last = instr;
+}
+
+static inline void
+append_bc_instrs(struct bc_result *res, struct bc_result instrs)
+{
+	if (!instrs.first) {
+		return;
+	}
+	assert(instrs.first && instrs.last);
+	append_bc_instr(res, instrs.first);
+	res->last = instrs.last;
+}
+
 #endif
