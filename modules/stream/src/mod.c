@@ -51,10 +51,38 @@ mod_stream_pre_init(struct stg_module *mod)
 }
 
 static int
+mod_stream_start(struct stg_module *mod)
+{
+	struct stream_system *sys;
+	sys = stream_get_system(mod->vm);
+
+	int err;
+	err = stream_system_start(sys);
+	if (err) {
+		return err;
+	}
+
+	return 0;
+}
+
+static int
+mod_stream_stop(struct stg_module *mod)
+{
+	struct stream_system *sys;
+	sys = stream_get_system(mod->vm);
+
+	stream_system_stop(sys);
+
+	return 0;
+}
+
+static int
 mod_stream_load(struct stg_native_module *mod)
 {
 	mod->hook_register = mod_stream_register;
 	mod->hook_pre_init = mod_stream_pre_init;
+	mod->hook_start    = mod_stream_start;
+	mod->hook_stop     = mod_stream_stop;
 
 	stream_mod_load_freq_type(mod);
 	stream_mod_load_stream(mod);

@@ -6,6 +6,7 @@
 #include <vm.h>
 #include <arena.h>
 #include <bytecode.h>
+#include <pthread.h>
 
 struct bc_env;
 typedef int bc_var;

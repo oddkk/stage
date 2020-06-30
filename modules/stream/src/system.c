@@ -2,6 +2,17 @@
 #include "mod.h"
 
 #include <module.h>
+#include <bytecode.h>
+#include <native_bytecode.h>
+
+#include <string.h>
+
+#include <string.h>
+#include <pthread.h>
+#include <time.h>
+
+static void *
+stream_system_thread(void *);
 
 void
 stream_system_init(struct vm *vm, struct stream_system *sys)
@@ -10,7 +21,74 @@ stream_system_init(struct vm *vm, struct stream_system *sys)
 			&sys->node_kinds,
 			&vm->mem,
 			sizeof(struct stream_node_kind));
+
+	paged_list_init(
+			&sys->pipes,
+			&vm->mem,
+			sizeof(struct stream_pipe));
+
+	sys->state = STREAM_STATE_STOPPED;
 }
+
+static inline bool
+sys_transition_state(struct stream_system *sys,
+		enum stream_system_state from,
+		enum stream_system_state to)
+{
+	return __sync_bool_compare_and_swap(
+			&sys->state, from, to);
+}
+
+int
+stream_system_start(struct stream_system *sys)
+{
+	if (!sys_transition_state(sys,
+				STREAM_STATE_STOPPED, STREAM_STATE_STARTING)) {
+		return -1;
+	}
+
+	int err;
+
+	pthread_attr_t attr;
+
+	err = pthread_attr_init(&attr);
+	if (err) {
+		perror("pthread_attr_init");
+		return -1;
+	}
+
+	err = pthread_create(
+			&sys->thread_handle,
+			NULL, &stream_system_thread, sys);
+	if (err) {
+		perror("pthread_create");
+		return -1;
+	}
+
+	pthread_attr_destroy(&attr);
+
+	return 0;
+}
+
+void
+stream_system_stop(struct stream_system *sys)
+{
+	if (!sys_transition_state(sys,
+				STREAM_STATE_RUNNING, STREAM_STATE_STOPPING)) {
+		pthread_cancel(sys->thread_handle);
+	}
+
+
+	int err;
+	err = pthread_join(sys->thread_handle, NULL);
+	if (err) {
+		perror("pthread_join");
+		return;
+	}
+
+	assert(sys->state == STREAM_STATE_STOPPED);
+}
+
 
 struct stream_system *
 stream_get_system(struct vm *vm)
@@ -150,4 +228,62 @@ stream_register_endpoint(struct stg_module *mod,
 	new_pipe = paged_list_get(&sys->pipes, pipe_i);
 
 	*new_pipe = pipe;
+}
+
+static void *
+stream_system_thread(void *sys_ptr)
+{
+	struct stream_system *sys = sys_ptr;
+
+	struct stg_memory memory = {0};
+
+	int err;
+	err = stg_memory_init(&memory);
+	if (err) {
+		print_error("stream", "Failed to initialize memory context.");
+		return NULL;
+	}
+
+	struct arena mem = {0};
+	err = arena_init(&mem, &memory);
+	if (err) {
+		print_error("stream", "Failed to initialize memory context.");
+		return NULL;
+	}
+
+	struct stg_exec exec_ctx = {0};
+	exec_ctx.heap = &mem;
+
+	if (!sys_transition_state(sys,
+				STREAM_STATE_STARTING, STREAM_STATE_RUNNING)) {
+		print_error("stream",
+				"Attempting to start stream system while it is not ready to be "
+				"started.");
+		return NULL;
+	}
+
+	arena_mark mem_base;
+	mem_base = arena_checkpoint(&mem);
+
+	while (sys->state == STREAM_STATE_RUNNING) {
+		struct timespec duration = {0};
+		duration.tv_sec = 1;
+		nanosleep(&duration, NULL);
+		// nbc_exec(sys->vm, &exec_ctx, );
+
+		arena_reset(&mem, mem_base);
+	}
+
+	if (!sys_transition_state(sys,
+				STREAM_STATE_STOPPING, STREAM_STATE_STOPPED)) {
+		print_error("stream",
+				"Attempting to stop stream system while it is not ready to be "
+				"stopped.");
+		return NULL;
+	}
+
+	arena_destroy(&mem);
+	stg_memory_destroy(&memory);
+
+	return NULL;
 }
