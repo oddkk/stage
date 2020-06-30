@@ -138,8 +138,6 @@ stream_type_unpack(
 
 static ffi_type *stream_ffi_type_members[] = {
 	&ffi_type_pointer,
-	&ffi_type_pointer,
-	&ffi_type_uint64,
 	NULL,
 };
 
@@ -250,14 +248,6 @@ stream_mod_load_stream(struct stg_native_module *mod)
 struct stream_data
 stream_copy_stream_data(struct stg_exec *ctx, struct stream_data node)
 {
-	void *new_data;
-	new_data = stg_alloc(ctx, 1, node.data_size);
-	memcpy(new_data, node.data, node.data_size);
-	node.data = new_data;
-
-	if (node.kind->copy_node) {
-		node.kind->copy_node(ctx, node.data);
-	}
-
+	node.node = stream_copy_node_ref(ctx, *node.node);
 	return node;
 }

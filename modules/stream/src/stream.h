@@ -11,9 +11,7 @@ struct stream_type_info {
 };
 
 struct stream_data {
-	struct stream_node_kind *kind;
-	void *data;
-	size_t data_size;
+	struct stream_node *node;
 };
 
 struct stg_module;

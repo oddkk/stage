@@ -63,25 +63,21 @@ stream_funct_const(void **args, size_t num_args, void *ret)
 	struct type *value_type;
 	value_type = vm_get_type(mod->vm, value_type_id);
 
-	struct stream_data data = {0};
-	data.kind = stream_get_node_kind(
-			mod, mod_atoms(mod, "const"));
+	size_t node_data_size;
+	node_data_size = sizeof(struct stream_node_const) + value_type->size;
 
-	data.data_size = sizeof(struct stream_node_const) + value_type->size;
-	data.data = stg_alloc(heap, 1, data.data_size);
-
-	struct stream_node_const *node_data = data.data;
+	struct stream_node_const *node_data;
+	node_data = stg_alloc(heap, 1, node_data_size);
 	node_data->type = value_type_id;
 
 	memcpy(node_data->data, value, value_type->size);
 
-	if (value_type->base->obj_copy) {
-		value_type->base->obj_copy(heap,
-				value_type->data, node_data->data);
-	}
+	struct stream_data *data = ret;
+	memset(data, 0, sizeof(struct stream_data));
 
-	struct stream_data *out = ret;
-	*out = data;
+	data->node = stream_alloc_node(
+			heap, stream_get_node_kinds(mod, "const"),
+			(void *)node_data, node_data_size);
 }
 
 STREAM_NODE_KIND_DECL(const, stream_funct_decl_const, stream_funct_const,

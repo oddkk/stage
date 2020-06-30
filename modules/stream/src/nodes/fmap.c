@@ -8,7 +8,7 @@
 
 struct stream_node_fmap_data {
 	struct stg_func_object fn;
-	struct stream_data in;
+	struct stream_node *in;
 };
 
 static struct bc_result
@@ -18,7 +18,7 @@ stream_node_fmap_gen_bytecode(struct bc_env *env, struct arena *mem, void *in_da
 
 	struct bc_result res;
 	bc_var in_var;
-	res = node->in.kind->gen_bytecode(env, mem, node->in.data);
+	res = node->in->kind->gen_bytecode(env, mem, node->in->data);
 	in_var = res.out_var;
 
 	struct bc_instr *instr;
@@ -35,7 +35,7 @@ static void
 stream_node_fmap_copy(struct stg_exec *heap, void *data)
 {
 	struct stream_node_fmap_data *node = data;
-	node->in = stream_copy_stream_data(heap, node->in);
+	node->in = stream_copy_node_ref(heap, *node->in);
 }
 
 static struct stream_node_kind_decl stream_funct_decl_fmap = {
@@ -51,18 +51,19 @@ stream_funct_fmap(
 		struct stream_data in)
 {
 	struct stream_data res = {0};
+	struct stream_node *node = res.node;
 
-	res.kind = stream_get_node_kind(
+	node->kind = stream_get_node_kind(
 			mod, mod_atoms(mod, "fmap"));
 
-	res.data_size = sizeof(struct stream_node_fmap_data);
-	res.data = stg_alloc(heap, 1, res.data_size);
+	node->data_size = sizeof(struct stream_node_fmap_data);
+	node->data = stg_alloc(heap, 1, node->data_size);
 
 	struct stream_node_fmap_data *data;
-	data = res.data;
+	data = node->data;
 
 	data->fn = fn;
-	data->in = in;
+	data->in = in.node;
 
 	return res;
 }

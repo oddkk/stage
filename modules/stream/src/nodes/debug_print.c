@@ -9,7 +9,7 @@
 #include <init_monad.h>
 
 struct stream_debug_print_monad_data {
-	struct stream_data in;
+	struct stream_node *in;
 	freq_t freq;
 };
 
@@ -18,18 +18,19 @@ stream_debug_print_monad_unsafe(struct stg_init_context *ctx,
 		struct stg_exec *heap, void *data, void *out)
 {
 	struct stream_debug_print_monad_data *closure = data;
-	(void)closure;
 
-	printf("reg print\n");
+	struct stream_pipe_config cfg = {0};
+	cfg.freq = closure->freq;
 
-	// TODO
+	stream_register_endpoint(
+			ctx->mod, closure->in, cfg);
 }
 
 static void
 stream_debug_print_monad_copy(struct stg_exec *heap, void *data)
 {
 	struct stream_debug_print_monad_data *closure = data;
-	closure->in = stream_copy_stream_data(heap, closure->in);
+	closure->in = stream_copy_node_ref(heap, *closure->in);
 }
 
 static struct stg_init_data
@@ -43,7 +44,7 @@ stream_funct_debug_print(struct stg_exec *heap, struct stream_data in, freq_t fr
 
 	struct stream_debug_print_monad_data *closure = {0};
 	closure = data.data;
-	closure->in = in;
+	closure->in = in.node;
 	closure->freq = freq;
 
 	return data;
