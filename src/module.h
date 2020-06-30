@@ -135,6 +135,9 @@ stg_mod_invoke_post_init(struct stg_module *mod);
 int
 stg_mod_invoke_start(struct stg_module *mod);
 
+int
+stg_mod_invoke_stop(struct stg_module *mod);
+
 void
 stg_mod_invoke_destroy(struct stg_module *mod);
 

@@ -10,6 +10,8 @@
 #include <time.h>
 #include <errno.h>
 
+#include <signal.h>
+
 #include <argp.h>
 
 #ifdef STAGE_TEST
@@ -69,6 +71,22 @@ parse_opt(int key, char *arg, struct argp_state *state)
 
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
+enum stg_run_flags {
+	STG_SHOULD_STOP = 1<<0,
+};
+
+static enum stg_run_flags stg_run_flags = 0;
+
+static void
+stg_singal_handler(int sig)
+{
+	switch (sig) {
+		case SIGINT:
+			stg_run_flags |= STG_SHOULD_STOP;
+			break;
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	int err;
@@ -120,7 +138,16 @@ int main(int argc, char *argv[])
 		printf("\n");
 	}
 
+	signal(SIGINT, stg_singal_handler);
+
 	vm_start(&vm);
+
+	while ((stg_run_flags & STG_SHOULD_STOP) == 0) {
+	}
+
+	signal(SIGINT, SIG_DFL);
+
+	vm_stop(&vm);
 	vm_destroy(&vm);
 
 	return 0;

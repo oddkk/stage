@@ -64,6 +64,7 @@ struct stg_native_module {
 
 	// Indicates that the module should start any background processes.
 	int  (*hook_start      )(struct stg_module *);
+	int  (*hook_stop       )(struct stg_module *);
 	void (*hook_destroy    )(struct stg_module *);
 };
 

@@ -220,6 +220,16 @@ stg_mod_invoke_start(struct stg_module *mod)
 	return 0;
 }
 
+int
+stg_mod_invoke_stop(struct stg_module *mod)
+{
+	if (mod->native_mod && mod->native_mod->hook_stop) {
+		return mod->native_mod->hook_stop(mod);
+	}
+
+	return 0;
+}
+
 void
 stg_mod_invoke_destroy(struct stg_module *mod)
 {

@@ -39,8 +39,20 @@ void vm_destroy(struct vm *vm)
 	for (size_t i = 0; i < vm->num_modules; i++) {
 		struct stg_module *mod = vm->modules[i];
 
+		if (mod->state == STG_MOD_LIFE_DESTROYED) {
+			continue;
+		}
+
+		assert(mod->state == STG_MOD_LIFE_IDLE ||
+				mod->state == STG_MOD_LIFE_FAILED);
+
 		stg_mod_invoke_destroy(mod);
 		stg_module_destroy(mod);
+		mod->state = STG_MOD_LIFE_DESTROYED;
+	}
+
+	for (size_t i = 0; i < vm->num_modules; i++) {
+		struct stg_module *mod = vm->modules[i];
 		free(mod);
 	}
 
@@ -128,11 +140,25 @@ vm_mod_init(struct stg_module *mod)
 int vm_start(struct vm *vm)
 {
 	for (size_t i = 0; i < vm->num_modules; i++) {
-		stg_mod_invoke_start(vm->modules[i]);
+		if (vm->modules[i]) {
+			stg_mod_invoke_start(vm->modules[i]);
+		}
 	}
 
 	return 0;
 }
+
+int vm_stop(struct vm *vm)
+{
+	for (size_t i = 0; i < vm->num_modules; i++) {
+		if (vm->modules[i]) {
+			stg_mod_invoke_stop(vm->modules[i]);
+		}
+	}
+
+	return 0;
+}
+
 
 static void
 vm_add_request(struct vm *vm,
@@ -220,7 +246,7 @@ vm_get_module(struct vm *vm, struct atom *mod_name)
 	struct stg_module *mod = NULL;
 
 	for (uint32_t mid = 0; mid < vm->num_modules; mid++) {
-		if (vm->modules[mid]->name == mod_name) {
+		if (vm->modules[mid] && vm->modules[mid]->name == mod_name) {
 			mod = vm->modules[mid];
 		}
 	}
