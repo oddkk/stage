@@ -1159,7 +1159,7 @@ ast_templ_instantiate(struct ast_context *ctx, struct stg_module *mod,
 	int err;
 	err = ast_node_typecheck(ctx, info->mod,
 			body, body_deps, num_body_deps,
-			TYPE_UNSET, NULL);
+			AST_TC_NO_EXP, NULL);
 	if (err) {
 		return -1;
 	}

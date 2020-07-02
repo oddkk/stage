@@ -1046,11 +1046,28 @@ struct ast_typecheck_dep {
 	};
 };
 
+enum ast_tc_expected_kind {
+	AST_NODE_TC_EXP_NOTHING = 0,
+	AST_NODE_TC_EXP_TYPE,
+	AST_NODE_TC_EXP_CONS,
+};
+
+struct ast_tc_expected {
+	enum ast_tc_expected_kind kind;
+
+	union {
+		type_id type;
+		struct object_cons *cons;
+	};
+};
+
+#define AST_TC_NO_EXP ((struct ast_tc_expected){.kind=AST_NODE_TC_EXP_NOTHING})
+
 int
 ast_node_typecheck(struct ast_context *ctx,
 		struct stg_module *mod, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps,
-		type_id expected_type, struct object *out_value);
+		struct ast_tc_expected, struct object *out_value);
 
 void
 ast_node_resolve_datatypes(

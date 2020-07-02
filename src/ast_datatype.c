@@ -51,6 +51,8 @@ struct ast_dt_expr {
 	// Used when finalizing its parent's data type.
 	int comp_local_id;
 
+	ast_init_expr_id init_expr;
+
 	struct {
 		struct ast_node *node;
 		func_id func;
@@ -1040,6 +1042,7 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 	new_expr->loc = value->loc;
 	new_expr->trivial_name = trivial_name;
 	new_expr->comp_local_id = -1;
+	new_expr->init_expr = -1;
 
 	new_expr->value_jobs.resolve_names =
 		ast_dt_job_expr(ctx, expr_i,
@@ -1708,6 +1711,11 @@ ast_dt_composite_populate(struct ast_dt_context *ctx,
 		ast_dt_expr_id expr_id;
 		expr_id = ast_dt_register_expr(ctx, parent_id,
 				node->composite.init_exprs[i], NULL);
+
+		struct ast_dt_expr *expr;
+		expr = get_expr(ctx, expr_id);
+		expr->init_expr = i;
+
 		ast_dt_register_init_expr(ctx, parent_id, i, expr_id);
 	}
 
@@ -2278,7 +2286,7 @@ ast_dt_references_type_class(struct ast_dt_context *ctx, ast_dt_job_id job,
 
 struct ast_dt_expr_typecheck_config {
 	bool wait_for_tc;
-	type_id expected_type;
+	struct ast_tc_expected expected;
 };
 
 static int
@@ -2319,10 +2327,10 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 		}
 	}
 
+
 	err = ast_node_typecheck(
 			ctx->ast_ctx, ctx->mod, node,
-			body_deps, num_deps,
-			cfg.expected_type, out);
+			body_deps, num_deps, cfg.expected, out);
 	if (err) {
 		return -1;
 	}
@@ -2982,7 +2990,23 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				struct ast_dt_expr_typecheck_config tc_cfg = {0};
 				tc_cfg.wait_for_tc = true;
-				tc_cfg.expected_type = expr->type;
+
+				if (expr->init_expr >= 0) {
+					struct stg_base_mod_info *base_info;
+					struct stg_module *base_mod;
+					base_mod = vm_get_module(
+							ctx->ast_ctx->vm,
+							mod_atoms(ctx->mod, "base"));
+					base_info = base_mod->data;
+
+					tc_cfg.expected.kind = AST_NODE_TC_EXP_CONS;
+					tc_cfg.expected.cons = base_info->init_cons;
+				} else {
+					tc_cfg.expected.kind = (expr->type != TYPE_UNSET)
+						? AST_NODE_TC_EXP_TYPE
+						: AST_NODE_TC_EXP_NOTHING;
+					tc_cfg.expected.type = expr->type;
+				}
 
 				int err;
 				err = ast_dt_expr_typecheck(
@@ -3012,7 +3036,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 					struct ast_dt_expr_typecheck_config tc_cfg = {0};
 					tc_cfg.wait_for_tc = true;
-					tc_cfg.expected_type = ctx->ast_ctx->vm->default_types.type;
+					tc_cfg.expected.kind = AST_NODE_TC_EXP_TYPE;
+					tc_cfg.expected.type = ctx->ast_ctx->vm->default_types.type;
 
 					int err;
 					err = ast_dt_expr_typecheck(
@@ -3216,7 +3241,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				struct ast_dt_expr_typecheck_config tc_cfg = {0};
 				tc_cfg.wait_for_tc = false;
-				tc_cfg.expected_type = ctx->ast_ctx->vm->default_types.cons;
+				tc_cfg.expected.kind = AST_NODE_TC_EXP_TYPE;
+				tc_cfg.expected.type = ctx->ast_ctx->vm->default_types.cons;
 
 				int err;
 				err = ast_dt_expr_typecheck(
@@ -3292,7 +3318,10 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 					struct ast_dt_expr_typecheck_config tc_cfg = {0};
 					tc_cfg.wait_for_tc = true;
-					tc_cfg.expected_type = type_class->tc->params[i].type;
+					tc_cfg.expected.kind = (type_class->tc->params[i].type != TYPE_UNSET)
+						? AST_NODE_TC_EXP_TYPE
+						: AST_NODE_TC_EXP_NOTHING;
+					tc_cfg.expected.type = type_class->tc->params[i].type;
 
 					int err;
 					err = ast_dt_expr_typecheck(
@@ -3326,7 +3355,8 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				struct ast_dt_expr_typecheck_config tc_cfg = {0};
 				tc_cfg.wait_for_tc = true;
-				tc_cfg.expected_type = ctx->ast_ctx->vm->default_types.type;
+				tc_cfg.expected.kind = AST_NODE_TC_EXP_TYPE;
+				tc_cfg.expected.type = ctx->ast_ctx->vm->default_types.type;
 
 				int err;
 				err = ast_dt_expr_typecheck(
@@ -4854,11 +4884,15 @@ ast_dt_finalize_variant(
 
 			struct object type_out = {0};
 
+			struct ast_tc_expected out_expectation = {0};
+			out_expectation.kind = AST_NODE_TC_EXP_TYPE;
+			out_expectation.type = ctx->vm->default_types.type;
+
 			err = ast_node_typecheck(
 					ctx, mod,
 					options[i].data_type,
 					deps, num_deps,
-					ctx->vm->default_types.type,
+					out_expectation,
 					&type_out);
 			if (err) {
 				ok = false;

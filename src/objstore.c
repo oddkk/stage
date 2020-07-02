@@ -1854,7 +1854,7 @@ stg_instantiate_static_object(
 	int err;
 	err = ast_node_typecheck(ctx, mod,
 			init_func, NULL, 0,
-			TYPE_UNSET, NULL);
+			AST_TC_NO_EXP, NULL);
 	if (err) {
 		printf("Failed typechecking initialize function for module '%.*s'.\n",
 				ALIT(mod->name));

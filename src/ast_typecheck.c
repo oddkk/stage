@@ -782,17 +782,16 @@ ast_node_constraints(
 			assert(res && !res->lookup_failed);
 
 			ast_slot_id slot, type_slot;
-			slot = ast_slot_alloc(env);
-
+			slot      = ast_slot_alloc(env);
 			type_slot = ast_slot_alloc(env);
 
 			ast_slot_require_type(
 					env, node->loc, AST_CONSTR_SRC_LOOKUP,
-					 slot, type_slot);
+					slot, type_slot);
 
 			ast_slot_require_type(
 					env, node->loc, AST_CONSTR_SRC_LOOKUP,
-					 res->value, type_slot);
+					res->value, type_slot);
 
 			node->typecheck_slot = slot;
 		}
@@ -1311,7 +1310,7 @@ int
 ast_node_typecheck(struct ast_context *ctx,
 		struct stg_module *mod, struct ast_node *node,
 		struct ast_typecheck_dep *deps, size_t num_deps,
-		type_id expected_type, struct object *out_value)
+		struct ast_tc_expected exp, struct object *out_value)
 {
 	struct ast_env env = {0};
 	env.store = &mod->store;
@@ -1342,16 +1341,50 @@ ast_node_typecheck(struct ast_context *ctx,
 		}
 	}
 
-	if (expected_type != TYPE_UNSET) {
-		ast_slot_id expr_type_slot;
-		expr_type_slot = ast_slot_alloc(&env);
+	switch (exp.kind) {
+		case AST_NODE_TC_EXP_TYPE:
+			{
+				ast_slot_id expr_type_slot;
+				expr_type_slot = ast_slot_alloc(&env);
 
-		ast_slot_require_is_type(
-				&env, node->loc, AST_CONSTR_SRC_EXPECTED,
-				expr_type_slot, expected_type);
-		ast_slot_require_type(
-				&env, node->loc, AST_CONSTR_SRC_EXPECTED,
-				expr_slot, expr_type_slot);
+				ast_slot_require_is_type(
+						&env, node->loc, AST_CONSTR_SRC_EXPECTED,
+						expr_type_slot, exp.type);
+				ast_slot_require_type(
+						&env, node->loc, AST_CONSTR_SRC_EXPECTED,
+						expr_slot, expr_type_slot);
+			}
+			break;
+
+		case AST_NODE_TC_EXP_CONS:
+			{
+				ast_slot_id type_slot, cons_slot;
+				type_slot = ast_slot_alloc(&env);
+				cons_slot = ast_slot_alloc(&env);
+
+
+				struct object cons_obj = {0};
+				cons_obj.data = &exp.cons;
+				cons_obj.type = ctx->vm->default_types.cons;
+				cons_obj = stg_register_object(mod, cons_obj);
+
+				ast_slot_require_type(
+						&env, node->loc, AST_CONSTR_SRC_EXPECTED,
+						expr_slot, type_slot);
+
+				ast_slot_require_is_obj(
+						&env, node->loc, AST_CONSTR_SRC_EXPECTED,
+						cons_slot, cons_obj);
+
+				ast_slot_require_cons(
+						&env, node->loc, AST_CONSTR_SRC_EXPECTED,
+						type_slot, cons_slot);
+
+			}
+			break;
+
+		case AST_NODE_TC_EXP_NOTHING:
+			break;
 	}
 
 	struct ast_slot_result result[env.num_alloced_slots];
