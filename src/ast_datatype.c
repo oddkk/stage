@@ -2276,10 +2276,15 @@ ast_dt_references_type_class(struct ast_dt_context *ctx, ast_dt_job_id job,
 	return 0;
 }
 
+struct ast_dt_expr_typecheck_config {
+	bool wait_for_tc;
+	type_id expected_type;
+};
+
 static int
 ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 		struct ast_node *node, enum ast_name_dep_requirement dep_req,
-		ast_dt_job_id job, bool wait_for_tc, type_id expected_type, struct object *out)
+		ast_dt_job_id job, struct ast_dt_expr_typecheck_config cfg, struct object *out)
 {
 	struct ast_name_dep *deps = NULL;
 	size_t num_deps = 0;
@@ -2304,7 +2309,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 		return -1;
 	}
 
-	if (wait_for_tc) {
+	if (cfg.wait_for_tc) {
 		int tc_ref;
 		tc_ref = ast_dt_references_type_class(
 				ctx, job, body_deps, num_deps);
@@ -2317,7 +2322,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 	err = ast_node_typecheck(
 			ctx->ast_ctx, ctx->mod, node,
 			body_deps, num_deps,
-			expected_type, out);
+			cfg.expected_type, out);
 	if (err) {
 		return -1;
 	}
@@ -2975,11 +2980,15 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				struct ast_dt_expr *expr;
 				expr = get_expr(ctx, job->expr);
 
+				struct ast_dt_expr_typecheck_config tc_cfg = {0};
+				tc_cfg.wait_for_tc = true;
+				tc_cfg.expected_type = expr->type;
+
 				int err;
 				err = ast_dt_expr_typecheck(
 						ctx, expr->parent, expr->value.node,
 						AST_NAME_DEP_REQUIRE_TYPE,
-						job_id, true, expr->type, NULL);
+						job_id, tc_cfg, NULL);
 				if (err < 0) {
 					return -1;
 				} else if (err > 0) {
@@ -3001,12 +3010,15 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 				if (mbr->type_node) {
 					struct object out_type_obj = {0};
 
+					struct ast_dt_expr_typecheck_config tc_cfg = {0};
+					tc_cfg.wait_for_tc = true;
+					tc_cfg.expected_type = ctx->ast_ctx->vm->default_types.type;
+
 					int err;
 					err = ast_dt_expr_typecheck(
 							ctx, mbr->parent, mbr->type_node,
 							AST_NAME_DEP_REQUIRE_VALUE,
-							job_id, true, ctx->ast_ctx->vm->default_types.type,
-							&out_type_obj);
+							job_id, tc_cfg, &out_type_obj);
 					if (err < 0) {
 						return -1;
 					} else if (err > 0) {
@@ -3202,11 +3214,15 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				struct object target_obj = {0};
 
+				struct ast_dt_expr_typecheck_config tc_cfg = {0};
+				tc_cfg.wait_for_tc = false;
+				tc_cfg.expected_type = ctx->ast_ctx->vm->default_types.cons;
+
 				int err;
 				err = ast_dt_expr_typecheck(
 						ctx, impl->parent, impl->impl->target,
 						AST_NAME_DEP_REQUIRE_VALUE,
-						job_id, false, ctx->ast_ctx->vm->default_types.cons,
+						job_id, tc_cfg,
 						&target_obj);
 				if (err) {
 					return -1;
@@ -3274,11 +3290,15 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 						continue;
 					}
 
+					struct ast_dt_expr_typecheck_config tc_cfg = {0};
+					tc_cfg.wait_for_tc = true;
+					tc_cfg.expected_type = type_class->tc->params[i].type;
+
 					int err;
 					err = ast_dt_expr_typecheck(
 							ctx, impl->parent, impl->impl->args[i].value,
 							AST_NAME_DEP_REQUIRE_VALUE,
-							job_id, true, type_class->tc->params[i].type,
+							job_id, tc_cfg,
 							&impl->arg_values[i]);
 					if (err < 0) {
 						has_errors = true;
@@ -3304,11 +3324,15 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				struct object value_type_obj = {0};
 
+				struct ast_dt_expr_typecheck_config tc_cfg = {0};
+				tc_cfg.wait_for_tc = true;
+				tc_cfg.expected_type = ctx->ast_ctx->vm->default_types.type;
+
 				int err;
 				err = ast_dt_expr_typecheck(
 						ctx, impl->parent, impl->impl->value,
 						AST_NAME_DEP_REQUIRE_VALUE,
-						job_id, true, ctx->ast_ctx->vm->default_types.type,
+						job_id, tc_cfg,
 						&value_type_obj);
 				if (err < 0) {
 					return -1;
