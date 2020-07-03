@@ -11,6 +11,7 @@
 #include <errno.h>
 
 #include <signal.h>
+#include <unistd.h>
 
 #include <argp.h>
 
@@ -138,11 +139,14 @@ int main(int argc, char *argv[])
 		printf("\n");
 	}
 
-	signal(SIGINT, stg_singal_handler);
-
 	vm_start(&vm);
 
+	stg_run_flags |= STG_SHOULD_STOP;
+
+	signal(SIGINT, stg_singal_handler);
+
 	while ((stg_run_flags & STG_SHOULD_STOP) == 0) {
+		pause();
 	}
 
 	signal(SIGINT, SIG_DFL);
