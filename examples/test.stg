@@ -1,7 +1,9 @@
+use mod base;
 use mod stream.*;
 
 asdf := Stream[int, f48kHz];
 
-a: Stream[int, f48kHz] = const[int, f48kHz](2);
+a: Stream[int, f48kHz] =
+	fmap(a => base.op+(a, 2), const[int, f48kHz](5));
 
 !debugPrint(a);

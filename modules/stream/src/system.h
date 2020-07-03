@@ -10,6 +10,7 @@
 
 struct bc_env;
 typedef int bc_var;
+typedef ssize_t stream_pipe_id;
 
 struct stream_node_param {
 	struct atom *name;
@@ -40,28 +41,38 @@ struct stream_pipe_config {
 	size_t compute_width;
 };
 
-struct stream_pipe {
-	stg_mod_id mod_id;
-	struct stream_node *end_point;
-	struct bc_env *bc;
-
-	struct stream_pipe_config config;
-};
-
-enum stream_system_state {
+enum stream_pipe_state {
 	STREAM_STATE_STOPPED = 0,
 	STREAM_STATE_STARTING,
 	STREAM_STATE_RUNNING,
 	STREAM_STATE_STOPPING,
+	STREAM_STATE_DESTROYED,
+};
+
+struct stream_system;
+
+struct stream_pipe {
+	stream_pipe_id id;
+
+	stg_mod_id mod_id;
+	struct stream_node *end_point;
+	struct bc_env *bc;
+
+	type_id out_type;
+
+	struct stream_pipe_config config;
+
+	enum stream_pipe_state state;
+	pthread_t thread_handle;
+
+	struct stream_system *sys;
 };
 
 struct stream_system {
 	struct paged_list node_kinds;
 	struct paged_list pipes;
 
-	enum stream_system_state state;
-
-	pthread_t thread_handle;
+	struct vm *vm;
 };
 
 void
@@ -97,7 +108,7 @@ stream_alloc_node(struct stg_exec *, struct stream_node_kind *,
 struct bc_result
 stream_compile_node(struct bc_env *, struct arena *, struct stream_node *);
 
-void
+stream_pipe_id
 stream_register_endpoint(struct stg_module *mod,
 		struct stream_node *node, struct stream_pipe_config);
 

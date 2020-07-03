@@ -7,7 +7,7 @@
 
 #include <string.h>
 
-#include <string.h>
+#include <signal.h>
 #include <pthread.h>
 #include <time.h>
 
@@ -27,22 +27,31 @@ stream_system_init(struct vm *vm, struct stream_system *sys)
 			&vm->mem,
 			sizeof(struct stream_pipe));
 
-	sys->state = STREAM_STATE_STOPPED;
+	sys->vm = vm;
+}
+
+static inline struct stream_pipe *
+stream_get_pipe(struct stream_system *sys, stream_pipe_id id)
+{
+	return paged_list_get(&sys->pipes, id);
 }
 
 static inline bool
-sys_transition_state(struct stream_system *sys,
-		enum stream_system_state from,
-		enum stream_system_state to)
+pipe_transition_state(struct stream_pipe *pipe,
+		enum stream_pipe_state from,
+		enum stream_pipe_state to)
 {
 	return __sync_bool_compare_and_swap(
-			&sys->state, from, to);
+			&pipe->state, from, to);
 }
 
 int
-stream_system_start(struct stream_system *sys)
+stream_system_start_pipe(struct stream_system *sys, stream_pipe_id id)
 {
-	if (!sys_transition_state(sys,
+	struct stream_pipe *pipe;
+	pipe = stream_get_pipe(sys, id);
+
+	if (!pipe_transition_state(pipe,
 				STREAM_STATE_STOPPED, STREAM_STATE_STARTING)) {
 		return -1;
 	}
@@ -58,8 +67,8 @@ stream_system_start(struct stream_system *sys)
 	}
 
 	err = pthread_create(
-			&sys->thread_handle,
-			NULL, &stream_system_thread, sys);
+			&pipe->thread_handle,
+			NULL, &stream_system_thread, pipe);
 	if (err) {
 		perror("pthread_create");
 		return -1;
@@ -71,22 +80,46 @@ stream_system_start(struct stream_system *sys)
 }
 
 void
-stream_system_stop(struct stream_system *sys)
+stream_system_stop_pipe(struct stream_system *sys, stream_pipe_id id)
 {
-	if (!sys_transition_state(sys,
+	struct stream_pipe *pipe;
+	pipe = stream_get_pipe(sys, id);
+
+	if (!pipe_transition_state(pipe,
 				STREAM_STATE_RUNNING, STREAM_STATE_STOPPING)) {
-		pthread_cancel(sys->thread_handle);
+		pthread_cancel(pipe->thread_handle);
+		pipe->state = STREAM_STATE_STOPPED;
+	} else {
+		pthread_kill(pipe->thread_handle, SIGUSR1);
 	}
 
 
 	int err;
-	err = pthread_join(sys->thread_handle, NULL);
+	err = pthread_join(pipe->thread_handle, NULL);
 	if (err) {
 		perror("pthread_join");
 		return;
 	}
 
-	assert(sys->state == STREAM_STATE_STOPPED);
+	assert(pipe->state == STREAM_STATE_STOPPED);
+}
+
+int
+stream_system_start(struct stream_system *sys)
+{
+	for (size_t i = 0; i < sys->pipes.length; i++) {
+		stream_system_start_pipe(sys, i);
+	}
+
+	return 0;
+}
+
+void
+stream_system_stop(struct stream_system *sys)
+{
+	for (size_t i = 0; i < sys->pipes.length; i++) {
+		stream_system_stop_pipe(sys, i);
+	}
 }
 
 
@@ -185,12 +218,16 @@ stream_compile_node(struct bc_env *env, struct arena *mem, struct stream_node *n
 	return res;
 }
 
-void
+stream_pipe_id
 stream_register_endpoint(struct stg_module *mod,
 		struct stream_node *node, struct stream_pipe_config cfg)
 {
+	struct stream_system *sys;
+	sys = stream_get_system(mod->vm);
+
 	struct stream_pipe pipe = {0};
 	pipe.mod_id = mod->id;
+	pipe.sys = sys;
 
 	struct stg_exec heap = {0};
 	heap.vm = mod->vm;
@@ -209,8 +246,13 @@ stream_register_endpoint(struct stg_module *mod,
 
 	if (instrs.err) {
 		panic("Failed to compile stream pipe.");
-		return;
+		return -1;
 	}
+
+	pipe.out_type = bc_get_var_type(pipe.bc, instrs.out_var);
+
+	append_bc_instr(&instrs,
+			bc_gen_ret(pipe.bc, instrs.out_var));
 
 	pipe.bc->entry_point = instrs.first;
 
@@ -218,22 +260,28 @@ stream_register_endpoint(struct stg_module *mod,
 	nbc_compile_from_bc(&mod->vm->transient,
 			&mod->mem, pipe.bc->nbc, pipe.bc);
 
-	struct stream_system *sys;
-	sys = stream_get_system(mod->vm);
-
-	size_t pipe_i;
+	stream_pipe_id pipe_i;
 	pipe_i = paged_list_push(&sys->pipes);
 
 	struct stream_pipe *new_pipe;
 	new_pipe = paged_list_get(&sys->pipes, pipe_i);
 
 	*new_pipe = pipe;
+
+	return pipe_i;
+}
+
+static void
+stream_signal_ignore(int sig)
+{
+	(void)sig;
 }
 
 static void *
-stream_system_thread(void *sys_ptr)
+stream_system_thread(void *pipe_ptr)
 {
-	struct stream_system *sys = sys_ptr;
+	struct stream_pipe *pipe = pipe_ptr;
+	struct stream_system *sys = pipe->sys;
 
 	struct stg_memory memory = {0};
 
@@ -254,30 +302,54 @@ stream_system_thread(void *sys_ptr)
 	struct stg_exec exec_ctx = {0};
 	exec_ctx.heap = &mem;
 
-	if (!sys_transition_state(sys,
+	// Suppress any message printed indicating the signal was passed. SIGUSR1
+	// is used to indicate this thread should re-check it's state and quit if
+	// requested.
+	signal(SIGUSR1, stream_signal_ignore);
+
+	if (!pipe_transition_state(pipe,
 				STREAM_STATE_STARTING, STREAM_STATE_RUNNING)) {
 		print_error("stream",
-				"Attempting to start stream system while it is not ready to be "
+				"Attempting to start stream while it is not ready to be "
 				"started.");
 		return NULL;
 	}
 
+	struct type *type;
+	type = vm_get_type(sys->vm, pipe->out_type);
+
+	struct object out_obj = {0};
+	out_obj.type = pipe->out_type;
+	out_obj.data = arena_alloc(&mem, type->size);
+
 	arena_mark mem_base;
 	mem_base = arena_checkpoint(&mem);
 
-	while (sys->state == STREAM_STATE_RUNNING) {
-		struct timespec duration = {0};
-		duration.tv_sec = 1;
-		nanosleep(&duration, NULL);
-		// nbc_exec(sys->vm, &exec_ctx, );
+	struct nbc_func *func;
+	func = pipe->bc->nbc;
+
+	uint64_t frame = 0;
+
+	void *args[] = {&frame};
+
+	while (pipe->state == STREAM_STATE_RUNNING) {
+		nbc_exec(sys->vm, &exec_ctx, func,
+				args, sizeof(args)/sizeof(*args), NULL, out_obj.data);
+
+		print_obj_repr(sys->vm, out_obj);
+		printf("\n");
 
 		arena_reset(&mem, mem_base);
+
+		struct timespec duration = {0};
+		duration.tv_nsec = 250000000;
+		nanosleep(&duration, NULL);
 	}
 
-	if (!sys_transition_state(sys,
+	if (!pipe_transition_state(pipe,
 				STREAM_STATE_STOPPING, STREAM_STATE_STOPPED)) {
 		print_error("stream",
-				"Attempting to stop stream system while it is not ready to be "
+				"Attempting to stop stream while it is not ready to be "
 				"stopped.");
 		return NULL;
 	}
