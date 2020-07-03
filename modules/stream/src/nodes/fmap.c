@@ -21,10 +21,19 @@ stream_node_fmap_gen_bytecode(struct bc_env *env, struct arena *mem, void *in_da
 	res = node->in->kind->gen_bytecode(env, mem, node->in->data);
 	in_var = res.out_var;
 
+	append_bc_instr(&res,
+			bc_gen_push_arg(env, in_var));
+
 	struct bc_instr *instr;
-	instr = bc_gen_clcall(env, BC_VAR_NEW,
-			node->fn.func, node->fn.closure);
-	res.out_var = instr->clcall.target;
+	if (node->fn.closure) {
+		instr = bc_gen_clcall(env, BC_VAR_NEW,
+				node->fn.func, node->fn.closure);
+		res.out_var = instr->clcall.target;
+	} else {
+		instr = bc_gen_lcall(env, BC_VAR_NEW,
+				node->fn.func);
+		res.out_var = instr->lcall.target;
+	}
 
 	append_bc_instr(&res, instr);
 
@@ -50,20 +59,19 @@ stream_funct_fmap(
 		struct stg_func_object fn,
 		struct stream_data in)
 {
-	struct stream_data res = {0};
-	struct stream_node *node = res.node;
-
-	node->kind = stream_get_node_kind(
-			mod, mod_atoms(mod, "fmap"));
-
-	node->data_size = sizeof(struct stream_node_fmap_data);
-	node->data = stg_alloc(heap, 1, node->data_size);
+	size_t data_size;
+	data_size = sizeof(struct stream_node_fmap_data);
 
 	struct stream_node_fmap_data *data;
-	data = node->data;
+	data = stg_alloc(heap, 1, data_size);
 
 	data->fn = fn;
 	data->in = in.node;
+
+	struct stream_data res = {0};
+	res.node = stream_alloc_node(
+			heap, stream_get_node_kinds(mod, "fmap"),
+			(void *)data, data_size);
 
 	return res;
 }
