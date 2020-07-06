@@ -1,6 +1,7 @@
 Type   := @native("Type");
 
 int    := @native("int");
+Float  := @native("Float");
 String := @native("String");
 
 Unit   := @native("Unit");

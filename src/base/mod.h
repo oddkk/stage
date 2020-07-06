@@ -17,6 +17,9 @@ void
 base_bootstrap_register_integer(struct stg_module *mod);
 
 void
+base_bootstrap_register_float(struct stg_module *mod);
+
+void
 base_bootstrap_register_string(struct stg_module *mod);
 
 void
@@ -24,6 +27,9 @@ base_bootstrap_boolean_pre_compile(struct stg_module *);
 
 void
 base_integer_register_native(struct stg_native_module *mod);
+
+void
+base_float_register_native(struct stg_native_module *mod);
 
 void
 base_string_register_native(struct stg_native_module *mod);

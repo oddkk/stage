@@ -77,6 +77,7 @@ stg_base_bootstrap_pre_compile(struct stg_module *mod) {
 	base_bootstrap_register_type(mod);
 	base_bootstrap_register_cons(mod);
 	base_bootstrap_register_integer(mod);
+	base_bootstrap_register_float(mod);
 	base_bootstrap_register_string(mod);
 	base_bootstrap_boolean_pre_compile(mod);
 
@@ -140,6 +141,7 @@ stg_base_load(struct vm *vm)
 	mod = vm_add_precompiled_native_module(vm, STR("base"));
 
 	base_integer_register_native(mod);
+	base_float_register_native(mod);
 	base_string_register_native(mod);
 	base_init_register_native(mod);
 	base_io_register_native(mod);
