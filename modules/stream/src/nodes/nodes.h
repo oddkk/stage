@@ -6,7 +6,8 @@
 #define STREAM_DEFAULT_NODES \
 	NODE_DEF(const) \
 	NODE_DEF(fmap) \
-	NODE_DEF(debug_print)
+	NODE_DEF(debug_print) \
+	NODE_DEF(osc) \
 
 struct arena;
 struct stg_exec;

@@ -30,6 +30,11 @@ impl ToString[int] {
 		@native("int_to_string");
 };
 
+impl ToString[Float] {
+	toString := (a: Float) -> String
+		@native("float_to_string");
+};
+
 impl ToString[Bool] {
 	toString := (a: Bool) -> String
 		=> match a {
