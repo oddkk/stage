@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "dlist.h"
 #include "module.h"
+#include "native.h"
 #include "base/mod.h"
 
 void
@@ -51,12 +52,57 @@ ast_namespace_add_ns(struct ast_context *ctx,
 }
 
 int
+ast_node_check_native_funcs(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct ast_node *node)
+{
+	int err = 0;
+
+	if (node->kind == AST_NODE_FUNC_NATIVE) {
+		node->func.native.native_mod = mod->native_mod;
+
+		if (!mod->native_mod) {
+			stg_error(ctx->err, node->loc,
+					"This module does not have a native module.");
+			err += 1;
+		} else {
+			bool found = false;
+			for (size_t i = 0; i < mod->native_mod->num_funcs; i++) {
+				if (string_equal(
+							mod->native_mod->funcs[i].name,
+							node->func.native.name)) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) {
+				stg_error(ctx->err, node->loc,
+						"This module does not have a native function named '%.*s'.",
+						LIT(node->func.native.name));
+				err += 1;
+			}
+		}
+	}
+
+#define VISIT_NODE(n) \
+	err += ast_node_check_native_funcs(ctx, mod, (n));
+	AST_NODE_VISIT(node, true, true, true);
+#undef VISIT_NODE
+
+	return err;
+}
+
+int
 ast_module_finalize(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_node *root)
 {
 	int err;
 	err = ast_node_discover_potential_closures(
 			ctx, NULL, true, root);
+
+	ast_node_check_native_funcs(
+			ctx, mod, root);
 
 	type_id type;
 	type = ast_dt_finalize_composite(ctx, mod,
