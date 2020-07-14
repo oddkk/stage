@@ -248,7 +248,11 @@ discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
 	struct ast_node *dir_ns_stack[DIR_NS_STACK_CAP];
 	size_t dir_ns_head = 0;
 
-	dir_ns_stack[dir_ns_head] = mod_root;
+	struct ast_node *mod_root_dt;
+	mod_root_dt = ast_module_node_get_data_type(
+			mod->vm, mod_root);
+
+	dir_ns_stack[dir_ns_head] = mod_root_dt;
 
 	FTSENT *f;
 	while ((f = fts_read(ftsp)) != NULL) {
@@ -275,7 +279,8 @@ discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
 					file_ns = dir_ns_stack[dir_ns_head];
 				} else {
 					file_ns = ast_namespace_add_ns(
-							ctx->ast_ctx, dir_ns_stack[dir_ns_head], atom);
+							ctx->ast_ctx, mod->ast_mod,
+							dir_ns_stack[dir_ns_head], atom);
 				}
 
 				if (num_unparsed_files) {
@@ -320,7 +325,7 @@ discover_module_files(struct compile_ctx *ctx, struct stg_module *mod,
 				dir_ns_head += 1;
 				dir_ns_stack[dir_ns_head] =
 					ast_namespace_add_ns(
-							ctx->ast_ctx,
+							ctx->ast_ctx, mod->ast_mod,
 							dir_ns_stack[dir_ns_head-1], atom);
 			}
 			break;
@@ -450,14 +455,27 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 
 					should_discover_files = module_found;
 				}
-				data->mod_root = ast_init_node_composite(
-						ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC,
+
+				mod->ast_mod = arena_alloc(
+						&mod->mem, sizeof(struct ast_module));
+				ast_module_init(ctx->vm, mod->id, mod->ast_mod);
+
+				ast_data_type_id root_data_type_id;
+				root_data_type_id = ast_module_add_composite(
+						ctx->ast_ctx, mod->ast_mod, STG_NO_LOC,
 						AST_COMPOSITE_MODULE);
+
+				data->mod_root = ast_init_node_data_type(
+						ctx->ast_ctx, AST_NODE_NEW, STG_NO_LOC,
+						mod->id, root_data_type_id);
 
 				struct atom *base_mod_name = vm_atoms(ctx->vm, "base");
 
 				if (mod->name != base_mod_name) {
-					data->mod_root->composite.is_init_monad = true;
+					struct ast_node *root_data_type;
+					root_data_type = ast_module_get_data_type(
+							mod->ast_mod, root_data_type_id);
+					root_data_type->composite.is_init_monad = true;
 
 					vm_request_module(ctx->vm, mod->id,
 							base_mod_name, VM_REQUEST_MOD_NO_LOC);
@@ -473,12 +491,17 @@ job_load_module(struct compile_ctx *ctx, job_load_module_t *data)
 							use_base_mod_node,
 							vm_atoms(ctx->vm, "prelude"));
 
+					struct ast_node *mod_root_dt;
+					mod_root_dt = ast_module_node_get_data_type(
+							mod->vm, data->mod_root);
+
 					ast_node_composite_add_use(
 							ctx->ast_ctx, STG_NO_LOC,
-							data->mod_root,
+							mod_root_dt,
 							use_base_target_node,
 							NULL);
 				}
+
 
 				if (should_discover_files) {
 					discover_module_files(ctx, mod, data->mod_root,

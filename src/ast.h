@@ -15,6 +15,9 @@ typedef int ast_param_id;
 typedef int ast_closure_id;
 typedef int ast_use_id;
 typedef int ast_init_expr_id;
+typedef int ast_data_type_id;
+
+struct ast_module;
 
 enum ast_name_ref_kind {
 	AST_NAME_REF_NOT_FOUND = 0,
@@ -421,6 +424,8 @@ enum ast_node_kind {
 	// Datatype declarations
 	AST_NODE_COMPOSITE,
 	AST_NODE_VARIANT,
+
+	AST_NODE_DATA_TYPE,
 };
 
 struct ast_node;
@@ -685,6 +690,11 @@ struct ast_node {
 			type_id type;
 			bool failed;
 		} variant;
+
+		struct {
+			stg_mod_id mod;
+			ast_data_type_id id;
+		} data_type;
 	};
 };
 
@@ -803,6 +813,8 @@ ast_node_name(enum ast_node_kind);
 				}																\
 			}																	\
 			break;																\
+		case AST_NODE_DATA_TYPE:												\
+			break;																\
 	}} while (0);
 
 #define AST_NODE_NEW ((struct ast_node *)1)
@@ -914,6 +926,12 @@ ast_init_node_composite(
 		enum ast_composite_kind kind);
 
 struct ast_node *
+ast_init_node_data_type(
+		struct ast_context *ctx,
+		struct ast_node *target, struct stg_location,
+		stg_mod_id, ast_data_type_id);
+
+struct ast_node *
 ast_init_node_type_class(
 		struct ast_context *ctx, struct ast_node *node,
 		struct stg_location,
@@ -929,7 +947,7 @@ ast_node_composite_add_member(
 
 int
 ast_node_composite_add_namespace(
-		struct ast_context *ctx,
+		struct ast_context *ctx, struct ast_module *,
 		struct ast_node *target, struct atom *name,
 		struct ast_node *type);
 
@@ -979,20 +997,33 @@ ast_node_variant_add_option(
 		struct ast_node *target, struct stg_location,
 		struct atom *name, struct ast_node *data_type);
 
-struct stg_native_module;
-
-enum ast_node_resolve_names_flags {
-	AST_NODE_RESOLVE_REQUIRE_CONST     = 1 << 0,
-	AST_NODE_RESOLVE_ALLOW_ADD_CLOSURE = 1 << 1,
-	AST_NODE_RESOLVE_RESOLVE_NATIVE    = 1 << 2,
-	AST_NODE_RESOLVE_PRELIMINARY       = 1 << 3,
-	AST_NODE_RESOLVE_VISIT_MEMBERS     = 1 << 4,
+struct ast_module {
+	stg_mod_id id;
+	struct paged_list data_types;
 };
 
-int
-ast_node_resolve_names(struct ast_context *ctx,
-		struct stg_native_module *native_mod, struct ast_scope *scope,
-		bool require_const, struct ast_node *node);
+void
+ast_module_init(struct vm *, stg_mod_id, struct ast_module *);
+
+struct ast_node *
+ast_module_get_data_type(struct ast_module *, ast_data_type_id);
+
+struct ast_node *
+ast_module_node_get_data_type(struct vm *, struct ast_node *);
+
+ast_data_type_id
+ast_module_add_composite(
+		struct ast_context *, struct ast_module *,
+		struct stg_location, enum ast_composite_kind);
+
+ast_data_type_id
+ast_module_add_variant(struct ast_context *, struct ast_module *,
+		struct stg_location);
+
+ast_data_type_id
+ast_module_add_type_class(struct ast_context *, struct ast_module *,
+		struct stg_location, struct ast_type_class_member *members,
+		size_t num_members);
 
 int
 ast_node_has_ambiguous_refs(struct ast_context *ctx,
@@ -1012,7 +1043,8 @@ ast_composite_node_has_ambiguous_refs(
 
 int
 ast_node_discover_potential_closures(struct ast_context *ctx,
-		struct ast_scope *scope, bool require_const, struct ast_node *node);
+		struct stg_module *mod, struct ast_scope *scope,
+		bool require_const, struct ast_node *node);
 
 enum ast_name_dep_requirement {
 	AST_NAME_DEP_REQUIRE_TYPE,
@@ -1025,7 +1057,7 @@ struct ast_name_dep {
 };
 
 int
-ast_node_find_named_dependencies(
+ast_node_find_named_dependencies(struct vm *,
 		struct ast_node *node, enum ast_name_dep_requirement req,
 		struct ast_name_dep **out_refs, size_t *out_num_refs);
 
@@ -1193,7 +1225,7 @@ ast_print_node(struct ast_context *, struct ast_node *,
 
 struct ast_node *
 ast_namespace_add_ns(struct ast_context *,
-		struct ast_node *, struct atom *name);
+		struct ast_module *, struct ast_node *, struct atom *name);
 
 int
 ast_module_finalize(struct ast_context *, struct stg_module *, struct ast_node *root);

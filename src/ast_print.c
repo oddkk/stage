@@ -206,6 +206,19 @@ ast_print_internal(struct ast_context *ctx,
 						node->composite.free_exprs[i], depth + 3);
 			}
 
+			print_indent(depth + 1);
+			printf("uses:\n");
+			for (size_t i = 0; i < node->composite.num_uses; i++) {
+				print_indent(depth + 1);
+				if (node->composite.uses[i].as_name) {
+					printf(" - %.*s:\n", ALIT(node->composite.uses[i].as_name));
+				} else {
+					printf(" - *:\n");
+				}
+				ast_print_internal(ctx,
+						node->composite.uses[i].target, depth + 3);
+			}
+
 			ast_print_internal_closure(ctx,
 					&node->composite.closure, depth + 1);
 			break;
@@ -219,14 +232,22 @@ ast_print_internal(struct ast_context *ctx,
 				if (node->type_class.pattern.params[i].type) {
 					printf(" type\n");
 					ast_print_internal(ctx,
-							node->type_class.pattern.params[i].type, depth+3);
+							node->type_class.pattern.params[i].type, depth+4);
 				} else {
 					printf("\n");
 				}
 			}
+
 			print_indent(depth + 1);
-			printf("body:\n");
-			ast_print_internal(ctx, node->type_class.pattern.node, depth + 2);
+			printf("members:\n");
+			for (size_t i = 0; i < node->type_class.num_members; i++) {
+				print_indent(depth + 1);
+				printf(" - %.*s:\n", ALIT(node->type_class.members[i].name));
+				ast_print_internal(ctx, node->type_class.members[i].type.node, depth + 2);
+			}
+			// print_indent(depth + 1);
+			// printf("body:\n");
+			// ast_print_internal(ctx, node->type_class.pattern.node, depth + 2);
 			break;
 
 		case AST_NODE_VARIANT:
@@ -309,6 +330,11 @@ ast_print_internal(struct ast_context *ctx,
 		case AST_NODE_INIT_EXPR:
 			print_indent(depth);
 			printf("init expr %i\n", node->init_expr.id);
+			break;
+
+		case AST_NODE_DATA_TYPE:
+			print_indent(depth);
+			printf("data type %i\n", node->data_type.id);
 			break;
 	}
 }
@@ -458,6 +484,10 @@ ast_print_node(struct ast_context *ctx, struct ast_node *node,
 
 		case AST_NODE_VARIANT:
 			printf("variant");
+			break;
+
+		case AST_NODE_DATA_TYPE:
+			printf("data type %i", node->data_type.id);
 			break;
 	}
 }

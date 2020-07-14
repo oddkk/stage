@@ -6,6 +6,7 @@
 #include "objstore.h"
 
 struct stg_module;
+struct ast_module;
 struct ast_node;
 
 enum stg_module_lifetime {
@@ -47,6 +48,8 @@ struct stg_module {
 	struct objstore store;
 	struct vm *vm;
 	struct arena mem;
+
+	struct ast_module *ast_mod;
 
 	struct object init_monad;
 	struct object instance;

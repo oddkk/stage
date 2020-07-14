@@ -32,6 +32,8 @@ ast_node_name(enum ast_node_kind kind)
 		case AST_NODE_COMPOSITE:	return "COMPOSITE";
 		case AST_NODE_TYPE_CLASS:	return "TYPE_CLASS";
 		case AST_NODE_VARIANT:		return "VARIANT";
+
+		case AST_NODE_DATA_TYPE:	return "DATA_TYPE";
 	}
 
 	return "(invalid)";
@@ -476,6 +478,25 @@ ast_init_node_composite(
 	return target;
 }
 
+struct ast_node *
+ast_init_node_data_type(
+		struct ast_context *ctx,
+		struct ast_node *target, struct stg_location loc,
+		stg_mod_id mod_id, ast_data_type_id id)
+{
+	if (target == AST_NODE_NEW) {
+		target = arena_alloc(ctx->mem, sizeof(struct ast_node));
+	}
+
+	memset(target, 0, sizeof(struct ast_node));
+	target->kind = AST_NODE_DATA_TYPE;
+	target->loc = loc;
+	target->data_type.mod = mod_id;
+	target->data_type.id = id;
+
+	return target;
+}
+
 int
 ast_node_composite_add_member(
 		struct ast_context *ctx,
@@ -515,13 +536,13 @@ ast_node_composite_add_member(
 
 int
 ast_node_composite_add_namespace(
-		struct ast_context *ctx,
+		struct ast_context *ctx, struct ast_module *mod,
 		struct ast_node *target, struct atom *name,
 		struct ast_node *type)
 {
 	assert(target && name && type);
 	assert(target->kind == AST_NODE_COMPOSITE);
-	assert(type->kind   == AST_NODE_COMPOSITE);
+	assert(type->kind   == AST_NODE_DATA_TYPE);
 
 	for (size_t i = 0; i < target->composite.num_members; i++) {
 		if (target->composite.members[i].name == name) {
@@ -529,7 +550,11 @@ ast_node_composite_add_namespace(
 		}
 	}
 
-	type->composite.is_init_monad =
+	struct ast_node *type_dt;
+	type_dt = ast_module_get_data_type(
+			mod, type->data_type.id);
+
+	type_dt->composite.is_init_monad =
 		target->composite.is_init_monad;
 
 	struct ast_datatype_member new_member = {0};
@@ -738,6 +763,9 @@ ast_node_find_named_dependencies_add(
 
 		return 0;
 	} else {
+		printf("name not found (");
+		ast_print_name_ref(ref);
+		printf(")\n");
 		return 1;
 	}
 }
@@ -766,7 +794,7 @@ ast_node_closure_find_named_dependencies(
 // Attempts to append all references from a node and its descendants to the
 // given list. Returns the number of references that are not found.
 int
-ast_node_find_named_dependencies(
+ast_node_find_named_dependencies(struct vm *vm,
 		struct ast_node *node, enum ast_name_dep_requirement req,
 		struct ast_name_dep **out_refs, size_t *out_num_refs)
 {
@@ -817,12 +845,12 @@ ast_node_find_named_dependencies(
 			// We must know the value of the instantiation type before we can
 			// resolve the names.
 			err += ast_node_find_named_dependencies(
-					node->call.func, AST_NAME_DEP_REQUIRE_VALUE,
+					vm, node->call.func, AST_NAME_DEP_REQUIRE_VALUE,
 					out_refs, out_num_refs);
 
 			for (size_t i = 0; i < (node)->call.num_args; i++) {
 				err += ast_node_find_named_dependencies(
-						node->call.args[i].value, req, out_refs, out_num_refs);
+						vm, node->call.args[i].value, req, out_refs, out_num_refs);
 			}
 			return err;
 
@@ -851,13 +879,22 @@ ast_node_find_named_dependencies(
 			// We will not visit the body of the type class.
 			break;
 
+		case AST_NODE_DATA_TYPE:
+			{
+				struct ast_node *dt_node;
+				dt_node = ast_module_node_get_data_type(
+						vm, node);
+				err += ast_node_find_named_dependencies(
+						vm, dt_node, req, out_refs, out_num_refs);
+			}
+
 		default:
 			break;
 	}
 
 #define VISIT_NODE(node) \
 	err += ast_node_find_named_dependencies(\
-			(node), req, out_refs, out_num_refs);
+			vm, (node), req, out_refs, out_num_refs);
 	AST_NODE_VISIT(node, false, false, false);
 #undef VISIT_NODE
 
@@ -1056,6 +1093,10 @@ ast_node_deep_copy(struct arena *mem, struct ast_node *src)
 				DCP_NODE(variant.options[i].data_type);
 			}
 		}
+		break;
+
+	case AST_NODE_DATA_TYPE:
+		DCP_LIT(data_type.id);
 		break;
 	}
 

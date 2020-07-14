@@ -1872,6 +1872,10 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 				result.out_var = lit_instr->load.target;
 			}
 			return result;
+
+		case AST_NODE_DATA_TYPE:
+			printf("TODO: Gen byte code for data type node\n");
+			break;
 	}
 
 	printf("Invalid ast node in gen byte code.\n");

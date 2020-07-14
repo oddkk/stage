@@ -281,6 +281,16 @@ ast_node_resolve_datatypes(
 			}
 			break;
 
+		case AST_NODE_DATA_TYPE:
+			{
+				struct ast_node *dt_node;
+				dt_node = ast_module_node_get_data_type(
+						ctx->vm, node);
+
+				ast_node_resolve_datatypes(
+						ctx, mod, deps, num_deps, dt_node);
+			}
+
 		default:
 			break;
 	}
@@ -856,6 +866,28 @@ ast_node_constraints(
 			}
 
 			node->typecheck_slot = res_slot;
+		}
+		break;
+
+		case AST_NODE_DATA_TYPE:
+		{
+			struct ast_node *dt_node;
+			dt_node = ast_module_node_get_data_type(
+					ctx->vm, node);
+
+			node->typecheck_slot = ast_node_constraints(
+					ctx, mod, env, deps, num_deps, dt_node);
+
+			// ast_slot_id res_slot;
+			// res_slot = ast_slot_alloc(env);
+
+			// // TODO
+			// ast_slot_value_error(
+			// 		env, node->loc, AST_CONSTR_SRC_DT_DECL,
+			// 		res_slot);
+			// printf("TODO: Data type slot\n");
+
+			// node->typecheck_slot = res_slot;
 		}
 		break;
 

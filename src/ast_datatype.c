@@ -1758,7 +1758,7 @@ ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
 	size_t num_deps = 0;
 
 	ast_node_find_named_dependencies(
-			node, req, &deps, &num_deps);
+			ctx->ast_ctx->vm, node, req, &deps, &num_deps);
 
 	for (size_t i = 0; i < num_deps; i++) {
 		switch (deps[i].ref.kind) {
@@ -1841,7 +1841,7 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 	size_t num_names = 0;
 
 	ast_node_find_named_dependencies(
-			node, dep_req, &names, &num_names);
+			ctx->ast_ctx->vm, node, dep_req, &names, &num_names);
 
 	size_t num_dep_members = 0;
 	size_t num_dep_init_exprs = 0;
@@ -2302,7 +2302,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 
 	int err;
 	err = ast_node_find_named_dependencies(
-			node, dep_req, &deps, &num_deps);
+			ctx->ast_ctx->vm, node, dep_req, &deps, &num_deps);
 	if (err) {
 		printf("Failed to find the named dependencies.\n");
 		return -1;
@@ -2326,7 +2326,6 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 			return 1;
 		}
 	}
-
 
 	err = ast_node_typecheck(
 			ctx->ast_ctx, ctx->mod, node,
@@ -2873,7 +2872,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 				int err;
 				err = ast_node_find_named_dependencies(
-						comp->root_node, AST_NAME_DEP_REQUIRE_VALUE,
+						ctx->ast_ctx->vm, comp->root_node, AST_NAME_DEP_REQUIRE_VALUE,
 						&deps, &num_deps);
 				if (err) {
 					printf("Failed to find the named dependencies.\n");

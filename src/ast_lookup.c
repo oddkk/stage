@@ -1,5 +1,6 @@
 #include "vm.h"
 #include "ast.h"
+#include "module.h"
 #include "native.h"
 #include "dlist.h"
 #include <stdlib.h>
@@ -488,6 +489,9 @@ ast_node_traverse_scope(ast_traverse_scope_t visit,
 		case AST_NODE_LOOKUP:
 			break;
 
+		case AST_NODE_DATA_TYPE:
+			break;
+
 	}
 
 	return err;
@@ -605,10 +609,10 @@ ast_node_discover_potential_closures_internal(
 		struct ast_node *node, enum ast_traverse_role role,
 		void *user_data)
 {
-
 	int err = 0;
 
 	switch (node->kind) {
+
 		case AST_NODE_LOOKUP:
 			{
 				ast_scope_lookup_or_propagate_name(
@@ -616,10 +620,19 @@ ast_node_discover_potential_closures_internal(
 			}
 			break;
 
+		case AST_NODE_DATA_TYPE:
+			{
+				struct ast_node *node_dt;
+				node_dt = ast_module_node_get_data_type(
+						ctx->vm, node);
+				err += ast_node_discover_potential_closures_internal(
+						ctx, scope, node_dt, AST_TRAV_ROOT, user_data);
+			}
+			break;
+
 		default:
 			break;
 	}
-
 
 	err += ast_node_traverse_scope(
 			ast_node_discover_potential_closures_internal, user_data,
@@ -637,6 +650,20 @@ ast_node_discover_potential_closures_internal(
 	return err;
 }
 
+static void
+ast_node_test_ambigous_ref(
+		struct ast_context *ctx, struct ast_node_ambigous_refs *info,
+		struct ast_scope *scope, struct atom *name)
+{
+	struct ast_name_ref ref;
+	ref = ast_scope_lookup_name(
+			ctx, scope, name);
+	if (ref.kind == AST_NAME_REF_NOT_FOUND ||
+			ref.kind == AST_NAME_REF_CLOSURE) {
+		info->num_ambiguous_refs += 1;
+	}
+}
+
 static int
 ast_node_has_ambiguous_refs_internal(
 		struct ast_context *ctx, struct ast_scope *scope,
@@ -649,12 +676,24 @@ ast_node_has_ambiguous_refs_internal(
 	switch (node->kind) {
 		case AST_NODE_LOOKUP:
 			{
-				struct ast_name_ref ref;
-				ref = ast_scope_lookup_name(
-						ctx, scope, node->lookup.name);
-				if (ref.kind == AST_NAME_REF_NOT_FOUND ||
-						ref.kind == AST_NAME_REF_CLOSURE) {
-					info->num_ambiguous_refs += 1;
+				ast_node_test_ambigous_ref(
+						ctx, info, scope, node->lookup.name);
+			}
+			break;
+
+		case AST_NODE_DATA_TYPE:
+			{
+				struct ast_node *node_dt;
+				node_dt = ast_module_node_get_data_type(
+						ctx->vm, node);
+
+				struct ast_closure_target *closure;
+				closure = ast_node_get_closure_target(node_dt);
+				if (closure) {
+					for (size_t i = 0; i < closure->num_members; i++) {
+						ast_node_test_ambigous_ref(
+								ctx, info, scope, closure->members[i].name);
+					}
 				}
 			}
 			break;
@@ -671,13 +710,8 @@ ast_node_has_ambiguous_refs_internal(
 	closure = ast_node_get_closure_target(node);
 	if (closure) {
 		for (size_t i = 0; i < closure->num_members; i++) {
-			struct ast_name_ref ref;
-			ref = ast_scope_lookup_name(
-					ctx, scope, closure->members[i].name);
-			if (ref.kind == AST_NAME_REF_NOT_FOUND ||
-					ref.kind == AST_NAME_REF_CLOSURE) {
-				info->num_ambiguous_refs += 1;
-			}
+			ast_node_test_ambigous_ref(
+					ctx, info, scope, closure->members[i].name);
 		}
 	}
 
@@ -685,7 +719,7 @@ ast_node_has_ambiguous_refs_internal(
 }
 
 static int
-ast_node_resolve_names_internal2(struct ast_context *ctx,
+ast_node_resolve_names_internal(struct ast_context *ctx,
 		struct ast_scope *scope, struct ast_node *node,
 		enum ast_traverse_role role, void *user_data)
 {
@@ -704,6 +738,19 @@ ast_node_resolve_names_internal2(struct ast_context *ctx,
 
 		case AST_NODE_COMPOSITE:
 			traverse_children = false;
+			break;
+
+		case AST_NODE_DATA_TYPE:
+			{
+				struct ast_node *dt_node;
+				dt_node = ast_module_node_get_data_type(
+						ctx->vm, node);
+
+				err += ast_node_resolve_names_internal(
+						ctx, scope, dt_node,
+						AST_TRAV_ROOT, user_data);
+			}
+			break;
 
 		default:
 			break;
@@ -711,7 +758,7 @@ ast_node_resolve_names_internal2(struct ast_context *ctx,
 
 	if (traverse_children) {
 		err += ast_node_traverse_scope(
-				ast_node_resolve_names_internal2, NULL,
+				ast_node_resolve_names_internal, NULL,
 				ctx, scope, node);
 	}
 
@@ -734,7 +781,7 @@ ast_node_resolve_names(struct ast_context *ctx,
 		struct stg_native_module *native_mod, struct ast_scope *scope,
 		bool require_const, struct ast_node *node)
 {
-	return ast_node_resolve_names_internal2(
+	return ast_node_resolve_names_internal(
 			ctx, scope, node, AST_TRAV_ROOT, NULL);
 }
 
@@ -801,6 +848,12 @@ ast_composite_setup_scope(struct ast_context *ctx, struct ast_scope *target_scop
 	for (size_t use_i = 0; use_i < comp->composite.num_uses; use_i++) {
 		type_id target_type = comp->composite.uses[use_i].target->type;
 
+		// For now we just ignore incomplete uses as they should be have been
+		// evaluated before any expression that might be dependent on them is
+		// name-checked.
+		//
+		// TODO: We should improve the robustness of this system so that we
+		// know when a use is erroneously incomplete.
 		if (target_type == TYPE_UNSET) {
 			continue;
 		}
@@ -860,16 +913,17 @@ ast_composite_node_resolve_names(struct ast_context *ctx,
 			scope, comp, local_members, member_scope_names,
 			self_name);
 
-	return ast_node_resolve_names_internal2(
+	return ast_node_resolve_names_internal(
 			ctx, &member_scope, node, AST_TRAV_ROOT, NULL);
 }
 
 int
 ast_node_discover_potential_closures(struct ast_context *ctx,
-		struct ast_scope *scope, bool require_const, struct ast_node *node)
+		struct stg_module *mod, struct ast_scope *scope,
+		bool require_const, struct ast_node *node)
 {
 	return ast_node_discover_potential_closures_internal(
-			ctx, scope, node, AST_TRAV_ROOT, NULL);
+			ctx, scope, node, AST_TRAV_ROOT, mod);
 }
 
 int
