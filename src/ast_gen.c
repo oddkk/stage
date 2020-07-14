@@ -1874,8 +1874,45 @@ ast_node_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 			return result;
 
 		case AST_NODE_DATA_TYPE:
-			printf("TODO: Gen byte code for data type node\n");
-			break;
+			{
+				struct ast_node *node_dt;
+				node_dt = ast_module_node_get_data_type(
+						ctx->vm, node);
+
+				type_id type = TYPE_UNSET;
+
+				switch (node_dt->kind) {
+
+					case AST_NODE_COMPOSITE:
+						type = node_dt->composite.type;
+						break;
+
+					case AST_NODE_VARIANT:
+						type = node_dt->variant.type;
+						break;
+
+					default:
+						panic("Invalid node kind as target for data type.");
+						break;
+				}
+
+				if (type == TYPE_UNSET) {
+					return AST_GEN_ERROR;
+				}
+
+				struct object obj;
+				obj.type = ctx->vm->default_types.type;
+				obj.data = &type;
+
+				struct bc_instr *lit_instr;
+				lit_instr = bc_gen_load(bc_env, BC_VAR_NEW,
+						register_object(ctx->vm, &mod->store, obj));
+
+				append_bc_instr(&result, lit_instr);
+
+				result.out_var = lit_instr->load.target;
+			}
+			return result;
 	}
 
 	printf("Invalid ast node in gen byte code.\n");

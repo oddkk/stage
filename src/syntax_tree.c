@@ -912,22 +912,30 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			kind = AST_COMPOSITE_MODULE;
 		}
 
+		ast_data_type_id dtid;
+		dtid = ast_module_add_composite(
+				ctx, mod->ast_mod, node->loc, kind);
+
 		struct ast_node *struct_node;
-		struct_node = ast_init_node_composite(
-				ctx, AST_NODE_NEW, node->loc, kind);
+		struct_node = ast_module_get_data_type(
+				mod->ast_mod, dtid);
 
 		while (member) {
 			st_node_visit_stmt(ctx, mod, struct_node, member);
 			member = member->next_sibling;
 		}
 
+		struct ast_node *data_type;
+		data_type = ast_init_node_data_type(
+				ctx, AST_NODE_NEW, node->loc, mod->id, dtid);
+
 		if (node->type == ST_NODE_OBJECT_DECL &&
 				node->OBJECT_DECL.params) {
 			return st_node_create_template(
 					ctx, mod, node->OBJECT_DECL.params,
-					struct_node);
+					data_type);
 		} else {
-			return struct_node;
+			return data_type;
 		}
 	}
 
@@ -1047,9 +1055,17 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			return NULL;
 		}
 
+		ast_data_type_id dtid;
+		dtid = ast_module_add_variant(
+				ctx, mod->ast_mod, node->loc);
+
 		struct ast_node *variant;
-		variant = ast_init_node_variant(
-				ctx, AST_NODE_NEW, node->loc);
+		variant = ast_module_get_data_type(
+				mod->ast_mod, dtid);
+
+		// struct ast_node *variant;
+		// variant = ast_init_node_variant(
+		// 		ctx, AST_NODE_NEW, node->loc);
 
 		while (option) {
 			assert(option->type == ST_NODE_VARIANT_ITEM);
@@ -1071,13 +1087,17 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			option = option->next_sibling;
 		}
 
+		struct ast_node *data_type;
+		data_type = ast_init_node_data_type(
+				ctx, AST_NODE_NEW, node->loc, mod->id, dtid);
+
 		if (node->VARIANT_DECL.params) {
 			return st_node_create_template(
 					ctx, mod, node->VARIANT_DECL.params,
 					variant);
 		}
 
-		return variant;
+		return data_type;
 	}
 
 	case ST_NODE_SPECIAL:
