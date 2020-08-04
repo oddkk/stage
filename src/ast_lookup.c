@@ -231,32 +231,28 @@ ast_node_traverse_scope(ast_traverse_scope_t visit,
 					params_scope.names[i].ref.param = i;
 				}
 
-				for (size_t i = 0; i < params_scope.num_names; i++) {
-					if (node->func.params[i].type) {
-						err += visit(ctx, scope, node->func.params[i].type,
-								AST_TRAV_FUNC_PARAM_TYPE, user_data);
-					}
-				}
-
-				if (node->func.return_type) {
-					err += visit(ctx, scope, node->func.return_type,
-							AST_TRAV_FUNC_RET_TYPE, user_data);
-				}
-
 				err += visit(ctx, &params_scope, node->func.body,
 						AST_TRAV_FUNC_BODY, user_data);
+
+				err += visit(ctx, scope, node->func.return_type,
+						AST_TRAV_FUNC_RET_TYPE, user_data);
+
+				for (size_t i = 0; i < params_scope.num_names; i++) {
+					err += visit(ctx, scope, node->func.params[i].type,
+							AST_TRAV_FUNC_PARAM_TYPE, user_data);
+				}
 			}
 			break;
 
 		case AST_NODE_FUNC_NATIVE:
 			{
+				err += visit(ctx, scope, node->func.return_type,
+						AST_TRAV_FUNC_RET_TYPE, user_data);
+
 				for (size_t i = 0; i < node->func.num_params; i++) {
 					err += visit(ctx, scope, node->func.params[i].type,
 							AST_TRAV_FUNC_PARAM_TYPE, user_data);
 				}
-
-				err += visit(ctx, scope, node->func.return_type,
-						AST_TRAV_FUNC_RET_TYPE, user_data);
 			}
 			break;
 
@@ -313,14 +309,13 @@ ast_node_traverse_scope(ast_traverse_scope_t visit,
 					templates_scope.names[i].ref.kind = AST_NAME_REF_TEMPL;
 					templates_scope.names[i].ref.templ = i;
 
-					if (node->templ.pattern.params[i].type) {
-						err += visit(ctx, scope, node->templ.pattern.params[i].type,
-								AST_TRAV_TEMPL_PARAM_TYPE, user_data);
-					}
+					err += visit(ctx, scope, node->templ.pattern.params[i].type,
+							AST_TRAV_TEMPL_PARAM_TYPE, user_data);
 				}
 
 				err += visit(ctx, &templates_scope, node->templ.pattern.node,
 						AST_TRAV_TEMPL_BODY, user_data);
+
 			}
 			break;
 
@@ -352,10 +347,8 @@ ast_node_traverse_scope(ast_traverse_scope_t visit,
 						name->ref.kind = AST_NAME_REF_TEMPL;
 						name->ref.templ = param_i;
 
-						if (match_case->pattern.params[param_i].type) {
-							err += visit(ctx, scope, match_case->pattern.params[param_i].type,
-									AST_TRAV_MATCH_PATTERN_TYPE, user_data);
-						}
+						err += visit(ctx, scope, match_case->pattern.params[param_i].type,
+								AST_TRAV_MATCH_PATTERN_TYPE, user_data);
 					}
 
 					// TODO: Should we allow non-const cases?
@@ -387,10 +380,8 @@ ast_node_traverse_scope(ast_traverse_scope_t visit,
 				member_scope.num_names = node->composite.num_members;
 
 				for (size_t i = 0; i < node->composite.num_members; i++) {
-					if (node->composite.members[i].type) {
-						err += visit(ctx, &member_scope, node->composite.members[i].type,
-								AST_TRAV_COMPOSITE_MEMBER_TYPE, user_data);
-					}
+					err += visit(ctx, &member_scope, node->composite.members[i].type,
+							AST_TRAV_COMPOSITE_MEMBER_TYPE, user_data);
 				}
 
 				for (size_t i = 0; i < node->composite.num_binds; i++) {
@@ -476,11 +467,9 @@ ast_node_traverse_scope(ast_traverse_scope_t visit,
 					body_scope.names[i].ref.kind = AST_NAME_REF_TEMPL;
 					body_scope.names[i].ref.templ = i;
 
-					if (node->type_class.pattern.params[i].type) {
-						err += visit(ctx, scope,
-								node->type_class.pattern.params[i].type,
-								AST_TRAV_TC_PATTERN_PARAM_TYPE, user_data);
-					}
+					err += visit(ctx, scope,
+							node->type_class.pattern.params[i].type,
+							AST_TRAV_TC_PATTERN_PARAM_TYPE, user_data);
 				}
 
 				for (size_t i = 0; i < node->type_class.num_members; i++) {
@@ -493,21 +482,19 @@ ast_node_traverse_scope(ast_traverse_scope_t visit,
 					struct ast_scope_name mbr_scope_names[mbr_scope.num_names];
 					mbr_scope.names = mbr_scope_names;
 
+					err += visit(ctx, &mbr_scope,
+							node->type_class.members[i].type.node,
+							AST_TRAV_TC_MBR_TYPE, user_data);
+
 					for (size_t p_i = 0; p_i < mbr->type.num_params; p_i++) {
 						mbr_scope.names[p_i].name = mbr->type.params[p_i].name;
 						mbr_scope.names[p_i].ref.kind = AST_NAME_REF_TEMPL;
 						mbr_scope.names[p_i].ref.templ = p_i;
 
-						if (mbr->type.params[p_i].type) {
-							err += visit(ctx, scope,
-									mbr->type.params[p_i].type,
-									AST_TRAV_TC_MBR_PARAM_TYPE, user_data);
-						}
+						err += visit(ctx, scope,
+								mbr->type.params[p_i].type,
+								AST_TRAV_TC_MBR_PARAM_TYPE, user_data);
 					}
-
-					err += visit(ctx, &mbr_scope,
-							node->type_class.members[i].type.node,
-							AST_TRAV_TC_MBR_TYPE, user_data);
 				}
 			}
 			break;
@@ -515,11 +502,9 @@ ast_node_traverse_scope(ast_traverse_scope_t visit,
 		case AST_NODE_VARIANT:
 			{
 				for (size_t i = 0; i < node->variant.num_options; i++) {
-					if (node->variant.options[i].data_type) {
-						err += visit(ctx, scope,
-								node->variant.options[i].data_type,
-								AST_TRAV_VARIANT_OPTION_TYPE, user_data);
-					}
+					err += visit(ctx, scope,
+							node->variant.options[i].data_type,
+							AST_TRAV_VARIANT_OPTION_TYPE, user_data);
 				}
 			}
 			break;
@@ -664,6 +649,10 @@ ast_node_discover_potential_closures_internal(
 {
 	int err = 0;
 
+	if (!node) {
+		return 0;
+	}
+
 	switch (node->kind) {
 
 		case AST_NODE_LOOKUP:
@@ -726,6 +715,10 @@ ast_node_has_ambiguous_refs_internal(
 	struct ast_node_ambigous_refs *info = user_data;
 	int err = 0;
 
+	if (!node) {
+		return 0;
+	}
+
 	switch (node->kind) {
 		case AST_NODE_LOOKUP:
 			{
@@ -778,6 +771,10 @@ ast_node_resolve_names_internal(struct ast_context *ctx,
 {
 	int err = 0;
 	bool traverse_children = true;
+
+	if (!node) {
+		return 0;
+	}
 
 	switch (node->kind) {
 		case AST_NODE_LOOKUP:
