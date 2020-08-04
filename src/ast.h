@@ -89,9 +89,65 @@ ast_scope_push_expr(struct ast_scope *target, struct ast_scope *parent);
 void
 ast_scope_push_func(struct ast_scope *target, struct ast_scope *parent);
 
+enum ast_traverse_role {
+	AST_TRAV_ROOT = 0,
+
+	AST_TRAV_FUNC_PARAM_TYPE,
+	AST_TRAV_FUNC_RET_TYPE,
+	AST_TRAV_FUNC_BODY,
+
+	AST_TRAV_CALL_TARGET,
+	AST_TRAV_CALL_ARG,
+
+	AST_TRAV_INST_TARGET,
+	AST_TRAV_INST_ARG,
+
+	AST_TRAV_CONS_TARGET,
+	AST_TRAV_CONS_ARG,
+
+	AST_TRAV_FUNC_TYPE_PARAM_TYPE,
+	AST_TRAV_FUNC_TYPE_RET_TYPE,
+
+	AST_TRAV_TEMPL_PARAM_TYPE,
+	AST_TRAV_TEMPL_BODY,
+
+	AST_TRAV_ACCESS_TARGET,
+
+	AST_TRAV_MATCH_VALUE,
+	AST_TRAV_MATCH_PATTERN_TYPE,
+	AST_TRAV_MATCH_PATTERN_EXPR,
+	AST_TRAV_MATCH_PATTERN,
+
+	AST_TRAV_COMPOSITE_MEMBER_TYPE,
+	AST_TRAV_COMPOSITE_BIND_TARGET,
+	AST_TRAV_COMPOSITE_BIND_VALUE,
+	AST_TRAV_COMPOSITE_FREE_EXPR,
+	AST_TRAV_COMPOSITE_INIT_EXPR,
+	AST_TRAV_COMPOSITE_IMPL_TARGET,
+	AST_TRAV_COMPOSITE_IMPL_ARG,
+	AST_TRAV_COMPOSITE_IMPL_VALUE,
+
+	AST_TRAV_TC_PATTERN_PARAM_TYPE,
+	AST_TRAV_TC_MBR_PARAM_TYPE,
+	AST_TRAV_TC_MBR_TYPE,
+	AST_TRAV_VARIANT_OPTION_TYPE,
+};
+
+typedef int (*ast_traverse_scope_t)(
+		struct ast_context *, struct ast_scope *,
+		struct ast_node *, enum ast_traverse_role,
+		void *user_data);
+
 int
-ast_scope_insert(struct ast_scope *,
-		struct atom *name, ast_slot_id);
+ast_node_traverse_scope(ast_traverse_scope_t visit,
+		void *user_data, struct ast_context *ctx,
+		struct ast_scope *scope, struct ast_node *node);
+
+struct ast_scope_name *
+ast_scope_lookup(struct ast_scope *scope, struct atom *name);
+
+size_t
+ast_node_num_children(struct ast_node *);
 
 enum ast_constraint_kind {
 	AST_SLOT_REQ_ERROR,

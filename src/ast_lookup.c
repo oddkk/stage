@@ -102,56 +102,109 @@ ast_try_lookup_in_scope(struct ast_context *ctx,
 	return res;
 }
 
-enum ast_traverse_role {
-	AST_TRAV_ROOT = 0,
+size_t
+ast_node_num_children(struct ast_node *node)
+{
+	switch (node->kind) {
+		case AST_NODE_FUNC:
+			return 0
+				+ /* body        */ 1
+				+ /* return type */ 1
+				+ /* param types */ node->func.num_params
+				;
 
-	AST_TRAV_FUNC_PARAM_TYPE,
-	AST_TRAV_FUNC_RET_TYPE,
-	AST_TRAV_FUNC_BODY,
+		case AST_NODE_FUNC_NATIVE:
+			return 0
+				+ /* return type */ 1
+				+ /* param types */ node->func.num_params
+				;
 
-	AST_TRAV_CALL_TARGET,
-	AST_TRAV_CALL_ARG,
+		case AST_NODE_CALL:
+		case AST_NODE_CONS:
+		case AST_NODE_INST:
+			return 0
+				+ /* func        */ 1
+				+ /* args        */ node->call.num_args
+				;
 
-	AST_TRAV_INST_TARGET,
-	AST_TRAV_INST_ARG,
+		case AST_NODE_ACCESS:
+			return
+				/* target      */ 1;
 
-	AST_TRAV_CONS_TARGET,
-	AST_TRAV_CONS_ARG,
+		case AST_NODE_TEMPL:
+			return 0
+				+ /* body        */ 1
+				+ /* param types */ node->templ.pattern.num_params;
 
-	AST_TRAV_FUNC_TYPE_PARAM_TYPE,
-	AST_TRAV_FUNC_TYPE_RET_TYPE,
+		case AST_NODE_LIT:
+			return 0;
 
-	AST_TRAV_TEMPL_PARAM_TYPE,
-	AST_TRAV_TEMPL_BODY,
+		case AST_NODE_LIT_NATIVE:
+			return 0;
 
-	AST_TRAV_ACCESS_TARGET,
+		case AST_NODE_FUNC_TYPE:
+			return 0
+				+ /* return type */ 1
+				+ /* param types */ node->func_type.num_params
+				;
 
-	AST_TRAV_MATCH_VALUE,
-	AST_TRAV_MATCH_PATTERN_TYPE,
-	AST_TRAV_MATCH_PATTERN_EXPR,
-	AST_TRAV_MATCH_PATTERN,
+		case AST_NODE_LOOKUP:
+			return 0;
 
-	AST_TRAV_COMPOSITE_MEMBER_TYPE,
-	AST_TRAV_COMPOSITE_BIND_TARGET,
-	AST_TRAV_COMPOSITE_BIND_VALUE,
-	AST_TRAV_COMPOSITE_FREE_EXPR,
-	AST_TRAV_COMPOSITE_INIT_EXPR,
-	AST_TRAV_COMPOSITE_IMPL_TARGET,
-	AST_TRAV_COMPOSITE_IMPL_ARG,
-	AST_TRAV_COMPOSITE_IMPL_VALUE,
+		case AST_NODE_MOD:
+			return 0;
 
-	AST_TRAV_TC_PATTERN_PARAM_TYPE,
-	AST_TRAV_TC_MBR_PARAM_TYPE,
-	AST_TRAV_TC_MBR_TYPE,
-	AST_TRAV_VARIANT_OPTION_TYPE,
-};
+		case AST_NODE_MATCH:
+			{
+				size_t num_match_params = 0;
+				for (size_t i = 0; i < node->match.num_cases; i++) {
+					num_match_params += node->match.cases[i].pattern.num_params;
+				}
+				return num_match_params +
+					/* pattern and expr */ 2*node->match.num_cases;
+			}
 
-typedef int (*ast_traverse_scope_t)(
-		struct ast_context *, struct ast_scope *,
-		struct ast_node *, enum ast_traverse_role,
-		void *user_data);
+		case AST_NODE_WILDCARD:
+			return 0;
 
-static inline int
+		case AST_NODE_INIT_EXPR:
+			return 0;
+
+		case AST_NODE_TYPE_CLASS:
+			{
+				size_t num_member_params = 0;
+				for (size_t i = 0; i < node->type_class.num_members; i++) {
+					num_member_params += node->type_class.members[i].type.num_params;
+				}
+				return num_member_params +
+					node->type_class.pattern.num_params;
+			}
+
+		case AST_NODE_COMPOSITE:
+			return 0
+				+ /* member types */ node->composite.num_members
+				+ /* bind targets */ node->composite.num_binds
+				+ /* bind values  */ node->composite.num_binds
+				+ /* free exprs   */ node->composite.num_free_exprs
+				+ /* init exprs   */ node->composite.num_init_exprs
+
+				// TODO: Should impls be children?
+				// + /* uses         */ node->composite.num_uses
+
+				// TODO: Should impls be children?
+				// + /* uses         */ node->composite.num_impls
+				;
+
+		case AST_NODE_VARIANT:
+			return
+				node->variant.num_options;
+
+		case AST_NODE_DATA_TYPE:
+			return 0;
+	}
+}
+
+int
 ast_node_traverse_scope(ast_traverse_scope_t visit,
 		void *user_data, struct ast_context *ctx,
 		struct ast_scope *scope, struct ast_node *node)
