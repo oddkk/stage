@@ -12,6 +12,32 @@
 
 #define AST_DT_DEBUG_JOBS 0
 
+#define AST_DT_JOBS                                     \
+	JOB(nop, ast_dt_job_id *)                           \
+	                                                    \
+	JOB(composite_resolve_names, ast_dt_composite_id)   \
+	JOB(composite_eval_closure, ast_dt_composite_id)    \
+	JOB(composite_pack, ast_dt_composite_id)            \
+	JOB(composite_const_eval, ast_dt_composite_id)      \
+	                                                    \
+	JOB(mbr_type_resolve_names, ast_member_id)          \
+	JOB(mbr_type_eval, ast_member_id)                   \
+	JOB(mbr_const_eval, ast_member_id)                  \
+	                                                    \
+	JOB(expr_resolve_names, ast_dt_expr_id)             \
+	JOB(expr_resolve_types, ast_dt_expr_id)             \
+	JOB(expr_codegen, ast_dt_expr_id)                   \
+	                                                    \
+	JOB(bind_target_resolve_names, ast_dt_bind_id)      \
+	                                                    \
+	JOB(tc_impl_resolve_names, ast_dt_tc_impl_id)       \
+	JOB(tc_impl_resolve_target, ast_dt_tc_impl_id)      \
+	JOB(tc_impl_resolve, ast_dt_tc_impl_id)             \
+	                                                    \
+	JOB(use_const_eval, ast_dt_use_id)
+
+
+
 typedef int ast_dt_job_id;
 typedef int ast_dt_bind_id;
 typedef int ast_dt_expr_id;
@@ -190,28 +216,10 @@ struct ast_dt_dependency {
 
 enum ast_dt_job_kind {
 	AST_DT_JOB_FREE = 0,
-	AST_DT_JOB_NOP,
 
-	AST_DT_JOB_COMPOSITE_RESOLVE_NAMES,
-	AST_DT_JOB_COMPOSITE_EVAL_CLOSURE,
-	AST_DT_JOB_COMPOSITE_PACK,
-	AST_DT_JOB_COMPOSITE_CONST_EVAL,
-
-	AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES,
-	AST_DT_JOB_MBR_TYPE_EVAL,
-	AST_DT_JOB_MBR_CONST_EVAL,
-
-	AST_DT_JOB_EXPR_RESOLVE_NAMES,
-	AST_DT_JOB_EXPR_RESOLVE_TYPES,
-	AST_DT_JOB_EXPR_CODEGEN,
-
-	AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES,
-
-	AST_DT_JOB_TC_IMPL_RESOLVE_NAMES,
-	AST_DT_JOB_TC_IMPL_RESOLVE_TARGET,
-	AST_DT_JOB_TC_IMPL_RESOLVE,
-
-	AST_DT_JOB_USE_CONST_EVAL,
+#define JOB(name, ...) AST_DT_JOB_##name,
+	AST_DT_JOBS
+#undef JOB
 };
 
 struct ast_dt_job_dep {
@@ -234,26 +242,13 @@ struct ast_dt_job {
 	ast_dt_job_id terminal_jobs;
 
 	union {
-		// For nop
-		ast_dt_job_id *id_loc;
-
-		// For AST_DT_JOB_EXPR_TYPE
-		ast_member_id member;
-
-		// For AST_DT_JOB_EXPR_BIND and AST_DT_JOB_EXPR_TARGET
-		ast_dt_expr_id expr;
-
-		ast_dt_bind_id bind;
-
-		ast_dt_use_id use;
-
-		ast_dt_composite_id composite;
-
-		ast_dt_tc_impl_id tc_impl;
+#define JOB(name, type) type name;
+		AST_DT_JOBS
+#undef JOB
 
 		// Used when the job is not allocated.
 		ast_dt_job_id free_list;
-	};
+	} data;
 };
 
 struct ast_dt_type_class {
@@ -436,7 +431,7 @@ ast_dt_free_job(struct ast_dt_context *ctx, ast_dt_job_id id)
 	memset(job, 0, sizeof(struct ast_dt_job));
 	job->kind = AST_DT_JOB_FREE;
 
-	job->free_list = ctx->free_list;
+	job->data.free_list = ctx->free_list;
 	ctx->free_list = id;
 }
 
@@ -455,11 +450,11 @@ ast_dt_alloc_job(struct ast_dt_context *ctx)
 	struct ast_dt_job *job;
 	job = get_job(ctx, res);
 
-	ctx->free_list = job->free_list;
+	ctx->free_list = job->data.free_list;
 
 	memset(job, 0, sizeof(struct ast_dt_job));
 
-	job->free_list = -1;
+	job->data.free_list = -1;
 
 	job->terminal_jobs = ctx->terminal_jobs;
 	ctx->terminal_jobs = res;
@@ -467,6 +462,25 @@ ast_dt_alloc_job(struct ast_dt_context *ctx)
 	return res;
 }
 
+#define JOB(name, type)								\
+	static ast_dt_job_id							\
+	ast_dt_job_##name(struct ast_dt_context *ctx,	\
+			type value)								\
+{													\
+	ast_dt_job_id job_id;							\
+	job_id = ast_dt_alloc_job(ctx);					\
+													\
+	struct ast_dt_job *job;							\
+	job = get_job(ctx, job_id);						\
+	job->kind = AST_DT_JOB_##name;					\
+	job->data.name = value;							\
+													\
+	return job_id;									\
+}
+AST_DT_JOBS
+#undef JOB
+
+/*
 static ast_dt_job_id
 ast_dt_job_nop(struct ast_dt_context *ctx,
 		ast_dt_job_id *loc)
@@ -481,7 +495,9 @@ ast_dt_job_nop(struct ast_dt_context *ctx,
 
 	return job_id;
 }
+*/
 
+/*
 static ast_dt_job_id
 ast_dt_job_composite(struct ast_dt_context *ctx,
 		ast_dt_composite_id comp, enum ast_dt_job_kind kind)
@@ -575,6 +591,7 @@ ast_dt_job_use(struct ast_dt_context *ctx,
 
 	return job_id;
 }
+*/
 
 static void
 ast_dt_job_remove_from_terminal_jobs(struct ast_dt_context *ctx,
@@ -598,42 +615,9 @@ ast_dt_job_remove_from_terminal_jobs(struct ast_dt_context *ctx,
 static const char *
 ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
 	switch (kind) {
-		case AST_DT_JOB_NOP:
-			return "NOP";
-		case AST_DT_JOB_COMPOSITE_RESOLVE_NAMES:
-			return "COMP NAMES";
-		case AST_DT_JOB_COMPOSITE_EVAL_CLOSURE:
-			return "COMP CLOSURE";
-		case AST_DT_JOB_COMPOSITE_PACK:
-			return "COMP PACK";
-		case AST_DT_JOB_COMPOSITE_CONST_EVAL:
-			return "COMP CONSTEVAL";
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
-			return "MBR TPE NAMES";
-		case AST_DT_JOB_MBR_TYPE_EVAL:
-			return "MBR TPE EVAL";
-		case AST_DT_JOB_MBR_CONST_EVAL:
-			return "MBR CONST EVAL";
-		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
-			return "EXP VAL NAMES";
-		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
-			return "EXP VAL TYPES";
-		case AST_DT_JOB_EXPR_CODEGEN:
-			return "EXP VAL CODEGEN";
-		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
-			return "BND TAR NAMES";
-
-		case AST_DT_JOB_USE_CONST_EVAL:
-			return "USE CONST EVAL";
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE_NAMES:
-			return "TC IMPL NAMES";
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
-			return "TC IMPL TARGET";
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE:
-			return "TC IMPL RESOLVE";
+#define JOB(name, ...) case AST_DT_JOB_##name: return #name;
+		AST_DT_JOBS
+#undef JOB
 
 		case AST_DT_JOB_FREE:
 			return "FREE";
@@ -918,16 +902,13 @@ ast_dt_register_impl(
 	parent = get_composite(ctx, parent_id);
 
 	dt_impl->resolve_names =
-		ast_dt_job_tc_impl(ctx, id,
-				AST_DT_JOB_TC_IMPL_RESOLVE_NAMES);
+		ast_dt_job_tc_impl_resolve_names(ctx, id);
 
 	dt_impl->resolve_target =
-		ast_dt_job_tc_impl(ctx, id,
-				AST_DT_JOB_TC_IMPL_RESOLVE_TARGET);
+		ast_dt_job_tc_impl_resolve_target(ctx, id);
 
 	dt_impl->resolve =
-		ast_dt_job_tc_impl(ctx, id,
-				AST_DT_JOB_TC_IMPL_RESOLVE);
+		ast_dt_job_tc_impl_resolve(ctx, id);
 
 	ast_dt_job_dependency(ctx,
 			parent->closures_evaled,
@@ -985,8 +966,7 @@ ast_dt_register_composite(
 	comp->self = -1;
 
 	comp->finalize_job =
-		ast_dt_job_composite(ctx, comp_id,
-				AST_DT_JOB_COMPOSITE_PACK);
+		ast_dt_job_composite_pack(ctx, comp_id);
 
 	comp->target_names_resolved =
 		ast_dt_job_nop(ctx, &comp->target_names_resolved);
@@ -1000,11 +980,9 @@ ast_dt_register_composite(
 		assert(comp->num_closures == 0);
 
 		comp->resolve_names =
-			ast_dt_job_composite(ctx, comp_id,
-					AST_DT_JOB_COMPOSITE_RESOLVE_NAMES);
+			ast_dt_job_composite_resolve_names(ctx, comp_id);
 		comp->closures_evaled =
-			ast_dt_job_composite(ctx, comp_id,
-					AST_DT_JOB_COMPOSITE_EVAL_CLOSURE);
+			ast_dt_job_composite_eval_closure(ctx, comp_id);
 
 		ast_dt_job_dependency(ctx,
 				comp->resolve_names,
@@ -1045,16 +1023,13 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 	new_expr->init_expr = -1;
 
 	new_expr->value_jobs.resolve_names =
-		ast_dt_job_expr(ctx, expr_i,
-				AST_DT_JOB_EXPR_RESOLVE_NAMES);
+		ast_dt_job_expr_resolve_names(ctx, expr_i);
 
 	new_expr->value_jobs.resolve_types =
-		ast_dt_job_expr(ctx, expr_i,
-				AST_DT_JOB_EXPR_RESOLVE_TYPES);
+		ast_dt_job_expr_resolve_types(ctx, expr_i);
 
 	new_expr->value_jobs.codegen =
-		ast_dt_job_expr(ctx, expr_i,
-				AST_DT_JOB_EXPR_CODEGEN);
+		ast_dt_job_expr_codegen(ctx, expr_i);
 
 	ast_dt_job_dependency(ctx,
 			parent->closures_evaled,
@@ -1106,12 +1081,10 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 	mbr->sub_composite = -1;
 
 	mbr->type_resolved =
-		ast_dt_job_type(ctx, mbr_id,
-				AST_DT_JOB_MBR_TYPE_EVAL);
+		ast_dt_job_mbr_type_eval(ctx, mbr_id);
 
 	mbr->const_resolved =
-		ast_dt_job_type(ctx, mbr_id,
-				AST_DT_JOB_MBR_CONST_EVAL);
+		ast_dt_job_mbr_const_eval(ctx, mbr_id);
 
 	ast_dt_job_dependency(ctx,
 			mbr->type_resolved,
@@ -1126,8 +1099,7 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 
 	if (type_expr) {
 		mbr->type_names_resolved =
-			ast_dt_job_type(ctx, mbr_id,
-					AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES);
+			ast_dt_job_mbr_type_resolve_names(ctx, mbr_id);
 
 		ast_dt_job_dependency(ctx,
 				parent->closures_evaled,
@@ -1190,8 +1162,7 @@ ast_dt_register_local_sub_composite_member(
 	mbr->type_resolved = sub_composite->finalize_job;
 
 	mbr->const_resolved =
-		ast_dt_job_composite(ctx, sub_composite_id,
-				AST_DT_JOB_COMPOSITE_CONST_EVAL);
+		ast_dt_job_composite_const_eval(ctx, sub_composite_id);
 
 	ast_dt_job_dependency(ctx,
 			parent->target_names_resolved,
@@ -1240,8 +1211,7 @@ ast_dt_register_bind(struct ast_dt_context *ctx,
 
 	if (bind->target_node) {
 		bind->target_jobs.resolve_names =
-			ast_dt_job_bind(ctx, bind_id,
-					AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES);
+			ast_dt_job_bind_target_resolve_names(ctx, bind_id);
 
 		ast_dt_job_dependency(ctx,
 				bind->target_jobs.resolve_names,
@@ -1321,8 +1291,7 @@ ast_dt_register_use(struct ast_dt_context *ctx,
 
 	assert(expr->parent == use->parent);
 
-	use->const_resolved = ast_dt_job_use(ctx, use_id,
-			AST_DT_JOB_USE_CONST_EVAL);
+	use->const_resolved = ast_dt_job_use_const_eval(ctx, use_id);
 
 	ast_dt_job_dependency(ctx,
 			expr->value_jobs.codegen,
@@ -2811,6 +2780,11 @@ static type_id
 ast_dt_composite_make_type(struct ast_dt_context *ctx,
 		ast_dt_composite_id comp_id);
 
+#define JOB(name, type) \
+	int ast_dt_job_dispatch_##name(struct ast_dt_context *, ast_dt_job_id, type);
+AST_DT_JOBS
+#undef JOB
+
 static inline int
 ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 {
@@ -2823,586 +2797,652 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	printf("\n");
 #endif
 
+	int err = -1;
+
 	switch (job->kind) {
-		case AST_DT_JOB_NOP:
+		case AST_DT_JOB_FREE:
+			panic("Attempted to dispatch a freed job.");
+			break;
+
+#define JOB(name, type) 													\
+		case AST_DT_JOB_##name:												\
+			err = ast_dt_job_dispatch_##name(ctx, job_id, job->data.name);	\
+			break;
+	AST_DT_JOBS
+#undef JOB
+	}
+
+	return err;
+}
+
+int
+ast_dt_job_dispatch_nop(struct ast_dt_context *ctx,
+		ast_dt_job_id job_id, ast_dt_job_id *id_ref)
+{
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_composite_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_composite_id comp_id)
+{
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	// We should only try to resolve names of sub-composites.
+	assert(comp->self >= 0);
+
+	struct ast_dt_member *self;
+	self = get_member(ctx, comp->self);
+
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, self->parent);
+
+	int err;
+	err = ast_composite_node_resolve_names(
+			ctx->ast_ctx, ctx->mod->native_mod,
+			NULL, true, parent->root_node, comp->root_node,
+			parent->local_member_ids, NULL);
+	if (err) {
+		return -1;
+	}
+
+	ast_dt_find_named_dependencies(
+			ctx, comp->closures_evaled,
+			AST_NAME_DEP_REQUIRE_VALUE, comp->root_node);
+	return 0;
+}
+
+	int
+ast_dt_job_dispatch_composite_eval_closure(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_composite_id comp_id)
+{
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	// We should only try to resolve names of sub-composites.
+	assert(comp->self >= 0);
+
+	struct ast_dt_member *self;
+	self = get_member(ctx, comp->self);
+
+	struct ast_name_dep *deps = NULL;
+	size_t num_deps = 0;
+
+	int err;
+	err = ast_node_find_named_dependencies(
+			ctx->ast_ctx->vm, comp->root_node, AST_NAME_DEP_REQUIRE_VALUE,
+			&deps, &num_deps);
+	if (err) {
+		printf("Failed to find the named dependencies.\n");
+		return -1;
+	}
+
+	struct ast_typecheck_dep body_deps[num_deps];
+
+	err = ast_dt_body_deps(ctx, self->parent,
+			deps, num_deps, body_deps);
+	if (err) {
+		return -1;
+	}
+
+	struct ast_closure_target *closure;
+	closure = &comp->root_node->composite.closure;
+
+	struct ast_typecheck_closure *closure_values;
+	closure_values = arena_allocn(ctx->tmp_mem,
+			closure->num_members,
+			sizeof(struct ast_typecheck_closure));
+	memset(closure_values, 0,
+			sizeof(struct ast_typecheck_closure) * closure->num_members);
+
+	ast_fill_closure(closure, closure_values,
+			body_deps, num_deps);
+
+	comp->closures = closure_values;
+	comp->num_closures = closure->num_members;
+
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_composite_pack(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_composite_id comp_id)
+{
+	type_id result;
+	result = ast_dt_composite_make_type(
+			ctx, comp_id);
+	if (result == TYPE_UNSET) {
+		return -1;
+	}
+
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	if (comp->self >= 0) {
+		ast_try_set_local_member_type(
+				ctx, comp->self, result);
+	}
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_composite_const_eval(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_composite_id comp_id)
+{
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+	assert(comp->self >= 0);
+
+	ast_dt_try_pack_member(ctx, comp->self);
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_mbr_type_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, mbr->parent);
+
+	int err;
+	err = ast_composite_node_resolve_names(
+			ctx->ast_ctx, ctx->mod->native_mod,
+			NULL, true, parent->root_node, mbr->type_node,
+			parent->local_member_ids, NULL);
+	if (err) {
+		return -1;
+	}
+
+	ast_dt_find_named_dependencies(
+			ctx, mbr->type_resolved,
+			AST_NAME_DEP_REQUIRE_VALUE, mbr->type_node);
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_expr_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_expr_id expr_id)
+{
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, expr->parent);
+
+	int err;
+	err = ast_composite_node_resolve_names(
+			ctx->ast_ctx, ctx->mod->native_mod,
+			NULL, false, parent->root_node,
+			expr->value.node,
+			parent->local_member_ids,
+			expr->trivial_name);
+	if (err) {
+		return -1;
+	}
+
+	ast_dt_find_named_dependencies(
+			ctx, expr->value_jobs.resolve_types,
+			AST_NAME_DEP_REQUIRE_TYPE, expr->value.node);
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_expr_resolve_types(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_expr_id expr_id)
+{
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	struct ast_dt_expr_typecheck_config tc_cfg = {0};
+	tc_cfg.wait_for_tc = true;
+
+	if (expr->init_expr >= 0) {
+		struct stg_base_mod_info *base_info;
+		struct stg_module *base_mod;
+		base_mod = vm_get_module(
+				ctx->ast_ctx->vm,
+				mod_atoms(ctx->mod, "base"));
+		base_info = base_mod->data;
+
+		tc_cfg.expected.kind = AST_NODE_TC_EXP_CONS;
+		tc_cfg.expected.cons = base_info->init_cons;
+	} else {
+		tc_cfg.expected.kind = (expr->type != TYPE_UNSET)
+			? AST_NODE_TC_EXP_TYPE
+			: AST_NODE_TC_EXP_NOTHING;
+		tc_cfg.expected.type = expr->type;
+	}
+
+	int err;
+	err = ast_dt_expr_typecheck(
+			ctx, expr->parent, expr->value.node,
+			AST_NAME_DEP_REQUIRE_TYPE,
+			job_id, tc_cfg, NULL);
+	if (err < 0) {
+		return -1;
+	} else if (err > 0) {
+		// Yield.
+		return 0;
+	}
+
+	assert(expr->type == TYPE_UNSET);
+	expr->type = expr->value.node->type;
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_mbr_type_eval(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+	type_id out_type = TYPE_UNSET;
+
+	if (mbr->type_node) {
+		struct object out_type_obj = {0};
+
+		struct ast_dt_expr_typecheck_config tc_cfg = {0};
+		tc_cfg.wait_for_tc = true;
+		tc_cfg.expected.kind = AST_NODE_TC_EXP_TYPE;
+		tc_cfg.expected.type = ctx->ast_ctx->vm->default_types.type;
+
+		int err;
+		err = ast_dt_expr_typecheck(
+				ctx, mbr->parent, mbr->type_node,
+				AST_NAME_DEP_REQUIRE_VALUE,
+				job_id, tc_cfg, &out_type_obj);
+		if (err < 0) {
+			return -1;
+		} else if (err > 0) {
+			// Yield.
 			return 0;
+		}
 
-		case AST_DT_JOB_COMPOSITE_RESOLVE_NAMES:
-			{
-				struct ast_dt_composite *comp;
-				comp = get_composite(ctx, job->composite);
+		assert_type_equals(ctx->ast_ctx->vm,
+				out_type_obj.type,
+				ctx->ast_ctx->vm->default_types.type);
 
-				// We should only try to resolve names of sub-composites.
-				assert(comp->self >= 0);
+		out_type = *(type_id *)out_type_obj.data;
+	} else {
+		for (size_t i = 0; i < mbr->num_binds; i++) {
+			struct ast_dt_member_bind *mbr_bind;
+			mbr_bind = &mbr->binds[i];
 
-				struct ast_dt_member *self;
-				self = get_member(ctx, comp->self);
-
-				struct ast_dt_composite *parent;
-				parent = get_composite(ctx, self->parent);
-
-				int err;
-				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->mod->native_mod,
-						NULL, true, parent->root_node, comp->root_node,
-						parent->local_member_ids, NULL);
-				if (err) {
-					break;
-				}
-
-				ast_dt_find_named_dependencies(
-						ctx, comp->closures_evaled,
-						AST_NAME_DEP_REQUIRE_VALUE, comp->root_node);
-			}
-			return 0;
-
-		case AST_DT_JOB_COMPOSITE_EVAL_CLOSURE:
-			{
-				struct ast_dt_composite *comp;
-				comp = get_composite(ctx, job->composite);
-
-				// We should only try to resolve names of sub-composites.
-				assert(comp->self >= 0);
-
-				struct ast_dt_member *self;
-				self = get_member(ctx, comp->self);
-
-				struct ast_name_dep *deps = NULL;
-				size_t num_deps = 0;
-
-				int err;
-				err = ast_node_find_named_dependencies(
-						ctx->ast_ctx->vm, comp->root_node, AST_NAME_DEP_REQUIRE_VALUE,
-						&deps, &num_deps);
-				if (err) {
-					printf("Failed to find the named dependencies.\n");
-					return -1;
-				}
-
-				struct ast_typecheck_dep body_deps[num_deps];
-
-				err = ast_dt_body_deps(ctx, self->parent,
-						deps, num_deps, body_deps);
-				if (err) {
-					return -1;
-				}
-
-				struct ast_closure_target *closure;
-				closure = &comp->root_node->composite.closure;
-
-				struct ast_typecheck_closure *closure_values;
-				closure_values = arena_allocn(ctx->tmp_mem,
-						closure->num_members,
-						sizeof(struct ast_typecheck_closure));
-				memset(closure_values, 0,
-						sizeof(struct ast_typecheck_closure) * closure->num_members);
-
-				ast_fill_closure(closure, closure_values,
-						body_deps, num_deps);
-
-				comp->closures = closure_values;
-				comp->num_closures = closure->num_members;
-			}
-			return 0;
-
-		case AST_DT_JOB_COMPOSITE_PACK:
-			{
-				type_id result;
-				result = ast_dt_composite_make_type(
-						ctx, job->composite);
-				if (result == TYPE_UNSET) {
-					return -1;
-				}
-
-				struct ast_dt_composite *comp;
-				comp = get_composite(ctx, job->composite);
-
-				if (comp->self >= 0) {
-					ast_try_set_local_member_type(
-							ctx, comp->self, result);
-				}
-			}
-			return 0;
-
-		case AST_DT_JOB_COMPOSITE_CONST_EVAL:
-			{
-				struct ast_dt_composite *comp;
-				comp = get_composite(ctx, job->composite);
-				assert(comp->self >= 0);
-
-				ast_dt_try_pack_member(ctx, comp->self);
-			}
-			return 0;
-
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-
-				struct ast_dt_composite *parent;
-				parent = get_composite(ctx, mbr->parent);
-
-				int err;
-				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->mod->native_mod,
-						NULL, true, parent->root_node, mbr->type_node,
-						parent->local_member_ids, NULL);
-				if (err) {
-					break;
-				}
-
-				ast_dt_find_named_dependencies(
-						ctx, mbr->type_resolved,
-						AST_NAME_DEP_REQUIRE_VALUE, mbr->type_node);
-			}
-			return 0;
-
-		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
-			{
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, job->expr);
-
-				struct ast_dt_composite *parent;
-				parent = get_composite(ctx, expr->parent);
-
-				int err;
-				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->mod->native_mod,
-						NULL, false, parent->root_node,
-						expr->value.node,
-						parent->local_member_ids,
-						expr->trivial_name);
-				if (err) {
-					break;
-				}
-
-				ast_dt_find_named_dependencies(
-						ctx, expr->value_jobs.resolve_types,
-						AST_NAME_DEP_REQUIRE_TYPE, expr->value.node);
-			}
-			return 0;
-
-		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
-			{
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, job->expr);
-
-				struct ast_dt_expr_typecheck_config tc_cfg = {0};
-				tc_cfg.wait_for_tc = true;
-
-				if (expr->init_expr >= 0) {
-					struct stg_base_mod_info *base_info;
-					struct stg_module *base_mod;
-					base_mod = vm_get_module(
-							ctx->ast_ctx->vm,
-							mod_atoms(ctx->mod, "base"));
-					base_info = base_mod->data;
-
-					tc_cfg.expected.kind = AST_NODE_TC_EXP_CONS;
-					tc_cfg.expected.cons = base_info->init_cons;
-				} else {
-					tc_cfg.expected.kind = (expr->type != TYPE_UNSET)
-						? AST_NODE_TC_EXP_TYPE
-						: AST_NODE_TC_EXP_NOTHING;
-					tc_cfg.expected.type = expr->type;
-				}
-
-				int err;
-				err = ast_dt_expr_typecheck(
-						ctx, expr->parent, expr->value.node,
-						AST_NAME_DEP_REQUIRE_TYPE,
-						job_id, tc_cfg, NULL);
-				if (err < 0) {
-					return -1;
-				} else if (err > 0) {
-					// Yield.
-					return 0;
-				}
-
-				assert(expr->type == TYPE_UNSET);
-				expr->type = expr->value.node->type;
-			}
-			return 0;
-
-		case AST_DT_JOB_MBR_TYPE_EVAL:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				type_id out_type = TYPE_UNSET;
-
-				if (mbr->type_node) {
-					struct object out_type_obj = {0};
-
-					struct ast_dt_expr_typecheck_config tc_cfg = {0};
-					tc_cfg.wait_for_tc = true;
-					tc_cfg.expected.kind = AST_NODE_TC_EXP_TYPE;
-					tc_cfg.expected.type = ctx->ast_ctx->vm->default_types.type;
-
-					int err;
-					err = ast_dt_expr_typecheck(
-							ctx, mbr->parent, mbr->type_node,
-							AST_NAME_DEP_REQUIRE_VALUE,
-							job_id, tc_cfg, &out_type_obj);
-					if (err < 0) {
-						return -1;
-					} else if (err > 0) {
-						// Yield.
-						return 0;
-					}
-
-					assert_type_equals(ctx->ast_ctx->vm,
-							out_type_obj.type,
-							ctx->ast_ctx->vm->default_types.type);
-
-					out_type = *(type_id *)out_type_obj.data;
-				} else {
-					for (size_t i = 0; i < mbr->num_binds; i++) {
-						struct ast_dt_member_bind *mbr_bind;
-						mbr_bind = &mbr->binds[i];
-
-						if ((mbr_bind[i].flags & AST_DT_MBR_BIND_TYPEGIVING) != 0) {
-							assert(mbr_bind->unpack_id == 0);
-							struct ast_dt_bind *bind;
-							bind = get_bind(ctx, mbr_bind->bind);
-
-							struct ast_dt_expr *expr;
-							expr = get_expr(ctx, bind->expr);
-
-							out_type = expr->type;
-						}
-					}
-				}
-
-				ast_try_set_local_member_type(
-						ctx, job->member, out_type);
-			}
-			return 0;
-
-		case AST_DT_JOB_MBR_CONST_EVAL:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				assert(mbr->type != TYPE_UNSET);
-
-				ast_dt_try_pack_member(ctx, job->member);
-			}
-			return 0;
-
-		case AST_DT_JOB_EXPR_CODEGEN:
-			{
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, job->expr);
-
-				struct ast_gen_dt_param *deps = NULL;
-				size_t num_deps = 0;
-
-				func_id fid;
-				fid = ast_dt_expr_codegen(
-						ctx, expr->parent, expr->value.node,
-						AST_NAME_DEP_REQUIRE_TYPE,
-						&deps, &num_deps);
-				if (fid == FUNC_UNSET) {
-					return -1;
-				}
-
-				expr->num_deps = num_deps;
-				expr->deps = deps;
-
-				expr->value.func = fid;
-
-				int err;
-				err = ast_dt_try_eval_expr_const(
-						ctx, job->expr, &expr->const_value);
-				if (err) {
-					return err < 0;
-				}
-			}
-			return 0;
-
-		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
-			{
+			if ((mbr_bind[i].flags & AST_DT_MBR_BIND_TYPEGIVING) != 0) {
+				assert(mbr_bind->unpack_id == 0);
 				struct ast_dt_bind *bind;
-				bind = get_bind(ctx, job->bind);
+				bind = get_bind(ctx, mbr_bind->bind);
 
 				struct ast_dt_expr *expr;
 				expr = get_expr(ctx, bind->expr);
 
-				struct ast_dt_composite *parent;
-				parent = get_composite(ctx, expr->parent);
-
-				int err;
-				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, NULL, NULL,
-						false, parent->root_node, bind->target_node,
-						parent->local_member_ids, NULL);
-				if (err) {
-					return -1;
-				}
-
-				ast_member_id target;
-				err = ast_dt_l_expr_top_member(
-						ctx, bind->target_node, &target);
-				if (err) {
-					return -1;
-				}
-
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, target);
-
-				ast_dt_job_dependency(ctx,
-						expr->value_jobs.codegen,
-						mbr->const_resolved);
-
-				ast_dt_bind_to_member(
-						ctx, target, job->bind,
-						bind->target_node, false);
+				out_type = expr->type;
 			}
-			return 0;
-
-		case AST_DT_JOB_USE_CONST_EVAL:
-			{
-				struct ast_dt_use *use;
-				use = get_use(ctx, job->use);
-
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, use->expr);
-
-				assert(expr->type != TYPE_UNSET);
-				use->type = expr->type;
-
-				int err;
-				err = ast_dt_try_eval_expr_const(
-						ctx, use->expr, &use->const_value);
-				if (err) {
-					return err < 0;
-				}
-
-				use->is_const = true;
-
-			}
-			return 0;
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE_NAMES:
-			{
-				struct ast_dt_type_class_impl *impl;
-				impl = get_type_class_impl(ctx, job->tc_impl);
-
-				struct ast_dt_composite *parent;
-				parent = get_composite(ctx, impl->parent);
-
-				int err;
-
-
-				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->mod->native_mod,
-						NULL, true, parent->root_node, impl->impl->target,
-						parent->local_member_ids, NULL);
-				if (err) {
-					return -1;
-				}
-				ast_dt_find_named_dependencies(
-						ctx, impl->resolve_target,
-						AST_NAME_DEP_REQUIRE_VALUE, impl->impl->target);
-
-				err = ast_composite_node_resolve_names(
-						ctx->ast_ctx, ctx->mod->native_mod,
-						NULL, true, parent->root_node, impl->impl->value,
-						parent->local_member_ids, NULL);
-				if (err) {
-					return -1;
-				}
-				ast_dt_find_named_dependencies(
-						ctx, impl->resolve,
-						AST_NAME_DEP_REQUIRE_VALUE, impl->impl->value);
-
-				for (size_t i = 0; i < impl->impl->num_args; i++) {
-					err = ast_composite_node_resolve_names(
-							ctx->ast_ctx, ctx->mod->native_mod,
-							NULL, true, parent->root_node, impl->impl->args[i].value,
-							parent->local_member_ids, NULL);
-					if (err) {
-						return -1;
-					}
-
-					ast_dt_find_named_dependencies(
-							ctx, impl->resolve,
-							AST_NAME_DEP_REQUIRE_VALUE, impl->impl->args[i].value);
-				}
-			}
-			return 0;
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
-			{
-				struct ast_dt_type_class_impl *impl;
-				impl = get_type_class_impl(ctx, job->tc_impl);
-
-				struct object target_obj = {0};
-
-				struct ast_dt_expr_typecheck_config tc_cfg = {0};
-				tc_cfg.wait_for_tc = false;
-				tc_cfg.expected.kind = AST_NODE_TC_EXP_TYPE;
-				tc_cfg.expected.type = ctx->ast_ctx->vm->default_types.cons;
-
-				int err;
-				err = ast_dt_expr_typecheck(
-						ctx, impl->parent, impl->impl->target,
-						AST_NAME_DEP_REQUIRE_VALUE,
-						job_id, tc_cfg,
-						&target_obj);
-				if (err) {
-					return -1;
-				}
-
-				if (target_obj.type == TYPE_UNSET) {
-					stg_error(ctx->ast_ctx->err, impl->impl->target->loc,
-							"The target of the implementation could not be determined.");
-					return -1;
-				}
-
-				assert_type_equals(ctx->ast_ctx->vm,
-						target_obj.type, ctx->ast_ctx->vm->default_types.cons);
-
-				struct object_cons *tc_cons;
-				tc_cons = *(struct object_cons **)target_obj.data;
-
-				struct stg_type_class *tc;
-				tc = stg_cons_to_type_class(tc_cons);
-				if (!tc) {
-					stg_error(ctx->ast_ctx->err, impl->impl->target->loc,
-							"Expected type class, got other constructor.");
-					return -1;
-				}
-
-				impl->tc = ast_dt_find_or_register_tc(ctx, tc);
-
-				struct ast_dt_type_class *type_class;
-				type_class = get_type_class(ctx, impl->tc);
-
-				ast_dt_job_dependency(ctx,
-					impl->resolve, type_class->type_class_ready);
-			}
-			return 0;
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE:
-			{
-				struct ast_dt_type_class_impl *impl;
-				impl = get_type_class_impl(ctx, job->tc_impl);
-
-				struct ast_dt_type_class *type_class;
-				type_class = get_type_class(ctx, impl->tc);
-
-				if (impl->impl->num_args != type_class->tc->num_params) {
-					stg_error(ctx->ast_ctx->err, impl->impl->loc,
-							"The type class expects %zu arguments, but got %zu.",
-							type_class->tc->num_params, impl->impl->num_args);
-					return -1;
-
-				}
-
-				bool has_errors = false;
-				bool should_yield = false;
-
-				if (!impl->arg_values) {
-					impl->arg_values = arena_allocn(ctx->tmp_mem,
-							type_class->tc->num_params,
-							sizeof(struct ast_dt_type_class_impl));
-				}
-
-				// handle args
-				for (size_t i = 0; i < impl->impl->num_args; i++) {
-					if (impl->arg_values[i].type != TYPE_UNSET) {
-						// We have already resolved this value.
-						continue;
-					}
-
-					struct ast_dt_expr_typecheck_config tc_cfg = {0};
-					tc_cfg.wait_for_tc = true;
-					tc_cfg.expected.kind = (type_class->tc->params[i].type != TYPE_UNSET)
-						? AST_NODE_TC_EXP_TYPE
-						: AST_NODE_TC_EXP_NOTHING;
-					tc_cfg.expected.type = type_class->tc->params[i].type;
-
-					int err;
-					err = ast_dt_expr_typecheck(
-							ctx, impl->parent, impl->impl->args[i].value,
-							AST_NAME_DEP_REQUIRE_VALUE,
-							job_id, tc_cfg,
-							&impl->arg_values[i]);
-					if (err < 0) {
-						has_errors = true;
-					} else if (err > 0) {
-						should_yield = true;
-					}
-
-					// TODO: Handle parametric implementation arguments.
-					if (impl->arg_values[i].type == TYPE_UNSET) {
-						has_errors = true;
-						stg_error(ctx->ast_ctx->err, impl->impl->args[i].value->loc,
-								"Could not determine the value of the argument.");
-					}
-				}
-
-				if (has_errors) {
-					return -1;
-				}
-
-				if (should_yield) {
-					return 1;
-				}
-
-				struct object value_type_obj = {0};
-
-				struct ast_dt_expr_typecheck_config tc_cfg = {0};
-				tc_cfg.wait_for_tc = true;
-				tc_cfg.expected.kind = AST_NODE_TC_EXP_TYPE;
-				tc_cfg.expected.type = ctx->ast_ctx->vm->default_types.type;
-
-				int err;
-				err = ast_dt_expr_typecheck(
-						ctx, impl->parent, impl->impl->value,
-						AST_NAME_DEP_REQUIRE_VALUE,
-						job_id, tc_cfg,
-						&value_type_obj);
-				if (err < 0) {
-					return -1;
-				} else if (err > 0) {
-					return 1;
-				}
-
-				assert_type_equals(ctx->ast_ctx->vm,
-						value_type_obj.type,
-						ctx->ast_ctx->vm->default_types.type);
-
-				type_id value_type_id;
-				value_type_id = *(type_id *)value_type_obj.data;
-
-				struct object value = {0};
-				err = stg_instantiate_static_object(
-						ctx->ast_ctx, ctx->mod, value_type_id, &value);
-				if (err) {
-					stg_error(ctx->ast_ctx->err, impl->impl->loc,
-							"Failed to create a static instance of the value.");
-					return -1;
-				}
-
-				err = stg_type_class_impl(ctx->mod, type_class->tc,
-						impl->arg_values, impl->impl->num_args,
-						value);
-				if (err) {
-					stg_error(ctx->ast_ctx->err, impl->impl->loc,
-							"Failed to register the implementation.");
-					return -1;
-				}
-			}
-			return 0;
-
-		case AST_DT_JOB_FREE:
-			panic("Attempted to dispatch job that has been freed.");
-			break;
+		}
 	}
 
-	return -1;
+	ast_try_set_local_member_type(
+			ctx, mbr_id, out_type);
+	return 0;
 }
+
+int
+ast_dt_job_dispatch_mbr_const_eval(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+	assert(mbr->type != TYPE_UNSET);
+
+	ast_dt_try_pack_member(ctx, mbr_id);
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_expr_codegen(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_expr_id expr_id)
+{
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	struct ast_gen_dt_param *deps = NULL;
+	size_t num_deps = 0;
+
+	func_id fid;
+	fid = ast_dt_expr_codegen(
+			ctx, expr->parent, expr->value.node,
+			AST_NAME_DEP_REQUIRE_TYPE,
+			&deps, &num_deps);
+	if (fid == FUNC_UNSET) {
+		return -1;
+	}
+
+	expr->num_deps = num_deps;
+	expr->deps = deps;
+
+	expr->value.func = fid;
+
+	int err;
+	err = ast_dt_try_eval_expr_const(
+			ctx, expr_id, &expr->const_value);
+	if (err) {
+		return err < 0;
+	}
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_bind_target_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_bind_id bind_id)
+{
+	struct ast_dt_bind *bind;
+	bind = get_bind(ctx, bind_id);
+
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, bind->expr);
+
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, expr->parent);
+
+	int err;
+	err = ast_composite_node_resolve_names(
+			ctx->ast_ctx, NULL, NULL,
+			false, parent->root_node, bind->target_node,
+			parent->local_member_ids, NULL);
+	if (err) {
+		return -1;
+	}
+
+	ast_member_id target;
+	err = ast_dt_l_expr_top_member(
+			ctx, bind->target_node, &target);
+	if (err) {
+		return -1;
+	}
+
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, target);
+
+	ast_dt_job_dependency(ctx,
+			expr->value_jobs.codegen,
+			mbr->const_resolved);
+
+	ast_dt_bind_to_member(
+			ctx, target, bind_id,
+			bind->target_node, false);
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_use_const_eval(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_use_id use_id)
+{
+	struct ast_dt_use *use;
+	use = get_use(ctx, use_id);
+
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, use->expr);
+
+	assert(expr->type != TYPE_UNSET);
+	use->type = expr->type;
+
+	int err;
+	err = ast_dt_try_eval_expr_const(
+			ctx, use->expr, &use->const_value);
+	if (err) {
+		return err < 0;
+	}
+
+	use->is_const = true;
+
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_tc_impl_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_tc_impl_id tc_impl_id)
+{
+	struct ast_dt_type_class_impl *impl;
+	impl = get_type_class_impl(ctx, tc_impl_id);
+
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, impl->parent);
+
+	int err;
+
+
+	err = ast_composite_node_resolve_names(
+			ctx->ast_ctx, ctx->mod->native_mod,
+			NULL, true, parent->root_node, impl->impl->target,
+			parent->local_member_ids, NULL);
+	if (err) {
+		return -1;
+	}
+	ast_dt_find_named_dependencies(
+			ctx, impl->resolve_target,
+			AST_NAME_DEP_REQUIRE_VALUE, impl->impl->target);
+
+	err = ast_composite_node_resolve_names(
+			ctx->ast_ctx, ctx->mod->native_mod,
+			NULL, true, parent->root_node, impl->impl->value,
+			parent->local_member_ids, NULL);
+	if (err) {
+		return -1;
+	}
+	ast_dt_find_named_dependencies(
+			ctx, impl->resolve,
+			AST_NAME_DEP_REQUIRE_VALUE, impl->impl->value);
+
+	for (size_t i = 0; i < impl->impl->num_args; i++) {
+		err = ast_composite_node_resolve_names(
+				ctx->ast_ctx, ctx->mod->native_mod,
+				NULL, true, parent->root_node, impl->impl->args[i].value,
+				parent->local_member_ids, NULL);
+		if (err) {
+			return -1;
+		}
+
+		ast_dt_find_named_dependencies(
+				ctx, impl->resolve,
+				AST_NAME_DEP_REQUIRE_VALUE, impl->impl->args[i].value);
+	}
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_tc_impl_resolve_target(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_tc_impl_id tc_impl_id)
+{
+	struct ast_dt_type_class_impl *impl;
+	impl = get_type_class_impl(ctx, tc_impl_id);
+
+	struct object target_obj = {0};
+
+	struct ast_dt_expr_typecheck_config tc_cfg = {0};
+	tc_cfg.wait_for_tc = false;
+	tc_cfg.expected.kind = AST_NODE_TC_EXP_TYPE;
+	tc_cfg.expected.type = ctx->ast_ctx->vm->default_types.cons;
+
+	int err;
+	err = ast_dt_expr_typecheck(
+			ctx, impl->parent, impl->impl->target,
+			AST_NAME_DEP_REQUIRE_VALUE,
+			job_id, tc_cfg,
+			&target_obj);
+	if (err) {
+		return -1;
+	}
+
+	if (target_obj.type == TYPE_UNSET) {
+		stg_error(ctx->ast_ctx->err, impl->impl->target->loc,
+				"The target of the implementation could not be determined.");
+		return -1;
+	}
+
+	assert_type_equals(ctx->ast_ctx->vm,
+			target_obj.type, ctx->ast_ctx->vm->default_types.cons);
+
+	struct object_cons *tc_cons;
+	tc_cons = *(struct object_cons **)target_obj.data;
+
+	struct stg_type_class *tc;
+	tc = stg_cons_to_type_class(tc_cons);
+	if (!tc) {
+		stg_error(ctx->ast_ctx->err, impl->impl->target->loc,
+				"Expected type class, got other constructor.");
+		return -1;
+	}
+
+	impl->tc = ast_dt_find_or_register_tc(ctx, tc);
+
+	struct ast_dt_type_class *type_class;
+	type_class = get_type_class(ctx, impl->tc);
+
+	ast_dt_job_dependency(ctx,
+			impl->resolve, type_class->type_class_ready);
+	return 0;
+}
+
+int
+ast_dt_job_dispatch_tc_impl_resolve(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_tc_impl_id tc_impl_id)
+{
+	struct ast_dt_type_class_impl *impl;
+	impl = get_type_class_impl(ctx, tc_impl_id);
+
+	struct ast_dt_type_class *type_class;
+	type_class = get_type_class(ctx, impl->tc);
+
+	if (impl->impl->num_args != type_class->tc->num_params) {
+		stg_error(ctx->ast_ctx->err, impl->impl->loc,
+				"The type class expects %zu arguments, but got %zu.",
+				type_class->tc->num_params, impl->impl->num_args);
+		return -1;
+
+	}
+
+	bool has_errors = false;
+	bool should_yield = false;
+
+	if (!impl->arg_values) {
+		impl->arg_values = arena_allocn(ctx->tmp_mem,
+				type_class->tc->num_params,
+				sizeof(struct ast_dt_type_class_impl));
+	}
+
+	// handle args
+	for (size_t i = 0; i < impl->impl->num_args; i++) {
+		if (impl->arg_values[i].type != TYPE_UNSET) {
+			// We have already resolved this value.
+			continue;
+		}
+
+		struct ast_dt_expr_typecheck_config tc_cfg = {0};
+		tc_cfg.wait_for_tc = true;
+		tc_cfg.expected.kind = (type_class->tc->params[i].type != TYPE_UNSET)
+			? AST_NODE_TC_EXP_TYPE
+			: AST_NODE_TC_EXP_NOTHING;
+		tc_cfg.expected.type = type_class->tc->params[i].type;
+
+		int err;
+		err = ast_dt_expr_typecheck(
+				ctx, impl->parent, impl->impl->args[i].value,
+				AST_NAME_DEP_REQUIRE_VALUE,
+				job_id, tc_cfg,
+				&impl->arg_values[i]);
+		if (err < 0) {
+			has_errors = true;
+		} else if (err > 0) {
+			should_yield = true;
+		}
+
+		// TODO: Handle parametric implementation arguments.
+		if (impl->arg_values[i].type == TYPE_UNSET) {
+			has_errors = true;
+			stg_error(ctx->ast_ctx->err, impl->impl->args[i].value->loc,
+					"Could not determine the value of the argument.");
+		}
+	}
+
+	if (has_errors) {
+		return -1;
+	}
+
+	if (should_yield) {
+		return 1;
+	}
+
+	struct object value_type_obj = {0};
+
+	struct ast_dt_expr_typecheck_config tc_cfg = {0};
+	tc_cfg.wait_for_tc = true;
+	tc_cfg.expected.kind = AST_NODE_TC_EXP_TYPE;
+	tc_cfg.expected.type = ctx->ast_ctx->vm->default_types.type;
+
+	int err;
+	err = ast_dt_expr_typecheck(
+			ctx, impl->parent, impl->impl->value,
+			AST_NAME_DEP_REQUIRE_VALUE,
+			job_id, tc_cfg,
+			&value_type_obj);
+	if (err < 0) {
+		return -1;
+	} else if (err > 0) {
+		return 1;
+	}
+
+	assert_type_equals(ctx->ast_ctx->vm,
+			value_type_obj.type,
+			ctx->ast_ctx->vm->default_types.type);
+
+	type_id value_type_id;
+	value_type_id = *(type_id *)value_type_obj.data;
+
+	struct object value = {0};
+	err = stg_instantiate_static_object(
+			ctx->ast_ctx, ctx->mod, value_type_id, &value);
+	if (err) {
+		stg_error(ctx->ast_ctx->err, impl->impl->loc,
+				"Failed to create a static instance of the value.");
+		return -1;
+	}
+
+	err = stg_type_class_impl(ctx->mod, type_class->tc,
+			impl->arg_values, impl->impl->num_args,
+			value);
+	if (err) {
+		stg_error(ctx->ast_ctx->err, impl->impl->loc,
+				"Failed to register the implementation.");
+		return -1;
+	}
+	return 0;
+}
+
+#define JOB(name, type)						\
+	void									\
+	ast_dt_job_remove_from_target_##name(	\
+			struct ast_dt_context *, ast_dt_job_id, type);
+AST_DT_JOBS
+#undef JOB
 
 static void
 ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
@@ -3415,156 +3455,204 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			panic("Tried to remove freed job.");
 			break;
 
-		case AST_DT_JOB_NOP:
-			if (job->id_loc) {
-				assert(*job->id_loc == job_id);
-				*job->id_loc = -1;
-			}
+#define JOB(name, type) 																\
+		case AST_DT_JOB_##name:															\
+			ast_dt_job_remove_from_target_##name(ctx, job_id, job->data.name);	\
 			break;
-
-		case AST_DT_JOB_COMPOSITE_RESOLVE_NAMES:
-			{
-				struct ast_dt_composite *comp;
-				comp = get_composite(ctx, job->composite);
-
-				assert(comp->resolve_names == job_id);
-				comp->resolve_names = -1;
-			}
-			break;
-		case AST_DT_JOB_COMPOSITE_EVAL_CLOSURE:
-			{
-				struct ast_dt_composite *comp;
-				comp = get_composite(ctx, job->composite);
-
-				assert(comp->closures_evaled == job_id);
-				comp->closures_evaled = -1;
-			}
-			break;
-		case AST_DT_JOB_COMPOSITE_PACK:
-			{
-				struct ast_dt_composite *comp;
-				comp = get_composite(ctx, job->composite);
-
-				assert(comp->finalize_job == job_id);
-				comp->finalize_job = -1;
-
-				if (comp->self >= 0) {
-					struct ast_dt_member *self;
-					self = get_member(ctx, comp->self);
-					assert(self->type_resolved == job_id);
-					self->type_resolved = job_id;
-				}
-			}
-			break;
-		case AST_DT_JOB_COMPOSITE_CONST_EVAL:
-			{
-				struct ast_dt_composite *comp;
-				comp = get_composite(ctx, job->composite);
-
-				assert(comp->self >= 0);
-
-				struct ast_dt_member *self;
-				self = get_member(ctx, comp->self);
-				assert(self->const_resolved == job_id);
-				self->const_resolved = job_id;
-			}
-			break;
-
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				assert(mbr->type_names_resolved == job_id);
-				mbr->type_names_resolved = -1;
-			}
-			break;
-		case AST_DT_JOB_MBR_TYPE_EVAL:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				assert(mbr->type_resolved == job_id);
-				mbr->type_resolved = -1;
-			}
-			break;
-
-		case AST_DT_JOB_MBR_CONST_EVAL:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				assert(mbr->const_resolved == job_id);
-				mbr->const_resolved = -1;
-			}
-			break;
-
-		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
-			{
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, job->expr);
-				assert(expr->value_jobs.resolve_names == job_id);
-				expr->value_jobs.resolve_names = -1;
-			}
-			break;
-		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
-			{
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, job->expr);
-				assert(expr->value_jobs.resolve_types == job_id);
-				expr->value_jobs.resolve_types = -1;
-			}
-			break;
-		case AST_DT_JOB_EXPR_CODEGEN:
-			{
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, job->expr);
-				assert(expr->value_jobs.codegen == job_id);
-				expr->value_jobs.codegen = -1;
-			}
-			break;
-
-		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
-			{
-				struct ast_dt_bind *bind;
-				bind = get_bind(ctx, job->expr);
-				assert(bind->target_jobs.resolve_names == job_id);
-				bind->target_jobs.resolve_names = -1;
-			}
-			break;
-
-		case AST_DT_JOB_USE_CONST_EVAL:
-			{
-				struct ast_dt_use *use;
-				use = get_use(ctx, job->use);
-				assert(use->const_resolved == job_id);
-				use->const_resolved = -1;
-			}
-			break;
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE_NAMES:
-			{
-				struct ast_dt_type_class_impl *impl;
-				impl = get_type_class_impl(ctx, job->tc_impl);
-				assert(impl->resolve_names == job_id);
-				impl->resolve_names = -1;
-			}
-			break;
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
-			{
-				struct ast_dt_type_class_impl *impl;
-				impl = get_type_class_impl(ctx, job->tc_impl);
-				assert(impl->resolve_target == job_id);
-				impl->resolve_target = -1;
-			}
-			break;
-		case AST_DT_JOB_TC_IMPL_RESOLVE:
-			{
-				struct ast_dt_type_class_impl *impl;
-				impl = get_type_class_impl(ctx, job->tc_impl);
-				assert(impl->resolve == job_id);
-				impl->resolve = -1;
-			}
-			break;
+	AST_DT_JOBS
+#undef JOB
 	}
+}
+
+void
+ast_dt_job_remove_from_target_nop(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_job_id *id_ref)
+{
+	if (id_ref) {
+		assert(*id_ref == job_id);
+		*id_ref = -1;
+	}
+}
+
+void
+ast_dt_job_remove_from_target_composite_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_composite_id comp_id)
+{
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	assert(comp->resolve_names == job_id);
+	comp->resolve_names = -1;
+}
+
+void
+ast_dt_job_remove_from_target_composite_eval_closure(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_composite_id comp_id)
+{
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	assert(comp->closures_evaled == job_id);
+	comp->closures_evaled = -1;
+}
+
+void
+ast_dt_job_remove_from_target_composite_pack(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_composite_id comp_id)
+{
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	assert(comp->finalize_job == job_id);
+	comp->finalize_job = -1;
+
+	if (comp->self >= 0) {
+		struct ast_dt_member *self;
+		self = get_member(ctx, comp->self);
+		assert(self->type_resolved == job_id);
+		self->type_resolved = job_id;
+	}
+}
+
+void
+ast_dt_job_remove_from_target_composite_const_eval(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_composite_id comp_id)
+{
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	assert(comp->self >= 0);
+
+	struct ast_dt_member *self;
+	self = get_member(ctx, comp->self);
+	assert(self->const_resolved == job_id);
+	self->const_resolved = job_id;
+}
+
+void
+ast_dt_job_remove_from_target_mbr_type_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+	assert(mbr->type_names_resolved == job_id);
+	mbr->type_names_resolved = -1;
+}
+
+void
+ast_dt_job_remove_from_target_mbr_type_eval(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+	assert(mbr->type_resolved == job_id);
+	mbr->type_resolved = -1;
+}
+
+void
+ast_dt_job_remove_from_target_mbr_const_eval(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_member_id mbr_id)
+{
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+	assert(mbr->const_resolved == job_id);
+	mbr->const_resolved = -1;
+}
+
+void
+ast_dt_job_remove_from_target_expr_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_expr_id expr_id)
+{
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+	assert(expr->value_jobs.resolve_names == job_id);
+	expr->value_jobs.resolve_names = -1;
+}
+
+void
+ast_dt_job_remove_from_target_expr_resolve_types(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_expr_id expr_id)
+{
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+	assert(expr->value_jobs.resolve_types == job_id);
+	expr->value_jobs.resolve_types = -1;
+}
+
+void
+ast_dt_job_remove_from_target_expr_codegen(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_expr_id expr_id)
+{
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+	assert(expr->value_jobs.codegen == job_id);
+	expr->value_jobs.codegen = -1;
+}
+
+void
+ast_dt_job_remove_from_target_bind_target_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_bind_id bind_id)
+{
+	struct ast_dt_bind *bind;
+	bind = get_bind(ctx, bind_id);
+	assert(bind->target_jobs.resolve_names == job_id);
+	bind->target_jobs.resolve_names = -1;
+}
+
+void
+ast_dt_job_remove_from_target_use_const_eval(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_use_id use_id)
+{
+	struct ast_dt_use *use;
+	use = get_use(ctx, use_id);
+	assert(use->const_resolved == job_id);
+	use->const_resolved = -1;
+}
+
+void
+ast_dt_job_remove_from_target_tc_impl_resolve_names(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_tc_impl_id tc_impl_id)
+{
+	struct ast_dt_type_class_impl *impl;
+	impl = get_type_class_impl(ctx, tc_impl_id);
+	assert(impl->resolve_names == job_id);
+	impl->resolve_names = -1;
+}
+
+void
+ast_dt_job_remove_from_target_tc_impl_resolve_target(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_tc_impl_id tc_impl_id)
+{
+	struct ast_dt_type_class_impl *impl;
+	impl = get_type_class_impl(ctx, tc_impl_id);
+	assert(impl->resolve_target == job_id);
+	impl->resolve_target = -1;
+}
+
+void
+ast_dt_job_remove_from_target_tc_impl_resolve(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_tc_impl_id tc_impl_id)
+{
+	struct ast_dt_type_class_impl *impl;
+	impl = get_type_class_impl(ctx, tc_impl_id);
+	assert(impl->resolve == job_id);
+	impl->resolve = -1;
 }
 
 enum ast_dtc_vertex_color {
@@ -3692,6 +3780,7 @@ ast_dtc_dfs(struct ast_dtc_graph *graph,
 	}
 }
 
+#if 0
 static struct stg_location
 ast_dt_job_location(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 {
@@ -3773,6 +3862,7 @@ ast_dt_job_location(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 	}
 }
+#endif
 
 void
 ast_dt_report_cyclic_dependency_chain(struct ast_dt_context *ctx,
@@ -3780,14 +3870,17 @@ ast_dt_report_cyclic_dependency_chain(struct ast_dt_context *ctx,
 {
 	struct ast_dtc_vertex *it = component;
 
+	// TODO: Fix job location
 	stg_error(ctx->ast_ctx->err,
-			ast_dt_job_location(ctx, it->job_id),
+			// ast_dt_job_location(ctx, it->job_id),
+			STG_NO_LOC,
 			"Found member dependency cycle. %03x", it->job_id);
 	it = it->pred;
 
 	while (it) {
 		stg_appendage(ctx->ast_ctx->err,
-				ast_dt_job_location(ctx, it->job_id),
+				// ast_dt_job_location(ctx, it->job_id),
+				STG_NO_LOC,
 				"Through. %03x", it->job_id);
 		it = it->pred;
 	}
