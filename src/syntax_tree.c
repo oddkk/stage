@@ -1055,13 +1055,16 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 			return NULL;
 		}
 
-		ast_data_type_id dtid;
-		dtid = ast_module_add_variant(
-				ctx, mod->ast_mod, node->loc);
+		// TODO: Variant as data type.
+		// ast_data_type_id dtid;
+		// dtid = ast_module_add_variant(
+		// 		ctx, mod->ast_mod, node->loc);
 
 		struct ast_node *variant;
-		variant = ast_module_get_data_type(
-				mod->ast_mod, dtid);
+		variant = ast_init_node_variant(
+				ctx, AST_NODE_NEW, node->loc);
+		// variant = ast_module_get_data_type(
+		// 		mod->ast_mod, dtid);
 
 		// struct ast_node *variant;
 		// variant = ast_init_node_variant(
@@ -1088,8 +1091,9 @@ st_node_visit_expr(struct ast_context *ctx, struct stg_module *mod,
 		}
 
 		struct ast_node *data_type;
-		data_type = ast_init_node_data_type(
-				ctx, AST_NODE_NEW, node->loc, mod->id, dtid);
+		data_type = variant;
+		// data_type = ast_init_node_data_type(
+		// 		ctx, AST_NODE_NEW, node->loc, mod->id, dtid);
 
 		if (node->VARIANT_DECL.params) {
 			return st_node_create_template(

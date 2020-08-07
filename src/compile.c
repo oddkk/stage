@@ -1,4 +1,5 @@
 #include "compile.h"
+#include "compile_datatype.h"
 #include "syntax_tree.h"
 #include "utils.h"
 #include "dlist.h"
@@ -784,4 +785,766 @@ stg_compile(struct vm *vm, struct ast_context *ast_ctx)
 
 	ctx.ast_ctx->err = NULL;
 	return 0;
+}
+
+struct ast_dt_dependency {
+	ast_member_id from, to;
+	bool visited;
+};
+
+enum ast_dt_job_kind {
+	AST_DT_JOB_FREE = 0,
+
+#define JOB(name, ...) AST_DT_JOB_##name,
+	AST_DT_JOBS
+#undef JOB
+};
+
+struct ast_dt_job_dep {
+	bool visited;
+	ast_dt_job_id to;
+};
+
+struct ast_dt_job {
+	enum ast_dt_job_kind kind;
+
+	// Use to keep track of internal vertex id in cycle detection.
+	int aux_id;
+	bool failed;
+
+	size_t num_incoming_deps;
+	size_t num_outgoing_deps;
+	struct ast_dt_job_dep *outgoing_deps;
+
+	// Used for the linked list terminal_jobs in ast_dt_context.
+	ast_dt_job_id terminal_jobs;
+
+	union {
+#define JOB(name, type) type name;
+		AST_DT_JOBS
+#undef JOB
+
+		// Used when the job is not allocated.
+		ast_dt_job_id free_list;
+	} data;
+};
+
+struct ast_dt_job *
+get_job(struct ast_dt_context *ctx, ast_dt_job_id id)
+{
+	return paged_list_get(&ctx->jobs, id);
+}
+
+static inline void
+ast_dt_free_job(struct ast_dt_context *ctx, ast_dt_job_id id)
+{
+	struct ast_dt_job *job;
+	job = get_job(ctx, id);
+	assert(job->kind != AST_DT_JOB_FREE);
+
+	free(job->outgoing_deps);
+
+	memset(job, 0, sizeof(struct ast_dt_job));
+	job->kind = AST_DT_JOB_FREE;
+
+	job->data.free_list = ctx->free_list;
+	ctx->free_list = id;
+}
+
+static ast_dt_job_id
+ast_dt_alloc_job(struct ast_dt_context *ctx)
+{
+	ast_dt_job_id res = -1;
+	if (ctx->free_list == -1) {
+		res = ctx->free_list;
+	} else {
+		res = paged_list_push(&ctx->jobs);
+	}
+
+	assert(res >= 0);
+
+	struct ast_dt_job *job;
+	job = get_job(ctx, res);
+
+	ctx->free_list = job->data.free_list;
+
+	memset(job, 0, sizeof(struct ast_dt_job));
+
+	job->data.free_list = -1;
+
+	job->terminal_jobs = ctx->terminal_jobs;
+	ctx->terminal_jobs = res;
+
+	return res;
+}
+
+#define JOB(name, type)								\
+	ast_dt_job_id									\
+	ast_dt_job_##name(struct ast_dt_context *ctx,	\
+			type value)								\
+{													\
+	ast_dt_job_id job_id;							\
+	job_id = ast_dt_alloc_job(ctx);					\
+													\
+	struct ast_dt_job *job;							\
+	job = get_job(ctx, job_id);						\
+	job->kind = AST_DT_JOB_##name;					\
+	job->data.name = value;							\
+													\
+	return job_id;									\
+}
+AST_DT_JOBS
+#undef JOB
+
+
+enum ast_dtc_vertex_color {
+	AST_DTC_WHITE = 0,
+	AST_DTC_GRAY,
+	AST_DTC_BLACK,
+};
+
+struct ast_dtc_vertex {
+	ast_dt_job_id job_id;
+
+	enum ast_dtc_vertex_color color;
+	int discover, finish;
+	struct ast_dtc_vertex *pred;
+
+	struct ast_dtc_edge *outgoing_edges;
+	size_t num_outgoing_edges;
+};
+
+struct ast_dtc_edge {
+	struct ast_dtc_vertex *from, *to;
+};
+
+struct ast_dtc_graph {
+	struct ast_dtc_vertex *vertices;
+	size_t num_vertices;
+
+	struct ast_dtc_edge *edges;
+	size_t num_edges;
+};
+
+struct ast_dtc_components {
+	struct ast_dtc_vertex **comps;
+	size_t num_comps;
+};
+
+static void
+ast_dtc_dfs_visit(
+		struct ast_dtc_graph *graph,
+		struct ast_dtc_vertex *vert,
+		int *time, struct ast_dtc_components *out_comps)
+{
+	*time += 1;
+	vert->discover = *time;
+	vert->color = AST_DTC_GRAY;
+
+	bool is_terminal = true;
+
+	for (size_t i = 0; i < graph->num_edges; i++) {
+		struct ast_dtc_edge *edge;
+		edge = &graph->edges[i];
+		if (edge->from == vert &&
+				edge->to->color == AST_DTC_WHITE) {
+			edge->to->pred = vert;
+			ast_dtc_dfs_visit(graph, edge->to, time, out_comps);
+			is_terminal = false;
+		}
+	}
+
+	if (is_terminal && out_comps) {
+		dlist_append(
+				out_comps->comps,
+				out_comps->num_comps,
+				&vert);
+	}
+
+	// for (size_t i = 0; i < vert->num_outgoing_edges; i++) {
+	// 	struct ast_dtc_edge *edge;
+	// 	edge = &vert->outgoing_edges[i];
+	// 	if (edge->to->color == AST_DTC_WHITE) {
+	// 		ast_dtc_dfs_visit(graph, edge->to, time);
+	// 	}
+	// }
+
+	vert->color = AST_DTC_BLACK;
+	*time += 1;
+	vert->finish = *time;
+}
+
+struct ast_dtc_vert_sort {
+	int finish;
+	struct ast_dtc_vertex *vert;
+};
+
+static int
+ast_dtc_dfs_sorted_comp(const void *lhs_ptr, const void *rhs_ptr)
+{
+	const struct ast_dtc_vert_sort *lhs, *rhs;
+	lhs = lhs_ptr;
+	rhs = rhs_ptr;
+
+	return rhs->finish - lhs->finish;
+}
+
+static void
+ast_dtc_dfs(struct ast_dtc_graph *graph,
+		struct ast_dtc_components *out_comps,
+		bool sort)
+{
+	for (size_t i = 0; i < graph->num_vertices; i++) {
+		graph->vertices[i].color = AST_DTC_WHITE;
+		graph->vertices[i].pred = NULL;
+	}
+
+	int time = 0;
+
+	struct ast_dtc_vert_sort order[graph->num_vertices];
+	for (size_t i = 0; i < graph->num_vertices; i++) {
+		order[i].finish = graph->vertices[i].finish;
+		order[i].vert = &graph->vertices[i];
+	}
+
+	if (sort) {
+		qsort(order, graph->num_vertices,
+				sizeof(struct ast_dtc_vert_sort),
+				ast_dtc_dfs_sorted_comp);
+	}
+
+	for (size_t i = 0; i < graph->num_vertices; i++) {
+		struct ast_dtc_vertex *vert;
+		vert = order[i].vert;
+		if (vert->color == AST_DTC_WHITE) {
+			ast_dtc_dfs_visit(graph, vert, &time, out_comps);
+		}
+	}
+}
+
+#if 0
+static struct stg_location
+ast_dt_job_location(struct ast_dt_context *ctx, ast_dt_job_id job_id)
+{
+	struct ast_dt_job *job = get_job(ctx, job_id);
+
+	switch (job->kind) {
+		case AST_DT_JOB_FREE:
+			return STG_NO_LOC;
+		case AST_DT_JOB_NOP:
+			return STG_NO_LOC;
+
+		case AST_DT_JOB_COMPOSITE_RESOLVE_NAMES:
+		case AST_DT_JOB_COMPOSITE_EVAL_CLOSURE:
+		case AST_DT_JOB_COMPOSITE_PACK:
+		case AST_DT_JOB_COMPOSITE_CONST_EVAL:
+			{
+				struct ast_dt_composite *comp;
+				comp = get_composite(ctx, job->composite);
+				return comp->root_node->loc;
+			}
+
+		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
+		case AST_DT_JOB_MBR_TYPE_EVAL:
+			{
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, job->member);
+				if (mbr->type_node) {
+					return mbr->type_node->loc;
+				} else {
+					return mbr->decl_loc;
+				}
+			}
+
+		case AST_DT_JOB_MBR_CONST_EVAL:
+			{
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, job->member);
+				// TODO: Should this job point to the bind?
+				return mbr->decl_loc;
+			}
+
+		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
+		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
+		case AST_DT_JOB_EXPR_CODEGEN:
+			{
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, job->expr);
+				return expr->loc;
+			}
+
+		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
+			{
+				struct ast_dt_bind *bind;
+				bind = get_bind(ctx, job->bind);
+				return bind->loc;
+			}
+
+		case AST_DT_JOB_USE_CONST_EVAL:
+			{
+				struct ast_dt_use *use;
+				use = get_use(ctx, job->use);
+
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, use->expr);
+
+				return expr->loc;
+			}
+
+		case AST_DT_JOB_TC_IMPL_RESOLVE_NAMES:
+		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
+		case AST_DT_JOB_TC_IMPL_RESOLVE:
+			{
+				struct ast_dt_type_class_impl *impl;
+				impl = get_type_class_impl(ctx, job->tc_impl);
+
+				return impl->impl->loc;
+			}
+			break;
+
+	}
+}
+#endif
+
+void
+ast_dt_report_cyclic_dependency_chain(struct ast_dt_context *ctx,
+		struct ast_dtc_vertex *component)
+{
+	struct ast_dtc_vertex *it = component;
+
+	// TODO: Fix job location
+	stg_error(ctx->ast_ctx->err,
+			// ast_dt_job_location(ctx, it->job_id),
+			STG_NO_LOC,
+			"Found member dependency cycle. %03x", it->job_id);
+	it = it->pred;
+
+	while (it) {
+		stg_appendage(ctx->ast_ctx->err,
+				// ast_dt_job_location(ctx, it->job_id),
+				STG_NO_LOC,
+				"Through. %03x", it->job_id);
+		it = it->pred;
+	}
+}
+
+static void
+ast_dt_report_cyclic_dependencies(struct ast_dt_context *ctx)
+{
+	struct ast_dtc_graph graph = {0};
+
+	size_t num_unfinished_jobs = 0;
+	size_t num_unvisited_edges = 0;
+
+	for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
+		struct ast_dt_job *job;
+		job = get_job(ctx, job_i);
+
+		if (job->kind == AST_DT_JOB_FREE) {
+			continue;
+		}
+
+		num_unfinished_jobs += 1;
+		num_unvisited_edges += job->num_outgoing_deps;
+	}
+
+	struct ast_dtc_vertex _verts[num_unfinished_jobs];
+	memset(_verts, 0, sizeof(struct ast_dtc_vertex) * num_unfinished_jobs);
+	struct ast_dtc_edge _edges[num_unvisited_edges];
+	memset(_edges, 0, sizeof(struct ast_dtc_edge) * num_unvisited_edges);
+
+	graph.vertices = _verts;
+	graph.num_vertices = num_unfinished_jobs;
+	graph.edges = _edges;
+	graph.num_edges = num_unvisited_edges;
+
+	size_t vert_i = 0;
+
+	for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
+		struct ast_dt_job *job;
+		job = get_job(ctx, job_i);
+
+		if (job->kind == AST_DT_JOB_FREE) {
+			continue;
+		}
+
+		assert(vert_i < graph.num_vertices);
+		struct ast_dtc_vertex *vert;
+		vert = &graph.vertices[vert_i];
+		vert->job_id = job_i;
+		job->aux_id = vert_i;
+
+		vert_i += 1;
+	}
+
+	size_t edge_i = 0;
+
+	for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
+		struct ast_dt_job *job;
+		job = get_job(ctx, job_i);
+
+		if (job->kind == AST_DT_JOB_FREE) {
+			continue;
+		}
+
+		struct ast_dtc_vertex *vert;
+		vert = &graph.vertices[job->aux_id];
+
+		assert(edge_i + job->num_outgoing_deps <= graph.num_edges);
+		vert->outgoing_edges = &graph.edges[edge_i];
+
+		for (size_t i = 0; i < job->num_outgoing_deps; i++) {
+			struct ast_dt_job *dep;
+			dep = get_job(ctx, job->outgoing_deps[i].to);
+
+			assert(job->kind != AST_DT_JOB_FREE);
+			vert->outgoing_edges[i].from = vert;
+			vert->outgoing_edges[i].to = &graph.vertices[dep->aux_id];
+		}
+
+		edge_i += job->num_outgoing_deps;
+	}
+
+	// Use Kosaraju's algorithm to find the cycles.
+
+	ast_dtc_dfs(&graph, NULL, false);
+
+	// Transpose the graph.
+	for (size_t i = 0; i < graph.num_edges; i++) {
+		struct ast_dtc_vertex *tmp = graph.edges[i].from;
+		graph.edges[i].from = graph.edges[i].to;
+		graph.edges[i].to = tmp;
+	}
+
+	struct ast_dtc_components comps = {0};
+	ast_dtc_dfs(&graph, &comps, true);
+
+	for (size_t i = 0; i < comps.num_comps; i++) {
+		ast_dt_report_cyclic_dependency_chain(
+				ctx, comps.comps[i]);
+	}
+
+	free(comps.comps);
+}
+
+#define JOB(name, type) \
+	int ast_dt_job_dispatch_##name(struct ast_dt_context *, ast_dt_job_id, type);
+AST_DT_JOBS
+#undef JOB
+
+static inline int
+ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
+{
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+
+#if AST_DT_DEBUG_JOBS
+	printf("%03zx    "TC(TC_BRIGHT_YELLOW, "===>") " ", ctx->run_i);
+	ast_dt_print_job_desc(ctx, job_id);
+	printf("\n");
+#endif
+
+	int err = -1;
+
+	switch (job->kind) {
+		case AST_DT_JOB_FREE:
+			panic("Attempted to dispatch a freed job.");
+			break;
+
+#define JOB(name, type) 													\
+		case AST_DT_JOB_##name:												\
+			err = ast_dt_job_dispatch_##name(ctx, job_id, job->data.name);	\
+			break;
+	AST_DT_JOBS
+#undef JOB
+	}
+
+	return err;
+}
+
+#define JOB(name, type)						\
+	void									\
+	ast_dt_job_remove_from_target_##name(	\
+			struct ast_dt_context *, ast_dt_job_id, type);
+AST_DT_JOBS
+#undef JOB
+
+static void
+ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
+{
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+
+	switch (job->kind) {
+		case AST_DT_JOB_FREE:
+			panic("Tried to remove freed job.");
+			break;
+
+#define JOB(name, type) 																\
+		case AST_DT_JOB_##name:															\
+			ast_dt_job_remove_from_target_##name(ctx, job_id, job->data.name);	\
+			break;
+	AST_DT_JOBS
+#undef JOB
+	}
+}
+
+static void
+ast_dt_job_remove_from_terminal_jobs(struct ast_dt_context *ctx,
+		ast_dt_job_id target_id)
+{
+	struct ast_dt_job *target;
+	target = get_job(ctx, target_id);
+
+	for (ast_dt_job_id *job_id = &ctx->terminal_jobs;
+			(*job_id) >= 0;
+			job_id = &get_job(ctx, *job_id)->terminal_jobs) {
+		if ((*job_id) == target_id) {
+			(*job_id) = target->terminal_jobs;
+			target->terminal_jobs = -1;
+			return;
+		}
+	}
+}
+
+// Requests that from must be evaluated before to.
+void
+ast_dt_job_dependency(struct ast_dt_context *ctx,
+		ast_dt_job_id from_id, ast_dt_job_id to_id)
+{
+	if (from_id < 0) {
+		// The dependecy was already completed.
+		return;
+	}
+
+	assert(from_id != to_id);
+
+	struct ast_dt_job *from, *to;
+	from = get_job(ctx, from_id);
+	to = get_job(ctx, to_id);
+
+	assert(from->kind != AST_DT_JOB_FREE);
+
+	for (size_t i = 0; i < from->num_outgoing_deps; i++) {
+		if (from->outgoing_deps[i].to == to_id) {
+			return;
+		}
+	}
+
+#if AST_DT_DEBUG_JOBS
+	printf("%03zx " TC(TC_BRIGHT_BLUE, "job dep") " ", ctx->run_i);
+	ast_dt_print_job_desc(ctx, from_id);
+	// Move the cursor to column 50 to align the dependent jobs.
+	printf("\033[60G " TC(TC_BRIGHT_BLUE, "->") " ");
+	ast_dt_print_job_desc(ctx, to_id);
+	printf("\n");
+#endif
+
+	struct ast_dt_job_dep dep = {0};
+	dep.visited = false;
+	dep.to = to_id;
+
+	dlist_append(
+			from->outgoing_deps,
+			from->num_outgoing_deps,
+			&dep);
+
+	if (to->num_incoming_deps == 0) {
+		ast_dt_job_remove_from_terminal_jobs(ctx, to_id);
+	}
+
+	assert(to->terminal_jobs < 0);
+
+	to->num_incoming_deps += 1;
+	ctx->unvisited_job_deps += 1;
+}
+
+static int
+ast_dt_run_jobs(struct ast_dt_context *ctx)
+{
+	int failed_jobs = 0;
+
+	// Dispatch the jobs in topological order. (Kahn's algorithm.)
+	while (ctx->terminal_jobs >= 0) {
+		ast_dt_job_id job_id;
+		struct ast_dt_job *job;
+
+		job_id = ctx->terminal_jobs;
+		job = get_job(ctx, job_id);
+		ctx->terminal_jobs = job->terminal_jobs;
+		job->terminal_jobs = -1;
+
+		if (job->failed) {
+			ast_dt_remove_job_from_target(ctx, job_id);
+			ast_dt_free_job(ctx, job_id);
+			continue;
+		}
+
+		int err;
+		err = ast_dt_dispatch_job(ctx, job_id);
+		if (err < 0) {
+#if AST_DT_DEBUG_JOBS
+			printf(TC(TC_BRIGHT_RED, "job failed!") "\n");
+#endif
+
+			failed_jobs += 1;
+
+			if (job->num_incoming_deps > 0) {
+				// The job prepared itself to yield, but failed instead.
+				// Because other jobs now have outgoing dependencies on this
+				// node we have to allow it to pass through again and
+				// immediatly fail on the next dispatch.
+
+				job->failed = true;
+				continue;
+			}
+
+			ast_dt_remove_job_from_target(ctx, job_id);
+			ast_dt_free_job(ctx, job_id);
+			continue;
+		}
+
+		if (job->num_incoming_deps > 0) {
+#if AST_DT_DEBUG_JOBS
+			printf(TC(TC_BRIGHT_YELLOW, "yield") "\n");
+#endif
+			// If the node gave itself new dependencies we don't mark it as
+			// visited to allow it to pass through again.
+			continue;
+		}
+
+		assert(!err);
+
+		for (size_t i = 0; i < job->num_outgoing_deps; i++) {
+			struct ast_dt_job_dep *dep;
+			dep = &job->outgoing_deps[i];
+
+			if (!dep->visited) {
+				dep->visited = true;
+
+				struct ast_dt_job *to;
+				to = get_job(ctx, dep->to);
+
+				assert(to->kind != AST_DT_JOB_FREE);
+				assert(to->num_incoming_deps > 0);
+				to->num_incoming_deps -= 1;
+
+				assert(ctx->unvisited_job_deps > 0);
+				ctx->unvisited_job_deps -= 1;
+
+				if (to->num_incoming_deps == 0) {
+					to->terminal_jobs = ctx->terminal_jobs;
+					ctx->terminal_jobs = dep->to;
+				}
+			}
+		}
+
+		ast_dt_remove_job_from_target(ctx, job_id);
+		ast_dt_free_job(ctx, job_id);
+	}
+
+	if (failed_jobs) {
+		return -1;
+	}
+
+	if (ctx->unvisited_job_deps > 0) {
+		ast_dt_report_cyclic_dependencies(ctx);
+
+		printf("Failed to evalutate datatype because we found one or more cycles.\n");
+#if AST_DT_DEBUG_JOBS
+		printf("Problematic jobs: \n");
+		for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
+			struct ast_dt_job *job;
+			job = get_job(ctx, job_i);
+			if (job->kind != AST_DT_JOB_FREE) {
+				printf(" - 0x%03x (%zu):", job_i, job->num_incoming_deps);
+
+				// Find all refs to this job.
+				for (ast_dt_job_id job_j = 0; job_j < ctx->jobs.length; job_j++) {
+					struct ast_dt_job *other;
+					other = get_job(ctx, job_j);
+					if (other->kind == AST_DT_JOB_FREE) {
+						continue;
+					}
+					for (size_t i = 0; i < other->num_outgoing_deps; i++) {
+						if (other->outgoing_deps[i].to == job_i) {
+							printf(" 0x%03x", job_j);
+						}
+					}
+				}
+
+				printf("\n");
+			}
+		}
+
+		printf("\n");
+#endif
+		return -1;
+	}
+
+	return 0;
+}
+
+int
+ast_dt_process(struct ast_context *ctx, struct stg_module *mod)
+{
+	struct ast_dt_context dt_ctx = {0};
+	dt_ctx.ast_ctx = ctx;
+	dt_ctx.mod = mod;
+	dt_ctx.terminal_jobs  = -1;
+
+	dt_ctx.tmp_mem = &ctx->vm->transient;
+	arena_mark transient_cp = arena_checkpoint(dt_ctx.tmp_mem);
+
+	paged_list_init(
+			&dt_ctx.jobs, &ctx->vm->mem,
+			sizeof(struct ast_dt_job));
+
+	cpl_dt_init_context(&dt_ctx);
+
+	dt_ctx.impl_targets_resolved =
+		ast_dt_job_nop(&dt_ctx, &dt_ctx.impl_targets_resolved);
+
+#if AST_DT_DEBUG_JOBS
+	static size_t next_run_i = 0;
+	dt_ctx.run_i  = next_run_i++;
+
+	printf("\nbegin composite %zu\n", dt_ctx.run_i);
+#endif
+
+	for (ast_data_type_id i = 0; i < mod->ast_mod->data_types.length; i++) {
+		struct ast_node *node;
+		node = ast_module_get_data_type(mod->ast_mod, i);
+
+		ast_dt_register_composite(
+				&dt_ctx, node, true, NULL, 0);
+	}
+
+	int err;
+	err = ast_dt_run_jobs(&dt_ctx);
+#if AST_DT_DEBUG_JOBS
+	if (err) {
+		printf("One or more jobs failed when resolving datastructure.\n");
+	}
+#endif
+
+	cpl_dt_destroy_context(&dt_ctx);
+
+	for (size_t job_i = 0; job_i < dt_ctx.jobs.length; job_i++) {
+		struct ast_dt_job *job;
+		job = get_job(&dt_ctx, job_i);
+		free(job->outgoing_deps);
+	}
+
+	paged_list_destroy(&dt_ctx.jobs);
+
+	arena_reset(dt_ctx.tmp_mem, transient_cp);
+
+#if AST_DT_DEBUG_JOBS
+	printf("end composite ");
+	print_type_repr(ctx->vm, vm_get_type(ctx->vm, result));
+	printf("\n\n");
+#endif
+
+	return err;
 }

@@ -238,6 +238,27 @@ ast_node_resolve_datatypes(
 			}
 			break;
 
+		case AST_NODE_TYPE_CLASS:
+			stg_type_class_from_ast_node(
+					ctx, mod, node, deps, num_deps);
+			break;
+
+		case AST_NODE_VARIANT:
+			if (node->variant.type == TYPE_UNSET) {
+				node->variant.type =
+					ast_dt_finalize_variant(
+							ctx, mod,
+							node->variant.options,
+							node->variant.num_options,
+							deps, num_deps);
+
+				if (node->variant.type == TYPE_UNSET) {
+					node->variant.failed = true;
+				}
+			}
+			break;
+
+			/*
 		case AST_NODE_COMPOSITE:
 			if (node->composite.type == TYPE_UNSET) {
 				struct ast_closure_target *closure;
@@ -261,26 +282,6 @@ ast_node_resolve_datatypes(
 			}
 			break;
 
-		case AST_NODE_TYPE_CLASS:
-			stg_type_class_from_ast_node(
-					ctx, mod, node, deps, num_deps);
-			break;
-
-		case AST_NODE_VARIANT:
-			if (node->variant.type == TYPE_UNSET) {
-				node->variant.type =
-					ast_dt_finalize_variant(
-							ctx, mod,
-							node->variant.options,
-							node->variant.num_options,
-							deps, num_deps);
-
-				if (node->variant.type == TYPE_UNSET) {
-					node->variant.failed = true;
-				}
-			}
-			break;
-
 		case AST_NODE_DATA_TYPE:
 			{
 				struct ast_node *dt_node;
@@ -290,6 +291,7 @@ ast_node_resolve_datatypes(
 				ast_node_resolve_datatypes(
 						ctx, mod, deps, num_deps, dt_node);
 			}
+			*/
 
 		default:
 			break;
@@ -820,6 +822,8 @@ ast_node_constraints(
 				ast_slot_value_error(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
 						res_slot);
+			} else {
+				panic("Attempted to use the type of an not-yet-solved composite.");
 			}
 
 			node->typecheck_slot = res_slot;
@@ -844,6 +848,8 @@ ast_node_constraints(
 				ast_slot_value_error(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
 						res_slot);
+			} else {
+				panic("Attempted to use the type of an not-yet-solved type class.");
 			}
 
 			node->typecheck_slot = res_slot;
@@ -863,6 +869,8 @@ ast_node_constraints(
 				ast_slot_value_error(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
 						res_slot);
+			} else {
+				panic("Attempted to use the type of an not-yet-solved variant.");
 			}
 
 			node->typecheck_slot = res_slot;
@@ -877,17 +885,6 @@ ast_node_constraints(
 
 			node->typecheck_slot = ast_node_constraints(
 					ctx, mod, env, deps, num_deps, dt_node);
-
-			// ast_slot_id res_slot;
-			// res_slot = ast_slot_alloc(env);
-
-			// // TODO
-			// ast_slot_value_error(
-			// 		env, node->loc, AST_CONSTR_SRC_DT_DECL,
-			// 		res_slot);
-			// printf("TODO: Data type slot\n");
-
-			// node->typecheck_slot = res_slot;
 		}
 		break;
 

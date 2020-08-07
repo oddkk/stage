@@ -1,4 +1,5 @@
 #include "ast.h"
+#include "compile.h"
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
@@ -212,9 +213,14 @@ ast_module_finalize(struct ast_context *ctx, struct stg_module *mod,
 	root_dt = ast_module_node_get_data_type(
 			mod->vm, root);
 
+	// type_id type;
+	// type = ast_dt_finalize_composite(ctx, mod,
+	// 		root_dt, NULL, 0);
+
+	ast_dt_process(ctx, mod);
+
 	type_id type;
-	type = ast_dt_finalize_composite(ctx, mod,
-			root_dt, NULL, 0);
+	type = root_dt->composite.type;
 
 	if (type == TYPE_UNSET) {
 		return -1;
