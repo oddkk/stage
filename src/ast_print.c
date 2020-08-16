@@ -345,149 +345,219 @@ ast_print(struct ast_context *ctx, struct ast_node *node)
 	ast_print_internal(ctx, node, 0);
 }
 
-void
-ast_print_node(struct ast_context *ctx, struct ast_node *node,
+struct string
+ast_node_repr(struct ast_context *ctx, struct arena *mem, struct ast_node *node,
 		bool print_type_slot)
 {
-	if (print_type_slot) {
-		printf("<%i>", node->typecheck_slot);
-	}
+	struct string result = {0};
+	arena_mark cp = arena_checkpoint(mem);
+
 	switch (node->kind) {
 		case AST_NODE_FUNC:
 		case AST_NODE_FUNC_NATIVE:
-			printf("(");
+			arena_string_append(mem, &result, STR("("));
 			for (size_t i = 0; i < node->func.num_params; i++) {
 				if (node->func.params[i].type) {
-					printf("%s%.*s: ", (i != 0) ? ", " : "",
+					arena_string_append_sprintf(mem, &result,
+							"%s%.*s: ", (i != 0) ? ", " : "",
 							ALIT(node->func.params[i].name));
-					ast_print_node(ctx, node->func.params[i].type, print_type_slot);
+					struct string type_repr;
+					type_repr = ast_node_repr(ctx, mem,
+							node->func.params[i].type, print_type_slot);
+					arena_string_append(mem, &result, type_repr);
 				} else {
-					printf("%s%.*s", (i != 0) ? ", " : "",
+					arena_string_append_sprintf(mem, &result,
+							"%s%.*s", (i != 0) ? ", " : "",
 							ALIT(node->func.params[i].name));
 				}
 			}
 			if (node->func.return_type) {
-				printf(") -> ");
-				ast_print_node(ctx, node->func.return_type, print_type_slot);
+				struct string type_repr = ast_node_repr(ctx, mem,
+						node->func.return_type, print_type_slot);
+				arena_string_append_sprintf(mem, &result,
+						") -> %.*s", LIT(type_repr));
 			} else {
-				printf(")");
+				arena_string_append(mem, &result, STR(")"));
 			}
-			printf(" => ");
+			arena_string_append(mem, &result, STR(" => "));
 
 			if (node->kind == AST_NODE_FUNC) {
-				ast_print_node(ctx, node->func.body, print_type_slot);
+				arena_string_append(mem, &result,
+						ast_node_repr(ctx, mem, node->func.body, print_type_slot));
 			} else {
-				printf("@native(\"%.*s\")", LIT(node->func.native.name));
+				arena_string_append_sprintf(mem, &result,
+						"@native(\"%.*s\")", LIT(node->func.native.name));
 			}
 			break;
 
 		case AST_NODE_CALL:
 		case AST_NODE_CONS:
 		case AST_NODE_INST:
-			ast_print_node(ctx, node->call.func, print_type_slot);
-			printf((node->kind == AST_NODE_CALL)
-					? "("
-					: ((node->kind == AST_NODE_CONS)
-						? "[" : "{"));
-			for (size_t i = 0; i < node->call.num_args; i++) {
-				if (i != 0) {
-					printf(", ");
+			{
+				struct string func_repr;
+				func_repr = ast_node_repr(ctx, mem,
+						node->call.func, print_type_slot);
+
+				const char *brace = "()";
+				switch (node->kind) {
+					case AST_NODE_CALL: brace = "()"; break;
+					case AST_NODE_CONS: brace = "[]"; break;
+					case AST_NODE_INST: brace = "{}"; break;
+					default: panic("Invalid node.");  break;
 				}
-				if (node->call.args[i].name) {
-					printf("%.*s=", ALIT(node->call.args[i].name));
+
+				arena_string_append_sprintf(mem, &result, "%c", brace[0]);
+				for (size_t i = 0; i < node->call.num_args; i++) {
+					struct string value_repr;
+					value_repr = ast_node_repr(ctx, mem,
+							node->call.args[i].value, print_type_slot);
+
+					struct string name_repr = {0};
+					if (node->call.args[i].name) {
+						name_repr = arena_sprintf(mem,
+								"%.*s=", ALIT(node->call.args[i].name));
+					}
+
+					arena_string_append_sprintf(mem, &result,
+							"%s%.*s%.*s", (i != 0) ? ", " : "",
+							LIT(name_repr), LIT(value_repr));
 				}
-				ast_print_node(ctx, node->call.args[i].value, print_type_slot);
+				arena_string_append_sprintf(mem, &result, "%c", brace[1]);
 			}
-			printf((node->kind == AST_NODE_CALL)
-					? ")"
-					: ((node->kind == AST_NODE_CONS)
-						? "]" : "}"));
 			break;
 
 		case AST_NODE_FUNC_TYPE:
-			printf("(");
-			for (size_t i = 0; i < node->func_type.num_params; i++) {
-				if (i != 0) {
-					printf(", ");
+			{
+				arena_string_append(mem, &result, STR("("));
+				for (size_t i = 0; i < node->func_type.num_params; i++) {
+					struct string type_repr;
+					type_repr = ast_node_repr(ctx, mem,
+							node->func_type.param_types[i], print_type_slot);
+
+					arena_string_append_sprintf(mem, &result,
+							"%s%.*s", (i != 0) ? ", " : "",
+							LIT(type_repr));
 				}
-				ast_print_node(ctx, node->func_type.param_types[i], print_type_slot);
+				struct string ret_type_repr;
+				ret_type_repr = ast_node_repr(ctx, mem,
+						node->func_type.ret_type, print_type_slot);
+				arena_string_append_sprintf(mem, &result,
+						") -> %.*s", LIT(ret_type_repr));
 			}
-			printf(") -> ");
-			ast_print_node(ctx, node->func_type.ret_type, print_type_slot);
 			break;
 
 		case AST_NODE_ACCESS:
-			ast_print_node(ctx, node->access.target, print_type_slot);
-			printf(".%.*s", ALIT(node->access.name));
+			result = ast_node_repr(
+					ctx, mem, node->access.target, print_type_slot);
+			result = arena_sprintf(mem, "%.*s.%.*s",
+					LIT(result), ALIT(node->access.name));
 			break;
 
 		case AST_NODE_TEMPL:
-			printf("(");
+			arena_string_append(mem, &result, STR("("));
 			for (size_t i = 0; i < node->templ.pattern.num_params; i++) {
-				printf("%s%.*s: ", (i != 0) ? ", " : "",
+				arena_string_append_sprintf(mem, &result,
+						"%s%.*s: ", (i != 0) ? ", " : "",
 						ALIT(node->templ.pattern.params[i].name));
 				if (node->templ.pattern.params[i].type) {
-					ast_print_node(ctx, node->templ.pattern.params[i].type, print_type_slot);
-					printf(" ");
+					struct string type_repr;
+					type_repr = ast_node_repr(ctx, mem,
+							node->templ.pattern.params[i].type, print_type_slot);
+					arena_string_append_sprintf(mem, &result,
+							"%.*s ", LIT(type_repr));
 				}
 			}
-			printf(") ->> ?");
-			printf(" => ");
+			arena_string_append(mem, &result, STR(") ->> ? => "));
 			break;
 
 		case AST_NODE_LIT:
-			print_obj_repr(ctx->vm, node->lit.obj);
+			result = obj_repr_to_string(ctx->vm, mem, node->lit.obj);
 			break;
 
 		case AST_NODE_LIT_NATIVE:
-			printf("@native(\"%.*s\")", ALIT(node->lit_native.name));
+			result = arena_sprintf(mem, "@native(\"%.*s\")", ALIT(node->lit_native.name));
 			break;
 
 		case AST_NODE_LOOKUP:
-			printf("%.*s", ALIT(node->lookup.name));
+			result = arena_sprintf(mem, "%.*s", ALIT(node->lookup.name));
 			break;
 
 		case AST_NODE_MOD:
-			printf("mod %.*s", ALIT(node->mod.name));
+			result = arena_sprintf(mem, "mod %.*s", ALIT(node->mod.name));
 			break;
 
 		case AST_NODE_MATCH:
-			printf("match ");
-			ast_print_node(ctx, node->match.value, print_type_slot);
-			printf(" { ");
-			for (size_t i = 0; i < node->match.num_cases; i++) {
-				ast_print_node(ctx, node->match.cases[i].pattern.node, print_type_slot);
-				printf(" => ");
-				ast_print_node(ctx, node->match.cases[i].expr, print_type_slot);
-				printf(";");
+			{
+				struct string value_repr;
+				value_repr = ast_node_repr(ctx, mem,
+						node->match.value, print_type_slot);
+				arena_string_append_sprintf(mem, &result,
+						"match %.*s { ",
+						LIT(value_repr));
+				for (size_t i = 0; i < node->match.num_cases; i++) {
+					struct string pat_repr, expr_repr;
+
+					pat_repr = ast_node_repr(ctx, mem,
+							node->match.cases[i].pattern.node, print_type_slot);
+					expr_repr = ast_node_repr(ctx, mem,
+							node->match.cases[i].expr, print_type_slot);
+
+					arena_string_append_sprintf(mem, &result,
+							"%.*s => %.*s;",
+							LIT(pat_repr), LIT(expr_repr));
+				}
+				arena_string_append(mem, &result, STR(" }"));
 			}
-			printf(" }");
 			break;
 
 		case AST_NODE_WILDCARD:
-			printf("_");
+			result = STR("_");
 			break;
 
 		case AST_NODE_INIT_EXPR:
-			printf("!%i", node->init_expr.id);
+			result = arena_sprintf(mem, "!%i",
+					node->init_expr.id);
 			break;
 
 		case AST_NODE_COMPOSITE:
-			printf("Struct {");
-			printf(" }");
+			result = STR("Struct { }");
 			break;
 
 		case AST_NODE_TYPE_CLASS:
-			printf("class {");
-			printf(" }");
+			result = STR("class { }");
 			break;
 
 		case AST_NODE_VARIANT:
-			printf("variant");
+			result = STR("variant");
 			break;
 
 		case AST_NODE_DATA_TYPE:
-			printf("data type %i", node->data_type.id);
+			result = arena_sprintf(mem, "data type %i",
+					node->data_type.id);
 			break;
 	}
+
+	if (print_type_slot) {
+		result = arena_sprintf(mem, "<%i>%.*s",
+				node->typecheck_slot, LIT(result));
+	}
+
+	result.text = arena_reset_and_keep(
+			mem, cp, result.text, result.length);
+
+	return result;
+}
+
+void
+ast_print_node(struct ast_context *ctx, struct ast_node *node,
+		bool print_type_slot)
+{
+	struct arena *mem = &ctx->vm->transient;
+	arena_mark cp = arena_checkpoint(mem);
+
+	struct string repr;
+	repr = ast_node_repr(ctx, mem, node, print_type_slot);
+	printf("%.*s", LIT(repr));
+
+	arena_reset(mem, cp);
 }

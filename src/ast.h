@@ -1279,6 +1279,10 @@ void
 ast_print_node(struct ast_context *, struct ast_node *,
 		bool print_type_slot);
 
+struct string
+ast_node_repr(struct ast_context *ctx, struct arena *mem,
+		struct ast_node *node, bool print_type_slot);
+
 struct ast_node *
 ast_namespace_add_ns(struct ast_context *,
 		struct ast_module *, struct ast_node *, struct atom *name);

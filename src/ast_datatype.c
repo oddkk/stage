@@ -2850,7 +2850,7 @@ ast_dt_job_info_fill_comp(struct ast_dt_context *ctx, ast_dt_composite_id comp_i
 	struct ast_dt_composite *comp;
 	comp = get_composite(ctx, comp_id);
 
-	info->description = arena_sprintf(ctx->tmp_mem, "comp %i", comp_id);
+	info->description = arena_sprintf(ctx->tmp_mem, "comp 0x%03x", comp_id);
 	info->loc = comp->root_node->loc;
 }
 
@@ -2943,8 +2943,8 @@ ast_dt_job_info_fill_mbr(
 	mbr = get_member(ctx, mbr_id);
 
 	info->description = arena_sprintf(ctx->tmp_mem,
-			"mbr 0x%03x[%.*s]",
-			mbr_id, ALIT(mbr->name));
+			"mbr  0x%03x:0x%03x '%.*s'",
+			mbr->parent, mbr_id, ALIT(mbr->name));
 
 	if (mbr->type_node) {
 		info->loc = mbr->type_node->loc;
@@ -3012,17 +3012,27 @@ ast_dt_job_fill_info_expr(
 
 	info->loc = expr->loc;
 
-	// TODO: Implement print to string for this.
-#if 0
-	printf("expr ");
 	if (expr->constant) {
+		struct string value_repr;
+		value_repr = obj_repr_to_string(
+				ctx->ast_ctx->vm, ctx->tmp_mem, expr->const_value);
+
+		info->description = arena_sprintf(ctx->tmp_mem,
+				"expr 0x%03x:0x%03x const `%.*s`",
+				expr->parent, expr_id, LIT(value_repr));
 	} else if (expr->value.node) {
-		ast_print_node(ctx->ast_ctx,
+		struct string value_repr;
+		value_repr = ast_node_repr(ctx->ast_ctx, ctx->tmp_mem,
 				expr->value.node, false);
+
+		info->description = arena_sprintf(ctx->tmp_mem,
+				"expr 0x%03x:0x%03x `%.*s`",
+				expr->parent, expr_id, LIT(value_repr));
 	} else {
-		printf("func %lu", expr->value.func);
+		info->description = arena_sprintf(ctx->tmp_mem,
+				"expr 0x%03x:0x%03x func %lu",
+				expr->parent, expr_id, expr->value.func);
 	}
-#endif
 }
 
 struct ast_dt_job_info
@@ -3083,17 +3093,24 @@ ast_dt_job_get_info_bind_target_resolve_names(
 	struct ast_dt_bind *bind;
 	bind = get_bind(ctx, bind_id);
 
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, bind->expr);
+
 	info.target = &bind->target_jobs.resolve_names;
 	info.loc = bind->loc;
 
-	// TODO: Implement print to string for this.
-#if 0
-	printf("bind ");
+	struct string target;
 	if (bind->target_node) {
-		ast_print_node(ctx->ast_ctx,
+		target = ast_node_repr(
+				ctx->ast_ctx, ctx->tmp_mem,
 				bind->target_node, false);
+	} else {
+		target = STR("(unknown)");
 	}
-#endif
+
+	info.description = arena_sprintf(ctx->tmp_mem,
+			"bind %.*s <- expr 0x%03x:0x%03x",
+			LIT(target), expr->parent, bind->expr);
 
 	return info;
 }
