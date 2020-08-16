@@ -47,10 +47,11 @@ get_use(struct ast_dt_context *ctx, ast_dt_use_id id)
 }
 
 static struct ast_dt_init_expr *
-get_init_expr(struct ast_dt_context *ctx, ast_init_expr_id id)
+get_init_expr(struct ast_dt_context *ctx, ast_dt_composite_id parent, ast_init_expr_id id)
 {
 	for (size_t i = 0; i < ctx->num_init_exprs; i++) {
-		if (ctx->init_exprs[i].id == id) {
+		if (ctx->init_exprs[i].id == id &&
+				ctx->init_exprs[i].parent == parent) {
 			return &ctx->init_exprs[i];
 		}
 	}
@@ -1193,7 +1194,7 @@ ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
 static void
 ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
 		ast_dt_job_id target_job, enum ast_name_dep_requirement req,
-		struct ast_node *node)
+		ast_dt_composite_id parent, struct ast_node *node)
 {
 	struct ast_name_dep *deps = NULL;
 	size_t num_deps = 0;
@@ -1212,7 +1213,7 @@ ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
 				{
 					struct ast_dt_init_expr *init_expr;
 					init_expr = get_init_expr(
-							ctx, deps[i].ref.init_expr);
+							ctx, parent, deps[i].ref.init_expr);
 
 					struct ast_dt_expr *expr;
 					expr = get_expr(ctx, init_expr->expr);
@@ -1354,7 +1355,9 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 					init_expr_id = names[name_i].ref.init_expr;
 
 					struct ast_dt_init_expr *init_expr;
-					init_expr = get_init_expr(ctx, init_expr_id);
+					// TODO: Store the parent id with the init id to ensure we
+					// lookup the correct one.
+					init_expr = get_init_expr(ctx, parent_id, init_expr_id);
 
 					struct ast_dt_expr *expr;
 					expr = get_expr(ctx, init_expr->expr);
@@ -1577,7 +1580,9 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 			case AST_NAME_REF_INIT_EXPR:
 				{
 					struct ast_dt_init_expr *init_expr;
-					init_expr = get_init_expr(ctx, deps[i].ref.init_expr);
+					// TODO: Store the parent id with the init id to ensure we
+					// lookup the correct one.
+					init_expr = get_init_expr(ctx, parent_id, deps[i].ref.init_expr);
 
 					struct ast_dt_expr *expr;
 					expr = get_expr(ctx, init_expr->expr);
