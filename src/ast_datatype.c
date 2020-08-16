@@ -11,8 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define AST_DT_DEBUG_JOBS 0
-
 static struct ast_dt_expr *
 get_expr(struct ast_dt_context *ctx, ast_dt_expr_id id)
 {
@@ -135,128 +133,6 @@ ast_dt_alloc_init_expr(struct ast_dt_context *ctx)
 			ctx->num_init_exprs,
 			&init_expr);
 }
-
-#if AST_DT_DEBUG_JOBS
-static const char *
-ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
-	switch (kind) {
-#define JOB(name, ...) case AST_DT_JOB_##name: return #name;
-		AST_DT_JOBS
-#undef JOB
-
-		case AST_DT_JOB_FREE:
-			return "FREE";
-	}
-	return "(unknown)";
-}
-#endif
-
-#if AST_DT_DEBUG_JOBS
-static void
-ast_dt_print_job_desc(struct ast_dt_context *ctx,
-		ast_dt_job_id job_id)
-{
-	struct ast_dt_job *job;
-	job = get_job(ctx, job_id);
-	printf("0x%03x (%-15s: ", job_id,
-			ast_dt_job_kind_name(job->kind));
-
-	if (job->kind == AST_DT_JOB_FREE) {
-		return;
-	}
-
-	switch (job->kind) {
-		case AST_DT_JOB_FREE:
-			panic("Printing description of freed job.");
-			break;
-
-		case AST_DT_JOB_NOP:
-			break;
-
-		case AST_DT_JOB_COMPOSITE_RESOLVE_NAMES:
-		case AST_DT_JOB_COMPOSITE_EVAL_CLOSURE:
-		case AST_DT_JOB_COMPOSITE_PACK:
-		case AST_DT_JOB_COMPOSITE_CONST_EVAL:
-			{
-				// struct ast_dt_composite *comp;
-				// comp = get_composite(ctx, job->comp);
-				printf("comp %i", job->composite);
-			}
-			break;
-
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
-		case AST_DT_JOB_MBR_TYPE_EVAL:
-		case AST_DT_JOB_MBR_CONST_EVAL:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				printf("mbr 0x%03x[%-10.*s]",
-						job->member, ALIT(mbr->name));
-			}
-			break;
-
-		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
-		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
-		case AST_DT_JOB_EXPR_CODEGEN:
-			{
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, job->expr);
-
-				printf("expr ");
-				if (expr->constant) {
-				} else if (expr->value.node) {
-					ast_print_node(ctx->ast_ctx,
-							expr->value.node, false);
-				} else {
-					printf("func %lu", expr->value.func);
-				}
-			}
-			break;
-
-		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
-			{
-				struct ast_dt_bind *bind;
-				bind = get_bind(ctx, job->bind);
-				printf("bind ");
-				if (bind->target_node) {
-					ast_print_node(ctx->ast_ctx,
-							bind->target_node, false);
-				}
-			}
-			break;
-
-		case AST_DT_JOB_USE_CONST_EVAL:
-			{
-				struct ast_dt_use *use;
-				use = get_use(ctx, job->use);
-
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, use->expr);
-
-				printf("use %i,%i ", job->use.parent, job->use.id);
-				if (expr->constant) {
-				} else if (expr->value.node) {
-					ast_print_node(ctx->ast_ctx,
-							expr->value.node, false);
-				} else {
-					printf("func %lu", expr->value.func);
-				}
-			}
-			break;
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE_NAMES:
-		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
-		case AST_DT_JOB_TC_IMPL_RESOLVE:
-			{
-				struct ast_dt_type_class_impl *impl;
-				impl = get_type_class_impl(ctx, job->tc_impl);
-				printf("tcimpl %i tc %i", job->tc_impl, impl->tc);
-			}
-			break;
-	}
-	printf(")");
-}
-#endif
 
 // When a lookup is determined to not refer to a local name it can either refer
 // to a field exposed by a 'use' statement or to a closure. Expressions
@@ -2955,65 +2831,96 @@ ast_dt_job_dispatch_tc_impl_resolve(
 	return 0;
 }
 
-void
-ast_dt_job_remove_from_target_nop(
+struct ast_dt_job_info
+ast_dt_job_get_info_nop(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_job_id *id_ref)
 {
-	if (id_ref) {
-		assert(*id_ref == job_id);
-		*id_ref = -1;
-	}
+	struct ast_dt_job_info info = {0};
+
+	info.target = id_ref;
+
+	return info;
 }
 
-void
-ast_dt_job_remove_from_target_composite_resolve_names(
-		struct ast_dt_context *ctx, ast_dt_job_id job_id,
-		ast_dt_composite_id comp_id)
+static void
+ast_dt_job_info_fill_comp(struct ast_dt_context *ctx, ast_dt_composite_id comp_id,
+		struct ast_dt_job_info *info)
 {
 	struct ast_dt_composite *comp;
 	comp = get_composite(ctx, comp_id);
 
-	assert(comp->resolve_names == job_id);
-	comp->resolve_names = -1;
+	info->description = arena_sprintf(ctx->tmp_mem, "comp %i", comp_id);
+	info->loc = comp->root_node->loc;
 }
 
-void
-ast_dt_job_remove_from_target_composite_eval_closure(
+struct ast_dt_job_info
+ast_dt_job_get_info_composite_resolve_names(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_composite_id comp_id)
 {
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_info_fill_comp(ctx, comp_id, &info);
+
 	struct ast_dt_composite *comp;
 	comp = get_composite(ctx, comp_id);
 
-	assert(comp->closures_evaled == job_id);
-	comp->closures_evaled = -1;
+	info.target = &comp->resolve_names;
+
+	return info;
 }
 
-void
-ast_dt_job_remove_from_target_composite_pack(
+struct ast_dt_job_info
+ast_dt_job_get_info_composite_eval_closure(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_composite_id comp_id)
 {
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_info_fill_comp(ctx, comp_id, &info);
+
 	struct ast_dt_composite *comp;
 	comp = get_composite(ctx, comp_id);
 
-	assert(comp->finalize_job == job_id);
-	comp->finalize_job = -1;
+	info.target = &comp->closures_evaled;
+
+	return info;
+}
+
+struct ast_dt_job_info
+ast_dt_job_get_info_composite_pack(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_composite_id comp_id)
+{
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_info_fill_comp(ctx, comp_id, &info);
+
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	info.num_targets = 2;
+	info.targets = arena_allocn(ctx->tmp_mem,
+			sizeof(ast_dt_job_id), info.num_targets);
+
+	info.targets[0] = &comp->finalize_job;
 
 	if (comp->self >= 0) {
 		struct ast_dt_member *self;
 		self = get_member(ctx, comp->self);
-		assert(self->type_resolved == job_id);
-		self->type_resolved = job_id;
+
+		info.targets[1] = &self->type_resolved;
 	}
+
+	return info;
 }
 
-void
-ast_dt_job_remove_from_target_composite_const_eval(
+struct ast_dt_job_info
+ast_dt_job_get_info_composite_const_eval(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_composite_id comp_id)
 {
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_info_fill_comp(ctx, comp_id, &info);
+
 	struct ast_dt_composite *comp;
 	comp = get_composite(ctx, comp_id);
 
@@ -3021,129 +2928,268 @@ ast_dt_job_remove_from_target_composite_const_eval(
 
 	struct ast_dt_member *self;
 	self = get_member(ctx, comp->self);
-	assert(self->const_resolved == job_id);
-	self->const_resolved = job_id;
+
+    info.target = &self->const_resolved;
+
+	return info;
 }
 
 void
-ast_dt_job_remove_from_target_mbr_type_resolve_names(
-		struct ast_dt_context *ctx, ast_dt_job_id job_id,
-		ast_member_id mbr_id)
+ast_dt_job_info_fill_mbr(
+		struct ast_dt_context *ctx, ast_member_id mbr_id,
+		struct ast_dt_job_info *info)
 {
 	struct ast_dt_member *mbr;
 	mbr = get_member(ctx, mbr_id);
-	assert(mbr->type_names_resolved == job_id);
-	mbr->type_names_resolved = -1;
+
+	info->description = arena_sprintf(ctx->tmp_mem,
+			"mbr 0x%03x[%.*s]",
+			mbr_id, ALIT(mbr->name));
+
+	if (mbr->type_node) {
+		info->loc = mbr->type_node->loc;
+	} else {
+		info->loc = mbr->decl_loc;
+	}
 }
 
-void
-ast_dt_job_remove_from_target_mbr_type_eval(
+struct ast_dt_job_info
+ast_dt_job_get_info_mbr_type_resolve_names(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_member_id mbr_id)
 {
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_info_fill_mbr(ctx, mbr_id, &info);
+
 	struct ast_dt_member *mbr;
 	mbr = get_member(ctx, mbr_id);
-	assert(mbr->type_resolved == job_id);
-	mbr->type_resolved = -1;
+
+	info.target = &mbr->type_names_resolved;
+
+	return info;
 }
 
-void
-ast_dt_job_remove_from_target_mbr_const_eval(
+struct ast_dt_job_info
+ast_dt_job_get_info_mbr_type_eval(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_member_id mbr_id)
 {
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_info_fill_mbr(ctx, mbr_id, &info);
+
 	struct ast_dt_member *mbr;
 	mbr = get_member(ctx, mbr_id);
-	assert(mbr->const_resolved == job_id);
-	mbr->const_resolved = -1;
+
+	info.target = &mbr->type_resolved;
+
+	return info;
+}
+
+struct ast_dt_job_info
+ast_dt_job_get_info_mbr_const_eval(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_member_id mbr_id)
+{
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_info_fill_mbr(ctx, mbr_id, &info);
+
+	struct ast_dt_member *mbr;
+	mbr = get_member(ctx, mbr_id);
+
+	info.loc = mbr->decl_loc;
+	info.target = &mbr->const_resolved;
+
+	return info;
 }
 
 void
-ast_dt_job_remove_from_target_expr_resolve_names(
-		struct ast_dt_context *ctx, ast_dt_job_id job_id,
-		ast_dt_expr_id expr_id)
+ast_dt_job_fill_info_expr(
+		struct ast_dt_context *ctx, ast_dt_expr_id expr_id,
+		struct ast_dt_job_info *info)
 {
 	struct ast_dt_expr *expr;
 	expr = get_expr(ctx, expr_id);
-	assert(expr->value_jobs.resolve_names == job_id);
-	expr->value_jobs.resolve_names = -1;
+
+	info->loc = expr->loc;
+
+	// TODO: Implement print to string for this.
+#if 0
+	printf("expr ");
+	if (expr->constant) {
+	} else if (expr->value.node) {
+		ast_print_node(ctx->ast_ctx,
+				expr->value.node, false);
+	} else {
+		printf("func %lu", expr->value.func);
+	}
+#endif
 }
 
-void
-ast_dt_job_remove_from_target_expr_resolve_types(
+struct ast_dt_job_info
+ast_dt_job_get_info_expr_resolve_names(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_expr_id expr_id)
 {
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_fill_info_expr(ctx, expr_id, &info);
+
 	struct ast_dt_expr *expr;
 	expr = get_expr(ctx, expr_id);
-	assert(expr->value_jobs.resolve_types == job_id);
-	expr->value_jobs.resolve_types = -1;
+
+	info.target = &expr->value_jobs.resolve_names;
+
+	return info;
 }
 
-void
-ast_dt_job_remove_from_target_expr_codegen(
+struct ast_dt_job_info
+ast_dt_job_get_info_expr_resolve_types(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_expr_id expr_id)
 {
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_fill_info_expr(ctx, expr_id, &info);
+
 	struct ast_dt_expr *expr;
 	expr = get_expr(ctx, expr_id);
-	assert(expr->value_jobs.codegen == job_id);
-	expr->value_jobs.codegen = -1;
+
+	info.target = &expr->value_jobs.resolve_types;
+
+	return info;
 }
 
-void
-ast_dt_job_remove_from_target_bind_target_resolve_names(
+struct ast_dt_job_info
+ast_dt_job_get_info_expr_codegen(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_expr_id expr_id)
+{
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_fill_info_expr(ctx, expr_id, &info);
+
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, expr_id);
+
+	info.target = &expr->value_jobs.codegen;
+
+	return info;
+}
+
+struct ast_dt_job_info
+ast_dt_job_get_info_bind_target_resolve_names(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_bind_id bind_id)
 {
+	struct ast_dt_job_info info = {0};
+
 	struct ast_dt_bind *bind;
 	bind = get_bind(ctx, bind_id);
-	assert(bind->target_jobs.resolve_names == job_id);
-	bind->target_jobs.resolve_names = -1;
+
+	info.target = &bind->target_jobs.resolve_names;
+	info.loc = bind->loc;
+
+	// TODO: Implement print to string for this.
+#if 0
+	printf("bind ");
+	if (bind->target_node) {
+		ast_print_node(ctx->ast_ctx,
+				bind->target_node, false);
+	}
+#endif
+
+	return info;
 }
 
-void
-ast_dt_job_remove_from_target_use_const_eval(
+struct ast_dt_job_info
+ast_dt_job_get_info_use_const_eval(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_use_id use_id)
 {
+	struct ast_dt_job_info info = {0};
+
 	struct ast_dt_use *use;
 	use = get_use(ctx, use_id);
-	assert(use->const_resolved == job_id);
-	use->const_resolved = -1;
+
+	struct ast_dt_expr *expr;
+	expr = get_expr(ctx, use->expr);
+
+	info.description = arena_sprintf(ctx->tmp_mem,
+			"use %i,%i ", use_id.parent, use_id.id);
+
+	// TODO: Implement print to string for this.
+#if 0
+	if (expr->constant) {
+	} else if (expr->value.node) {
+		ast_print_node(ctx->ast_ctx,
+				expr->value.node, false);
+	} else {
+		printf("func %lu", expr->value.func);
+	}
+#endif
+
+	info.loc = expr->loc;
+	info.target = &use->const_resolved;
+
+	return info;
 }
 
 void
-ast_dt_job_remove_from_target_tc_impl_resolve_names(
-		struct ast_dt_context *ctx, ast_dt_job_id job_id,
-		ast_dt_tc_impl_id tc_impl_id)
+ast_dt_job_fill_info_tc_impl(
+		struct ast_dt_context *ctx, ast_dt_expr_id tc_impl_id,
+		struct ast_dt_job_info *info)
 {
 	struct ast_dt_type_class_impl *impl;
 	impl = get_type_class_impl(ctx, tc_impl_id);
-	assert(impl->resolve_names == job_id);
-	impl->resolve_names = -1;
+
+	info->loc = impl->impl->loc;
+	info->description = arena_sprintf(ctx->tmp_mem,
+			"tcimpl %i tc %i", tc_impl_id, impl->tc);
 }
 
-void
-ast_dt_job_remove_from_target_tc_impl_resolve_target(
+struct ast_dt_job_info
+ast_dt_job_get_info_tc_impl_resolve_names(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_tc_impl_id tc_impl_id)
 {
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_fill_info_tc_impl(ctx, tc_impl_id, &info);
+
 	struct ast_dt_type_class_impl *impl;
 	impl = get_type_class_impl(ctx, tc_impl_id);
-	assert(impl->resolve_target == job_id);
-	impl->resolve_target = -1;
+
+	info.target = &impl->resolve_names;
+
+	return info;
 }
 
-void
-ast_dt_job_remove_from_target_tc_impl_resolve(
+struct ast_dt_job_info
+ast_dt_job_get_info_tc_impl_resolve_target(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_tc_impl_id tc_impl_id)
 {
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_fill_info_tc_impl(ctx, tc_impl_id, &info);
+
 	struct ast_dt_type_class_impl *impl;
 	impl = get_type_class_impl(ctx, tc_impl_id);
-	assert(impl->resolve == job_id);
-	impl->resolve = -1;
+
+	info.target = &impl->resolve_target;
+
+	return info;
+}
+
+struct ast_dt_job_info
+ast_dt_job_get_info_tc_impl_resolve(
+		struct ast_dt_context *ctx, ast_dt_job_id job_id,
+		ast_dt_tc_impl_id tc_impl_id)
+{
+	struct ast_dt_job_info info = {0};
+	ast_dt_job_fill_info_tc_impl(ctx, tc_impl_id, &info);
+
+	struct ast_dt_type_class_impl *impl;
+	impl = get_type_class_impl(ctx, tc_impl_id);
+
+	info.target = &impl->resolve;
+
+	return info;
 }
 
 static ast_member_id

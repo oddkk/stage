@@ -6,6 +6,8 @@
 #include "module.h"
 #include "errors.h"
 
+#define AST_DT_DEBUG_JOBS 0
+
 enum complie_job_type {
 #define COMPILE_JOB(name, data) COMPILE_JOB_##name,
 	#include "compile_job_defs.h"
@@ -100,6 +102,20 @@ struct ast_dt_context {
 			type value);
 AST_DT_JOBS
 #undef JOB
+
+struct ast_dt_job_info {
+	struct string description;
+	struct stg_location loc;
+
+	// If num_targets is 0 or 1 and target is not NULL, target points to the
+	// field that contains the specified job. If num_targets is greater than 1,
+	// targets points to an array of such targets.
+	size_t num_targets;
+	union {
+		ast_dt_job_id *target;
+		ast_dt_job_id **targets;
+	};
+};
 
 // Requests that from must be evaluated before to.
 void

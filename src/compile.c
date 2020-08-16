@@ -792,13 +792,38 @@ struct ast_dt_dependency {
 	bool visited;
 };
 
+struct string ast_dt_job_names[] = {
+	STR("FREE"),
+
+#define JOB(name, ...) STR(#name),
+	AST_DT_JOBS
+#undef JOB
+};
+
 enum ast_dt_job_kind {
 	AST_DT_JOB_FREE = 0,
 
 #define JOB(name, ...) AST_DT_JOB_##name,
 	AST_DT_JOBS
 #undef JOB
+
+	AST_DT_JOB_LENGTH
 };
+
+static int
+ast_dt_job_name_max_length()
+{
+	static int result = -1;
+	if (result < 0) {
+		int max = 0;
+		for (size_t i = 0; i < AST_DT_JOB_LENGTH; i++) {
+			max = ast_dt_job_names[i].length > max
+				? ast_dt_job_names[i].length : max;
+		}
+		result = max;
+	}
+	return result;
+}
 
 struct ast_dt_job_dep {
 	bool visited;
@@ -1022,89 +1047,45 @@ ast_dtc_dfs(struct ast_dtc_graph *graph,
 	}
 }
 
-#if 0
+static struct ast_dt_job_info
+ast_dt_job_get_info(struct ast_dt_context *ctx, ast_dt_job_id job_id);
+
 static struct stg_location
 ast_dt_job_location(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 {
-	struct ast_dt_job *job = get_job(ctx, job_id);
+	struct ast_dt_job_info info;
+	info = ast_dt_job_get_info(ctx, job_id);
+	return info.loc;
+}
 
-	switch (job->kind) {
-		case AST_DT_JOB_FREE:
-			return STG_NO_LOC;
-		case AST_DT_JOB_NOP:
-			return STG_NO_LOC;
+#if AST_DT_DEBUG_JOBS
+static struct string
+ast_dt_job_kind_name(enum ast_dt_job_kind kind) {
+	assert(kind < AST_DT_JOB_LENGTH);
+	return ast_dt_job_names[kind];
+}
+#endif
 
-		case AST_DT_JOB_COMPOSITE_RESOLVE_NAMES:
-		case AST_DT_JOB_COMPOSITE_EVAL_CLOSURE:
-		case AST_DT_JOB_COMPOSITE_PACK:
-		case AST_DT_JOB_COMPOSITE_CONST_EVAL:
-			{
-				struct ast_dt_composite *comp;
-				comp = get_composite(ctx, job->composite);
-				return comp->root_node->loc;
-			}
+#if AST_DT_DEBUG_JOBS
+static void
+ast_dt_print_job_desc(struct ast_dt_context *ctx,
+		ast_dt_job_id job_id)
+{
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+	printf("0x%03x %-*.*s|", job_id,
+			ast_dt_job_name_max_length(),
+			LIT(ast_dt_job_kind_name(job->kind)));
 
-		case AST_DT_JOB_MBR_TYPE_RESOLVE_NAMES:
-		case AST_DT_JOB_MBR_TYPE_EVAL:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				if (mbr->type_node) {
-					return mbr->type_node->loc;
-				} else {
-					return mbr->decl_loc;
-				}
-			}
+	struct ast_dt_job_info info;
+	info = ast_dt_job_get_info(ctx, job_id);
 
-		case AST_DT_JOB_MBR_CONST_EVAL:
-			{
-				struct ast_dt_member *mbr;
-				mbr = get_member(ctx, job->member);
-				// TODO: Should this job point to the bind?
-				return mbr->decl_loc;
-			}
-
-		case AST_DT_JOB_EXPR_RESOLVE_NAMES:
-		case AST_DT_JOB_EXPR_RESOLVE_TYPES:
-		case AST_DT_JOB_EXPR_CODEGEN:
-			{
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, job->expr);
-				return expr->loc;
-			}
-
-		case AST_DT_JOB_BIND_TARGET_RESOLVE_NAMES:
-			{
-				struct ast_dt_bind *bind;
-				bind = get_bind(ctx, job->bind);
-				return bind->loc;
-			}
-
-		case AST_DT_JOB_USE_CONST_EVAL:
-			{
-				struct ast_dt_use *use;
-				use = get_use(ctx, job->use);
-
-				struct ast_dt_expr *expr;
-				expr = get_expr(ctx, use->expr);
-
-				return expr->loc;
-			}
-
-		case AST_DT_JOB_TC_IMPL_RESOLVE_NAMES:
-		case AST_DT_JOB_TC_IMPL_RESOLVE_TARGET:
-		case AST_DT_JOB_TC_IMPL_RESOLVE:
-			{
-				struct ast_dt_type_class_impl *impl;
-				impl = get_type_class_impl(ctx, job->tc_impl);
-
-				return impl->impl->loc;
-			}
-			break;
-
+	if (info.description.length > 0 && info.description.text) {
+		printf("%.*s", LIT(info.description));
 	}
 }
 #endif
+
 
 void
 ast_dt_report_cyclic_dependency_chain(struct ast_dt_context *ctx,
@@ -1112,17 +1093,14 @@ ast_dt_report_cyclic_dependency_chain(struct ast_dt_context *ctx,
 {
 	struct ast_dtc_vertex *it = component;
 
-	// TODO: Fix job location
 	stg_error(ctx->ast_ctx->err,
-			// ast_dt_job_location(ctx, it->job_id),
-			STG_NO_LOC,
+			ast_dt_job_location(ctx, it->job_id),
 			"Found member dependency cycle. %03x", it->job_id);
 	it = it->pred;
 
 	while (it) {
 		stg_appendage(ctx->ast_ctx->err,
-				// ast_dt_job_location(ctx, it->job_id),
-				STG_NO_LOC,
+				ast_dt_job_location(ctx, it->job_id),
 				"Through. %03x", it->job_id);
 		it = it->pred;
 	}
@@ -1239,7 +1217,7 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	job = get_job(ctx, job_id);
 
 #if AST_DT_DEBUG_JOBS
-	printf("%03zx    "TC(TC_BRIGHT_YELLOW, "===>") " ", ctx->run_i);
+	printf("%03zx "TC(TC_BRIGHT_YELLOW, "==>") " ", ctx->run_i);
 	ast_dt_print_job_desc(ctx, job_id);
 	printf("\n");
 #endif
@@ -1249,6 +1227,10 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	switch (job->kind) {
 		case AST_DT_JOB_FREE:
 			panic("Attempted to dispatch a freed job.");
+			break;
+
+		case AST_DT_JOB_LENGTH:
+			panic("Invalid job kind");
 			break;
 
 #define JOB(name, type) 													\
@@ -1262,12 +1244,48 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 	return err;
 }
 
+#define JOB(name, type) \
+	struct ast_dt_job_info \
+	ast_dt_job_get_info_##name(struct ast_dt_context *, ast_dt_job_id, type);
+AST_DT_JOBS
+#undef JOB
+
+static struct ast_dt_job_info
+ast_dt_job_get_info(struct ast_dt_context *ctx, ast_dt_job_id job_id)
+{
+	struct ast_dt_job *job;
+	job = get_job(ctx, job_id);
+
+	struct ast_dt_job_info res = {0};
+
+	switch (job->kind) {
+		case AST_DT_JOB_FREE:
+			panic("Attempted to fetch info for a freed job.");
+			break;
+
+		case AST_DT_JOB_LENGTH:
+			panic("Invalid job kind");
+			break;
+
+#define JOB(name, type) 													\
+		case AST_DT_JOB_##name:												\
+			res = ast_dt_job_get_info_##name(ctx, job_id, job->data.name);	\
+			break;
+	AST_DT_JOBS
+#undef JOB
+	}
+
+	return res;
+}
+
+#if 0
 #define JOB(name, type)						\
 	void									\
 	ast_dt_job_remove_from_target_##name(	\
 			struct ast_dt_context *, ast_dt_job_id, type);
 AST_DT_JOBS
 #undef JOB
+*/
 
 static void
 ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
@@ -1280,12 +1298,36 @@ ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 			panic("Tried to remove freed job.");
 			break;
 
+		case AST_DT_JOB_LENGTH:
+			panic("Invalid job kind");
+			break;
+
 #define JOB(name, type) 																\
 		case AST_DT_JOB_##name:															\
 			ast_dt_job_remove_from_target_##name(ctx, job_id, job->data.name);	\
 			break;
 	AST_DT_JOBS
 #undef JOB
+	}
+}
+#endif
+
+static void
+ast_dt_remove_job_from_target(struct ast_dt_context *ctx, ast_dt_job_id job_id)
+{
+	struct ast_dt_job_info info;
+	info = ast_dt_job_get_info(ctx, job_id);
+
+	if (info.num_targets > 1) {
+		for (size_t i = 0; i < info.num_targets; i++) {
+			if (info.targets[i]) {
+				assert(*info.targets[i] == job_id);
+				*info.targets[i] = -1;
+			}
+		}
+	} else if (info.target) {
+		assert(*info.target == job_id);
+		*info.target = -1;
 	}
 }
 
@@ -1332,10 +1374,10 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 	}
 
 #if AST_DT_DEBUG_JOBS
-	printf("%03zx " TC(TC_BRIGHT_BLUE, "job dep") " ", ctx->run_i);
+	printf("%03zx " TC(TC_BRIGHT_BLUE, "dep") " ", ctx->run_i);
 	ast_dt_print_job_desc(ctx, from_id);
-	// Move the cursor to column 50 to align the dependent jobs.
-	printf("\033[60G " TC(TC_BRIGHT_BLUE, "->") " ");
+	// Move the cursor to column 80 to align the dependent jobs.
+	printf("\033[80G " TC(TC_BRIGHT_BLUE, "->") " ");
 	ast_dt_print_job_desc(ctx, to_id);
 	printf("\n");
 #endif
@@ -1541,9 +1583,9 @@ ast_dt_process(struct ast_context *ctx, struct stg_module *mod)
 	arena_reset(dt_ctx.tmp_mem, transient_cp);
 
 #if AST_DT_DEBUG_JOBS
-	printf("end composite ");
-	print_type_repr(ctx->vm, vm_get_type(ctx->vm, result));
-	printf("\n\n");
+	printf("end composite\n\n");
+	// print_type_repr(ctx->vm, vm_get_type(ctx->vm, result));
+	// printf("\n\n");
 #endif
 
 	return err;
