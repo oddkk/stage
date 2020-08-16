@@ -1168,70 +1168,6 @@ ast_dt_composite_populate(struct ast_dt_context *ctx,
 	}
 }
 
-static void
-ast_dt_add_dependency_on_member(struct ast_dt_context *ctx,
-		ast_dt_job_id target_job, enum ast_name_dep_requirement req,
-		ast_member_id mbr_id)
-{
-	struct ast_dt_member *mbr;
-	mbr = get_member(ctx, mbr_id);
-
-	switch (req) {
-		case AST_NAME_DEP_REQUIRE_TYPE:
-			ast_dt_job_dependency(ctx,
-					mbr->const_resolved,
-					target_job);
-			break;
-
-		case AST_NAME_DEP_REQUIRE_VALUE:
-			ast_dt_job_dependency(ctx,
-					mbr->const_resolved,
-					target_job);
-			break;
-	}
-}
-
-static void
-ast_dt_find_named_dependencies(struct ast_dt_context *ctx,
-		ast_dt_job_id target_job, enum ast_name_dep_requirement req,
-		ast_dt_composite_id parent, struct ast_node *node)
-{
-	struct ast_name_dep *deps = NULL;
-	size_t num_deps = 0;
-
-	ast_node_find_named_dependencies(
-			ctx->ast_ctx->vm, node, req, &deps, &num_deps);
-
-	for (size_t i = 0; i < num_deps; i++) {
-		switch (deps[i].ref.kind) {
-			case AST_NAME_REF_MEMBER:
-				ast_dt_add_dependency_on_member(
-						ctx, target_job, deps[i].req, deps[i].ref.member.id);
-				break;
-				
-			case AST_NAME_REF_INIT_EXPR:
-				{
-					struct ast_dt_init_expr *init_expr;
-					init_expr = get_init_expr(
-							ctx, parent, deps[i].ref.init_expr);
-
-					struct ast_dt_expr *expr;
-					expr = get_expr(ctx, init_expr->expr);
-
-					ast_dt_job_dependency(ctx,
-							expr->value_jobs.resolve_types,
-							target_job);
-				}
-				break;
-
-			default:
-				break;
-		}
-	}
-
-	free(deps);
-}
-
 static int
 ast_try_set_local_member_type(struct ast_dt_context *ctx,
 		ast_member_id mbr_id, type_id type)
@@ -2253,6 +2189,141 @@ ast_dt_try_pack_member(
 	return true;
 }
 
+struct ast_dt_node_discover_dependencies_data {
+	struct ast_dt_context *ctx;
+	ast_dt_composite_id parent_id;
+	ast_dt_job_id next_job;
+};
+
+static int
+ast_dt_node_discover_dependencies_internal(
+		struct ast_context *ast_ctx, struct ast_scope *scope,
+		struct ast_node *node, enum ast_traverse_role role,
+		void *user_data)
+{
+	struct ast_dt_node_discover_dependencies_data *data = user_data;
+	struct ast_dt_context *ctx = data->ctx;
+
+	if (!node) {
+		return 0;
+	}
+
+	switch (node->kind) {
+
+		case AST_NODE_LOOKUP:
+			{
+				struct ast_scope_name *name;
+				name = ast_scope_lookup(scope, node->lookup.name);
+				if (!name) {
+					// The name was not provided in the expression, so it
+					// either belongs to a member, a closure, or is not found.
+
+					struct ast_dt_composite *parent;
+					parent = get_composite(ctx, data->parent_id);
+
+					struct ast_node *comp = parent->root_node;
+
+					bool found = false;
+					ast_dt_job_id found_target_job = -1;
+
+					for (size_t i = 0; i < comp->composite.num_members; i++) {
+						if (comp->composite.members[i].name == node->lookup.name) {
+							found = true;
+
+							struct ast_dt_member *mbr;
+							mbr = get_member(ctx, parent->local_member_ids[i]);
+
+							found_target_job = mbr->type_resolved;
+						}
+					}
+
+					if (!found) {
+						struct ast_closure_target *closure;
+						closure = &comp->composite.closure;
+						for (size_t i = 0; i < closure->num_members; i++) {
+							if (closure->members[i].name == node->lookup.name) {
+								// TODO: Allow more granular dependencies on
+								// closures.
+								found = false;
+								found_target_job = -1;
+								break;
+							}
+						}
+					}
+
+					// If the name really is not found the error will be
+					// reported during during type checking. This is to allow
+					// closure- and use names to be resolved first.
+					if (found) {
+						ast_dt_job_dependency(ctx,
+								found_target_job,
+								data->next_job);
+					}
+				}
+			}
+			break;
+
+		case AST_NODE_INIT_EXPR:
+			{
+				struct ast_dt_init_expr *iexpr;
+				iexpr = get_init_expr(ctx, data->parent_id, node->init_expr.id);
+
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, iexpr->expr);
+
+				ast_dt_job_dependency(ctx,
+						expr->value_jobs.resolve_types,
+						data->next_job);
+			}
+			break;
+
+		case AST_NODE_DATA_TYPE:
+			{
+				struct ast_node *dt_node;
+				dt_node = ast_module_node_get_data_type(
+						ctx->ast_ctx->vm, node);
+
+				for (size_t i = 0; i < ctx->composites.length; i++) {
+					struct ast_dt_composite *comp;
+					comp = get_composite(ctx, i);
+					if (comp->root_node == dt_node) {
+						ast_dt_job_dependency(ctx,
+								comp->finalize_job,
+								data->next_job);
+					}
+				}
+			}
+			break;
+
+		default:
+			break;
+	}
+
+	return ast_node_traverse_scope(
+			ast_dt_node_discover_dependencies_internal,
+			user_data, ast_ctx, scope, node);
+}
+
+static int
+ast_dt_node_discover_dependencies(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id, struct ast_node *expr,
+		ast_dt_job_id next_job)
+{
+	struct ast_dt_node_discover_dependencies_data data = {0};
+
+	data.ctx = ctx;
+	data.next_job = next_job;
+
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+
+	struct ast_scope scope = {0};
+
+	return ast_node_traverse_scope(
+			ast_dt_node_discover_dependencies_internal,
+			&data, ctx->ast_ctx, &scope, expr);
+}
+
 static type_id
 ast_dt_composite_make_type(struct ast_dt_context *ctx,
 		ast_dt_composite_id comp_id);
@@ -2290,9 +2361,10 @@ ast_dt_job_dispatch_composite_resolve_names(
 		return -1;
 	}
 
-	ast_dt_find_named_dependencies(
-			ctx, comp->closures_evaled,
-			AST_NAME_DEP_REQUIRE_VALUE, comp->root_node);
+	ast_dt_node_discover_dependencies(
+			ctx, self->parent, comp->root_node,
+			comp->closures_evaled);
+
 	return 0;
 }
 
@@ -2404,9 +2476,10 @@ ast_dt_job_dispatch_mbr_type_resolve_names(
 		return -1;
 	}
 
-	ast_dt_find_named_dependencies(
-			ctx, mbr->type_resolved,
-			AST_NAME_DEP_REQUIRE_VALUE, mbr->type_node);
+	ast_dt_node_discover_dependencies(
+			ctx, mbr->parent, mbr->type_node,
+			mbr->type_resolved);
+
 	return 0;
 }
 
@@ -2432,9 +2505,10 @@ ast_dt_job_dispatch_expr_resolve_names(
 		return -1;
 	}
 
-	ast_dt_find_named_dependencies(
-			ctx, expr->value_jobs.resolve_types,
-			AST_NAME_DEP_REQUIRE_TYPE, expr->value.node);
+	ast_dt_node_discover_dependencies(
+			ctx, expr->parent, expr->value.node,
+			expr->value_jobs.resolve_types);
+
 	return 0;
 }
 
@@ -2677,9 +2751,10 @@ ast_dt_job_dispatch_tc_impl_resolve_names(
 	if (err) {
 		return -1;
 	}
-	ast_dt_find_named_dependencies(
-			ctx, impl->resolve_target,
-			AST_NAME_DEP_REQUIRE_VALUE, impl->impl->target);
+
+	ast_dt_node_discover_dependencies(
+			ctx, impl->parent, impl->impl->target,
+			impl->resolve_target);
 
 	err = ast_composite_node_resolve_names(
 			ctx->ast_ctx, ctx->mod->native_mod,
@@ -2688,9 +2763,10 @@ ast_dt_job_dispatch_tc_impl_resolve_names(
 	if (err) {
 		return -1;
 	}
-	ast_dt_find_named_dependencies(
-			ctx, impl->resolve,
-			AST_NAME_DEP_REQUIRE_VALUE, impl->impl->value);
+
+	ast_dt_node_discover_dependencies(
+			ctx, impl->parent, impl->impl->value,
+			impl->resolve);
 
 	for (size_t i = 0; i < impl->impl->num_args; i++) {
 		err = ast_composite_node_resolve_names(
@@ -2701,9 +2777,9 @@ ast_dt_job_dispatch_tc_impl_resolve_names(
 			return -1;
 		}
 
-		ast_dt_find_named_dependencies(
-				ctx, impl->resolve,
-				AST_NAME_DEP_REQUIRE_VALUE, impl->impl->args[i].value);
+		ast_dt_node_discover_dependencies(
+				ctx, impl->parent, impl->impl->args[i].value,
+				impl->resolve);
 	}
 	return 0;
 }

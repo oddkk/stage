@@ -78,18 +78,15 @@ ast_node_get_closure_target(struct ast_node *node)
 	}
 }
 
-static struct ast_name_ref
-ast_try_lookup_in_scope(struct ast_context *ctx,
-		struct ast_scope *scope, struct atom *name)
+static struct ast_scope_name *
+ast_try_lookup_in_scope(struct ast_scope *scope, struct atom *name)
 {
-	struct ast_name_ref res = {0};
-	res.kind = AST_NAME_REF_NOT_FOUND;
+	struct ast_scope_name *res = NULL;
 
 	for (size_t i = 0; i < scope->num_names; i++) {
 		if (scope->names[i].name == name) {
-			if (res.kind == AST_NAME_REF_NOT_FOUND ||
-					res.kind == AST_NAME_REF_CLOSURE) {
-				res = scope->names[i].ref;
+			if (!res || res->ref.kind == AST_NAME_REF_CLOSURE) {
+				res = &scope->names[i];
 			} else {
 				if (scope->names[i].ref.kind != AST_NAME_REF_NOT_FOUND &&
 						scope->names[i].ref.kind != AST_NAME_REF_CLOSURE) {
@@ -539,6 +536,28 @@ struct ast_node_ambigous_refs {
 	size_t num_ambiguous_refs;
 };
 
+struct ast_scope_name *
+ast_scope_lookup(struct ast_scope *root_scope, struct atom *name)
+{
+	for (struct ast_scope *scope = root_scope;
+			scope != NULL;
+			scope = scope->parent) {
+		struct ast_scope_name *ref =
+			ast_try_lookup_in_scope(scope, name);
+		if (ref) {
+			return ref;
+		}
+
+		if (scope->parent_kind == AST_SCOPE_PARENT_CLOSURE) {
+			assert(scope->closure_target);
+			// TODO: Handle closures.
+			break;
+		}
+	}
+
+	return NULL;
+}
+
 static struct ast_name_ref
 ast_scope_lookup_name(struct ast_context *ctx,
 		struct ast_scope *root_scope, struct atom *name)
@@ -546,11 +565,10 @@ ast_scope_lookup_name(struct ast_context *ctx,
 	for (struct ast_scope *scope = root_scope;
 			scope != NULL;
 			scope = scope->parent) {
-		struct ast_name_ref ref =
-			ast_try_lookup_in_scope(
-				ctx, scope, name);
-		if (ref.kind != AST_NAME_REF_NOT_FOUND) {
-			return ref;
+		struct ast_scope_name *ref =
+			ast_try_lookup_in_scope(scope, name);
+		if (ref) {
+			return ref->ref;
 		}
 
 		if (scope->parent_kind == AST_SCOPE_PARENT_CLOSURE) {
@@ -625,7 +643,7 @@ ast_scope_lookup_or_propagate_name(
 	mbr.name = name;
 	mbr.ref.kind = AST_NAME_REF_NOT_FOUND;
 	// TODO
-	mbr.require_const = true;
+	mbr.require_const = false;
 	// mbr.require_const = require_const;
 
 	ast_closure_id closure_id;
