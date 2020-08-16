@@ -2118,10 +2118,13 @@ ast_dt_node_discover_dependencies_internal(
 						closure = &comp->composite.closure;
 						for (size_t i = 0; i < closure->num_members; i++) {
 							if (closure->members[i].name == node->lookup.name) {
+								struct ast_dt_composite *parent;
+								parent = get_composite(ctx, data->parent_id);
+
 								// TODO: Allow more granular dependencies on
 								// closures.
-								found = false;
-								found_target_job = -1;
+								found = true;
+								found_target_job = parent->closures_evaled;
 								break;
 							}
 						}
@@ -2943,7 +2946,7 @@ ast_dt_job_info_fill_mbr(
 	mbr = get_member(ctx, mbr_id);
 
 	info->description = arena_sprintf(ctx->tmp_mem,
-			"mbr  0x%03x:0x%03x '%.*s'",
+			"mbr  %03x:m%03x '%.*s'",
 			mbr->parent, mbr_id, ALIT(mbr->name));
 
 	if (mbr->type_node) {
@@ -3018,7 +3021,7 @@ ast_dt_job_fill_info_expr(
 				ctx->ast_ctx->vm, ctx->tmp_mem, expr->const_value);
 
 		info->description = arena_sprintf(ctx->tmp_mem,
-				"expr 0x%03x:0x%03x const `%.*s`",
+				"expr %03x:e%03x const `%.*s`",
 				expr->parent, expr_id, LIT(value_repr));
 	} else if (expr->value.node) {
 		struct string value_repr;
@@ -3026,11 +3029,11 @@ ast_dt_job_fill_info_expr(
 				expr->value.node, false);
 
 		info->description = arena_sprintf(ctx->tmp_mem,
-				"expr 0x%03x:0x%03x `%.*s`",
+				"expr %03x:e%03x `%.*s`",
 				expr->parent, expr_id, LIT(value_repr));
 	} else {
 		info->description = arena_sprintf(ctx->tmp_mem,
-				"expr 0x%03x:0x%03x func %lu",
+				"expr %03x:e%03x func %lu",
 				expr->parent, expr_id, expr->value.func);
 	}
 }
@@ -3109,7 +3112,7 @@ ast_dt_job_get_info_bind_target_resolve_names(
 	}
 
 	info.description = arena_sprintf(ctx->tmp_mem,
-			"bind %.*s <- expr 0x%03x:0x%03x",
+			"bind %.*s <- expr %03x:e%03x",
 			LIT(target), expr->parent, bind->expr);
 
 	return info;

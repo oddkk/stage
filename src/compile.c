@@ -1356,6 +1356,15 @@ ast_dt_job_dependency(struct ast_dt_context *ctx,
 {
 	if (from_id < 0) {
 		// The dependecy was already completed.
+#if AST_DT_DEBUG_JOBS
+		printf("%03zx " TC(TC_BRIGHT_BLUE, "dep") " "
+				TC(TC_BRIGHT_GREEN, "(completed)"), ctx->run_i);
+		// ast_dt_print_job_desc(ctx, from_id);
+		// Move the cursor to column 80 to align the dependent jobs.
+		printf("\033[80G " TC(TC_BRIGHT_BLUE, "->") " ");
+		ast_dt_print_job_desc(ctx, to_id);
+		printf("\n");
+#endif
 		return;
 	}
 
