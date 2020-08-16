@@ -2198,9 +2198,8 @@ ast_dt_node_discover_dependencies(struct ast_dt_context *ctx,
 
 	struct ast_scope scope = {0};
 
-	return ast_node_traverse_scope(
-			ast_dt_node_discover_dependencies_internal,
-			&data, ctx->ast_ctx, &scope, expr);
+	return ast_dt_node_discover_dependencies_internal(
+			ctx->ast_ctx, &scope, expr, AST_TRAV_ROOT, &data);
 }
 
 static type_id
