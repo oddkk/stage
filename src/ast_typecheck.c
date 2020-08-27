@@ -244,7 +244,9 @@ ast_node_resolve_datatypes(
 			break;
 
 		case AST_NODE_VARIANT:
+			printf("Pre Try eval variant\n");
 			if (node->variant.type == TYPE_UNSET) {
+				printf("Try eval variant\n");
 				node->variant.type =
 					ast_dt_finalize_variant(
 							ctx, mod,
@@ -257,6 +259,9 @@ ast_node_resolve_datatypes(
 				}
 			}
 			break;
+
+		case AST_NODE_COMPOSITE:
+			return;
 
 			/*
 		case AST_NODE_COMPOSITE:
@@ -281,6 +286,7 @@ ast_node_resolve_datatypes(
 				}
 			}
 			break;
+			*/
 
 		case AST_NODE_DATA_TYPE:
 			{
@@ -291,7 +297,6 @@ ast_node_resolve_datatypes(
 				ast_node_resolve_datatypes(
 						ctx, mod, deps, num_deps, dt_node);
 			}
-			*/
 
 		default:
 			break;
@@ -823,7 +828,11 @@ ast_node_constraints(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
 						res_slot);
 			} else {
-				panic("Attempted to use the type of an not-yet-solved composite.");
+				// Not yet having a value is current not necessarly an error.
+				// If the composite is inside a template the expression will be
+				// evaluated early to generate constraints for its parameters.
+
+				// panic("Attempted to use the type of an not-yet-solved composite.");
 			}
 
 			node->typecheck_slot = res_slot;
@@ -849,7 +858,7 @@ ast_node_constraints(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
 						res_slot);
 			} else {
-				panic("Attempted to use the type of an not-yet-solved type class.");
+				// panic("Attempted to use the type of an not-yet-solved type class.");
 			}
 
 			node->typecheck_slot = res_slot;
@@ -870,7 +879,7 @@ ast_node_constraints(
 						env, node->loc, AST_CONSTR_SRC_DT_DECL,
 						res_slot);
 			} else {
-				panic("Attempted to use the type of an not-yet-solved variant.");
+				// panic("Attempted to use the type of an not-yet-solved variant.");
 			}
 
 			node->typecheck_slot = res_slot;

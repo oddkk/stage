@@ -406,7 +406,8 @@ ast_node_repr(struct ast_context *ctx, struct arena *mem, struct ast_node *node,
 					default: panic("Invalid node.");  break;
 				}
 
-				arena_string_append_sprintf(mem, &result, "%c", brace[0]);
+				arena_string_append_sprintf(mem, &result,
+						"%.*s%c", LIT(func_repr), brace[0]);
 				for (size_t i = 0; i < node->call.num_args; i++) {
 					struct string value_repr;
 					value_repr = ast_node_repr(ctx, mem,

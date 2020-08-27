@@ -1340,52 +1340,54 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 					use = get_use(ctx, dt_use_id(parent_id, deps[i].ref.use.id));
 
 					// TODO: Support use of non-constant values.
-					assert(use->is_const);
-
-					type_id target_type_id;
-					int err;
-					err = object_cons_descendant_type(
-							ctx->ast_ctx->vm, use->type,
-							deps[i].ref.use.param, &target_type_id);
-					if (err) {
-						printf("Failed to resolve the use target's type.\n");
-						return -1;
-					}
-
-					struct type *target_type;
-					target_type = vm_get_type(ctx->ast_ctx->vm, target_type_id);
-
-					uint8_t buffer[target_type->size];
-					memset(buffer, 0, target_type->size);
+					// assert(use->is_const);
 					struct object obj = {0};
-					obj.type = target_type_id;
-					obj.data = buffer;
 
-					struct stg_exec heap = {0};
-					heap.vm = ctx->ast_ctx->vm;
-					heap.heap = &ctx->ast_ctx->vm->transient;
-					arena_mark cp = arena_checkpoint(heap.heap);
+					if (use->is_const) {
+						type_id target_type_id;
+						int err;
+						err = object_cons_descendant_type(
+								ctx->ast_ctx->vm, use->type,
+								deps[i].ref.use.param, &target_type_id);
+						if (err) {
+							printf("Failed to resolve the use target's type.\n");
+							return -1;
+						}
 
-					err = object_unpack(
-							ctx->ast_ctx->vm, &heap,
-							use->const_value,
-							deps[i].ref.use.param, &obj);
-					if (err) {
+						struct type *target_type;
+						target_type = vm_get_type(ctx->ast_ctx->vm, target_type_id);
+
+						uint8_t buffer[target_type->size];
+						memset(buffer, 0, target_type->size);
+						obj.type = target_type_id;
+						obj.data = buffer;
+
+						struct stg_exec heap = {0};
+						heap.vm = ctx->ast_ctx->vm;
+						heap.heap = &ctx->ast_ctx->vm->transient;
+						arena_mark cp = arena_checkpoint(heap.heap);
+
+						err = object_unpack(
+								ctx->ast_ctx->vm, &heap,
+								use->const_value,
+								deps[i].ref.use.param, &obj);
+						if (err) {
+							arena_reset(heap.heap, cp);
+							printf("Failed to unpack use target.\n");
+							return -1;
+						}
+
+						// TODO: Is this necessary?
+						obj = register_object(ctx->ast_ctx->vm, &ctx->mod->store, obj);
 						arena_reset(heap.heap, cp);
-						printf("Failed to unpack use target.\n");
-						return -1;
 					}
-
-					// TODO: Is this necessary?
-					obj = register_object(ctx->ast_ctx->vm, &ctx->mod->store, obj);
-					arena_reset(heap.heap, cp);
 
 					dep->ref = deps[i].ref;
 					dep->req = AST_NAME_DEP_REQUIRE_VALUE;
 					dep->val = obj;
 					dep->value = -1;
 					dep->lookup_failed = false;
-					dep->determined = true;
+					dep->determined = use->is_const;
 				}
 				break;
 
@@ -2065,10 +2067,16 @@ ast_dt_try_pack_member(
 	return true;
 }
 
+enum ast_dt_node_discover_dependencies_target {
+	AST_DT_DISCOVER_DEP_TARGET_TYPE,
+	AST_DT_DISCOVER_DEP_TARGET_VALUE,
+};
+
 struct ast_dt_node_discover_dependencies_data {
 	struct ast_dt_context *ctx;
 	ast_dt_composite_id parent_id;
 	ast_dt_job_id next_job;
+	enum ast_dt_node_discover_dependencies_target target;
 };
 
 static int
@@ -2079,9 +2087,40 @@ ast_dt_node_discover_dependencies_internal(
 {
 	struct ast_dt_node_discover_dependencies_data *data = user_data;
 	struct ast_dt_context *ctx = data->ctx;
+	struct ast_dt_node_discover_dependencies_data _tmp_data;
 
 	if (!node) {
 		return 0;
+	}
+
+	switch (role) {
+		case AST_TRAV_FUNC_PARAM_TYPE:
+		case AST_TRAV_FUNC_RET_TYPE:
+		case AST_TRAV_FUNC_TYPE_PARAM_TYPE:
+		case AST_TRAV_FUNC_TYPE_RET_TYPE:
+		case AST_TRAV_TEMPL_PARAM_TYPE:
+		case AST_TRAV_MATCH_PATTERN_TYPE:
+		case AST_TRAV_COMPOSITE_MEMBER_TYPE:
+		case AST_TRAV_TC_PATTERN_PARAM_TYPE:
+		case AST_TRAV_TC_MBR_PARAM_TYPE:
+		case AST_TRAV_TC_MBR_TYPE:
+		case AST_TRAV_VARIANT_OPTION_TYPE:
+		case AST_TRAV_INST_TARGET:
+		case AST_TRAV_CONS_TARGET:
+		case AST_TRAV_CONS_ARG:
+			_tmp_data = *data;
+			data = &_tmp_data;
+			data->target = AST_DT_DISCOVER_DEP_TARGET_TYPE;
+			break;
+
+		case AST_TRAV_FUNC_BODY:
+			_tmp_data = *data;
+			data = &_tmp_data;
+			data->target = AST_DT_DISCOVER_DEP_TARGET_VALUE;
+			break;
+
+		default:
+			break;
 	}
 
 	switch (node->kind) {
@@ -2109,7 +2148,15 @@ ast_dt_node_discover_dependencies_internal(
 							struct ast_dt_member *mbr;
 							mbr = get_member(ctx, parent->local_member_ids[i]);
 
-							found_target_job = mbr->type_resolved;
+							switch (data->target) {
+								case AST_DT_DISCOVER_DEP_TARGET_TYPE:
+									found_target_job = mbr->type_resolved;
+									break;
+
+								case AST_DT_DISCOVER_DEP_TARGET_VALUE:
+									found_target_job = mbr->const_resolved;
+									break;
+							}
 						}
 					}
 
@@ -2124,7 +2171,15 @@ ast_dt_node_discover_dependencies_internal(
 								// TODO: Allow more granular dependencies on
 								// closures.
 								found = true;
-								found_target_job = parent->closures_evaled;
+								switch (data->target) {
+									case AST_DT_DISCOVER_DEP_TARGET_TYPE:
+										found_target_job = parent->closures_evaled;
+										break;
+
+									case AST_DT_DISCOVER_DEP_TARGET_VALUE:
+										found_target_job = parent->closures_evaled;
+										break;
+								}
 								break;
 							}
 						}
@@ -2150,8 +2205,20 @@ ast_dt_node_discover_dependencies_internal(
 				struct ast_dt_expr *expr;
 				expr = get_expr(ctx, iexpr->expr);
 
+				ast_dt_job_id target_job_id = -1;
+
+				switch (data->target) {
+					case AST_DT_DISCOVER_DEP_TARGET_TYPE:
+						target_job_id = expr->value_jobs.resolve_types;
+						break;
+
+					case AST_DT_DISCOVER_DEP_TARGET_VALUE:
+						target_job_id = expr->value_jobs.codegen;
+						break;
+				}
+
 				ast_dt_job_dependency(ctx,
-						expr->value_jobs.resolve_types,
+						target_job_id,
 						data->next_job);
 			}
 			break;
@@ -2166,8 +2233,20 @@ ast_dt_node_discover_dependencies_internal(
 					struct ast_dt_composite *comp;
 					comp = get_composite(ctx, i);
 					if (comp->root_node == dt_node) {
+						ast_dt_job_id target_job_id = -1;
+
+						switch (data->target) {
+							case AST_DT_DISCOVER_DEP_TARGET_TYPE:
+								target_job_id = -1;
+								break;
+
+							case AST_DT_DISCOVER_DEP_TARGET_VALUE:
+								target_job_id = comp->finalize_job;
+								break;
+						}
+
 						ast_dt_job_dependency(ctx,
-								comp->finalize_job,
+								target_job_id,
 								data->next_job);
 					}
 				}
@@ -2186,12 +2265,13 @@ ast_dt_node_discover_dependencies_internal(
 static int
 ast_dt_node_discover_dependencies(struct ast_dt_context *ctx,
 		ast_dt_composite_id parent_id, struct ast_node *expr,
-		ast_dt_job_id next_job)
+		ast_dt_job_id next_job, enum ast_dt_node_discover_dependencies_target target)
 {
 	struct ast_dt_node_discover_dependencies_data data = {0};
 
 	data.ctx = ctx;
 	data.next_job = next_job;
+	data.target = target;
 
 	struct ast_dt_composite *parent;
 	parent = get_composite(ctx, parent_id);
@@ -2239,9 +2319,11 @@ ast_dt_job_dispatch_composite_resolve_names(
 		return -1;
 	}
 
+	// TODO: Does closures require their values to be constant?
 	ast_dt_node_discover_dependencies(
 			ctx, self->parent, comp->root_node,
-			comp->closures_evaled);
+			comp->closures_evaled,
+			AST_DT_DISCOVER_DEP_TARGET_VALUE);
 
 	return 0;
 }
@@ -2356,7 +2438,8 @@ ast_dt_job_dispatch_mbr_type_resolve_names(
 
 	ast_dt_node_discover_dependencies(
 			ctx, mbr->parent, mbr->type_node,
-			mbr->type_resolved);
+			mbr->type_resolved,
+			AST_DT_DISCOVER_DEP_TARGET_VALUE);
 
 	return 0;
 }
@@ -2385,7 +2468,8 @@ ast_dt_job_dispatch_expr_resolve_names(
 
 	ast_dt_node_discover_dependencies(
 			ctx, expr->parent, expr->value.node,
-			expr->value_jobs.resolve_types);
+			expr->value_jobs.resolve_types,
+			AST_DT_DISCOVER_DEP_TARGET_TYPE);
 
 	return 0;
 }
@@ -2632,7 +2716,8 @@ ast_dt_job_dispatch_tc_impl_resolve_names(
 
 	ast_dt_node_discover_dependencies(
 			ctx, impl->parent, impl->impl->target,
-			impl->resolve_target);
+			impl->resolve_target,
+			AST_DT_DISCOVER_DEP_TARGET_VALUE);
 
 	err = ast_composite_node_resolve_names(
 			ctx->ast_ctx, ctx->mod->native_mod,
@@ -2644,7 +2729,8 @@ ast_dt_job_dispatch_tc_impl_resolve_names(
 
 	ast_dt_node_discover_dependencies(
 			ctx, impl->parent, impl->impl->value,
-			impl->resolve);
+			impl->resolve,
+			AST_DT_DISCOVER_DEP_TARGET_VALUE);
 
 	for (size_t i = 0; i < impl->impl->num_args; i++) {
 		err = ast_composite_node_resolve_names(
@@ -2657,7 +2743,8 @@ ast_dt_job_dispatch_tc_impl_resolve_names(
 
 		ast_dt_node_discover_dependencies(
 				ctx, impl->parent, impl->impl->args[i].value,
-				impl->resolve);
+				impl->resolve,
+				AST_DT_DISCOVER_DEP_TARGET_VALUE);
 	}
 	return 0;
 }
@@ -3664,6 +3751,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx,
 	inst->type = result;
 
 	comp->type = result;
+	node->composite.type = result;
 
 	return result;
 }
