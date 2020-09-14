@@ -117,6 +117,14 @@ struct ast_dt_job_info {
 	};
 };
 
+// Marks the given job as suspended. Suspended jobs are not dispatched until
+// after they have been resumed.
+void
+ast_dt_job_suspend(struct ast_dt_context *ctx, ast_dt_job_id);
+
+void
+ast_dt_job_resume(struct ast_dt_context *ctx, ast_dt_job_id);
+
 // Requests that from must be evaluated before to.
 void
 ast_dt_job_dependency(struct ast_dt_context *ctx,

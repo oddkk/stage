@@ -836,6 +836,7 @@ struct ast_dt_job {
 	// Use to keep track of internal vertex id in cycle detection.
 	int aux_id;
 	bool failed;
+	bool suspended;
 
 	size_t num_incoming_deps;
 	size_t num_outgoing_deps;
@@ -1349,6 +1350,60 @@ ast_dt_job_remove_from_terminal_jobs(struct ast_dt_context *ctx,
 	}
 }
 
+
+void
+ast_dt_job_suspend(struct ast_dt_context *ctx, ast_dt_job_id target_id)
+{
+	assert(target_id > -1);
+
+	struct ast_dt_job *target;
+	target = get_job(ctx, target_id);
+
+	if (target->suspended) {
+		return;
+	}
+
+#if AST_DT_DEBUG_JOBS
+		printf("%03zx " TC(TC_BRIGHT_MAGENTA, "sus") " ", ctx->run_i);
+		ast_dt_print_job_desc(ctx, target_id);
+		printf("\n");
+#endif
+
+	target->suspended = true;
+
+	if (target->num_incoming_deps == 0) {
+		ast_dt_job_remove_from_terminal_jobs(ctx, target_id);
+	}
+}
+
+void
+ast_dt_job_resume(struct ast_dt_context *ctx, ast_dt_job_id target_id)
+{
+	assert(target_id > -1);
+
+	struct ast_dt_job *target;
+	target = get_job(ctx, target_id);
+
+	if (!target->suspended) {
+		return;
+	}
+
+#if AST_DT_DEBUG_JOBS
+		printf("%03zx " TC(TC_BRIGHT_GREEN, "res") " ", ctx->run_i);
+		ast_dt_print_job_desc(ctx, target_id);
+		printf("\n");
+#endif
+
+	target->suspended = false;
+
+	if (target->num_incoming_deps == 0) {
+		assert(target->terminal_jobs == -1);
+
+		target->terminal_jobs = ctx->terminal_jobs;
+		ctx->terminal_jobs = target_id;
+	}
+}
+
 // Requests that from must be evaluated before to.
 void
 ast_dt_job_dependency(struct ast_dt_context *ctx,
@@ -1483,7 +1538,7 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 				assert(ctx->unvisited_job_deps > 0);
 				ctx->unvisited_job_deps -= 1;
 
-				if (to->num_incoming_deps == 0) {
+				if (to->num_incoming_deps == 0 && !to->suspended) {
 					to->terminal_jobs = ctx->terminal_jobs;
 					ctx->terminal_jobs = dep->to;
 				}
