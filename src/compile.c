@@ -932,120 +932,184 @@ enum ast_dtc_vertex_color {
 struct ast_dtc_vertex {
 	ast_dt_job_id job_id;
 
-	enum ast_dtc_vertex_color color;
-	int discover, finish;
-	struct ast_dtc_vertex *pred;
+	bool visited, assigned;
+	struct ast_dtc_vertex *next_l, *next_in_component;
 
 	struct ast_dtc_edge *outgoing_edges;
 	size_t num_outgoing_edges;
+
+	struct ast_dtc_edge *incoming_edges;
+	size_t num_incoming_edges;
+	size_t num_incoming_edges_filled;
 };
 
 struct ast_dtc_edge {
 	struct ast_dtc_vertex *from, *to;
 };
 
-struct ast_dtc_graph {
-	struct ast_dtc_vertex *vertices;
-	size_t num_vertices;
-
-	struct ast_dtc_edge *edges;
-	size_t num_edges;
+struct ast_dtc_component {
+	struct ast_dtc_vertex *head;
 };
+
 
 struct ast_dtc_components {
-	struct ast_dtc_vertex **comps;
-	size_t num_comps;
+	struct ast_dtc_component *components;
+	size_t num_components;
+};
+
+struct ast_dtc_kosaraju {
+	struct ast_dtc_vertex *head_l, *head_components;
 };
 
 static void
-ast_dtc_dfs_visit(
-		struct ast_dtc_graph *graph,
+ast_dtc_kosaraju_visit(struct ast_dtc_kosaraju *ctx, struct ast_dtc_vertex *vert)
+{
+	if (vert->visited) {
+		return;
+	}
+
+	vert->visited = true;
+
+	for (size_t i = 0; i < vert->num_outgoing_edges; i++) {
+		ast_dtc_kosaraju_visit(ctx, vert->outgoing_edges[i].to);
+	}
+
+	vert->next_l = ctx->head_l;
+	ctx->head_l = vert;
+}
+
+static void
+ast_dtc_kosaraju_assign(
+		struct ast_dtc_kosaraju *ctx,
 		struct ast_dtc_vertex *vert,
-		int *time, struct ast_dtc_components *out_comps)
+		struct ast_dtc_component *component)
 {
-	*time += 1;
-	vert->discover = *time;
-	vert->color = AST_DTC_GRAY;
+	if (vert->assigned) {
+		return;
+	}
 
-	bool is_terminal = true;
+	vert->assigned = true;
+	vert->next_in_component = component->head;
+	component->head = vert;
 
-	for (size_t i = 0; i < graph->num_edges; i++) {
-		struct ast_dtc_edge *edge;
-		edge = &graph->edges[i];
-		if (edge->from == vert &&
-				edge->to->color == AST_DTC_WHITE) {
-			edge->to->pred = vert;
-			ast_dtc_dfs_visit(graph, edge->to, time, out_comps);
-			is_terminal = false;
+	for (size_t i = 0; i < vert->num_incoming_edges; i++) {
+		ast_dtc_kosaraju_assign(ctx,
+				vert->incoming_edges[i].from, component);
+	}
+}
+
+static struct ast_dtc_components
+ast_dt_find_components(struct ast_dt_context *ctx, struct arena *mem)
+{
+	// Recreate the job dependency graph.
+
+	size_t num_unfinished_jobs = 0;
+	size_t num_unvisited_edges = 0;
+
+	for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
+		struct ast_dt_job *job;
+		job = get_job(ctx, job_i);
+
+		if (job->kind == AST_DT_JOB_FREE) {
+			continue;
 		}
+
+		job->aux_id = num_unfinished_jobs;
+		num_unfinished_jobs += 1;
+		num_unvisited_edges += job->num_incoming_deps;
 	}
 
-	if (is_terminal && out_comps) {
-		dlist_append(
-				out_comps->comps,
-				out_comps->num_comps,
-				&vert);
-	}
+	size_t num_vertices = num_unfinished_jobs;
+	struct ast_dtc_vertex *vertices = arena_allocn(mem,
+			num_vertices, sizeof(struct ast_dtc_vertex));
 
-	// for (size_t i = 0; i < vert->num_outgoing_edges; i++) {
-	// 	struct ast_dtc_edge *edge;
-	// 	edge = &vert->outgoing_edges[i];
-	// 	if (edge->to->color == AST_DTC_WHITE) {
-	// 		ast_dtc_dfs_visit(graph, edge->to, time);
-	// 	}
-	// }
+	struct ast_dtc_edge *incoming_edges = arena_allocn(mem,
+			num_unvisited_edges, sizeof(struct ast_dtc_edge));
+	struct ast_dtc_edge *outgoing_edges = arena_allocn(mem,
+			num_unvisited_edges, sizeof(struct ast_dtc_edge));
 
-	vert->color = AST_DTC_BLACK;
-	*time += 1;
-	vert->finish = *time;
-}
+	size_t unvisited_incoming_edge_i = 0;
+	for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
+		struct ast_dt_job *job;
+		job = get_job(ctx, job_i);
 
-struct ast_dtc_vert_sort {
-	int finish;
-	struct ast_dtc_vertex *vert;
-};
+		if (job->kind == AST_DT_JOB_FREE) {
+			continue;
+		}
 
-static int
-ast_dtc_dfs_sorted_comp(const void *lhs_ptr, const void *rhs_ptr)
-{
-	const struct ast_dtc_vert_sort *lhs, *rhs;
-	lhs = lhs_ptr;
-	rhs = rhs_ptr;
-
-	return rhs->finish - lhs->finish;
-}
-
-static void
-ast_dtc_dfs(struct ast_dtc_graph *graph,
-		struct ast_dtc_components *out_comps,
-		bool sort)
-{
-	for (size_t i = 0; i < graph->num_vertices; i++) {
-		graph->vertices[i].color = AST_DTC_WHITE;
-		graph->vertices[i].pred = NULL;
-	}
-
-	int time = 0;
-
-	struct ast_dtc_vert_sort order[graph->num_vertices];
-	for (size_t i = 0; i < graph->num_vertices; i++) {
-		order[i].finish = graph->vertices[i].finish;
-		order[i].vert = &graph->vertices[i];
-	}
-
-	if (sort) {
-		qsort(order, graph->num_vertices,
-				sizeof(struct ast_dtc_vert_sort),
-				ast_dtc_dfs_sorted_comp);
-	}
-
-	for (size_t i = 0; i < graph->num_vertices; i++) {
 		struct ast_dtc_vertex *vert;
-		vert = order[i].vert;
-		if (vert->color == AST_DTC_WHITE) {
-			ast_dtc_dfs_visit(graph, vert, &time, out_comps);
+		vert = &vertices[job->aux_id];
+
+		vert->job_id = job_i;
+		vert->num_outgoing_edges = job->num_outgoing_deps;
+		vert->num_incoming_edges = job->num_incoming_deps;
+		vert->incoming_edges = &incoming_edges[unvisited_incoming_edge_i];
+		unvisited_incoming_edge_i += job->num_incoming_deps;
+	}
+
+	size_t num_unvisited_outgoing_edges = 0;
+	for (size_t vert_i = 0; vert_i < num_unfinished_jobs; vert_i++) {
+		struct ast_dtc_vertex *vert = &vertices[vert_i];
+		struct ast_dt_job *job = get_job(ctx, vert->job_id);
+
+		vert->outgoing_edges = &outgoing_edges[num_unvisited_outgoing_edges];
+
+		for (size_t edge_i = 0; edge_i < job->num_outgoing_deps; edge_i++) {
+			if (!job->outgoing_deps[edge_i].visited) {
+				struct ast_dt_job *to_job;
+				to_job = get_job(ctx, job->outgoing_deps[edge_i].to);
+
+				struct ast_dtc_vertex *to;
+				to = &vertices[to_job->aux_id];
+				assert(to->num_incoming_edges_filled < to->num_incoming_edges);
+
+				struct ast_dtc_edge *forward_edge, *back_edge;
+				forward_edge = &outgoing_edges[num_unvisited_outgoing_edges];
+				back_edge = &to->incoming_edges[to->num_incoming_edges_filled];
+
+				forward_edge->from = vert;
+				forward_edge->to = to;
+
+				*back_edge = *forward_edge;
+
+				num_unvisited_outgoing_edges += 1;
+				to->num_incoming_edges_filled += 1;
+			}
 		}
 	}
+
+	assert(num_unvisited_edges == num_unvisited_outgoing_edges);
+
+	// Perform Kosaraju's algorithm to find the strongly connected components
+	// of the graph.
+	struct ast_dtc_kosaraju comp_ctx = {0};
+	for (size_t vert_i = 0; vert_i < num_vertices; vert_i++) {
+		struct ast_dtc_vertex *vert = &vertices[vert_i];
+		ast_dtc_kosaraju_visit(&comp_ctx, vert);
+	}
+
+	struct ast_dtc_component *comps;
+	comps = arena_allocn(mem, num_vertices, sizeof(struct ast_dtc_component));
+	size_t comps_i = 0;
+
+	for (struct ast_dtc_vertex *vert = comp_ctx.head_l; vert; vert = vert->next_l) {
+		struct ast_dtc_component comp = {0};
+		ast_dtc_kosaraju_assign(&comp_ctx, vert, &comp);
+
+		// We only keep components that contains at least two components (a
+		// head and its next) because single node components can not contain
+		// cycles.
+		if (comp.head && comp.head->next_in_component) {
+			comps[comps_i] = comp;
+			comps_i += 1;
+		}
+	}
+
+	struct ast_dtc_components res = {0};
+	res.num_components = comps_i;
+	res.components = comps;
+
+	return res;
 }
 
 static struct ast_dt_job_info
@@ -1097,114 +1161,105 @@ ast_dt_report_cyclic_dependency_chain(struct ast_dt_context *ctx,
 	stg_error(ctx->ast_ctx->err,
 			ast_dt_job_location(ctx, it->job_id),
 			"Found member dependency cycle. %03x", it->job_id);
-	it = it->pred;
+	it = it->next_in_component;
 
 	while (it) {
 		stg_appendage(ctx->ast_ctx->err,
 				ast_dt_job_location(ctx, it->job_id),
 				"Through. %03x", it->job_id);
-		it = it->pred;
+		it = it->next_in_component;
 	}
 }
 
 static void
 ast_dt_report_cyclic_dependencies(struct ast_dt_context *ctx)
 {
-	struct ast_dtc_graph graph = {0};
+	struct arena *mem = ctx->tmp_mem;
+	arena_mark cp = arena_checkpoint(mem);
 
-	size_t num_unfinished_jobs = 0;
-	size_t num_unvisited_edges = 0;
+	struct ast_dtc_components comps;
+	comps = ast_dt_find_components(ctx, mem);
 
-	for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
-		struct ast_dt_job *job;
-		job = get_job(ctx, job_i);
-
-		if (job->kind == AST_DT_JOB_FREE) {
-			continue;
-		}
-
-		num_unfinished_jobs += 1;
-		num_unvisited_edges += job->num_outgoing_deps;
-	}
-
-	struct ast_dtc_vertex _verts[num_unfinished_jobs];
-	memset(_verts, 0, sizeof(struct ast_dtc_vertex) * num_unfinished_jobs);
-	struct ast_dtc_edge _edges[num_unvisited_edges];
-	memset(_edges, 0, sizeof(struct ast_dtc_edge) * num_unvisited_edges);
-
-	graph.vertices = _verts;
-	graph.num_vertices = num_unfinished_jobs;
-	graph.edges = _edges;
-	graph.num_edges = num_unvisited_edges;
-
-	size_t vert_i = 0;
-
-	for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
-		struct ast_dt_job *job;
-		job = get_job(ctx, job_i);
-
-		if (job->kind == AST_DT_JOB_FREE) {
-			continue;
-		}
-
-		assert(vert_i < graph.num_vertices);
-		struct ast_dtc_vertex *vert;
-		vert = &graph.vertices[vert_i];
-		vert->job_id = job_i;
-		job->aux_id = vert_i;
-
-		vert_i += 1;
-	}
-
-	size_t edge_i = 0;
-
-	for (ast_dt_job_id job_i = 0; job_i < ctx->jobs.length; job_i++) {
-		struct ast_dt_job *job;
-		job = get_job(ctx, job_i);
-
-		if (job->kind == AST_DT_JOB_FREE) {
-			continue;
-		}
-
-		struct ast_dtc_vertex *vert;
-		vert = &graph.vertices[job->aux_id];
-
-		assert(edge_i + job->num_outgoing_deps <= graph.num_edges);
-		vert->outgoing_edges = &graph.edges[edge_i];
-
-		for (size_t i = 0; i < job->num_outgoing_deps; i++) {
-			struct ast_dt_job *dep;
-			dep = get_job(ctx, job->outgoing_deps[i].to);
-
-			assert(job->kind != AST_DT_JOB_FREE);
-			vert->outgoing_edges[i].from = vert;
-			vert->outgoing_edges[i].to = &graph.vertices[dep->aux_id];
-		}
-
-		edge_i += job->num_outgoing_deps;
-	}
-
-	// Use Kosaraju's algorithm to find the cycles.
-
-	ast_dtc_dfs(&graph, NULL, false);
-
-	// Transpose the graph.
-	for (size_t i = 0; i < graph.num_edges; i++) {
-		struct ast_dtc_vertex *tmp = graph.edges[i].from;
-		graph.edges[i].from = graph.edges[i].to;
-		graph.edges[i].to = tmp;
-	}
-
-	struct ast_dtc_components comps = {0};
-	ast_dtc_dfs(&graph, &comps, true);
-
-	for (size_t i = 0; i < comps.num_comps; i++) {
+	for (size_t i = 0; i < comps.num_components; i++) {
 		ast_dt_report_cyclic_dependency_chain(
-				ctx, comps.comps[i]);
+				ctx, comps.components[i].head);
 	}
 
-	free(comps.comps);
+	arena_reset(mem, cp);
 }
+
+#ifdef AST_DT_DEBUG_JOBS
+static bool
+ast_dtc_component_contains(
+		struct ast_dtc_component *comp,
+		struct ast_dtc_vertex *vert)
+{
+	struct ast_dtc_vertex *it = comp->head;
+	while (it) {
+		if (it == vert) {
+			return true;
+		}
+
+		it = it->next_in_component;
+	}
+
+	return false;
+}
+
+static void
+ast_dt_debug_print_cyclic_dependencies(struct ast_dt_context *ctx)
+{
+	struct arena *mem = ctx->tmp_mem;
+	arena_mark cp = arena_checkpoint(mem);
+
+	struct ast_dtc_components comps;
+	comps = ast_dt_find_components(ctx, mem);
+
+	for (size_t i = 0; i < comps.num_components; i++) {
+		struct ast_dtc_component *comp = &comps.components[i];
+		struct ast_dtc_vertex *it = comp->head;
+
+		printf("\nCycle %zu/%zu:\n", i+1, comps.num_components);
+		while (it) {
+			printf(TC(TC_BRIGHT_YELLOW, "->") " ");
+			ast_dt_print_job_desc(ctx, it->job_id);
+			printf("\n");
+
+			struct ast_dt_job *job;
+			job = get_job(ctx, it->job_id);
+
+			bool first_print;
+
+			printf(TC_BRIGHT_YELLOW "       (");
+			first_print = true;
+			for (size_t edge_i = 0; edge_i < it->num_incoming_edges; edge_i++) {
+				struct ast_dtc_vertex *in = it->incoming_edges[edge_i].from;
+				if (ast_dtc_component_contains(comp, in)) {
+					printf("%s0x%03x", first_print ? "" : ", ", in->job_id);
+					first_print = false;
+				}
+			}
+
+			printf(") -> 0x%03x -> (", it->job_id);
+			first_print = true;
+			for (size_t edge_i = 0; edge_i < it->num_outgoing_edges; edge_i++) {
+				struct ast_dtc_vertex *out = it->outgoing_edges[edge_i].to;
+				if (ast_dtc_component_contains(comp, out)) {
+					printf("%s0x%03x", first_print ? "" : ", ", out->job_id);
+					first_print = false;
+				}
+			}
+			printf(")" TC_CLEAR "\n");
+
+			it = it->next_in_component;
+		}
+	}
+
+	fflush(stdout);
+	arena_reset(mem, cp);
+}
+#endif
+
 
 #define JOB(name, type) \
 	int ast_dt_job_dispatch_##name(struct ast_dt_context *, ast_dt_job_id, type);
@@ -1584,6 +1639,7 @@ ast_dt_run_jobs(struct ast_dt_context *ctx)
 		}
 
 		printf("\n");
+		ast_dt_debug_print_cyclic_dependencies(ctx);
 #endif
 		return -1;
 	}
