@@ -55,7 +55,7 @@ struct string string_duplicate_cstr(char *str)
 	return result;
 }
 
-static inline struct string
+struct string
 arena_vsprintf(struct arena *arena, char *fmt, va_list ap)
 {
 	va_list tmp_ap;

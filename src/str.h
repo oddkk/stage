@@ -27,6 +27,9 @@ struct string arena_sprintf(struct arena *, char *fmt, ...)
 // TODO: Make this cross-compiler compliant.
 	__attribute__((__format__ (__printf__, 2, 3)));
 
+struct string arena_vsprintf(struct arena *, char *fmt, va_list);
+
+
 int arena_string_append(struct arena *, struct string *, struct string);
 void arena_string_append_sprintf(struct arena *, struct string *, char *fmt, ...)
 // TODO: Make this cross-compiler compliant.

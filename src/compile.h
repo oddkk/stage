@@ -72,8 +72,13 @@ struct ast_dt_context {
 #endif
 };
 
+struct ast_dt_job_nop_data {
+	ast_dt_job_id *id_ref;
+	struct string name;
+};
+
 #define AST_DT_JOBS                                     \
-	JOB(nop, ast_dt_job_id *)                           \
+	JOB(nop, struct ast_dt_job_nop_data)                \
 	                                                    \
 	JOB(composite_resolve_names, ast_dt_composite_id)   \
 	JOB(composite_eval_closure, ast_dt_composite_id)    \
@@ -100,6 +105,22 @@ struct ast_dt_context {
 	ast_dt_job_id									\
 	ast_dt_job_##name(struct ast_dt_context *ctx,	\
 			type value);
+AST_DT_JOBS
+#undef JOB
+
+ast_dt_job_id
+ast_dt_job_nopf(struct ast_dt_context *ctx, ast_dt_job_id *ptr, char *fmt, ...)
+	// TODO: Make this cross-compiler compliant.
+	__attribute__((__format__ (__printf__, 3, 4)));
+
+#define JOB(name, type) \
+	struct ast_dt_job_info \
+	ast_dt_job_get_info_##name(struct ast_dt_context *, ast_dt_job_id, type);
+AST_DT_JOBS
+#undef JOB
+
+#define JOB(name, type) \
+	int ast_dt_job_dispatch_##name(struct ast_dt_context *, ast_dt_job_id, type);
 AST_DT_JOBS
 #undef JOB
 

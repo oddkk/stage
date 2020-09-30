@@ -224,7 +224,8 @@ ast_dt_find_or_register_tc(struct ast_dt_context *ctx,
 	dt_tc->tc = tc;
 
 	dt_tc->type_class_ready =
-		ast_dt_job_nop(ctx, &dt_tc->type_class_ready);
+		ast_dt_job_nopf(ctx, &dt_tc->type_class_ready,
+				"type class 0x%03x ready", tc_id);
 
 	ast_dt_job_dependency(ctx,
 			ctx->impl_targets_resolved,
@@ -318,9 +319,8 @@ ast_dt_register_composite(
 		ast_dt_job_composite_pack(ctx, comp_id);
 
 	comp->target_names_resolved =
-		ast_dt_job_nop(ctx, &comp->target_names_resolved);
-	comp->use_resolved =
-		ast_dt_job_nop(ctx, &comp->use_resolved);
+		ast_dt_job_nopf(ctx, &comp->target_names_resolved,
+				"target names resolved (comp 0x%03x)", comp_id);
 
 	comp->resolve_names = -1;
 	comp->closures_evaled = -1;
@@ -2288,7 +2288,7 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx,
 
 int
 ast_dt_job_dispatch_nop(struct ast_dt_context *ctx,
-		ast_dt_job_id job_id, ast_dt_job_id *id_ref)
+		ast_dt_job_id job_id, struct ast_dt_job_nop_data data)
 {
 	return 0;
 }
@@ -2923,11 +2923,12 @@ ast_dt_job_dispatch_tc_impl_resolve(
 struct ast_dt_job_info
 ast_dt_job_get_info_nop(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
-		ast_dt_job_id *id_ref)
+		struct ast_dt_job_nop_data data)
 {
 	struct ast_dt_job_info info = {0};
 
-	info.target = id_ref;
+	info.description = data.name;
+	info.target = data.id_ref;
 
 	return info;
 }

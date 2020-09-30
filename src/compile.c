@@ -922,6 +922,19 @@ ast_dt_alloc_job(struct ast_dt_context *ctx)
 AST_DT_JOBS
 #undef JOB
 
+ast_dt_job_id
+ast_dt_job_nopf(struct ast_dt_context *ctx, ast_dt_job_id *id_ref, char *fmt, ...) {
+	struct ast_dt_job_nop_data data = {0};
+	data.id_ref = id_ref;
+
+	va_list ap;
+
+	va_start(ap, fmt);
+	data.name = arena_vsprintf(ctx->tmp_mem, fmt, ap);
+	va_end(ap);
+
+	return ast_dt_job_nop(ctx, data);
+}
 
 enum ast_dtc_vertex_color {
 	AST_DTC_WHITE = 0,
@@ -1096,9 +1109,8 @@ ast_dt_find_components(struct ast_dt_context *ctx, struct arena *mem)
 		struct ast_dtc_component comp = {0};
 		ast_dtc_kosaraju_assign(&comp_ctx, vert, &comp);
 
-		// We only keep components that contains at least two components (a
-		// head and its next) because single node components can not contain
-		// cycles.
+		// We only keep components that contains at least two vertices (a head
+		// and its next) because single node components can not contain cycles.
 		if (comp.head && comp.head->next_in_component) {
 			comps[comps_i] = comp;
 			comps_i += 1;
@@ -1188,7 +1200,7 @@ ast_dt_report_cyclic_dependencies(struct ast_dt_context *ctx)
 	arena_reset(mem, cp);
 }
 
-#ifdef AST_DT_DEBUG_JOBS
+#if AST_DT_DEBUG_JOBS
 static bool
 ast_dtc_component_contains(
 		struct ast_dtc_component *comp,
@@ -1260,12 +1272,6 @@ ast_dt_debug_print_cyclic_dependencies(struct ast_dt_context *ctx)
 }
 #endif
 
-
-#define JOB(name, type) \
-	int ast_dt_job_dispatch_##name(struct ast_dt_context *, ast_dt_job_id, type);
-AST_DT_JOBS
-#undef JOB
-
 static inline int
 ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 {
@@ -1299,12 +1305,6 @@ ast_dt_dispatch_job(struct ast_dt_context *ctx, ast_dt_job_id job_id)
 
 	return err;
 }
-
-#define JOB(name, type) \
-	struct ast_dt_job_info \
-	ast_dt_job_get_info_##name(struct ast_dt_context *, ast_dt_job_id, type);
-AST_DT_JOBS
-#undef JOB
 
 static struct ast_dt_job_info
 ast_dt_job_get_info(struct ast_dt_context *ctx, ast_dt_job_id job_id)
@@ -1665,7 +1665,8 @@ ast_dt_process(struct ast_context *ctx, struct stg_module *mod)
 	cpl_dt_init_context(&dt_ctx);
 
 	dt_ctx.impl_targets_resolved =
-		ast_dt_job_nop(&dt_ctx, &dt_ctx.impl_targets_resolved);
+		ast_dt_job_nopf(&dt_ctx, &dt_ctx.impl_targets_resolved,
+				"impl targets resolved");
 
 #if AST_DT_DEBUG_JOBS
 	static size_t next_run_i = 0;
