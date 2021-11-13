@@ -858,6 +858,9 @@ struct ast_dt_job {
 struct ast_dt_job *
 get_job(struct ast_dt_context *ctx, ast_dt_job_id id)
 {
+#if AST_DEBUG_UNINITIALIZED_JOB_ID
+	assert(id > 0);
+#endif
 	return paged_list_get(&ctx->jobs, id);
 }
 
@@ -1662,6 +1665,11 @@ ast_dt_process(struct ast_context *ctx, struct stg_module *mod)
 			&dt_ctx.jobs, &ctx->vm->mem,
 			sizeof(struct ast_dt_job));
 
+#if AST_DEBUG_UNINITIALIZED_JOB_ID
+	size_t empty_job_id = paged_list_push(&dt_ctx.jobs);
+	assert(empty_job_id == 0);
+#endif
+
 	cpl_dt_init_context(&dt_ctx);
 
 	dt_ctx.impl_targets_resolved =
@@ -1694,6 +1702,11 @@ ast_dt_process(struct ast_context *ctx, struct stg_module *mod)
 	cpl_dt_destroy_context(&dt_ctx);
 
 	for (size_t job_i = 0; job_i < dt_ctx.jobs.length; job_i++) {
+#if AST_DEBUG_UNINITIALIZED_JOB_ID
+		if (job_i == 0) {
+			continue;
+		}
+#endif
 		struct ast_dt_job *job;
 		job = get_job(&dt_ctx, job_i);
 		free(job->outgoing_deps);

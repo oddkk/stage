@@ -322,6 +322,10 @@ ast_dt_register_composite(
 		ast_dt_job_nopf(ctx, &comp->target_names_resolved,
 				"target names resolved (comp 0x%03x)", comp_id);
 
+	comp->use_resolved =
+		ast_dt_job_nopf(ctx, &comp->use_resolved,
+				"use resolve (comp 0x%03x)", comp_id);
+
 	comp->resolve_names = -1;
 	comp->closures_evaled = -1;
 
@@ -1455,6 +1459,7 @@ ast_dt_check_tc_cons_ref(struct ast_dt_context *ctx,
 
 		if (tc->type_class_ready < 0) {
 			// The type class should already be ready.
+			panic("TODO: Should we be able to get here?");
 			return false;
 		}
 
@@ -1579,6 +1584,9 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 
 	if (cfg.wait_for_tc) {
 		int tc_ref;
+		printf("Wait for tc (job: %d): ", job);
+		ast_print(ctx->ast_ctx, node);
+		printf("\n");
 		tc_ref = ast_dt_references_type_class(
 				ctx, job, body_deps, num_deps);
 		if (tc_ref > 0) {

@@ -7,6 +7,7 @@
 #include "errors.h"
 
 #define AST_DT_DEBUG_JOBS 0
+#define AST_DEBUG_UNINITIALIZED_JOB_ID 0
 
 enum complie_job_type {
 #define COMPILE_JOB(name, data) COMPILE_JOB_##name,
