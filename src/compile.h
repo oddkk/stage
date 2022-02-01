@@ -75,7 +75,9 @@ struct ast_dt_context {
 
 struct ast_dt_job_nop_data {
 	ast_dt_job_id *id_ref;
+#if AST_DT_DEBUG_JOBS
 	struct string name;
+#endif
 };
 
 #define AST_DT_JOBS                                     \
@@ -109,10 +111,15 @@ struct ast_dt_job_nop_data {
 AST_DT_JOBS
 #undef JOB
 
+#if AST_DT_DEBUG_JOBS
 ast_dt_job_id
 ast_dt_job_nopf(struct ast_dt_context *ctx, ast_dt_job_id *ptr, char *fmt, ...)
 	// TODO: Make this cross-compiler compliant.
 	__attribute__((__format__ (__printf__, 3, 4)));
+#else
+#define ast_dt_job_nopf(ctx, ptr, ...) \
+		ast_dt_job_nop(ctx, (struct ast_dt_job_nop_data){ .id_ref=ptr })
+#endif
 
 #define JOB(name, type) \
 	struct ast_dt_job_info \

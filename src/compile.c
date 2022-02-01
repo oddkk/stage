@@ -810,6 +810,7 @@ enum ast_dt_job_kind {
 	AST_DT_JOB_LENGTH
 };
 
+#if AST_DT_DEBUG_JOBS
 static int
 ast_dt_job_name_max_length()
 {
@@ -824,6 +825,7 @@ ast_dt_job_name_max_length()
 	}
 	return result;
 }
+#endif
 
 struct ast_dt_job_dep {
 	bool visited;
@@ -884,7 +886,7 @@ static ast_dt_job_id
 ast_dt_alloc_job(struct ast_dt_context *ctx)
 {
 	ast_dt_job_id res = -1;
-	if (ctx->free_list == -1) {
+	if (ctx->free_list != -1) {
 		res = ctx->free_list;
 	} else {
 		res = paged_list_push(&ctx->jobs);
@@ -925,6 +927,7 @@ ast_dt_alloc_job(struct ast_dt_context *ctx)
 AST_DT_JOBS
 #undef JOB
 
+#if AST_DT_DEBUG_JOBS
 ast_dt_job_id
 ast_dt_job_nopf(struct ast_dt_context *ctx, ast_dt_job_id *id_ref, char *fmt, ...) {
 	struct ast_dt_job_nop_data data = {0};
@@ -938,6 +941,7 @@ ast_dt_job_nopf(struct ast_dt_context *ctx, ast_dt_job_id *id_ref, char *fmt, ..
 
 	return ast_dt_job_nop(ctx, data);
 }
+#endif
 
 enum ast_dtc_vertex_color {
 	AST_DTC_WHITE = 0,
@@ -1153,7 +1157,8 @@ ast_dt_print_job_desc(struct ast_dt_context *ctx,
 {
 	struct ast_dt_job *job;
 	job = get_job(ctx, job_id);
-	printf("0x%03x %-*.*s|", job_id,
+	printf(" 0x%03x %s %-*.*s|", job_id,
+			job->suspended ? TC(TC_BRIGHT_MAGENTA, "s") : " ",
 			ast_dt_job_name_max_length(),
 			LIT(ast_dt_job_kind_name(job->kind)));
 

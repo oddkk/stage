@@ -2935,7 +2935,9 @@ ast_dt_job_get_info_nop(
 {
 	struct ast_dt_job_info info = {0};
 
+#if AST_DT_DEBUG_JOBS
 	info.description = data.name;
+#endif
 	info.target = data.id_ref;
 
 	return info;

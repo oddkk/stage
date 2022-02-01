@@ -569,7 +569,7 @@ struct ast_inst_bytecode_part_ctx {
 	size_t num_init_exprs;
 };
 
-struct bc_result
+static struct bc_result
 ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env,
 		struct object_inst *inst, struct ast_node *node,
@@ -1141,7 +1141,7 @@ ast_inst_gen_bytecode_part(struct ast_context *ctx, struct stg_module *mod,
 	}
 }
 
-struct bc_result
+static struct bc_result
 ast_inst_gen_bytecode(struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_info *info, struct bc_env *bc_env, struct ast_node *node)
 {
