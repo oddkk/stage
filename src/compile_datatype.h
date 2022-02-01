@@ -167,8 +167,6 @@ void
 cpl_dt_destroy_context(struct ast_dt_context *);
 
 ast_dt_composite_id
-ast_dt_register_composite(
-		struct ast_dt_context *ctx, struct ast_node *root_node,
-		bool closure_available, struct ast_typecheck_closure *closures, size_t num_closures);
+ast_dt_register_composite(struct ast_dt_context *ctx, struct ast_node *root_node);
 
 #endif

@@ -1693,7 +1693,7 @@ ast_dt_process(struct ast_context *ctx, struct stg_module *mod)
 		node = ast_module_get_data_type(mod->ast_mod, i);
 
 		ast_dt_register_composite(
-				&dt_ctx, node, true, NULL, 0);
+				&dt_ctx, node);
 	}
 
 	int err;

@@ -300,10 +300,10 @@ ast_dt_register_impl(
 }
 
 ast_dt_composite_id
-ast_dt_register_composite(
-		struct ast_dt_context *ctx, struct ast_node *root_node,
-		bool closure_available, struct ast_typecheck_closure *closures, size_t num_closures)
+ast_dt_register_composite(struct ast_dt_context *ctx, struct ast_node *root_node)
 {
+	assert(root_node->kind == AST_NODE_COMPOSITE);
+
 	ast_dt_composite_id comp_id;
 	comp_id = ast_dt_alloc_composite(ctx);
 
@@ -311,10 +311,12 @@ ast_dt_register_composite(
 	comp = get_composite(ctx, comp_id);
 
 	comp->root_node = root_node;
-	comp->closures = closures;
-	comp->num_closures = num_closures;
 	comp->self = -1;
 
+	// TODO: Is this job necessary?
+	comp->use_resolved =
+		ast_dt_job_nopf(ctx, &comp->use_resolved,
+				"use resolved (comp 0x%03x)", comp_id);
 	comp->finalize_job =
 		ast_dt_job_composite_pack(ctx, comp_id);
 
@@ -329,20 +331,54 @@ ast_dt_register_composite(
 	comp->resolve_names = -1;
 	comp->closures_evaled = -1;
 
-	if (!closure_available) {
-		assert(comp->num_closures == 0);
+	struct ast_closure_target *closure;
+	closure = &root_node->composite.closure;
+
+	if (closure->num_members > 0) {
+		comp->num_closures = closure->num_members;
+		comp->closures = arena_allocn(
+				ctx->tmp_mem, comp->num_closures,
+				sizeof(struct ast_dt_composite_ambigous_name));
+
+		for (size_t i = 0; i < closure->num_members; i++) {
+			comp->closures[i].name = closure->members[i].name;
+
+			comp->closures[i].type_ready =
+				ast_dt_job_nopf(ctx, &comp->closures[i].type_ready,
+						"closure '%.*s' (%zu) type ready (comp 0x%03x)",
+						ALIT(closure->members[i].name), i, comp_id);
+			comp->closures[i].value_ready =
+				ast_dt_job_nopf(ctx, &comp->closures[i].value_ready,
+						"closure '%.*s' (%zu) value ready (comp 0x%03x)",
+						ALIT(closure->members[i].name), i, comp_id);
+
+			ast_dt_job_suspend(ctx,
+					comp->closures[i].type_ready);
+			ast_dt_job_dependency(ctx,
+					comp->closures[i].type_ready,
+					comp->closures[i].value_ready);
+
+			comp->closures[i].expr_id = -1;
+			comp->closures[i].unpack_id = -1;
+		}
 
 		comp->resolve_names =
 			ast_dt_job_composite_resolve_names(ctx, comp_id);
+		// The names are resolved when the owning expression has visited this
+		// composite's data type node and have filled our closure.
+		ast_dt_job_suspend(ctx, comp->resolve_names);
+
 		comp->closures_evaled =
-			ast_dt_job_composite_eval_closure(ctx, comp_id);
+			ast_dt_job_nopf(ctx, &comp->closures_evaled,
+				"closures evaled (comp 0x%03x)", comp_id);
 
 		ast_dt_job_dependency(ctx,
 				comp->resolve_names,
 				comp->closures_evaled);
+
 		ast_dt_job_dependency(ctx,
-				comp->closures_evaled,
-				comp->finalize_job);
+				comp->use_resolved,
+				comp->resolve_names);
 	}
 
 	ast_dt_composite_populate(
