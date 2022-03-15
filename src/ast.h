@@ -146,6 +146,31 @@ ast_node_traverse_scope(ast_traverse_scope_t visit,
 struct ast_scope_name *
 ast_scope_lookup(struct ast_scope *scope, struct atom *name);
 
+enum ast_node_ct_requirement {
+	AST_NODE_CT_REQ_TYPE = 0,
+	AST_NODE_CT_REQ_VALUE = 1,
+};
+
+enum ast_node_external_name_kind {
+	AST_NODE_EXT_NAME,
+	AST_NODE_EXT_INIT_EXPR,
+};
+
+struct ast_node_external_name {
+	enum ast_node_ct_requirement req;
+	enum ast_node_external_name_kind kind;
+
+	union {
+		struct atom *name;
+		ast_init_expr_id init_expr;
+	};
+};
+
+void
+ast_node_find_external_names(
+		struct ast_context *, struct arena *, struct ast_node *node,
+		struct ast_node_external_name **out_names, size_t *out_num_names);
+
 size_t
 ast_node_num_children(struct ast_node *);
 
@@ -1198,6 +1223,7 @@ typedef unsigned int bc_closure;
 
 #define AST_BC_CLOSURE_PRUNED ((bc_closure)UINT_MAX)
 
+/*
 struct ast_gen_init_expr {
 	ast_init_expr_id id;
 	type_id type;
@@ -1227,14 +1253,38 @@ struct ast_gen_dt_param {
 	bool is_const;
 	struct object const_val;
 };
+*/
+
+struct ast_dt_expr_dep {
+	struct ast_node_external_name name;
+	struct ast_name_ref ref;
+};
+
+struct ast_gen_dt_external_name {
+	struct ast_node_external_name name;
+
+	bool found;
+	ast_param_id param_id;
+
+	type_id type;
+	bool is_const;
+	struct object const_val;
+};
 
 struct ast_gen_info {
+	struct ast_gen_dt_external_name *external_names;
+	size_t num_external_names;
+
+	/*
 	struct ast_gen_dt_param *dt_params;
 	size_t num_dt_params;
+	*/
 
+	/*
 	struct ast_typecheck_closure *closures;
 	bc_closure *closure_refs;
 	size_t num_closures;
+	*/
 
 	struct object *const_use_values;
 	size_t num_use;
@@ -1257,6 +1307,13 @@ ast_func_gen_bytecode(
 		size_t num_closures, struct ast_node *node);
 
 struct bc_env *
+ast_node_expr_gen_bytecode(
+		struct ast_context *ctx, struct stg_module *mod,
+		struct ast_gen_dt_external_name *external_names, size_t num_external_names,
+		struct ast_node *expr);
+
+#if 0
+struct bc_env *
 ast_composite_bind_gen_bytecode(
 		struct ast_context *ctx, struct stg_module *mod,
 		struct ast_gen_dt_param *dt_params, size_t num_dt_params,
@@ -1272,6 +1329,8 @@ struct bc_env *
 ast_gen_value_unpack_func(
 		struct ast_context *ctx, struct stg_module *mod,
 		type_id value_type, size_t descendent);
+#endif
+
 void
 ast_print(struct ast_context *, struct ast_node *);
 

@@ -33,7 +33,7 @@ struct ast_dt_expr {
 
 	struct stg_location loc;
 
-	struct ast_gen_dt_param *deps;
+	struct ast_dt_expr_dep *deps;
 	size_t num_deps;
 
 	struct ast_dt_expr_jobs value_jobs;
@@ -109,6 +109,16 @@ struct ast_dt_type_class_impl {
 	ast_dt_job_id resolve;
 };
 
+struct ast_dt_composite_ambigous_name {
+	struct atom *name;
+
+	ast_dt_job_id type_ready;
+	ast_dt_job_id value_ready;
+
+	ast_dt_expr_id expr_id;
+	ssize_t unpack_id;
+};
+
 struct ast_dt_composite {
 	struct ast_node *root_node;
 	// An array of the ids of all local members, in the same order as
@@ -120,7 +130,10 @@ struct ast_dt_composite {
 	struct ast_dt_use *uses;
 	size_t num_uses;
 
-	struct ast_typecheck_closure *closures;
+	// struct ast_typecheck_closure *closures;
+	// size_t num_closures;
+
+	struct ast_dt_composite_ambigous_name *closures;
 	size_t num_closures;
 
 	ast_dt_job_id resolve_names;

@@ -1024,3 +1024,229 @@ ast_composite_node_has_ambiguous_refs(
 	return ast_node_has_ambiguous_refs(ctx,
 			&member_scope, node);
 }
+
+struct ast_node_find_external_names_entry {
+	struct ast_node_find_external_names_entry *next;
+	struct ast_node_external_name name;
+};
+
+struct ast_node_find_external_names_data {
+	struct arena *mem;
+
+	struct ast_node_find_external_names_entry **head;
+	size_t *length;
+
+	enum ast_node_ct_requirement req;
+};
+
+static bool
+ast_node_external_name_equals(
+		struct ast_node_external_name lhs,
+		struct ast_node_external_name rhs)
+{
+	return lhs.kind == rhs.kind && (
+			(lhs.kind == AST_NODE_EXT_NAME      && lhs.name      == rhs.name) ||
+			(lhs.kind == AST_NODE_EXT_INIT_EXPR && lhs.init_expr == rhs.init_expr));
+}
+
+void
+ast_node_find_external_names_append(
+		struct ast_node_find_external_names_data *data,
+		struct ast_node_external_name name)
+{
+	for (struct ast_node_find_external_names_entry *entry = *data->head;
+			entry; entry = entry->next) {
+		if (ast_node_external_name_equals(name, entry->name)) {
+			if (entry->name.req < name.req) {
+				entry->name.req = name.req;
+			}
+			return;
+		}
+	}
+
+	struct ast_node_find_external_names_entry *entry;
+	entry = arena_alloc(data->mem,
+			sizeof(struct ast_node_find_external_names_entry));
+	entry->name = name;
+
+	entry->next = *data->head;
+	*data->head = entry;
+	*data->length += 1;
+}
+
+
+int
+ast_node_find_external_names_internal(
+		struct ast_context *ctx, struct ast_scope *scope,
+		struct ast_node *node, enum ast_traverse_role role,
+		void *user_data)
+{
+	struct ast_node_find_external_names_data *data = user_data;
+	struct ast_node_find_external_names_data _tmp_data;
+
+	if (!node) {
+		return 0;
+	}
+
+	switch (role) {
+		case AST_TRAV_FUNC_PARAM_TYPE:
+		case AST_TRAV_FUNC_RET_TYPE:
+		case AST_TRAV_FUNC_TYPE_PARAM_TYPE:
+		case AST_TRAV_FUNC_TYPE_RET_TYPE:
+		case AST_TRAV_TEMPL_PARAM_TYPE:
+		case AST_TRAV_MATCH_PATTERN_TYPE:
+		case AST_TRAV_COMPOSITE_MEMBER_TYPE:
+		case AST_TRAV_TC_PATTERN_PARAM_TYPE:
+		case AST_TRAV_TC_MBR_PARAM_TYPE:
+		case AST_TRAV_TC_MBR_TYPE:
+		case AST_TRAV_VARIANT_OPTION_TYPE:
+		case AST_TRAV_INST_TARGET:
+		case AST_TRAV_CONS_TARGET:
+		case AST_TRAV_CONS_ARG:
+			_tmp_data = *data;
+			data = &_tmp_data;
+			data->req = AST_NODE_CT_REQ_VALUE;
+			break;
+
+		case AST_TRAV_FUNC_BODY:
+		case AST_TRAV_TEMPL_BODY:
+			// The names of the closure captured for the function body are
+			// looked up at the function node.
+			return 0;
+
+		default:
+			break;
+	}
+
+	switch (node->kind) {
+
+		case AST_NODE_LOOKUP:
+			{
+				struct ast_scope_name *scope_name;
+				scope_name = ast_scope_lookup(scope, node->lookup.name);
+
+				if (!scope_name) {
+					// The name was not found among the local names of the
+					// expression and is therefore external.
+					struct ast_node_external_name name = {0};
+					name.req = data->req;
+					name.kind = AST_NODE_EXT_NAME;
+					name.name = node->lookup.name;
+
+					ast_node_find_external_names_append(
+							data, name);
+				}
+			}
+			break;
+
+		case AST_NODE_INIT_EXPR:
+			{
+				struct ast_node_external_name name = {0};
+				name.req = data->req;
+				name.kind = AST_NODE_EXT_INIT_EXPR;
+				name.init_expr = node->init_expr.id;
+
+				ast_node_find_external_names_append(
+						data, name);
+			}
+			break;
+
+		case AST_NODE_DATA_TYPE:
+		case AST_NODE_FUNC:
+		case AST_NODE_TEMPL:
+			{
+				struct ast_closure_target *closure;
+
+				switch (node->kind) {
+					case AST_NODE_DATA_TYPE:
+						{
+							struct ast_node *dt_node;
+							dt_node = ast_module_node_get_data_type(
+									ctx->vm, node);
+							closure = &dt_node->composite.closure;
+						}
+						break;
+
+					case AST_NODE_FUNC:
+						closure = &node->func.closure;
+						break;
+
+					case AST_NODE_TEMPL:
+						closure = &node->templ.closure;
+						break;
+
+					default:
+						panic("Invalid node");
+						return -1;
+				}
+
+
+				for (size_t i = 0; i < closure->num_members; i++) {
+					struct ast_scope_name *scope_name;
+					scope_name = ast_scope_lookup(scope, closure->members[i].name);
+
+					if (!scope_name) {
+						// The name was not found among the local names of the
+						// expression and is therefore external.
+						struct ast_node_external_name name = {0};
+						name.req = data->req;
+						name.kind = AST_NODE_EXT_NAME;
+						name.name = closure->members[i].name;
+
+						ast_node_find_external_names_append(
+								data, name);
+					}
+				}
+			}
+			break;
+
+		default:
+			break;
+	}
+
+	return ast_node_traverse_scope(
+			ast_node_find_external_names_internal,
+			user_data, ctx, scope, node);
+}
+
+void
+ast_node_find_external_names(
+		struct ast_context *ctx, struct arena *mem, struct ast_node *node,
+		struct ast_node_external_name **out_names, size_t *out_num_names)
+{
+	struct ast_node_find_external_names_data data = {0};
+	size_t length = 0;
+	struct ast_node_find_external_names_entry *head = NULL;
+
+	data.length = &length;
+	data.head = &head;
+	data.req = AST_NODE_CT_REQ_TYPE;
+	data.mem = mem;
+
+	struct ast_scope scope = {0};
+
+	ast_node_find_external_names_internal(
+			ctx, &scope, node, AST_TRAV_ROOT, &data);
+
+	struct ast_node_external_name *result;
+	result = arena_allocn(mem, length,
+			sizeof(struct ast_node_external_name));
+
+	size_t i = 0;
+	for (struct ast_node_find_external_names_entry *entry = head;
+			entry; entry = entry->next) {
+		result[i] = entry->name;
+		if (result[i].kind == AST_NODE_INIT_EXPR) {
+			printf("ext init expr %is\n", result[i].init_expr);
+		} else {
+			printf("ext name %.*s\n", ALIT(result[i].name));
+		}
+
+		i += 1;
+	}
+
+	assert(i == length);
+
+	*out_names = result;
+	*out_num_names = length;
+}

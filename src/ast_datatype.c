@@ -7,6 +7,7 @@
 #include "native_bytecode.h"
 #include "term_color.h"
 #include "type_class.h"
+#include "init_monad.h"
 #include "base/mod.h"
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +55,23 @@ get_init_expr(struct ast_dt_context *ctx, ast_dt_composite_id parent, ast_init_e
 		}
 	}
 	panic("Invalid init expr id.\n");
+	return NULL;
+}
+
+static struct ast_dt_composite_ambigous_name *
+ast_dt_lookup_ambigous_name(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id, struct atom *name)
+{
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+	for (size_t i = 0; i < parent->num_closures; i++) {
+		struct ast_dt_composite_ambigous_name *amb_name;
+		amb_name = &parent->closures[i];
+		if (amb_name->name == name) {
+			return amb_name;
+		}
+	}
+
 	return NULL;
 }
 
@@ -260,9 +278,9 @@ ast_dt_register_impl(
 	dt_impl->resolve =
 		ast_dt_job_tc_impl_resolve(ctx, id);
 
-	ast_dt_job_dependency(ctx,
-			parent->closures_evaled,
-			dt_impl->resolve_names);
+	// ast_dt_job_dependency(ctx,
+	// 		parent->closures_evaled,
+	// 		dt_impl->resolve_names);
 
 	ast_dt_job_dependency(ctx,
 			dt_impl->resolve_names,
@@ -420,9 +438,9 @@ ast_dt_register_expr(struct ast_dt_context *ctx,
 	new_expr->value_jobs.codegen =
 		ast_dt_job_expr_codegen(ctx, expr_i);
 
-	ast_dt_job_dependency(ctx,
-			parent->closures_evaled,
-			new_expr->value_jobs.resolve_types);
+	// ast_dt_job_dependency(ctx,
+	// 		parent->closures_evaled,
+	// 		new_expr->value_jobs.resolve_types);
 
 	ast_dt_job_dependency(ctx,
 			new_expr->value_jobs.resolve_names,
@@ -490,9 +508,9 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 		mbr->type_names_resolved =
 			ast_dt_job_mbr_type_resolve_names(ctx, mbr_id);
 
-		ast_dt_job_dependency(ctx,
-				parent->closures_evaled,
-				mbr->type_resolved);
+		// ast_dt_job_dependency(ctx,
+		// 		parent->closures_evaled,
+		// 		mbr->type_resolved);
 
 		ast_dt_job_dependency(ctx,
 				mbr->type_names_resolved,
@@ -518,6 +536,7 @@ ast_dt_register_local_member(struct ast_dt_context *ctx,
 	return mbr_id;
 }
 
+/*
 static ast_member_id
 ast_dt_register_local_sub_composite_member(
 		struct ast_dt_context *ctx, ast_dt_composite_id parent_id, struct atom *name,
@@ -574,6 +593,7 @@ ast_dt_register_local_sub_composite_member(
 	}
 	return mbr_id;
 }
+*/
 
 static ast_dt_bind_id
 ast_dt_register_bind(struct ast_dt_context *ctx,
@@ -766,7 +786,7 @@ ast_dt_try_unpack_member_const(struct ast_dt_context *ctx,
 
 static int
 ast_dt_try_eval_const(struct ast_dt_context *ctx,
-		func_id fid, struct ast_gen_dt_param *deps, size_t num_deps,
+		func_id fid, struct ast_dt_expr_dep *deps, size_t num_deps,
 		type_id expected_type, struct object *out)
 {
 	if (fid == FUNC_UNSET) {
@@ -777,11 +797,11 @@ ast_dt_try_eval_const(struct ast_dt_context *ctx,
 	bool is_const = true;
 
 	for (size_t i = 0; i < num_deps; i++) {
-		struct ast_gen_dt_param *dep;
+		struct ast_dt_expr_dep *dep;
 		dep = &deps[i];
 
 		switch (dep->ref.kind) {
-			case AST_GEN_DT_PARAM_MEMBER:
+			case AST_NAME_REF_MEMBER:
 				{
 					assert(dep->ref.member.id >= 0);
 
@@ -997,6 +1017,7 @@ ast_dt_composite_populate(struct ast_dt_context *ctx,
 		struct ast_datatype_member *mbr;
 		mbr = &node->composite.members[i];
 
+		/*
 		if (mbr->type && mbr->type->kind == AST_NODE_COMPOSITE &&
 				mbr->type->composite.kind == AST_COMPOSITE_NAMESPACE) {
 			ast_dt_composite_id comp_id;
@@ -1006,16 +1027,17 @@ ast_dt_composite_populate(struct ast_dt_context *ctx,
 			members[i] = ast_dt_register_local_sub_composite_member(
 					ctx, parent_id, mbr->name, mbr->loc, comp_id);
 		} else {
-			// TODO: Better location.
-			members[i] = ast_dt_register_local_member(
-					ctx, parent_id, mbr->name, mbr->loc, mbr->type);
+		*/
+		// TODO: Better location.
+		members[i] = ast_dt_register_local_member(
+				ctx, parent_id, mbr->name, mbr->loc, mbr->type);
 
-			if (mbr->type_giving_bind >= 0) {
-				type_giving_for[mbr->type_giving_bind] = members[i];
-			} else {
-				assert(mbr->type);
-			}
+		if (mbr->type_giving_bind >= 0) {
+			type_giving_for[mbr->type_giving_bind] = members[i];
+		} else {
+			assert(mbr->type);
 		}
+		// }
 	}
 
 	for (size_t i = 0; i < node->composite.num_binds; i++) {
@@ -1123,149 +1145,344 @@ ast_try_set_local_member_type(struct ast_dt_context *ctx,
 	return 0;
 }
 
-static func_id
-ast_dt_expr_codegen(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
-		struct ast_node *node, enum ast_name_dep_requirement dep_req,
-		struct ast_gen_dt_param **out_deps, size_t *out_num_deps)
+static struct ast_name_ref
+ast_dt_lookup_name(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id, struct atom *name)
 {
 	struct ast_dt_composite *parent;
 	parent = get_composite(ctx, parent_id);
 
-	struct ast_name_dep *names = NULL;
-	size_t num_names = 0;
+	for (size_t mbr_i = 0; mbr_i < parent->root_node->composite.num_members; mbr_i++) {
+		ast_member_id mbr_id = parent->local_member_ids[mbr_i];
+		struct ast_dt_member *mbr = get_member(ctx, mbr_id);
 
-	ast_node_find_named_dependencies(
-			ctx->ast_ctx->vm, node, dep_req, &names, &num_names);
-
-	size_t num_dep_members = 0;
-	size_t num_dep_init_exprs = 0;
-	for (size_t i = 0; i < num_names; i++) {
-		switch (names[i].ref.kind) { 
-			case AST_NAME_REF_MEMBER:
-				num_dep_members += 1;
-				break;
-
-			case AST_NAME_REF_INIT_EXPR:
-				num_dep_init_exprs += 1;
-				break;
-
-			default:
-				break;
+		if (mbr->name == name) {
+			struct ast_name_ref ref = {0};
+			ref.kind = AST_NAME_REF_MEMBER;
+			ref.member.id = mbr_id;
+			ref.member.unpack_id = 0;
+			return ref;
 		}
 	}
 
-	size_t num_dt_params = num_dep_members + num_dep_init_exprs;
-	struct ast_gen_dt_param *dt_params;
-	dt_params = calloc(num_dt_params, sizeof(struct ast_gen_dt_param));
+	for (size_t use_i = 0; use_i < parent->num_uses; use_i++) {
+		struct ast_dt_use *use = &parent->uses[use_i];
 
-	size_t dt_param_i = 0;
-	for (size_t name_i = 0; name_i < num_names; name_i++) {
-		switch (names[name_i].ref.kind) {
-			case AST_NAME_REF_MEMBER:
-				{
-					ast_member_id member_id;
-					member_id = names[name_i].ref.member.id;
+		if (use->as_name) {
+			if (use->as_name == name) {
+				struct ast_name_ref ref = {0};
+				ref.kind = AST_NAME_REF_USE;
+				ref.use.id = use_i;
+				ref.use.param = 0;
+				return ref;
+			}
+		} else {
+			struct type *type;
+			type = vm_get_type(ctx->ast_ctx->vm, use->type);
 
-					struct ast_dt_member *mbr;
-					mbr = get_member(ctx, member_id);
-					assert(mbr->type != TYPE_UNSET);
-
-					dt_params[dt_param_i].ref.kind = AST_GEN_DT_PARAM_MEMBER;
-					dt_params[dt_param_i].ref.member.id = member_id;
-					dt_params[dt_param_i].ref.member.unpack_id =
-						names[name_i].ref.member.unpack_id;
-
-					int err;
-
-					err = object_cons_descendant_type(
-							ctx->ast_ctx->vm, mbr->type,
-							names[name_i].ref.member.unpack_id,
-							&dt_params[dt_param_i].type);
-
-					// TODO: Proper memory context.
-					err = ast_dt_try_unpack_member_const(
-							ctx, ctx->ast_ctx->mem,
-							names[name_i].ref.member.id,
-							names[name_i].ref.member.unpack_id,
-							&dt_params[dt_param_i].const_val);
-					if (err < 0) {
-						return FUNC_UNSET;
-					} else if (err == 0) {
-						dt_params[dt_param_i].is_const = true;
-					} else {
-						dt_params[dt_param_i].const_val.type = TYPE_UNSET;
-						dt_params[dt_param_i].const_val.data = NULL;
-					}
-
-					dt_param_i += 1;
+			if (type->obj_inst) {
+				ssize_t param_id;
+				param_id = object_cons_find_param(
+						type->obj_inst->cons, name);
+				if (param_id >= 0) {
+					struct ast_name_ref ref = {0};
+					ref.kind = AST_NAME_REF_USE;
+					ref.use.id = use_i;
+					ref.use.param = param_id;
+					return ref;
 				}
-				break;
+			}
+		}
+	}
 
-			case AST_NAME_REF_INIT_EXPR:
-				{
-					ast_init_expr_id init_expr_id;
-					init_expr_id = names[name_i].ref.init_expr;
+	for (size_t ext_name_i = 0; ext_name_i < parent->num_closures; ext_name_i++) {
+		struct ast_dt_composite_ambigous_name *ext_name;
+		ext_name = &parent->closures[ext_name_i];
 
-					struct ast_dt_init_expr *init_expr;
-					// TODO: Store the parent id with the init id to ensure we
-					// lookup the correct one.
-					init_expr = get_init_expr(ctx, parent_id, init_expr_id);
+		if (ext_name->name == name) {
+			struct ast_name_ref ref = {0};
+			ref.kind = AST_NAME_REF_CLOSURE;
+			ref.closure = ext_name_i;
+			return ref;
+		}
+	}
 
-					struct ast_dt_expr *expr;
-					expr = get_expr(ctx, init_expr->expr);
+	struct ast_name_ref ref = {0};
+	ref.kind = AST_NAME_REF_NOT_FOUND;
+	return ref;
+}
 
-					type_id type;
-					type = stg_init_get_return_type(
+static struct ast_name_ref
+ast_dt_lookup_external_name(struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id, struct ast_node_external_name name)
+{
+	switch (name.kind) {
+		case AST_NODE_EXT_NAME:
+			printf("lookup %.*s\n", ALIT(name.name));
+			return ast_dt_lookup_name(
+					ctx, parent_id, name.name);
+
+		case AST_NODE_EXT_INIT_EXPR:
+			{
+				assert(get_init_expr(ctx, parent_id, name.init_expr));
+
+				struct ast_name_ref ref = {0};
+				ref.kind = AST_NAME_REF_INIT_EXPR;
+				ref.init_expr = name.init_expr;
+				return ref;
+			}
+	}
+
+	struct ast_name_ref ref = {0};
+	ref.kind = AST_NAME_REF_NOT_FOUND;
+	return ref;
+}
+
+struct ast_dt_resolve_ref_result {
+	bool found;
+	type_id type;
+	bool is_const;
+	struct object const_val;
+};
+
+static struct ast_dt_resolve_ref_result
+ast_dt_resolve_ref_from_partial(struct ast_dt_context *ctx,
+		bool is_const, type_id tid, struct object const_value, size_t unpack_id)
+{
+	struct ast_dt_resolve_ref_result result = {0};
+	if (unpack_id == 0) {
+		result.type = tid;
+		result.is_const = is_const;
+		result.const_val = const_value;
+
+	} else {
+		struct type *type;
+		type = vm_get_type(ctx->ast_ctx->vm, tid);
+
+		int err;
+		err = object_cons_descendant_type(
+				ctx->ast_ctx->vm, tid,
+				unpack_id, &result.type);
+		assert(!err && result.type != TYPE_UNSET);
+
+		if (is_const) {
+			struct type *member_type;
+			member_type = vm_get_type(
+					ctx->ast_ctx->vm, result.type);
+
+			uint8_t buffer[member_type->size];
+			struct object target = {0};
+			target.data = buffer;
+			target.type = result.type;
+
+			struct stg_exec heap = {0};
+			heap.vm = ctx->ast_ctx->vm;
+			heap.heap = &ctx->ast_ctx->vm->transient;
+			arena_mark cp = arena_checkpoint(heap.heap);
+
+			err = object_unpack(
+					ctx->ast_ctx->vm, &heap,
+					const_value, unpack_id,
+					&target);
+			assert(!err);
+
+			result.is_const = true;
+			result.const_val = register_object(
+					ctx->ast_ctx->vm, &ctx->mod->store, target);
+
+			arena_reset(heap.heap, cp);
+		}
+	}
+
+	return result;
+}
+
+static struct ast_dt_resolve_ref_result 
+ast_dt_resolve_ref(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
+		struct ast_name_ref ref)
+{
+	struct ast_dt_resolve_ref_result result = {0};
+
+	switch (ref.kind) {
+		case AST_NAME_REF_MEMBER:
+			{
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, ref.member.id);
+
+				printf("found member %.*s: ", ALIT(mbr->name));
+				print_obj_repr(ctx->ast_ctx->vm, mbr->const_value);
+				printf(": ");
+				print_type_id_repr(ctx->ast_ctx->vm, mbr->type);
+				printf("\n");
+				printf("  (%s)\n",
+						((mbr->flags & AST_DT_MEMBER_IS_CONST) != 0) ? "const" : "not const");
+
+				result.type = mbr->type;
+				result.is_const = (mbr->flags & AST_DT_MEMBER_IS_CONST) != 0;
+				result.const_val = mbr->const_value;
+				result.found = true;
+			}
+			break;
+
+		case AST_NAME_REF_INIT_EXPR:
+			{
+				struct ast_dt_init_expr *init_expr;
+				init_expr = get_init_expr(ctx, parent_id, ref.init_expr);
+
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, init_expr->expr);
+
+				result.type =
+					stg_init_get_return_type(
 							ctx->ast_ctx->vm, expr->type);
 
-					dt_params[dt_param_i].ref.kind = AST_GEN_DT_PARAM_INIT_EXPR;
-					dt_params[dt_param_i].ref.init_expr = init_expr_id;
-					dt_params[dt_param_i].type = type;
+				result.is_const = false;
+				result.found = true;
+			}
+			break;
 
-					dt_param_i += 1;
-				}
-				break;
+		case AST_NAME_REF_USE:
+			{
+				struct ast_dt_composite *parent;
+				parent = get_composite(ctx, parent_id);
 
-			default:
-				break;
+				struct ast_dt_use *use = &parent->uses[ref.use.id];
+
+				// TODO: Is ref.use.param a unpack_id or a local param id?
+				/*
+				struct type *type;
+				type = vm_get_type(ctx->ast_ctx->vm, type_id);
+				assert(type->obj_inst && type->obj_inst->cons);
+
+				struct object_cons *cons;
+				cons = type->obj_inst->cons;
+
+				int local_descendent_ids[cons->num_params];
+				object_cons_local_descendent_ids(
+						ctx->ast_ctx->vm, cons, local_descendent_ids);
+
+				size_t unpack_id = local_descendent_ids[ref.use.param];
+				*/
+
+				result = ast_dt_resolve_ref_from_partial(ctx,
+						use->is_const, use->type, use->const_value, ref.use.param);
+			}
+			break;
+
+		case AST_NAME_REF_CLOSURE:
+			{
+				struct ast_dt_composite *parent;
+				parent = get_composite(ctx, parent_id);
+
+				struct ast_dt_composite_ambigous_name *name;
+				name = &parent->closures[ref.closure];
+
+				assert(name->expr_id >= 0);
+				struct ast_dt_expr *expr;
+				expr = get_expr(ctx, name->expr_id);
+
+				result = ast_dt_resolve_ref_from_partial(ctx,
+						expr->constant, expr->type, expr->const_value, name->unpack_id);
+			}
+			break;
+
+		case AST_NAME_REF_NOT_FOUND:
+			break;
+
+		default:
+			panic("Invalid name ref");
+			break;
+	}
+
+	return result;
+}
+
+static func_id
+ast_dt_expr_codegen(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
+		struct ast_node *node, enum ast_name_dep_requirement dep_req,
+		struct ast_dt_expr_dep **out_deps, size_t *out_num_deps)
+{
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, parent_id);
+
+	struct ast_node_external_name *names = NULL;
+	size_t num_names = 0;
+
+	arena_mark cp = arena_checkpoint(ctx->tmp_mem);
+	ast_node_find_external_names(
+			ctx->ast_ctx, ctx->tmp_mem, node, &names, &num_names);
+
+	struct ast_gen_dt_external_name *external_names;
+	external_names = arena_allocn(ctx->tmp_mem, num_names,
+			sizeof(struct ast_gen_dt_external_name));
+
+	struct ast_dt_expr_dep *expr_deps;
+	expr_deps = arena_allocn(ctx->tmp_mem, num_names,
+			sizeof(struct ast_dt_expr_dep));
+
+
+	size_t num_non_const_names = 0;
+
+	for (size_t i = 0; i < num_names; i++) {
+		struct ast_name_ref ref;
+		ref = ast_dt_lookup_external_name(ctx, parent_id, names[i]);
+
+		struct ast_dt_resolve_ref_result result;
+		result = ast_dt_resolve_ref(ctx, parent_id, ref);
+
+		expr_deps[i].name = names[i];
+		expr_deps[i].ref = ref;
+
+		external_names[i].name = names[i];
+		external_names[i].param_id = -1;
+
+		external_names[i].found = result.found;
+		external_names[i].type = result.type;
+		external_names[i].is_const = result.is_const;
+		external_names[i].const_val = result.const_val;
+
+		if (external_names[i].found && !external_names[i].is_const) {
+			external_names[i].param_id = num_non_const_names;
+			num_non_const_names += 1;
 		}
 	}
 
-	num_names = 0;
-	free(names);
-	names = NULL;
+	struct ast_dt_expr_dep *non_const_deps;
+	non_const_deps = arena_allocn(ctx->tmp_mem, num_non_const_names,
+			sizeof(struct ast_dt_expr_dep));
 
-	struct object const_use_values[parent->num_uses];
+	type_id *non_const_types;
+	non_const_types = arena_allocn(ctx->tmp_mem, num_non_const_names,
+			sizeof(type_id));
 
-	for (ast_use_id use_i = 0; use_i < parent->num_uses; use_i++) {
-		struct ast_dt_use *use;
-		use = get_use(ctx, dt_use_id(parent_id, use_i));
+	size_t non_const_i = 0;
+	for (size_t i = 0; i < num_names; i++) {
 
-		if (use->is_const) {
-			const_use_values[use_i] = use->const_value;
-		} else {
-			const_use_values[use_i] = OBJ_UNSET;
+		if (external_names[i].found && !external_names[i].is_const) {
+			non_const_deps[non_const_i].ref = expr_deps[i].ref;
+			non_const_deps[non_const_i].name = expr_deps[i].name;
+			non_const_types[non_const_i] = external_names[i].type;
+
+			non_const_i += 1;
+			assert(non_const_i <= num_non_const_names);
 		}
 	}
 
 	struct bc_env *bc_env;
-	bc_env = ast_composite_bind_gen_bytecode(
-				ctx->ast_ctx, ctx->mod,
-				dt_params, num_dt_params,
-				const_use_values, parent->num_uses,
-				parent->closures, parent->num_closures, node);
+	bc_env = ast_node_expr_gen_bytecode(
+			ctx->ast_ctx, ctx->mod, external_names, num_names, node);
 	if (!bc_env) {
 		return FUNC_UNSET;
 	}
 
-	type_id dt_param_types[num_dt_params];
-	for (size_t i = 0; i < num_dt_params; i++) {
-		dt_param_types[i] = dt_params[i].type;
-	}
-
 	struct func func = {0};
 	func.type = stg_register_func_type(ctx->mod,
-			node->type, dt_param_types, num_dt_params);
+			node->type, non_const_types, num_non_const_names);
+
+	// TODO: This was above stg_register_func_type before. Is this correct?
+	// Wouldn't that result in non_const_types being deallocated too early?
+	arena_reset_and_keep(ctx->tmp_mem, cp, non_const_deps,
+			num_non_const_names * sizeof(struct ast_dt_expr_dep));
 
 	func.kind = FUNC_BYTECODE;
 	func.bytecode = bc_env;
@@ -1273,12 +1490,13 @@ ast_dt_expr_codegen(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 	func_id fid;
 	fid = stg_register_func(ctx->mod, func);
 
-	*out_num_deps = num_dt_params;
-	*out_deps = dt_params;
+	*out_num_deps = num_non_const_names;
+	*out_deps = non_const_deps;
 
 	return fid;
 }
 
+#if 0
 static int
 ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 		struct ast_name_dep *deps, size_t num_deps,
@@ -1337,6 +1555,8 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 				break;
 
 			case AST_NAME_REF_CLOSURE:
+				panic("Closure name ref");
+				/*
 				if (parent->closures) {
 					assert(deps[i].ref.closure >= 0 &&
 							deps[i].ref.closure < parent->num_closures);
@@ -1372,6 +1592,7 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 					dep->lookup_failed = true;
 					dep->determined = false;
 				}
+				*/
 				break;
 
 			case AST_NAME_REF_USE:
@@ -1379,8 +1600,6 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 					struct ast_dt_use *use;
 					use = get_use(ctx, dt_use_id(parent_id, deps[i].ref.use.id));
 
-					// TODO: Support use of non-constant values.
-					// assert(use->is_const);
 					struct object obj = {0};
 
 					if (use->is_const) {
@@ -1480,6 +1699,50 @@ ast_dt_body_deps(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 
 	return 0;
 }
+#endif
+
+static int
+ast_dt_body_deps(
+		struct ast_dt_context *ctx, struct arena *mem,
+		ast_dt_composite_id parent_id,
+		struct ast_node_external_name *names, size_t num_names,
+		struct ast_typecheck_dep **out_deps)
+{
+	struct ast_typecheck_dep *deps;
+	deps = arena_allocn(mem, num_names,
+			sizeof(struct ast_typecheck_dep));
+
+	for (size_t i = 0; i < num_names; i++) {
+		struct ast_name_ref ref;
+		ref = ast_dt_lookup_external_name(ctx, parent_id, names[i]);
+
+		struct ast_dt_resolve_ref_result result;
+		result = ast_dt_resolve_ref(ctx, parent_id, ref);
+
+		deps[i].lookup_failed = !result.found;
+
+		switch (names[i].req) {
+			case AST_NODE_CT_REQ_TYPE:
+				deps[i].req = AST_NAME_DEP_REQUIRE_TYPE;
+				deps[i].determined = true;
+				deps[i].type = result.type;
+				break;
+
+			case AST_NODE_CT_REQ_VALUE:
+				deps[i].req = AST_NAME_DEP_REQUIRE_VALUE;
+				deps[i].determined = result.is_const;
+				deps[i].val = result.const_val;
+				break;
+		}
+
+		deps[i].ref = ref;
+		deps[i].value = -1;
+	}
+
+	*out_deps = deps;
+	return 0;
+}
+
 
 static bool
 ast_dt_check_tc_cons_ref(struct ast_dt_context *ctx,
@@ -1595,6 +1858,81 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 		struct ast_node *node, enum ast_name_dep_requirement dep_req,
 		ast_dt_job_id job, struct ast_dt_expr_typecheck_config cfg, struct object *out)
 {
+	struct arena *mem = ctx->tmp_mem;
+	arena_mark cp = arena_checkpoint(mem);
+
+	struct ast_node_external_name *names = NULL;
+	size_t num_names = 0;
+
+	ast_node_find_external_names(
+			ctx->ast_ctx, mem, node,
+			&names, &num_names);
+
+	struct ast_typecheck_dep *deps;
+	int err;
+	err = ast_dt_body_deps(
+			ctx, mem, parent_id,
+			names, num_names, &deps);
+	if (err) {
+		printf("Failed to find the named dependencies.\n");
+		arena_reset(mem, cp);
+		return -1;
+	}
+
+	if (cfg.wait_for_tc) {
+		int tc_ref;
+		tc_ref = ast_dt_references_type_class(
+				ctx, job, deps, num_names);
+		if (tc_ref > 0) {
+			// Yield.
+			arena_reset(mem, cp);
+			return 1;
+		}
+	}
+
+	printf("tc deps:\n");
+	for (size_t i = 0; i < num_names; i++) {
+		if (names[i].kind == AST_NODE_EXT_NAME) {
+			printf(" - '%.*s'", ALIT(names[i].name));
+		} else {
+			printf(" - init %i", names[i].init_expr);
+		}
+		if (deps[i].req == AST_NAME_DEP_REQUIRE_VALUE) {
+			printf(" (value): ");
+		} else {
+			printf(" (type): ");
+		}
+
+		if (deps[i].determined) {
+			if (deps[i].req == AST_NAME_DEP_REQUIRE_VALUE) {
+				print_obj_repr(ctx->ast_ctx->vm, deps[i].val);
+				printf(": ");
+				print_type_repr(ctx->ast_ctx->vm, vm_get_type(ctx->ast_ctx->vm, deps[i].type));
+			} else {
+				printf("(unknown): ");
+				print_type_repr(ctx->ast_ctx->vm, vm_get_type(ctx->ast_ctx->vm, deps[i].type));
+			}
+		} else if (deps[i].lookup_failed) {
+			printf("not found");
+		} else {
+			printf("unknown");
+		}
+		printf("\n");
+	}
+
+	err = ast_node_typecheck(
+			ctx->ast_ctx, ctx->mod, node,
+			deps, num_names, cfg.expected, out);
+	if (err) {
+		arena_reset(mem, cp);
+		return -1;
+	}
+
+	arena_reset(mem, cp);
+	// names are cleared at this point.
+
+
+	/*
 	struct ast_name_dep *deps = NULL;
 	size_t num_deps = 0;
 
@@ -1618,6 +1956,7 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 		return -1;
 	}
 
+<<<<<<< Updated upstream
 	if (cfg.wait_for_tc) {
 		int tc_ref;
 		printf("Wait for tc (job: %d): ", job);
@@ -1637,6 +1976,9 @@ ast_dt_expr_typecheck(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
 	if (err) {
 		return -1;
 	}
+=======
+>>>>>>> Stashed changes
+	*/
 
 	return 0;
 }
@@ -1800,9 +2142,32 @@ ast_dt_try_pack_member(
 
 			size_t num_deps = 0;
 			for (size_t dep_i = 0; dep_i < expr->num_deps; dep_i++) {
-				struct ast_gen_dt_param *dep;
+				struct ast_dt_expr_dep *dep;
 				dep = &expr->deps[dep_i];
 
+				switch (dep->ref.kind) {
+					case AST_NAME_REF_MEMBER:
+						if (dep->ref.member.id == mbr_id) {
+							extra_exprs[i].deps[num_deps].kind = OBJECT_INST_DEP_MEMBER;
+							extra_exprs[i].deps[num_deps].member = dep->ref.member.unpack_id;
+							num_deps += 1;
+						} else {
+							// TODO: Can dependencies have their constness
+							// evaled after us?
+							return false;
+						}
+						break;
+
+					case AST_NAME_REF_INIT_EXPR:
+						// Init-expressions must be handled run-time.
+						return false;
+
+					default:
+						printf("Invalid name ref.");
+						return false;
+				}
+
+				/*
 				if (dep->ref.kind == AST_GEN_DT_PARAM_MEMBER) {
 					if (dep->ref.member.id == mbr_id) {
 						extra_exprs[i].deps[num_deps].kind = OBJECT_INST_DEP_MEMBER;
@@ -1818,6 +2183,7 @@ ast_dt_try_pack_member(
 					// Init-expressions must be handled run-time.
 					return false;
 				}
+				*/
 			}
 			expr_dep_head += num_deps;
 
@@ -1925,6 +2291,11 @@ ast_dt_try_pack_member(
 							assert(expr->const_value.type != TYPE_UNSET);
 							exprs[act->expr.id] = expr->const_value;
 						} else {
+							// TODO: Can a non-const expr have its members
+							// determined after us?
+							res = 1;
+
+							/*
 							assert(expr->value.func != FUNC_UNSET);
 
 							struct object params[expr->num_deps];
@@ -1959,6 +2330,7 @@ ast_dt_try_pack_member(
 							if (err) {
 								res = -1;
 							}
+							*/
 						}
 					}
 					break;
@@ -2111,10 +2483,158 @@ ast_dt_try_pack_member(
 	return true;
 }
 
+/*
+enum ast_dt_lookup_result_kind {
+	AST_DT_LOOKUP_NOT_FOUND = 0,
+	AST_DT_LOOKUP_FOUND_LOCAL,
+	AST_DT_LOOKUP_FOUND_MEMBER,
+};
+
+struct ast_dt_lookup_result {
+	enum ast_dt_lookup_result_kind kind;
+
+	union {
+		struct ast_scope_name *local;
+		ast_dt_member_id member_id;
+	};
+};
+
+static struct ast_dt_lookup_result
+ast_dt_lookup(struct ast_dt_context *ctx, ast_dt_composite_id parent_id,
+		struct scope *scope, struct atom *name)
+{
+	struct ast_scope_name *name;
+	name = ast_scope_lookup(scope, node->lookup.name);
+	if (name) {
+		struct ast_dt_lookup_result result = {0};
+		result.kind = AST_DT_LOOKUP_FOUND_LOCAL;
+		return result;
+
+	} else {
+		// The name was not provided in the expression, so it
+		// either belongs to a member, a closure, or is not found.
+
+		struct ast_dt_composite *parent;
+		parent = get_composite(ctx, data->parent_id);
+
+		struct ast_node *comp = parent->root_node;
+
+		for (size_t i = 0; i < comp->composite.num_members; i++) {
+			if (comp->composite.members[i].name == node->lookup.name) {
+				struct ast_dt_lookup_result result = {0};
+				result.kind = AST_DT_LOOKUP_FOUND_MEMBER;
+				result.member_id = parent->local_member_ids[i];
+
+				return result;
+			}
+		}
+
+		if (!found) {
+			struct ast_closure_target *closure;
+			closure = &comp->composite.closure;
+			for (size_t i = 0; i < closure->num_members; i++) {
+				if (closure->members[i].name == node->lookup.name) {
+					struct ast_dt_composite *parent;
+					parent = get_composite(ctx, data->parent_id);
+
+					printf("closure of parent: ");
+
+					// TODO: Allow more granular dependencies on
+					// closures.
+					found = true;
+					switch (data->target) {
+						case AST_DT_DISCOVER_DEP_TARGET_TYPE:
+							found_target_job = parent->closures_evaled;
+							break;
+
+						case AST_DT_DISCOVER_DEP_TARGET_VALUE:
+							found_target_job = parent->closures_evaled;
+							break;
+					}
+					break;
+				}
+			}
+		}
+	}
+}
+*/
+
 enum ast_dt_node_discover_dependencies_target {
 	AST_DT_DISCOVER_DEP_TARGET_TYPE,
 	AST_DT_DISCOVER_DEP_TARGET_VALUE,
 };
+
+struct ast_dt_node_lookup_job {
+	ast_dt_job_id type_ready, value_ready;
+};
+
+static struct ast_dt_node_lookup_job
+ast_dt_node_lookup_name_job(
+		struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id,
+		struct ast_scope_name *name)
+{
+	// The lookup should either be of a known name or a ambigous
+	// discovered name.
+	assert(name && name->ref.kind != AST_NAME_REF_NOT_FOUND);
+
+	struct ast_dt_node_lookup_job result = {0};
+	result.type_ready = -1;
+	result.value_ready = -1;
+
+	switch (name->ref.kind) {
+		case AST_NAME_REF_MEMBER:
+			{
+				struct ast_dt_member *mbr;
+				mbr = get_member(ctx, name->ref.member.id);
+
+				result.type_ready = mbr->type_resolved;
+				result.value_ready = mbr->const_resolved;
+			}
+			break;
+
+		case AST_NAME_REF_CLOSURE:
+			{
+				struct ast_dt_composite *parent;
+				parent = get_composite(ctx, parent_id);
+
+				assert(name->ref.closure < parent->num_closures);
+				struct ast_dt_composite_ambigous_name *closure;
+				closure = &parent->closures[name->ref.closure];
+
+				result.type_ready = closure->type_ready;
+				result.value_ready = closure->value_ready;
+			}
+			break;
+
+		default:
+			break;
+	}
+
+	return result;
+}
+
+static ast_dt_job_id
+ast_dt_node_lookup_target_job(
+		struct ast_dt_context *ctx,
+		ast_dt_composite_id parent_id,
+		enum ast_dt_node_discover_dependencies_target target,
+		struct ast_scope_name *name)
+{
+	struct ast_dt_node_lookup_job result;
+	result = ast_dt_node_lookup_name_job(
+			ctx, parent_id, name);
+
+	switch (target) {
+		case AST_DT_DISCOVER_DEP_TARGET_TYPE:
+			return result.type_ready;
+
+		case AST_DT_DISCOVER_DEP_TARGET_VALUE:
+			return result.value_ready;
+	}
+
+	return -1;
+}
 
 struct ast_dt_node_discover_dependencies_data {
 	struct ast_dt_context *ctx;
@@ -2154,14 +2674,14 @@ ast_dt_node_discover_dependencies_internal(
 		case AST_TRAV_CONS_ARG:
 			_tmp_data = *data;
 			data = &_tmp_data;
-			data->target = AST_DT_DISCOVER_DEP_TARGET_TYPE;
+			data->target = AST_DT_DISCOVER_DEP_TARGET_VALUE;
 			break;
 
 		case AST_TRAV_FUNC_BODY:
-			_tmp_data = *data;
-			data = &_tmp_data;
-			data->target = AST_DT_DISCOVER_DEP_TARGET_VALUE;
-			break;
+		case AST_TRAV_TEMPL_BODY:
+			// The names of the closure captured for the function body are
+			// looked up at the function node.
+			return 0;
 
 		default:
 			break;
@@ -2173,70 +2693,18 @@ ast_dt_node_discover_dependencies_internal(
 			{
 				struct ast_scope_name *name;
 				name = ast_scope_lookup(scope, node->lookup.name);
-				if (!name) {
-					// The name was not provided in the expression, so it
-					// either belongs to a member, a closure, or is not found.
 
-					struct ast_dt_composite *parent;
-					parent = get_composite(ctx, data->parent_id);
+				ast_dt_job_id target_job;
+				target_job = ast_dt_node_lookup_target_job(
+						ctx, data->parent_id, data->target, name);
 
-					struct ast_node *comp = parent->root_node;
+				if (target_job > -1) {
+					printf("dep lookup <%i> %i %.*s\n",
+							data->target, target_job, ALIT(node->lookup.name));
 
-					bool found = false;
-					ast_dt_job_id found_target_job = -1;
-
-					for (size_t i = 0; i < comp->composite.num_members; i++) {
-						if (comp->composite.members[i].name == node->lookup.name) {
-							found = true;
-
-							struct ast_dt_member *mbr;
-							mbr = get_member(ctx, parent->local_member_ids[i]);
-
-							switch (data->target) {
-								case AST_DT_DISCOVER_DEP_TARGET_TYPE:
-									found_target_job = mbr->type_resolved;
-									break;
-
-								case AST_DT_DISCOVER_DEP_TARGET_VALUE:
-									found_target_job = mbr->const_resolved;
-									break;
-							}
-						}
-					}
-
-					if (!found) {
-						struct ast_closure_target *closure;
-						closure = &comp->composite.closure;
-						for (size_t i = 0; i < closure->num_members; i++) {
-							if (closure->members[i].name == node->lookup.name) {
-								struct ast_dt_composite *parent;
-								parent = get_composite(ctx, data->parent_id);
-
-								// TODO: Allow more granular dependencies on
-								// closures.
-								found = true;
-								switch (data->target) {
-									case AST_DT_DISCOVER_DEP_TARGET_TYPE:
-										found_target_job = parent->closures_evaled;
-										break;
-
-									case AST_DT_DISCOVER_DEP_TARGET_VALUE:
-										found_target_job = parent->closures_evaled;
-										break;
-								}
-								break;
-							}
-						}
-					}
-
-					// If the name really is not found the error will be
-					// reported during during type checking. This is to allow
-					// closure- and use names to be resolved first.
-					if (found) {
-						ast_dt_job_dependency(ctx,
-								found_target_job,
-								data->next_job);
-					}
+					ast_dt_job_dependency(ctx,
+							target_job,
+							data->next_job);
 				}
 			}
 			break;
@@ -2261,6 +2729,7 @@ ast_dt_node_discover_dependencies_internal(
 						break;
 				}
 
+				printf("dep init expr\n");
 				ast_dt_job_dependency(ctx,
 						target_job_id,
 						data->next_job);
@@ -2273,24 +2742,95 @@ ast_dt_node_discover_dependencies_internal(
 				dt_node = ast_module_node_get_data_type(
 						ctx->ast_ctx->vm, node);
 
+				ast_dt_composite_id comp_id = -1;
 				for (size_t i = 0; i < ctx->composites.length; i++) {
 					struct ast_dt_composite *comp;
 					comp = get_composite(ctx, i);
 					if (comp->root_node == dt_node) {
-						ast_dt_job_id target_job_id = -1;
+						comp_id = i;
+						break;
+					}
+				}
 
-						switch (data->target) {
-							case AST_DT_DISCOVER_DEP_TARGET_TYPE:
-								target_job_id = -1;
-								break;
+				// We should always be able to find the matching composite for
+				// a datatype.
+				assert(comp_id > 0);
 
-							case AST_DT_DISCOVER_DEP_TARGET_VALUE:
-								target_job_id = comp->finalize_job;
-								break;
-						}
+				struct ast_dt_composite *comp;
+				comp = get_composite(ctx, comp_id);
+
+				if (comp->num_closures > 0) {
+					for (size_t i = 0; i < comp->num_closures; i++) {
+						struct ast_scope_name *name;
+						name = ast_scope_lookup(scope, comp->closures[i].name);
+
+						struct ast_dt_node_lookup_job target;
+						target = ast_dt_node_lookup_name_job(
+								ctx, data->parent_id, name);
 
 						ast_dt_job_dependency(ctx,
-								target_job_id,
+								target.type_ready,
+								comp->closures[i].type_ready);
+
+						ast_dt_job_dependency(ctx,
+								target.value_ready,
+								comp->closures[i].value_ready);
+					}
+
+					ast_dt_job_resume(ctx, comp->resolve_names);
+				}
+
+				ast_dt_job_id target_job_id = -1;
+				switch (data->target) {
+					case AST_DT_DISCOVER_DEP_TARGET_TYPE:
+						target_job_id = -1;
+						break;
+
+					case AST_DT_DISCOVER_DEP_TARGET_VALUE:
+						target_job_id = comp->finalize_job;
+						break;
+				}
+
+				printf("dep data type\n");
+				ast_dt_job_dependency(ctx,
+						target_job_id,
+						data->next_job);
+			}
+			break;
+
+		case AST_NODE_FUNC:
+		case AST_NODE_TEMPL:
+			{
+				struct ast_closure_target *closure_target = NULL;
+				switch (node->kind) {
+					case AST_NODE_FUNC:
+						closure_target = &node->func.closure;
+						break;
+
+					case AST_NODE_TEMPL:
+						closure_target = &node->templ.closure;
+						break;
+
+					default:
+						panic("Invalid node kind");
+				}
+				for (size_t i = 0; i < closure_target->num_members; i++) {
+					struct ast_closure_member *closure;
+					closure = &closure_target->members[i];
+
+					struct ast_scope_name *name;
+					name = ast_scope_lookup(scope, closure->name);
+
+					ast_dt_job_id target_job;
+					target_job = ast_dt_node_lookup_target_job(
+							ctx, data->parent_id, data->target, name);
+
+					if (target_job > -1) {
+						printf("dep func closure lookup <%i> %i %.*s\n",
+								data->target, target_job, ALIT(closure->name));
+
+						ast_dt_job_dependency(ctx,
+								target_job,
 								data->next_job);
 					}
 				}
@@ -2306,24 +2846,82 @@ ast_dt_node_discover_dependencies_internal(
 			user_data, ast_ctx, scope, node);
 }
 
+static void
+ast_dt_composite_build_scope(
+		struct ast_dt_context *ctx,
+		struct arena *mem,
+		struct ast_scope *scope,
+		ast_dt_composite_id comp_id,
+		struct atom *self_name)
+{
+	struct ast_dt_composite *comp;
+	comp = get_composite(ctx, comp_id);
+
+	size_t num_members = comp->root_node->composite.num_members;
+
+	scope->num_names = num_members + comp->num_closures;
+	scope->names = arena_allocn(mem,
+			scope->num_names,
+			sizeof(struct ast_scope_name));
+
+	size_t name_offset = 0;
+	for (size_t i = 0; i < num_members; i++) {
+		struct ast_scope_name *name = &scope->names[name_offset+i];
+
+		struct ast_datatype_member *mbr;
+		mbr = &comp->root_node->composite.members[i];
+
+		name->name = mbr->name;
+
+		if (mbr->name != self_name) {
+			name->ref.kind = AST_NAME_REF_MEMBER;
+			name->ref.member.id = comp->local_member_ids[i];
+			name->ref.member.unpack_id = 0;
+		} else {
+			name->ref.kind = AST_NAME_REF_SELF;
+		}
+	}
+
+	name_offset += num_members;
+	for (size_t i = 0; i < comp->num_closures; i++) {
+		struct ast_scope_name *name = &scope->names[name_offset+i];
+
+		name->name = comp->closures[i].name;
+		name->ref.kind = AST_NAME_REF_CLOSURE;
+		name->ref.closure = i;
+	}
+}
+
 static int
 ast_dt_node_discover_dependencies(struct ast_dt_context *ctx,
 		ast_dt_composite_id parent_id, struct ast_node *expr,
-		ast_dt_job_id next_job, enum ast_dt_node_discover_dependencies_target target)
+		struct atom *self_name, ast_dt_job_id next_job,
+		enum ast_dt_node_discover_dependencies_target target)
 {
 	struct ast_dt_node_discover_dependencies_data data = {0};
 
 	data.ctx = ctx;
+	data.parent_id = parent_id;
 	data.next_job = next_job;
 	data.target = target;
 
 	struct ast_dt_composite *parent;
 	parent = get_composite(ctx, parent_id);
 
-	struct ast_scope scope = {0};
+	struct arena *mem = ctx->tmp_mem;
+	arena_mark cp = arena_checkpoint(mem);
 
-	return ast_dt_node_discover_dependencies_internal(
+	struct ast_scope scope = {0};
+	ast_dt_composite_build_scope(
+			ctx, mem, &scope, parent_id, self_name);
+
+	int err;
+	err = ast_dt_node_discover_dependencies_internal(
 			ctx->ast_ctx, &scope, expr, AST_TRAV_ROOT, &data);
+
+	arena_reset(mem, cp);
+
+	return err;
 }
 
 static type_id
@@ -2345,38 +2943,22 @@ ast_dt_job_dispatch_composite_resolve_names(
 	struct ast_dt_composite *comp;
 	comp = get_composite(ctx, comp_id);
 
-	// We should only try to resolve names of sub-composites.
-	assert(comp->self >= 0);
-
-	struct ast_dt_member *self;
-	self = get_member(ctx, comp->self);
-
-	struct ast_dt_composite *parent;
-	parent = get_composite(ctx, self->parent);
-
-	int err;
-	err = ast_composite_node_resolve_names(
-			ctx->ast_ctx, ctx->mod->native_mod,
-			NULL, true, parent->root_node, comp->root_node,
-			parent->local_member_ids, NULL);
-	if (err) {
-		return -1;
+	// At this point all use-statements should have bound their relevant names.
+	// The remaining ambigous names are closures, and the closures have been
+	// filled out by our parent.
+	for (size_t i = 0; i < comp->num_closures; i++) {
+		ast_dt_job_resume(ctx, comp->closures[i].type_ready);
 	}
-
-	// TODO: Does closures require their values to be constant?
-	ast_dt_node_discover_dependencies(
-			ctx, self->parent, comp->root_node,
-			comp->closures_evaled,
-			AST_DT_DISCOVER_DEP_TARGET_VALUE);
 
 	return 0;
 }
 
-	int
+int
 ast_dt_job_dispatch_composite_eval_closure(
 		struct ast_dt_context *ctx, ast_dt_job_id job_id,
 		ast_dt_composite_id comp_id)
 {
+	/*
 	struct ast_dt_composite *comp;
 	comp = get_composite(ctx, comp_id);
 
@@ -2421,6 +3003,9 @@ ast_dt_job_dispatch_composite_eval_closure(
 
 	comp->closures = closure_values;
 	comp->num_closures = closure->num_members;
+	*/
+
+	panic("Resolve closures");
 
 	return 0;
 }
@@ -2482,7 +3067,7 @@ ast_dt_job_dispatch_mbr_type_resolve_names(
 
 	ast_dt_node_discover_dependencies(
 			ctx, mbr->parent, mbr->type_node,
-			mbr->type_resolved,
+			NULL, mbr->type_resolved,
 			AST_DT_DISCOVER_DEP_TARGET_VALUE);
 
 	return 0;
@@ -2512,7 +3097,7 @@ ast_dt_job_dispatch_expr_resolve_names(
 
 	ast_dt_node_discover_dependencies(
 			ctx, expr->parent, expr->value.node,
-			expr->value_jobs.resolve_types,
+			expr->trivial_name, expr->value_jobs.resolve_types,
 			AST_DT_DISCOVER_DEP_TARGET_TYPE);
 
 	return 0;
@@ -2615,6 +3200,9 @@ ast_dt_job_dispatch_mbr_type_eval(
 		}
 	}
 
+	printf("set type ");
+	print_type_id_repr(ctx->ast_ctx->vm, out_type);
+	printf("\n");
 	ast_try_set_local_member_type(
 			ctx, mbr_id, out_type);
 	return 0;
@@ -2641,7 +3229,7 @@ ast_dt_job_dispatch_expr_codegen(
 	struct ast_dt_expr *expr;
 	expr = get_expr(ctx, expr_id);
 
-	struct ast_gen_dt_param *deps = NULL;
+	struct ast_dt_expr_dep *deps = NULL;
 	size_t num_deps = 0;
 
 	func_id fid;
@@ -2724,6 +3312,64 @@ ast_dt_job_dispatch_use_const_eval(
 	assert(expr->type != TYPE_UNSET);
 	use->type = expr->type;
 
+	struct ast_dt_composite *parent;
+	parent = get_composite(ctx, use->parent);
+
+	if (use->as_name) {
+		// TODO: When we already know the target name of the use, we should be
+		// able to already have resumed the relevant closure job.
+		struct ast_dt_composite_ambigous_name *name;
+		name = ast_dt_lookup_ambigous_name(
+				ctx, use->parent, use->as_name);
+		if (name) {
+			name->expr_id = use->expr;
+			name->unpack_id = 0;
+
+			ast_dt_job_dependency(ctx,
+					expr->value_jobs.codegen,
+					name->value_ready);
+
+			ast_dt_job_resume(ctx, name->type_ready);
+		}
+	} else {
+		struct type *type = vm_get_type(ctx->ast_ctx->vm, use->type);
+
+		if (!type->obj_inst) {
+			struct string type_str;
+			type_str = type_repr_to_alloced_string(
+					ctx->ast_ctx->vm, type);
+
+			stg_error(ctx->ast_ctx->err, expr->loc,
+					"This expression of type '%.*s' can not be unpacked as it "
+					"has no members.",
+					LIT(type_str));
+			return -1;
+		}
+
+		struct object_cons *cons = type->obj_inst->cons;
+		int member_unpack_ids[cons->num_params];
+		object_cons_local_descendent_ids(
+				ctx->ast_ctx->vm, cons, member_unpack_ids);
+
+		for (size_t mbr_i = 0; mbr_i < cons->num_params; mbr_i++) {
+			struct ast_dt_composite_ambigous_name *name;
+			name = ast_dt_lookup_ambigous_name(
+					ctx, use->parent, cons->params[mbr_i].name);
+			if (!name) {
+				continue;
+			}
+
+			name->expr_id = use->expr;
+			name->unpack_id = member_unpack_ids[mbr_i];
+
+			ast_dt_job_dependency(ctx,
+					expr->value_jobs.codegen,
+					name->value_ready);
+
+			ast_dt_job_resume(ctx, name->type_ready);
+		}
+	}
+
 	int err;
 	err = ast_dt_try_eval_expr_const(
 			ctx, use->expr, &use->const_value);
@@ -2760,7 +3406,7 @@ ast_dt_job_dispatch_tc_impl_resolve_names(
 
 	ast_dt_node_discover_dependencies(
 			ctx, impl->parent, impl->impl->target,
-			impl->resolve_target,
+			NULL, impl->resolve_target,
 			AST_DT_DISCOVER_DEP_TARGET_VALUE);
 
 	err = ast_composite_node_resolve_names(
@@ -2773,7 +3419,7 @@ ast_dt_job_dispatch_tc_impl_resolve_names(
 
 	ast_dt_node_discover_dependencies(
 			ctx, impl->parent, impl->impl->value,
-			impl->resolve,
+			NULL, impl->resolve,
 			AST_DT_DISCOVER_DEP_TARGET_VALUE);
 
 	for (size_t i = 0; i < impl->impl->num_args; i++) {
@@ -2787,7 +3433,7 @@ ast_dt_job_dispatch_tc_impl_resolve_names(
 
 		ast_dt_node_discover_dependencies(
 				ctx, impl->parent, impl->impl->args[i].value,
-				impl->resolve,
+				NULL, impl->resolve,
 				AST_DT_DISCOVER_DEP_TARGET_VALUE);
 	}
 	return 0;
@@ -3689,10 +4335,10 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx,
 				out_expr->num_deps, sizeof(struct object_inst_dep));
 
 		for (size_t i = 0; i < expr->num_deps; i++) {
-			struct ast_gen_dt_param *dep;
+			struct ast_dt_expr_dep *dep;
 			dep = &expr->deps[i];
 			switch (dep->ref.kind) {
-				case AST_GEN_DT_PARAM_MEMBER:
+				case AST_NAME_REF_MEMBER:
 					out_expr->deps[i].kind = OBJECT_INST_DEP_MEMBER;
 					out_expr->deps[i].member =
 						ast_dt_calculate_persistant_id(
@@ -3700,9 +4346,13 @@ ast_dt_composite_make_type(struct ast_dt_context *ctx,
 								dep->ref.member.unpack_id);
 					break;
 
-				case AST_GEN_DT_PARAM_INIT_EXPR:
+				case AST_NAME_REF_INIT_EXPR:
 					out_expr->deps[i].kind = OBJECT_INST_DEP_INIT_EXPR;
 					out_expr->deps[i].init_expr = init_i + dep->ref.init_expr;
+					break;
+
+				default:
+					panic("Invalid name ref kind");
 					break;
 			}
 		}
@@ -3846,7 +4496,6 @@ cpl_dt_destroy_context(struct ast_dt_context *ctx)
 	for (size_t expr_i = 0; expr_i < ctx->exprs.length; expr_i++) {
 		struct ast_dt_expr *expr;
 		expr = get_expr(ctx, expr_i);
-		free(expr->deps);
 	}
 
 	paged_list_destroy(&ctx->exprs);
