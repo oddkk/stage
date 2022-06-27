@@ -3773,6 +3773,9 @@ cpl_dt_init_context(struct ast_dt_context *ctx)
 	struct stg_memory *mem;
 	mem = &ctx->ast_ctx->vm->mem;
 
+	ctx->terminal_jobs = -1;
+	ctx->free_list = -1;
+
 	paged_list_init(
 			&ctx->composites, mem,
 			sizeof(struct ast_dt_composite));

@@ -886,10 +886,12 @@ static ast_dt_job_id
 ast_dt_alloc_job(struct ast_dt_context *ctx)
 {
 	ast_dt_job_id res = -1;
+	bool is_new = false;
 	if (ctx->free_list != -1) {
 		res = ctx->free_list;
 	} else {
 		res = paged_list_push(&ctx->jobs);
+		is_new = true;
 	}
 
 	assert(res >= 0);
@@ -897,7 +899,9 @@ ast_dt_alloc_job(struct ast_dt_context *ctx)
 	struct ast_dt_job *job;
 	job = get_job(ctx, res);
 
-	ctx->free_list = job->data.free_list;
+	if (!is_new) {
+		ctx->free_list = job->data.free_list;
+	}
 
 	memset(job, 0, sizeof(struct ast_dt_job));
 
@@ -1661,11 +1665,12 @@ ast_dt_process(struct ast_context *ctx, struct stg_module *mod)
 	struct ast_dt_context dt_ctx = {0};
 	dt_ctx.ast_ctx = ctx;
 	dt_ctx.mod = mod;
-	dt_ctx.terminal_jobs  = -1;
 
 	dt_ctx.tmp_mem = &ctx->vm->transient;
 	arena_mark transient_cp = arena_checkpoint(dt_ctx.tmp_mem);
 
+	// The jobs table is currently defined here because it is not available in
+	// ast_datatype.c where cpl_dt_init_context is defined.
 	paged_list_init(
 			&dt_ctx.jobs, &ctx->vm->mem,
 			sizeof(struct ast_dt_job));
